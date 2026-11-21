@@ -482,6 +482,17 @@ impl App {
         }) {
             return Some(c);
         }
+        // On the outline of a filled object: the outline's colour, as
+        // it shows there (#3784: the fill's colour was read).
+        if let Some(st) = s.stroke.as_ref().filter(|_| !matches!(s.fill, Fill::None)) {
+            let reach = crate::interaction::outline_reach(s, s.transform);
+            let tol = self.object_pick_tol();
+            if reach > 0.0
+                && crate::canvas::distance_to_path(&s.page_path(), p) <= reach.max(tol * 0.5)
+            {
+                return Some(st.color);
+            }
+        }
         match &s.fill {
             Fill::Solid(c) => Some(*c),
             Fill::Fountain(f) => f.stops.first().map(|st| st.color),
@@ -886,6 +897,41 @@ mod tests {
             Some(green)
         );
         assert_eq!(app.sample_color_at(inside, true), Some(green));
+    }
+
+    /// #3784: pointing at the outline of a filled object reads the
+    /// outline's colour; it read the fill's. Inside, the fill is read.
+    #[test]
+    fn a_filled_object_gives_its_outline_colour_on_the_outline() {
+        let mut app = App::headless();
+        let a = rect(&mut app, Rect::new(0.0, 0.0, 40.0, 40.0));
+        let red = Color::rgb8(220, 0, 0);
+        let blue = Color::rgb8(0, 0, 200);
+        app.run(Command::SetFill {
+            shapes: vec![a],
+            fill: Fill::Solid(red),
+        });
+        app.run(Command::SetStroke {
+            shapes: vec![a],
+            stroke: Some(tracedraw_core::Stroke {
+                color: blue,
+                width: 4.0,
+                ..Default::default()
+            }),
+        });
+        assert_eq!(
+            app.sample_color_at(Point::new(20.0, 20.0), false),
+            Some(red)
+        );
+        assert_eq!(
+            app.sample_color_at(Point::new(0.0, 20.0), false),
+            Some(blue)
+        );
+        // Inside the outline's band, just within the edge.
+        assert_eq!(
+            app.sample_color_at(Point::new(1.5, 20.0), false),
+            Some(blue)
+        );
     }
 
     #[test]

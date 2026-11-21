@@ -2801,6 +2801,16 @@ impl EmfWriter<'_> {
         self.record(60, &[]);
     }
 
+    /// A path's box in logical units, left, top, right, bottom: the
+    /// bounds EMR_FILLPATH and EMR_STROKEPATH carry. Without them the
+    /// records are 8 bytes short and some readers drop the whole file.
+    fn bounds(&self, path: &BezPath) -> [i32; 4] {
+        let b = path.bounding_box();
+        let (x0, y0) = self.lg(Point::new(b.x0, b.y1));
+        let (x1, y1) = self.lg(Point::new(b.x1, b.y0));
+        [x0.min(x1), y0.min(y1), x0.max(x1), y0.max(y1)]
+    }
+
     fn bezier_to(&mut self, pts: &[Point; 3]) {
         let mut body = vec![0, 0, -1, -1, 3];
         for p in pts {
@@ -2830,7 +2840,8 @@ impl EmfWriter<'_> {
                 let b = self.brush(*c);
                 self.select(b);
                 self.path(path);
-                self.record(62, &[]);
+                let r = self.bounds(path);
+                self.record(62, &r);
                 self.delete(b);
             }
             Fill::Fountain(f) => self.fountain(path, f),
@@ -2839,14 +2850,16 @@ impl EmfWriter<'_> {
                 let b = self.brush(c);
                 self.select(b);
                 self.path(path);
-                self.record(62, &[]);
+                let r = self.bounds(path);
+                self.record(62, &r);
                 self.delete(b);
             }
         }
         if let Some(p) = pen {
             self.select(p);
             self.path(path);
-            self.record(64, &[]);
+            let r = self.bounds(path);
+            self.record(64, &r);
             self.select(0x8000_0008u32);
             self.delete(p);
         }
@@ -3211,6 +3224,56 @@ impl EmfWriter<'_> {
 mod export_tests {
     use super::*;
     use tracedraw_core::{geometry::Rect, Document};
+
+    /// #3743: EMR_FILLPATH and EMR_STROKEPATH carry the path's bounds.
+    /// They were written 8 bytes long, without the bounds, and a word
+    /// processor showed the whole picture empty.
+    #[test]
+    fn fill_and_stroke_path_records_carry_their_bounds() {
+        let mut doc = Document::new("t", Size::new(100.0, 50.0));
+        let mut ids = doc.ids().clone();
+        let mut r = Shape::new(
+            ids.shape(),
+            ShapeKind::Rect {
+                rect: Rect::new(10.0, 20.0, 30.0, 40.0),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        r.fill = Fill::Solid(Color::rgb8(0, 0, 255));
+        r.stroke = Some(Stroke::new(Color::BLACK, 1.0));
+        doc.pages[0].layers[0].shapes.push(r);
+        doc.set_ids(ids);
+        let bytes = page_to_emf(&doc, 0);
+        let u32_at =
+            |o: usize| u32::from_le_bytes([bytes[o], bytes[o + 1], bytes[o + 2], bytes[o + 3]]);
+        let i32_at = |o: usize| u32_at(o) as i32;
+        let mut seen = Vec::new();
+        let mut o = 0;
+        while o + 8 <= bytes.len() {
+            let (ty, size) = (u32_at(o), u32_at(o + 4) as usize);
+            assert!(size >= 8 && o + size <= bytes.len(), "record {ty} at {o}");
+            if ty == 62 || ty == 64 {
+                assert_eq!(size, 24, "record {ty} without bounds");
+                let b = [
+                    i32_at(o + 8),
+                    i32_at(o + 12),
+                    i32_at(o + 16),
+                    i32_at(o + 20),
+                ];
+                // 10..30 mm across; 20..40 mm up, so 10..30 mm down a 50 mm page.
+                assert_eq!(b, [1000, 1000, 3000, 3000], "record {ty}");
+                seen.push(ty);
+            }
+            o += size;
+        }
+        assert_eq!(o, bytes.len());
+        assert_eq!(seen, [62, 64]);
+        // The file still reads back.
+        let mut ids2 = IdSource::default();
+        let imp = parse(&bytes, &mut ids2).expect("re-read");
+        assert!(!imp.shapes.is_empty());
+    }
 
     /// Only text a font record can show goes in as text: a paragraph in
     /// its frame went in as one long line, mirrored text upside down,

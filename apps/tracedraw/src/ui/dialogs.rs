@@ -10985,41 +10985,14 @@ pub(crate) enum EditTextAsk {
     Spell,
 }
 
-/// Change Case on characters `from..to` of the Edit Text box's spans,
-/// each keeping its look; a sentence or a word goes on from one span
-/// into the next (#3270).
+/// Change Case on characters `from..to` of the Edit Text box's spans.
 fn edit_text_change_case(
     spans: &mut [tracedraw_core::TextSpan],
     from: usize,
     to: usize,
     mode: crate::ops2::CaseMode,
 ) {
-    // The part of each span inside the selection, as byte ranges.
-    let mut parts = Vec::new();
-    let mut at = 0usize;
-    for (i, s) in spans.iter().enumerate() {
-        let n = s.text.chars().count();
-        let (a, b) = (from.max(at), to.min(at + n));
-        if a < b {
-            let byte = |c: usize| {
-                s.text
-                    .char_indices()
-                    .nth(c - at)
-                    .map(|(k, _)| k)
-                    .unwrap_or(s.text.len())
-            };
-            parts.push((i, byte(a), byte(b)));
-        }
-        at += n;
-    }
-    let runs: Vec<&str> = parts
-        .iter()
-        .map(|&(i, a, b)| &spans[i].text[a..b])
-        .collect();
-    let changed = crate::ops2::apply_case_runs(&runs, mode);
-    for (&(i, a, b), new) in parts.iter().zip(changed).rev() {
-        spans[i].text.replace_range(a..b, &new);
-    }
+    crate::ops2::change_case_in_range(spans, from, to, mode);
 }
 
 /// [`edit_text_job`] at the box's zoom (#3270), with spaces drawn as

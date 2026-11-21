@@ -4,6 +4,14 @@ Versions follow the tags of this repository; every push to `main` also
 publishes a nightly build. [`docs/features.md`](docs/features.md) has the
 full, row-by-row status.
 
+## Unreleased
+
+- Export EMF: the fill and outline records of each shape carry the shape's bounds, so the file no longer shows up empty when placed in a text document (#3743).
+- Import EPS: shadings stored as resources keep their colours, filters stacked on the file data no longer swallow the image that follows, and the standard dictionaries open with `begin`, so diagonal stripes and gradients come in as drawn instead of flat grey with the pictures missing (#3556).
+- Text > Change Case: with part of a text selected while editing, only the selected letters change; without a selection the whole text changes as before (#3762).
+- Interactive fill: Ctrl+click on a palette colour mixes it into the selected gradient node instead of the whole fill (#3747).
+- Colour eyedropper: on the outline of a filled object it reads the outline colour, and inside it reads the fill (#3784).
+
 ## 0.50.0 (2026-11-21)
 
 - Text > Bullets: a bullet or number can have its own colour, bold and italic instead of the first letter's (#3682). Lists can have levels: each level is set in by its own indent and numbers on its own, starting again under each paragraph above it, with Restart and Continue numbering; Text > Increase List Level and Decrease List Level move the bulleted paragraphs, a number taking 1, a, i and a symbol the next plain bullet by level (#3685).

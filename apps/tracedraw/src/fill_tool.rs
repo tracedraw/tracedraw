@@ -942,6 +942,33 @@ mod tests {
         (a - b).hypot() < 1e-6
     }
 
+    /// #3747: Ctrl+click on a palette colour with a fountain node picked
+    /// mixes a tenth of the colour into that node; it did nothing.
+    #[test]
+    fn ctrl_click_on_a_palette_colour_mixes_into_the_picked_node() {
+        let mut app = App::headless();
+        let id = square(&mut app);
+        app.apply_fill(Fill::Fountain(tracedraw_core::Fountain::two(
+            tracedraw_core::FountainKind::Linear,
+            Color::WHITE,
+            Color::BLACK,
+            0.0,
+        )));
+        app.set_tool(crate::tools::Tool::InteractiveFill);
+        app.fill_node = Some(0);
+        app.mix_into_fill(Color::rgb8(255, 0, 0));
+        let Fill::Fountain(f) = &app.doc().find_shape(id).expect("shape").fill else {
+            panic!("still a fountain");
+        };
+        let want = crate::ui::palette::mix(Color::WHITE, Color::rgb8(255, 0, 0), 0.1);
+        assert_eq!(f.stops[0].color.to_rgb8(), want.to_rgb8());
+        assert_eq!(
+            f.stops[1].color.to_rgb8(),
+            [0, 0, 0],
+            "the other node stays"
+        );
+    }
+
     /// #2827: with the Transparency tool and a node of the gradient
     /// transparency picked, a palette colour gives that node the colour's
     /// grey (white opaque, black clear); the other node and the object's

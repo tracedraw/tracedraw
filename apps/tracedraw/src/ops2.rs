@@ -4249,6 +4249,47 @@ impl App {
     /// changes there is no step to undo. Each text was a step of its own,
     /// and a text already in the case still gave an Undo that did nothing.
     pub fn change_case(&mut self, mode: CaseMode) {
+        // Characters selected in the text being edited: only those
+        // change (#3762). The whole text changed.
+        if let Some(te) = self.text_edit.clone().filter(|te| te.has_selection()) {
+            let (from, to) = te.selection();
+            let Some(s) = self.doc().find_shape(te.shape).cloned() else {
+                return;
+            };
+            let ShapeKind::Text {
+                mut spans,
+                origin,
+                frame,
+                align,
+                para,
+                on_path,
+            } = s.kind
+            else {
+                return;
+            };
+            let before = tracedraw_core::spans_text(&spans);
+            change_case_in_range(&mut spans, from, to, mode);
+            if tracedraw_core::spans_text(&spans) == before {
+                return;
+            }
+            let len = tracedraw_core::spans_char_count(&spans);
+            self.run(Command::SetShapeKind {
+                shape: s.id,
+                kind: ShapeKind::Text {
+                    spans,
+                    origin,
+                    frame,
+                    align,
+                    para,
+                    on_path,
+                },
+            });
+            if let Some(te) = self.text_edit.as_mut() {
+                te.caret = te.caret.min(len);
+                te.anchor = te.anchor.min(len);
+            }
+            return;
+        }
         let mut cmds = Vec::new();
         for s in self.text_shapes() {
             let ShapeKind::Text {
@@ -5172,6 +5213,23 @@ impl App {
         {
             return;
         }
+        // With Interactive Fill and a fountain node picked, the colour
+        // mixes into that node, as a plain click colours it (#3747: it
+        // did nothing).
+        if self.tool == crate::tools::Tool::InteractiveFill {
+            if let Some((f, i)) = self.selected_fill_node() {
+                if let Some(old) = f.stops.get(i).map(|s| s.color) {
+                    self.set_fountain_node(
+                        i,
+                        Some(crate::ui::palette::mix(old, c, 0.1)),
+                        None,
+                        None,
+                        false,
+                    );
+                }
+                return;
+            }
+        }
         let cmds: Vec<Command> = self
             .selected_shapes()
             .iter()
@@ -5632,6 +5690,45 @@ pub fn placement_on(
 #[cfg(test)]
 fn apply_case(text: &str, mode: CaseMode) -> String {
     apply_case_runs(&[text], mode).pop().unwrap_or_default()
+}
+
+/// Change Case on characters `from..to` of a text's spans, each span
+/// keeping its look; a sentence or a word goes on from one span into
+/// the next (#3270, #3762).
+pub fn change_case_in_range(
+    spans: &mut [tracedraw_core::TextSpan],
+    from: usize,
+    to: usize,
+    mode: CaseMode,
+) {
+    // The part of each span inside the range, as byte ranges.
+    let mut parts = Vec::new();
+    let mut at = 0usize;
+    for (i, s) in spans.iter().enumerate() {
+        let n = s.text.chars().count();
+        let (a, b) = (from.max(at), to.min(at + n));
+        if a < b {
+            let byte = |c: usize| {
+                s.text
+                    .char_indices()
+                    .nth(c - at)
+                    .map(|(k, _)| k)
+                    .unwrap_or(s.text.len())
+            };
+            parts.push((i, byte(a), byte(b)));
+        }
+        at += n;
+    }
+    let runs: Vec<&str> = parts
+        .iter()
+        .map(|&(i, a, b)| spans[i].text.get(a..b).unwrap_or(""))
+        .collect();
+    let changed = apply_case_runs(&runs, mode);
+    for (&(i, a, b), new) in parts.iter().zip(changed).rev() {
+        if let Some(s) = spans.get_mut(i) {
+            s.text.replace_range(a..b, &new);
+        }
+    }
 }
 
 /// [`apply_case`] for the runs of one text, each in its own look, as one
@@ -7692,6 +7789,40 @@ mod tests {
             assert_eq!(texts(&app), want, "{mode:?}");
             app.undo();
         }
+    }
+
+    /// #3762: with characters selected in the text being edited, Change
+    /// Case changes only those; the whole text changed.
+    #[test]
+    fn change_case_with_a_text_selection_changes_only_the_selection() {
+        let mut app = App::headless();
+        let id = app
+            .new_shape(ShapeKind::Text {
+                spans: vec![TextSpan::new("one two three\nfour", "Arial", 12.0)],
+                origin: tracedraw_core::Point::new(10.0, 10.0),
+                frame: None,
+                align: tracedraw_core::TextAlign::Left,
+                para: Default::default(),
+                on_path: None,
+            })
+            .expect("text");
+        let text = |app: &App| match &app.doc().find_shape(id).expect("text").kind {
+            ShapeKind::Text { spans, .. } => tracedraw_core::spans_text(spans),
+            _ => String::new(),
+        };
+        let mut te = crate::text_editing::TextEdit::at_end(id, 18);
+        te.anchor = 4;
+        te.caret = 7;
+        app.text_edit = Some(te);
+        app.change_case(CaseMode::Upper);
+        assert_eq!(text(&app), "one TWO three\nfour");
+        app.undo();
+        assert_eq!(text(&app), "one two three\nfour");
+        // Without a selection the whole text changes, as before.
+        app.text_edit = Some(crate::text_editing::TextEdit::at_end(id, 18));
+        app.select(vec![id]);
+        app.change_case(CaseMode::Upper);
+        assert_eq!(text(&app), "ONE TWO THREE\nFOUR");
     }
 
     /// Change Case on several texts is one undo step, and a text already
