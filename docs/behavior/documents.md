@@ -82,6 +82,15 @@ files). Window > New Window gives a second window on an open drawing
 (`documents::tests::opening_an_open_file_again_shows_its_tab`,
 `templates_always_open_a_new_drawing`).
 
+File > Revert (on while the drawing has unsaved changes) reads again
+the drawing's own file, or the `.cdr`, `.svg`, `.pdf` or other file it
+was read from (#3809: such a drawing has no file of its own, so that
+Save asks where, and Revert stayed off for it). The drawing read again
+takes the changed one's place in its tab, the changes dropped, unless
+the drawing has another window open or is read off the interface's
+thread (a large `.tdraw`): then it opens in a tab of its own
+(`documents::tests::revert_reads_a_cdr_again_in_its_own_tab`).
+
 Closing a tab
 (File > Close, Ctrl+F4, the tab's close button) asks to save unsaved
 changes, then shows the tab to its right, else the one to its left, else

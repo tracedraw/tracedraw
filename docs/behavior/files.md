@@ -130,8 +130,8 @@ One window, 760 px wide, the same on every system:
 - In the browser, where every save is a download, the dialog keeps the
   file name, type, version and properties, and says the browser saves
   the file in its downloads folder.
-- Options > General > Use the system's save dialog (on by default on
-  macOS, off elsewhere; not in the browser or on Android, #2965): Save
+- Options > General > Use the system's save dialog (off by default on
+  every system; not in the browser or on Android, #2965): Save
   As, and Save of a drawing without a file, open the system's own save
   dialog instead, in the folder and with the name the Save Drawing
   dialog would offer, with TraceDraw and CorelDRAW as its types (the
@@ -139,6 +139,11 @@ One window, 760 px wide, the same on every system:
   versions are the ones Options sets, the system asks before replacing a
   file, and Cancel saves nothing
   (`ui::save_as::tests::the_system_save_dialog_saves_in_the_type_chosen_there`).
+  It was on by default on macOS, where the system's dialog shows no type
+  list, so Save As offered no way to choose `.cdr` or its version
+  (#3811): it is off by default now, and preferences that had it on are
+  set back to the Save Drawing dialog once (upgrade 9); turned on again
+  it stays (`settings::tests::save_as_offers_the_type_and_version_by_default`).
 
 ## `.cdr` versions
 

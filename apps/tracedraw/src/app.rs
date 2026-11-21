@@ -1799,6 +1799,11 @@ pub struct App {
     pub page_sorter: bool,
     /// View > Multipage View: every page laid out beside the current one.
     pub multipage: bool,
+    /// Objects of the facing page brought onto the current page to be
+    /// selected with its own (#3488), each with the page and layer it came
+    /// from, the page it went to and where its page lay in that page's
+    /// coordinates: they go home once they leave the selection (#3817).
+    pub spread_adopted: Vec<crate::multipage::Adopted>,
     /// The wheel zoom still gliding (#1648).
     pub zoom_glide: crate::view_motion::ZoomGlide,
     /// Help > Benchmark: the run going on or just finished.
@@ -3112,6 +3117,11 @@ impl App {
         if !crate::files::WEB && !crate::files::ANDROID {
             app.fetch_printers(crate::printers::system_printers);
         }
+        // An update whose setup stopped says so, with its log (#3816).
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(note) = crate::updates::unfinished_update_note() {
+            app.status = note;
+        }
         app
     }
 
@@ -3477,6 +3487,7 @@ impl App {
             preview_selected_only: false,
             page_sorter: false,
             multipage: false,
+            spread_adopted: Vec::new(),
             zoom_glide: Default::default(),
             benchmark: Default::default(),
             pan_inertia: Default::default(),
@@ -7785,8 +7796,44 @@ impl App {
             }
         }
         self.selection.clear();
-        for g in groups {
-            self.run(Command::Ungroup { group: g });
+        // A group's drop shadow stays where it showed (#3831): it was the
+        // group's own, cast by all its objects together, and went with the
+        // group. It comes out as the bitmap Break Drop Shadow Apart makes,
+        // just behind the group's objects, in the same undo step.
+        let mut shadows = Vec::new();
+        for g in &groups {
+            let Some(s) = self
+                .doc()
+                .shape_on_page(*g)
+                .filter(|s| s.shadow.is_some_and(|sh| sh.opacity > 0.0))
+            else {
+                continue;
+            };
+            let Ok((layer, _)) = self.doc().locate(*g) else {
+                continue;
+            };
+            if let Some(bitmap) = self.shadow_bitmap(&s) {
+                let id = bitmap.id;
+                shadows.push(Command::AddShape {
+                    layer,
+                    shape: bitmap,
+                });
+                shadows.push(Command::PlaceBeside {
+                    shapes: vec![id],
+                    reference: *g,
+                    in_front: false,
+                });
+            }
+        }
+        if shadows.is_empty() {
+            for g in groups {
+                self.run(Command::Ungroup { group: g });
+            }
+        } else {
+            shadows.extend(groups.into_iter().map(|group| Command::Ungroup { group }));
+            if let Err(e) = self.engine.run_batch("Ungroup", &shadows) {
+                self.status = e.to_string();
+            }
         }
         let mut have: std::collections::HashSet<ShapeId> = members.iter().copied().collect();
         for id in self.added_top_level_ids(&before) {
@@ -8774,6 +8821,14 @@ impl App {
     }
 
     /// Open `path`; `password` opens a protected PDF (empty: none).
+    /// The file File > Revert reads again: the drawing's own file, else
+    /// the one it was read from in another format. A `.cdr` (or an SVG, a
+    /// PDF...) opens with no file of its own, so that Save asks where, and
+    /// Revert stayed greyed out for it (#3809).
+    pub fn revert_path(&self) -> Option<PathBuf> {
+        self.file.clone().or_else(|| self.opened_from.clone())
+    }
+
     pub fn open_path_with_password(&mut self, path: PathBuf, password: &str) {
         let ext = Self::file_kind(&path);
         // A format kept closed by its maker (#2589): say how to bring the

@@ -332,7 +332,9 @@ pub struct Settings {
     /// Options > General: File > Save As (and Save of a drawing without a
     /// file) opens the system's save dialog instead of TraceDraw's Save
     /// Drawing dialog, the type chosen there by its filter and the
-    /// versions the Options set (#2965). On by default on macOS.
+    /// versions the Options set (#2965). Off by default everywhere: the
+    /// system's dialog has no version choice, and the macOS one shows no
+    /// type either, so a `.cdr` could not be chosen (#3811).
     #[serde(default = "default_system_save_dialog")]
     pub system_save_dialog: bool,
     /// Customization > Appearance: dialogs open in the middle of the
@@ -944,7 +946,7 @@ fn default_desktop() -> [u8; 3] {
 }
 
 /// How many one-time upgrades `Settings::upgrade` knows.
-const UPGRADES: u32 = 8;
+const UPGRADES: u32 = 9;
 
 fn default_outline_units() -> String {
     "pt".into()
@@ -954,10 +956,13 @@ fn default_spiral_expansion() -> u32 {
     100
 }
 
-/// The system's save dialog is the default on macOS, where users expect
-/// it (#2965).
+/// TraceDraw's Save Drawing dialog is the default everywhere: it has the
+/// type (TraceDraw or `.cdr`) and the version of either, which the
+/// system's dialog does not offer (the macOS one shows no type list
+/// either), so on a Mac the `.cdr` versions could not be chosen (#3811).
+/// The system's dialog stays in Options > Global > File Formats.
 fn default_system_save_dialog() -> bool {
-    cfg!(target_os = "macos")
+    false
 }
 
 /// Translucent menus start at 85 % opacity.
@@ -2649,7 +2654,9 @@ impl Settings {
     /// 5. Duplicate's old default offset (6.35 mm) becomes none; 6. the
     ///    Crop tool cuts a picture's pixels; 7. File > Export shows its
     ///    options again; 8. the window goes through XWayland on a
-    ///    Wayland desktop without title bars for programs (#2486).
+    ///    Wayland desktop without title bars for programs (#2486); 9. Save
+    ///    As shows TraceDraw's Save Drawing dialog, with the type and the
+    ///    version, again (#3811).
     pub fn upgrade(mut self) -> Settings {
         self.autocorrect.upgrade();
         if self.upgrades < 1 {
@@ -2707,6 +2714,14 @@ impl Settings {
         // switched off afterwards (native Wayland) it stays off.
         if self.upgrades < 8 {
             self.system_title_bar = true;
+        }
+        // The system's save dialog was the default on macOS (#2965), and
+        // there it shows no type list and the system's dialog has no
+        // version: Save As offered no way to save a `.cdr`, nor to choose
+        // its version (#3811). TraceDraw's Save Drawing dialog comes back
+        // once; turned on again afterwards the system's dialog stays.
+        if self.upgrades < 9 {
+            self.system_save_dialog = false;
         }
         self.upgrades = self.upgrades.max(UPGRADES);
         self.migrate_ai();
@@ -3775,5 +3790,22 @@ mod tests {
         let s = migrated(r#"{"ai_image": {}}"#);
         assert_eq!(s.ai, crate::ai::AiPrefs::default());
         assert!(s.ai_image.is_none());
+    }
+
+    /// #3811: Save As shows TraceDraw's Save Drawing dialog, with the type
+    /// and the version, by default on every system, and once for
+    /// preferences that had the system's dialog on (the macOS default
+    /// before); chosen again afterwards, the system's dialog stays.
+    #[test]
+    fn save_as_offers_the_type_and_version_by_default() {
+        assert!(!Settings::default().system_save_dialog);
+        let old = migrated(r#"{"upgrades": 8, "system_save_dialog": true}"#);
+        assert!(!old.system_save_dialog);
+        let chosen = migrated(r#"{"upgrades": 9, "system_save_dialog": true}"#);
+        assert!(chosen.system_save_dialog, "a choice made since stays");
+        let mut app = crate::app::App::headless();
+        app.settings = Settings::default();
+        app.save_as_dialog();
+        assert!(matches!(app.dialog, crate::ui::dialogs::Dialog::SaveAs(_)));
     }
 }

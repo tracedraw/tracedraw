@@ -525,6 +525,30 @@ impl App {
         self.show_welcome = false;
     }
 
+    /// File > Revert: the drawing read again from [`App::revert_path`],
+    /// its changes since dropped, in the same tab: the reading came in a
+    /// tab of its own beside the changed drawing, which stayed open
+    /// (#3809). A drawing with another window open, or one read off the
+    /// interface's thread (a large `.tdraw`), keeps that way.
+    pub fn revert(&mut self) {
+        let Some(path) = self.revert_path() else {
+            return;
+        };
+        let before = self.docs.len();
+        let old = self.active_doc.min(before.saturating_sub(1));
+        let lone = before > 0 && self.twin(old).is_none();
+        self.open_path_with_password(path, "");
+        if !lone || self.docs.len() != before + 1 || self.active_doc != before {
+            return;
+        }
+        // The changed drawing, parked in its slot, goes; the one read
+        // again takes its place in the tabs.
+        self.docs.remove(old);
+        let fresh = self.docs.remove(before - 1);
+        self.docs.insert(old, fresh);
+        self.active_doc = old;
+    }
+
     /// Close the active window without asking (the caller saved or the
     /// user chose not to). While the drawing has another window open
     /// only this window goes; else the drawing closes. The tab to its
@@ -1406,5 +1430,50 @@ mod tests {
             crate::ui::phone::set_phone(false);
             assert_eq!(app.docker_column(DockerPlace::Right).2, !phone, "phone {phone}");
         }
+    }
+
+    /// #3809: File > Revert reads a `.cdr` again too (it opens with no
+    /// file of its own, so Revert stayed greyed out), and the drawing read
+    /// again takes the changed one's place in its tab instead of opening
+    /// beside it.
+    #[test]
+    fn revert_reads_a_cdr_again_in_its_own_tab() {
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../crates/cdr/tests/fixtures/gaussian-blur.cdr");
+        let dir = std::env::temp_dir().join(format!("td_revert_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("drawing.cdr");
+        std::fs::copy(&fixture, &path).expect("copy");
+        let mut app = App::headless();
+        app.open_path_with_password(path.clone(), "");
+        assert!(app.file.is_none(), "a .cdr has no file of its own: Save asks where");
+        assert_eq!(app.revert_path(), Some(crate::files::canonical(&path)));
+        let count = |app: &App| {
+            app.doc()
+                .pages
+                .iter()
+                .flat_map(|p| &p.layers)
+                .map(|l| l.shapes.len())
+                .sum::<usize>()
+        };
+        let (tabs, shapes, version) = (app.docs.len(), count(&app), app.cdr_version);
+        assert!(version.is_some());
+        app.new_shape(tracedraw_core::ShapeKind::Rect {
+            rect: tracedraw_core::geometry::Rect::new(0.0, 0.0, 10.0, 10.0),
+            radius: 0.0,
+            corners: None,
+        })
+        .expect("rect");
+        assert!(app.engine.is_dirty());
+        assert_eq!(count(&app), shapes + 1);
+        let active = app.active_doc;
+        app.revert();
+        assert_eq!(app.docs.len(), tabs, "no second tab");
+        assert_eq!(app.active_doc, active);
+        assert_eq!(count(&app), shapes);
+        assert!(!app.engine.is_dirty());
+        assert_eq!(app.cdr_version, version);
+        assert_eq!(app.revert_path(), Some(crate::files::canonical(&path)));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

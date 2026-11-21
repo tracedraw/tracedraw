@@ -2842,12 +2842,9 @@ fn file_menu(app: &mut App, ui: &mut Ui) {
         ui,
         "menu.file.revert",
         "",
-        app.file.is_some() && app.engine.is_dirty(),
+        app.revert_path().is_some() && app.engine.is_dirty(),
     ) {
-        if let Some(p) = app.file.clone() {
-            // Read again (not the open drawing shown, see `open_path`).
-            app.open_path_with_password(p, "");
-        }
+        app.revert();
     }
     sep(ui);
     todo_sub(ui, "menu.file.acquire_image");

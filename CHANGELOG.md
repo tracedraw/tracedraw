@@ -4,8 +4,13 @@ Versions follow the tags of this repository; every push to `main` also
 publishes a nightly build. [`docs/features.md`](docs/features.md) has the
 full, row-by-row status.
 
-## Unreleased
+## 0.50.1 (2026-11-21)
 
+- Windows: Help > Updates > Install finishes when Explorer holds the thumbnail handler (it shows `.cdr` and `.tdraw` pictures): the quiet setup stopped with no word on a file in use, for a copy installed for the current user. The setup now moves that file aside before installing and closes only TraceDraw's programs; it writes a log, and the status bar says so at the next start when an update did not finish (#3816).
+- Facing pages: objects of the facing page selected with the current page's (Shift+click, marquee) go back to their page once deselected, where they show; selecting them moved them to the other page for good (#3817).
+- Ungroup keeps the group's drop shadow where it showed, as the bitmap Break Drop Shadow Apart makes, just behind the objects; it was lost (#3831).
+- File > Revert works for a drawing opened from a `.cdr` (or an SVG, a PDF...), and the drawing read again takes the changed one's place in its tab instead of opening beside it (#3809).
+- Save As shows TraceDraw's Save Drawing dialog, with the type (TraceDraw or `.cdr`) and the version, on macOS too: the system's dialog, the default there, offered neither. Preferences that had it on go back once; it stays in Options (#3811).
 - Help: the Shape Generator page shows each of its twenty generators at work, the panel beside what Create drew, in English and Portuguese; the tools and commands of 0.50.0 (Shape Builder, Combine Shapes, Curvature Pen, mesh envelope, layer effects, colour points and holographic fills, Blend, Curve Text, Type block, live Fit to Path, rotational symmetry, Light Flare, Transform Each, outline gradients along the line, View > Separations) get pictures of how to use them. The pictures are drawn from the app itself, headlessly (`web/help_shots.sh`).
 - Open .cdr version 15: drop shadows are read and drawn beneath their objects, with their offset, opacity, feathering, colour and merge mode, where they were missing (#3222).
 - Open .cdr version 15: uniform transparencies are read (objects meant to be see-through opened solid and hid what lay behind them), a transparency that multiplies darkens what lies beneath instead of mixing as Normal, and envelopes on objects and groups bend them as drawn instead of leaving them flat and out of place (#3222).
