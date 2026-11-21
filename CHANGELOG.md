@@ -4,7 +4,7 @@ Versions follow the tags of this repository; every push to `main` also
 publishes a nightly build. [`docs/features.md`](docs/features.md) has the
 full, row-by-row status.
 
-## Unreleased
+## 0.50.0 (2026-11-21)
 
 - Text > Bullets: a bullet or number can have its own colour, bold and italic instead of the first letter's (#3682). Lists can have levels: each level is set in by its own indent and numbers on its own, starting again under each paragraph above it, with Restart and Continue numbering; Text > Increase List Level and Decrease List Level move the bulleted paragraphs, a number taking 1, a, i and a symbol the next plain bullet by level (#3685).
 - Layer effects: a live Halftone effect turns an object, with its other effects, into round, square, diamond or line dots in RGB light, CMYK ink or one colour; the inner shadow gains Spread, which keeps the shadow solid over part of its blur before it fades.
@@ -77,10 +77,10 @@ full, row-by-row status.
 - Paste works in the Find and Replace fields (#3331, regression test for the #3198 fix).
 - Ctrl+wheel and Shift+wheel scroll sideways and Alt+wheel up and down; a touchpad pinch still zooms (#3087).
 - Linked text frames: linking them, editing their text and resizing one are one Undo each. The text flow was an undo step of its own, so one Undo left the frames linked, or the frame at its new size, with the text flowed as before (#3297).
-- Moving, turning or scaling a PowerClip whose contents are not locked to it is one Undo. One Undo used to put back only the contents, and they then moved with the frame (#3298).
+- Moving, turning or scaling a clip frame whose contents are not locked to it is one Undo. One Undo used to put back only the contents, and they then moved with the frame (#3298).
 - Transformations docker: copies of linked text frames copied together are linked to each other, as with Step and Repeat. They came out unlinked, each holding the piece of text it showed (#3299).
 - A double click on a guideline opens the Guidelines panel on it again; it only selected the guideline (#3008).
-- Saving as .cdr: an RGB drawing is saved as an RGB document, so the other program's eyedropper reads RGB colours, also inside PowerClips (#3425).
+- Saving as .cdr: an RGB drawing is saved as an RGB document, so the other program's eyedropper reads RGB colours, also inside clip frames (#3425).
 - Symbols panel: each symbol shows a small picture of its objects (#3249); while a symbol is edited, Cancel beside Finish drops the changes; Duplicate makes a new symbol with the same objects; a selected instance, or a group holding one, is outlined around its objects instead of a square (#3437).
 - EPS and PostScript name the drawing's spot inks in their header (%%DocumentCustomColors, %%CMYKCustomColor), so a RIP that lists spot channels from the header finds them (#3458).
 - Windows: a copy pasted in a spreadsheet comes in as the drawing, not as SVG source in the cells; the SVG text goes to the clipboard only when no picture can be made (#3461).
@@ -129,8 +129,8 @@ full, row-by-row status.
 - Color Eyedropper: picks the colour shown where no object gives one, and Sample from Screen picks any point of the window (#3040).
 - Shape tool: Bulge bows the chosen segments of any curve into arcs by a percentage (#3335).
 - Guidelines panel: focus on the position after a double click, Enter adds, Alt+A adds, Alt+M modifies, Shift+click selects a range (#2883).
-- Shape Builder: Add/Delete mode, Keep originals, Accept and Cancel on its bar; the objects taking part are edged in grey (#3220).
-- Objects docker: PowerClip contents listed; drag a row into an object to PowerClip it (#3053).
+- The tool that merges overlapping parts with a drag: Add/Delete mode, Keep originals, Accept and Cancel on its bar; the objects taking part are edged in grey (#3220).
+- Objects docker: the contents of a clip frame are listed; drag a row into an object to place it inside (#3053).
 - Sprayer: the objects stay along the path drawn as a live effect: edit its nodes and they follow, and Break Apart turns them into one group (#3435).
 - Print > Booklet: Pages per side 4 or 8 prints large offset sheets that fold into signatures of 8 or 16 pages (#3380).
 - Draw Inside: a button on the drawing tools' property bar draws straight into the selected closed shape, clipped by it (#3407).
@@ -167,7 +167,7 @@ full, row-by-row status.
 - Shape tool: dragging an edge of a picture crops it from that side, both corners of the edge moving together (#3532).
 - Symmetry: a Rotational option turns the copies round the centre instead of mirroring them (#2999).
 - Dragging a large selection on a drawing of tens of thousands of objects no longer stutters (#3601).
-- Shape Builder: a merged shape keeps one curve for each stretch of an object, without extra nodes where other objects crossed it (#3587).
+- Merging overlapping parts with a drag: a merged shape keeps one curve for each stretch of an object, without extra nodes where other objects crossed it (#3587).
 - Print Preview opens with the rulers, the strip of sheets and the options panel as its View button last left them (#3603).
 - DXF export: the Export dialog offers the drawing unit (millimetres, centimetres, metres, inches or feet); the file is written in it (#3583).
 - Objects docker: a guideline row dragged onto another Guides row moves it there (also to or from the master page); a Guides row's menu pastes guidelines, also into an empty one (#3599).
@@ -195,7 +195,7 @@ full, row-by-row status.
 - Window > Dockers checks every open docker, not only the one whose tab is in front (#3663).
 - Default CMYK palette: new last swatch Registration Black (C100 M100 Y100 K100), for marks that print on every plate (#3666).
 - Contour bar: Apply is offered for a selected group too, and a new Copy Contour From... button gives the selected objects the contour of the object clicked next (Discussion #3667).
-- `.cdr` files: an Artistic Media stroke linked to its curve (version 27) opens with its objects kept on the curve as a live Fit Objects to Path, at the spacing and turn the file had, so editing the curve places them again (#3680).
+- `.cdr` files: a brush stroke whose objects are linked to its curve (version 27) opens with its objects kept on the curve as a live Fit Objects to Path, at the spacing and turn the file had, so editing the curve places them again (#3680).
 - Remove Background: the preview shows exactly what OK makes (it was worked out on a smaller copy and could keep or remove other parts).
 - Shape Generator: Voronoi cells (point modes, relax, density gradient, inset and rounded corners, sites and Delaunay edges, fill the selection's outline, edit sites in the preview), stippling and vector halftone (shapes, line halftone, CMYK screens) from the selection's picture.
 - Shape Generator: spirograph (wheel inside or outside a ring, Lissajous, roses, mandalas), guilloché rosettes, fractals and custom L-systems, Penrose rhombs and star tilings.
