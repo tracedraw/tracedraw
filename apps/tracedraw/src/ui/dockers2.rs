@@ -35,6 +35,7 @@ pub fn show(app: &mut App, ui: &mut Ui, tab: DockerTab) {
         DockerTab::ColorStyles => color_styles(app, ui),
         DockerTab::ObjectStyles => object_styles(app, ui),
         DockerTab::FindReplace => find_replace(app, ui),
+        DockerTab::SelectSame => crate::ui::select_same_docker::select_same(app, ui),
         DockerTab::Scripts => scripts(app, ui),
         DockerTab::Palettes => palettes(app, ui),
         DockerTab::Lens => lens(app, ui),

@@ -109,6 +109,7 @@ pub mod replace_color;
 pub mod rulers;
 pub mod save_as;
 pub mod screen_margins;
+pub mod select_same_docker;
 pub mod shaping_docker;
 pub mod shelf_docker;
 pub mod sizes;

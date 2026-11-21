@@ -2086,6 +2086,8 @@ pub struct App {
     #[cfg(not(target_arch = "wasm32"))]
     pub mcp_link: Option<crate::mcp_link::Link>,
     pub find_state: crate::ui::dialogs::FindReplaceState,
+    /// Combined criteria for the Select Same docker.
+    pub select_same: crate::select_same::SelectSameState,
     pub step_repeat: crate::ops2::StepRepeat,
     /// Repeat Copies' preview of the copies (#1197): the cached
     /// outlines, whether the panel asked for it this frame, and whether
@@ -2574,6 +2576,7 @@ pub enum DockerTab {
     ColorStyles,
     ObjectStyles,
     FindReplace,
+    SelectSame,
     Scripts,
     Palettes,
     Lens,
@@ -2611,7 +2614,7 @@ pub enum DockerTab {
 }
 
 impl DockerTab {
-    pub const ALL: [DockerTab; 48] = [
+    pub const ALL: [DockerTab; 49] = [
         DockerTab::Properties,
         DockerTab::Objects,
         DockerTab::Hints,
@@ -2626,6 +2629,7 @@ impl DockerTab {
         DockerTab::ColorStyles,
         DockerTab::ObjectStyles,
         DockerTab::FindReplace,
+        DockerTab::SelectSame,
         DockerTab::AiGenerate,
         DockerTab::Export,
         DockerTab::Comments,
@@ -2675,6 +2679,7 @@ impl DockerTab {
             DockerTab::ObjectStyles,
             DockerTab::Symbols,
             DockerTab::FindReplace,
+            DockerTab::SelectSame,
             DockerTab::Export,
             DockerTab::PrintMerge,
             DockerTab::AiGenerate,
@@ -2747,6 +2752,7 @@ impl DockerTab {
             DockerTab::ColorStyles => "docker.color_styles",
             DockerTab::ObjectStyles => "docker.object_styles",
             DockerTab::FindReplace => "docker.find_replace",
+            DockerTab::SelectSame => "docker.select_same",
             DockerTab::Scripts => "docker.scripts",
             DockerTab::Palettes => "docker.palettes",
             DockerTab::Lens => "docker.lens",
@@ -3619,6 +3625,7 @@ impl App {
             #[cfg(not(target_arch = "wasm32"))]
             mcp_link: None,
             find_state: Default::default(),
+            select_same: Default::default(),
             step_repeat: Default::default(),
             step_preview: None,
             step_preview_shown: false,

@@ -51,6 +51,7 @@ Status tracked in `docs/features.md`.
 
 ## M6 Editing, colour and effects (planned)
 - Pick and Shape tool parity: every interaction checked side by side, one behaviour at a time (in progress)
+- Select Same panel: combine appearance, dimensions and text properties, restrict the search to the page or active layer, and undo the resulting selection (#3203; see `behavior/select-same.md`)
 - Extrude: 3D rotation, several lights and bevels (done; see `behavior/extrude.md`)
 - Opacity masks as objects of their own, next to transparency (done: a clip frame drawn as an opacity mask; see `behavior/clip-frame.md`)
 - Artboards: not planned (decided 2026-10-14: pages stay the only drawing areas, as in `.cdr`)
