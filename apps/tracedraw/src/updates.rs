@@ -615,6 +615,7 @@ pub fn unfinished_update(
 /// The status bar's word at start when an update did not finish: its
 /// version and where the installer's log is (Windows only, where a setup
 /// program installs).
+#[cfg(not(target_arch = "wasm32"))]
 pub fn unfinished_update_note() -> Option<String> {
     if !cfg!(windows) {
         return None;
@@ -868,14 +869,9 @@ fn install_bundle(
     result
 }
 
-/// The folder the release files of an update are downloaded to, new and
-/// empty. On Linux it is the user's cache folder, closed to everyone
-/// else (mode 0700): a `.deb` waits there to be installed as the
-/// administrator, and a shared `/tmp` would let another user swap the
-/// file after its digest was checked.
-#[cfg(not(target_arch = "wasm32"))]
 /// Where updates are staged: a folder of the cache (Linux) or of the
 /// temporary folder.
+#[cfg(not(target_arch = "wasm32"))]
 fn staging_path() -> Result<std::path::PathBuf, String> {
     let base = if cfg!(target_os = "linux") {
         let var = |name: &str| {
@@ -892,7 +888,12 @@ fn staging_path() -> Result<std::path::PathBuf, String> {
     Ok(base.join("tracedraw-update"))
 }
 
-/// [`staging_path`], emptied and made again for a new download.
+/// The folder the release files of an update are downloaded to
+/// ([`staging_path`]), new and empty. On Linux it is the user's cache
+/// folder, closed to everyone else (mode 0700): a `.deb` waits there to
+/// be installed as the administrator, and a shared `/tmp` would let
+/// another user swap the file after its digest was checked.
+#[cfg(not(target_arch = "wasm32"))]
 fn staging_dir() -> Result<std::path::PathBuf, String> {
     let dir = staging_path()?;
     let _ = std::fs::remove_dir_all(&dir);
