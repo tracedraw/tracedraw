@@ -2710,10 +2710,14 @@ impl<'a> Ctx<'a> {
         self.read_transform_chain(c, &[]).matrices()
     }
 
-    /// A `trfd`'s entries in order: its matrices and, from version 16,
+    /// A `trfd`'s entries in order: its matrices and, from version 15,
     /// its envelopes (entry type 1), each taking its frame from the next
     /// of `envds` (the `envd` chunks after the `trfd`, in the same order).
     /// An envelope that cannot be read, or has no `envd`, is left out.
+    /// Version 15 envelopes are laid out as version 16's (#3222: 1087 of
+    /// them in a version 15 file, the box at byte 14 of the entry and the
+    /// corner indexes 0 to 3 after it; its reference pictures show the
+    /// dance pads and panels bent as the envelopes then draw them).
     fn read_transform_chain(&mut self, c: &Chunk, envds: &[&Chunk]) -> TransformChain {
         let identity = TransformChain::default();
         let d = self.data(c);
@@ -2737,7 +2741,7 @@ impl<'a> Ctx<'a> {
             if v >= 13 {
                 tr.skip(8);
             }
-            // Record type 0x08 is an affine matrix, 0x01 (version 16+) an
+            // Record type 0x08 is an affine matrix, 0x01 (version 15+) an
             // envelope, 0x10 (version 16+) a distortion; others are
             // ignored.
             match tr.u16() {
@@ -2782,7 +2786,7 @@ impl<'a> Ctx<'a> {
                     }
                     continue;
                 }
-                Some(0x01) if v >= 16 => {
+                Some(0x01) if v >= 15 => {
                     if chain.projective.is_some() {
                         self.report
                             .warn("an envelope after a perspective is not applied");
@@ -4275,6 +4279,8 @@ impl<'a> Ctx<'a> {
         // A version 16+ transparency record read on its own, for a style
         // string that does not say what the transparency is (#2960).
         let mut record_transparency: Option<RecordTransparency> = None;
+        // How a version 13 to 15 transparency mixes with what lies beneath.
+        let mut record_merge = tracedraw_core::live::MergeMode::Normal;
 
         for arg in &l.args {
             match arg.ty {
@@ -4285,6 +4291,7 @@ impl<'a> Ctx<'a> {
                         v15_mask_axis = Some(axis);
                     }
                     record_transparency = self.read_transparency_record_v16(d, *arg);
+                    record_merge = self.read_transparency_merge(d, *arg);
                     if let Some(l) = self.read_lens(d, *arg) {
                         lens = Some(l);
                     } else if let Some((o, m)) = self.read_transparency_v11(d, *arg) {
@@ -4295,6 +4302,10 @@ impl<'a> Ctx<'a> {
                         v15_mask_axis = axis;
                     } else if let Some(o) = self.read_uniform_transparency_record(d, *arg) {
                         record_opacity = Some(o);
+                    } else if self.v < 16 && record_transparency.is_some() {
+                        // Versions 13 to 15: the record read above is the
+                        // transparency, not the bytes the oldest files
+                        // keep their amount in (#3222).
                     } else if let Some(o) = self.read_opacity(d, *arg) {
                         opacity = o;
                     }
@@ -4742,8 +4753,22 @@ impl<'a> Ctx<'a> {
                 .effects
                 .push(tracedraw_core::live::Effect::Transparency {
                     mask,
-                    merge: tracedraw_core::live::MergeMode::Normal,
+                    merge: record_merge,
                     target,
+                });
+        } else if record_merge != tracedraw_core::live::MergeMode::Normal && shape.opacity < 1.0 {
+            // A uniform transparency that does not merge as Normal: a
+            // mask of one grey, whose lightness is the opacity.
+            let grey = Color::Gray {
+                v: shape.opacity as f32,
+            };
+            shape.opacity = 1.0;
+            shape
+                .effects
+                .push(tracedraw_core::live::Effect::Transparency {
+                    mask: Fill::Solid(grey),
+                    merge: record_merge,
+                    target: 2,
                 });
         }
         if let Some(l) = lens {
@@ -4910,8 +4935,8 @@ impl<'a> Ctx<'a> {
         };
         let mut contents = self.read_objects(group, ids, page_size, depth + 1);
         // The contents' group may carry an envelope of its own (version
-        // 16+), as other groups do.
-        if self.v >= 16 {
+        // 15+), as other groups do.
+        if self.v >= 15 {
             if let Some(chain) = self.own_transform_chain(group) {
                 if !chain.warps.is_empty() {
                     for child in contents.iter_mut() {
@@ -5061,10 +5086,11 @@ impl<'a> Ctx<'a> {
                     self.outer_transform = saved * m;
                 }
                 let mut children = self.read_objects(c, ids, page_size, depth + 1);
-                // A version 16+ group with an envelope: its objects carry
-                // the matrices before the envelope; the envelope and the
-                // matrices after it are the group's own.
-                if self.v >= 16 {
+                // A version 15+ group with an envelope (#3222 for version
+                // 15): its objects carry the matrices before the envelope;
+                // the envelope and the matrices after it are the group's
+                // own.
+                if self.v >= 15 {
                     if let Some(chain) = self.own_transform_chain(c) {
                         if !chain.warps.is_empty() {
                             for child in children.iter_mut() {
@@ -5647,12 +5673,19 @@ impl<'a> Ctx<'a> {
     /// mostly say the same in the object's style string, which wins;
     /// this is for a style string that does not. `None` for other
     /// records.
+    ///
+    /// Versions 13 to 15 have no style string, and the record is all
+    /// there is (#3222, a version 15 file of 19 pages whose reference
+    /// pictures show its panels and pads see-through): a uniform type 0
+    /// with its amount (33, 44 and 66 percent in that file, which before
+    /// came out solid; 0 at byte 29 marks it) and patterns of type 9
+    /// read the same way.
     fn read_transparency_record_v16(
         &mut self,
         d: &'a [u8],
         arg: Arg,
     ) -> Option<RecordTransparency> {
-        if self.v < 16 || arg.end.checked_sub(arg.off)? < 8 + 117 {
+        if self.v < 13 || arg.end.checked_sub(arg.off)? < 8 + 117 {
             return None;
         }
         let data = d.get(..arg.end)?;
@@ -5661,7 +5694,12 @@ impl<'a> Ctx<'a> {
             return None;
         }
         let body = r.pos - 1;
-        let kind = self.reader_at(data, body + 37).u16()?;
+        let mut kind = self.reader_at(data, body + 37).u16()?;
+        // Versions 13 to 15 mark a uniform transparency with 0 at byte
+        // 29 (1 for the others), whatever byte 37 holds.
+        if self.v < 16 && self.reader_at(data, body + 29).u32()? == 0 {
+            kind = 0;
+        }
         let percent = self.reader_at(data, body + 61).f64()?;
         let end = self.reader_at(data, body + 69).f64()?;
         let fill_id = self.reader_at(data, body + 105).u32()?;
@@ -5686,6 +5724,45 @@ impl<'a> Ctx<'a> {
                     "transparency of type {kind} names fill {fill_id}, not a fountain or pattern; object drawn opaque"
                 ));
                 None
+            }
+        }
+    }
+
+    /// The merge mode of a version 13 to 15 transparency record (see
+    /// `read_transparency_record_v16`): a u32 at byte 77 of the body
+    /// (#3222). Code 0 is Normal. Code 9 darkens what lies beneath by
+    /// the object's colour: the version 15 file of #3222 holds it on
+    /// two light grey panels at 50 percent over teal, and its reference
+    /// pictures show them as a darker teal of the same hue (each channel
+    /// about 0.89 of the teal beneath, which a 50 percent multiply by a
+    /// grey of 0.78 gives; a Normal mix gave a pale grey). Other codes
+    /// are named in a warning and merge as Normal. Later versions keep
+    /// the mode in the style string.
+    fn read_transparency_merge(
+        &mut self,
+        d: &'a [u8],
+        arg: Arg,
+    ) -> tracedraw_core::live::MergeMode {
+        use tracedraw_core::live::MergeMode;
+        if !(13..16).contains(&self.v) || arg.end.saturating_sub(arg.off) < 8 + 117 {
+            return MergeMode::Normal;
+        }
+        let Some(data) = d.get(..arg.end) else {
+            return MergeMode::Normal;
+        };
+        let mut r = self.reader_at(data, arg.off);
+        if r.u32() != Some(0x514) || r.u32() != Some(117) || r.u8() != Some(5) {
+            return MergeMode::Normal;
+        }
+        let body = r.pos - 1;
+        match self.reader_at(data, body + 77).u32() {
+            None | Some(0) => MergeMode::Normal,
+            Some(9) => MergeMode::Multiply,
+            Some(code) => {
+                self.report.warn(format!(
+                    "transparency merge mode {code} not read; object merged as Normal"
+                ));
+                MergeMode::Normal
             }
         }
     }
@@ -14377,6 +14454,86 @@ pub(crate) mod tests {
         }
     }
 
+    /// #3222: the uniform transparencies of a version 15 file (0 at byte
+    /// 29 of the record, the amount at 61) opened solid, so its panels
+    /// hid the names behind them; and its merge code at byte 77, 9 on
+    /// two grey panels its reference pictures show darkening the teal
+    /// beneath, merged as Normal (a pale grey).
+    #[test]
+    fn version_15_uniform_transparency_and_its_merge_mode() {
+        use tracedraw_core::live::{Effect, MergeMode};
+        let record = |percent: f64, merge: u32| {
+            let mut b = vec![5u8];
+            b.extend_from_slice(&u32s(&[1]));
+            b.resize(37, 0);
+            // Byte 37 holds 1 in such records too; byte 29 says uniform.
+            b.extend_from_slice(&u16s(&[1]));
+            b.resize(61, 0);
+            b.extend_from_slice(&f64s(&[percent, 100.0]));
+            b.resize(77, 0);
+            b.extend_from_slice(&u32s(&[merge, 2]));
+            b.resize(105, 0);
+            b.extend_from_slice(&u32s(&[3]));
+            b.resize(117, 0);
+            [u32s(&[0x514, 117]), b].concat()
+        };
+        let doc_of = |op: Vec<u8>| {
+            let mut coords = u32s(&[5]);
+            coords.extend_from_slice(&i32s(&[0, 0, 254000, 0, 254000, 254000, 0, 254000, 0, 0]));
+            coords.extend_from_slice(&[0x08, 0x40, 0x40, 0x40, 0x48]);
+            let obj = list(
+                b"obj ",
+                &chunk(
+                    b"loda",
+                    &loda(
+                        OBJ_CURVE,
+                        &[
+                            (ARG_COORDS, coords),
+                            (ARG_FILL, u32s(&[3])),
+                            (ARG_OPACITY, op),
+                        ],
+                    ),
+                ),
+            );
+            let body = [
+                chunk(b"mcfg", &mcfg(15, 2_540_000, 2_540_000)),
+                chunk(b"fild", &solid_fild_v13(3, (190, 190, 190))),
+                list(b"page", &list(b"layr", &obj)),
+            ]
+            .concat();
+            let (doc, rep) = parse(&riff(b"CDRF", &body), 15);
+            assert_eq!(rep.shapes, 1, "{:?}", rep.warnings);
+            (first_shape(&doc).clone(), rep)
+        };
+        // 44 % see-through, merged as Normal: an opacity.
+        let (s, _) = doc_of(record(44.0, 0));
+        assert!((s.opacity - 0.56).abs() < 1e-9, "{}", s.opacity);
+        assert!(s.effects.is_empty(), "{:?}", s.effects);
+        // 50 %, merge code 9: a grey mask of the opacity, multiplied.
+        let (s, _) = doc_of(record(50.0, 9));
+        assert_eq!(s.opacity, 1.0);
+        match s.effects.as_slice() {
+            [Effect::Transparency {
+                mask: Fill::Solid(Color::Gray { v }),
+                merge: MergeMode::Multiply,
+                target: 2,
+            }] => assert!((v - 0.5).abs() < 1e-6, "{v}"),
+            other => panic!("{other:?}"),
+        }
+        // A code not known yet: Normal, named in a warning.
+        let (s, rep) = doc_of(record(50.0, 6));
+        assert!((s.opacity - 0.5).abs() < 1e-9, "{}", s.opacity);
+        assert!(
+            rep.warnings.iter().any(|w| w.contains("merge mode 6")),
+            "{:?}",
+            rep.warnings
+        );
+        // None at all: solid.
+        let (s, _) = doc_of(record(0.0, 0));
+        assert_eq!(s.opacity, 1.0);
+        assert!(s.effects.is_empty());
+    }
+
     /// The shapes of pages 1 and 2 of the reporter's version 13 file
     /// (#1257): argument 8000 holds the same 117-byte record as version
     /// 15, here naming a fountain of greys (colour model 9, 255 to 0). The
@@ -16177,6 +16334,16 @@ pub(crate) mod tests {
     /// (fill `fill` when given), whose `trfl` holds `trfd` and `envds`, in
     /// a group when `grouped` (the group's `lgob` holding them instead).
     fn envelope_file(trfd: Vec<u8>, envds: &[Vec<u8>], grouped: bool) -> (Document, ParseReport) {
+        envelope_file_of(27, trfd, envds, grouped)
+    }
+
+    /// [`envelope_file`] in version `v`.
+    fn envelope_file_of(
+        v: u16,
+        trfd: Vec<u8>,
+        envds: &[Vec<u8>],
+        grouped: bool,
+    ) -> (Document, ParseReport) {
         let mut coords = u32s(&[5]);
         coords.extend_from_slice(&i32s(&[
             0, 0, 0, 100_000, 100_000, 100_000, 100_000, 0, 0, 0,
@@ -16223,11 +16390,12 @@ pub(crate) mod tests {
             None => obj,
         };
         let body = [
-            chunk(b"mcfg", &mcfg(27, 2_540_000, 2_540_000)),
+            chunk(b"mcfg", &mcfg(v, 2_540_000, 2_540_000)),
             list(b"page", &list(b"layr", &layer)),
         ]
         .concat();
-        parse(&riff(b"CDRR", &body), 27)
+        let tag = [b'C', b'D', b'R', b'A' + (v - 10) as u8];
+        parse(&riff(&tag, &body), v)
     }
 
     /// The outline of an envelope over the box (0, 0)-(20, 10) mm whose
@@ -16307,6 +16475,70 @@ pub(crate) mod tests {
             (b.height() - 10.0).abs() < 1e-6 && (b.y0 - (c + 5.0)).abs() < 1e-6,
             "{b:?}"
         );
+    }
+
+    /// #3222: a version 15 file holds its envelopes as version 16 does
+    /// (the dance pads and panels of the reporter's 19-page file, drawn
+    /// flat and out of place before): on an object and on a group.
+    #[test]
+    fn version_15_envelopes_bend_objects_and_groups() {
+        let c = 127.0;
+        // An object: stretched, bent so its right side rises to 20 mm,
+        // then moved 5 mm up.
+        let t = trfd_v16(&[
+            trfd_matrix([2.0, 0.0, 0.0, 0.0, 1.0, 0.0]),
+            trfd_envelope([0, 100_000, 200_000, 0], [0, 1, 4, 5], 7),
+            trfd_matrix([1.0, 0.0, 0.0, 0.0, 1.0, 50_000.0]),
+        ]);
+        let (doc, rep) = envelope_file_of(15, t, &[raised_envelope()], false);
+        assert!(rep.warnings.is_empty(), "{:?}", rep.warnings);
+        let b = first_shape(&doc).page_path().bounding_box();
+        for (got, want) in [
+            (b.x0, c),
+            (b.x1, c + 20.0),
+            (b.y0, c + 5.0),
+            (b.y1, c + 25.0),
+        ] {
+            assert!((got - want).abs() < 0.05, "{b:?}");
+        }
+        // A group: the matrix before the envelope is already in its
+        // objects; the envelope and the move after it are the group's.
+        let t = trfd_v16(&[
+            trfd_matrix([3.0, 0.0, 0.0, 0.0, 3.0, 0.0]),
+            trfd_envelope([0, 100_000, 100_000, 0], [0, 1, 4, 5], 7),
+            trfd_matrix([1.0, 0.0, 100_000.0, 0.0, 1.0, 0.0]),
+        ]);
+        let env = envd(
+            &[
+                (0, 0),
+                (0, 100_000),
+                (33_333, 133_333),
+                (66_667, 166_667),
+                (100_000, 200_000),
+                (100_000, 0),
+                (0, 0),
+            ],
+            &[0x0c, 0x44, 0xc0, 0xc0, 0x84, 0x44, 0x48],
+        );
+        let (doc, rep) = envelope_file_of(15, t, &[env], true);
+        assert!(rep.warnings.is_empty(), "{:?}", rep.warnings);
+        let s = first_shape(&doc);
+        let ShapeKind::Group { children } = &s.kind else {
+            panic!("{:?}", s.kind);
+        };
+        for child in children {
+            let b = s
+                .transform
+                .transform_rect_bbox(child.page_path().bounding_box());
+            for (got, want) in [
+                (b.x0, c + 10.0),
+                (b.x1, c + 20.0),
+                (b.y0, c),
+                (b.y1, c + 20.0),
+            ] {
+                assert!((got - want).abs() < 0.05, "{b:?}");
+            }
+        }
     }
 
     /// A distortion entry (version 16+, type 0x10) as the version 27
