@@ -140,16 +140,7 @@ pub fn object_info(app: &App) -> String {
                         ("k", &kind_name(k)),
                         (
                             "mode",
-                            &tr(match crate::bitmap_fx::mode_of(s.cmyk_bitmap, png) {
-                                crate::bitmap_fx::ColorMode::Cmyk => "convert_colors.cmyk",
-                                crate::bitmap_fx::ColorMode::Grayscale => "convert_colors.gray",
-                                crate::bitmap_fx::ColorMode::Paletted => {
-                                    "dialog.convert_mode_paletted"
-                                }
-                                crate::bitmap_fx::ColorMode::Lab => "convert_colors.lab",
-                                crate::bitmap_fx::ColorMode::BlackWhite => "dialog.convert_mode_bw",
-                                crate::bitmap_fx::ColorMode::Rgb => "convert_colors.rgb",
-                            }),
+                            &tr(crate::bitmap_fx::mode_key(s.cmyk_bitmap, png)),
                         ),
                     ],
                 ),

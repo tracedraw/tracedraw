@@ -31,11 +31,15 @@ pub struct Builder {
     /// The steps the tool made since it was chosen or since the last
     /// Accept, for Cancel to undo (#3220).
     pub session_steps: usize,
+    /// The property bar's Use Guidelines, off by default: the guidelines
+    /// shown cut the objects into parts too, and stay as they are
+    /// (#3558).
+    pub use_guides: bool,
     hover: std::cell::RefCell<Option<Hover>>,
 }
 
 struct Hover {
-    key: (u64, Vec<ShapeId>),
+    key: (u64, Vec<ShapeId>, bool),
     part: BezPath,
 }
 
@@ -76,6 +80,70 @@ pub fn part_at(areas: &[BezPath], p: Point) -> Option<BezPath> {
     // not bound the part is one piece again (#3587).
     let sources: Vec<&BezPath> = areas.iter().collect();
     Some(onto_sources(&piece, &sources))
+}
+
+/// [`part_at`] with `lines` cutting the areas too: the part is kept to
+/// the side of every line that `p` is on. None on a line.
+pub fn part_at_cut(
+    areas: &[BezPath],
+    lines: &[tracedraw_core::document::GuideLine],
+    p: Point,
+) -> Option<BezPath> {
+    let part = part_at(areas, p)?;
+    if lines.is_empty() {
+        return Some(part);
+    }
+    let cell = cell_at(part.bounding_box().inflate(10.0, 10.0), lines, p)?;
+    overlay_parts(&part, &cell, Op::Intersect)
+        .into_iter()
+        .find(|piece| inside(piece, p))
+}
+
+/// The room around `p` inside `bounds` that `lines` leave it, as a
+/// closed outline: `bounds` cut by each line, the side `p` is on kept.
+/// None when `p` is on a line or nothing is left.
+fn cell_at(
+    bounds: tracedraw_core::geometry::Rect,
+    lines: &[tracedraw_core::document::GuideLine],
+    p: Point,
+) -> Option<BezPath> {
+    let mut poly = vec![
+        Point::new(bounds.x0, bounds.y0),
+        Point::new(bounds.x1, bounds.y0),
+        Point::new(bounds.x1, bounds.y1),
+        Point::new(bounds.x0, bounds.y1),
+    ];
+    for line in lines {
+        let side = line.distance(p);
+        if side.abs() < 1e-9 {
+            return None;
+        }
+        // Signed so that the side of `p` is positive.
+        let d = |q: Point| line.distance(q) * side.signum();
+        let mut out = Vec::with_capacity(poly.len() + 1);
+        for i in 0..poly.len() {
+            let a = poly[i];
+            let b = poly[(i + 1) % poly.len()];
+            let (da, db) = (d(a), d(b));
+            if da >= 0.0 {
+                out.push(a);
+            }
+            if (da >= 0.0) != (db >= 0.0) {
+                out.push(a.lerp(b, da / (da - db)));
+            }
+        }
+        if out.len() < 3 {
+            return None;
+        }
+        poly = out;
+    }
+    let mut path = BezPath::new();
+    path.move_to(poly[0]);
+    for q in &poly[1..] {
+        path.line_to(*q);
+    }
+    path.close_path();
+    Some(path)
 }
 
 /// The parts crossed merged into one area, its curves those of the
@@ -130,17 +198,41 @@ impl App {
             .collect()
     }
 
+    /// The guidelines that cut the objects with Use Guidelines on: those
+    /// the page shows (#3558).
+    pub fn builder_lines(&self) -> Vec<tracedraw_core::document::GuideLine> {
+        if !self.builder.use_guides {
+            return Vec::new();
+        }
+        let mut lines = Vec::new();
+        if self.edited_guides_shown() {
+            lines.extend(self.page_guides());
+        }
+        if self.other_guides_shown() {
+            lines.extend(self.other_guides_on_page());
+        }
+        lines
+            .into_iter()
+            .filter(|g| !g.hidden)
+            .map(|g| g.line)
+            .collect()
+    }
+
     /// The part under `p`, worked out again only when `p` leaves the one
     /// found last or the drawing or the selection changed.
     pub fn builder_part_at(&self, p: Point) -> Option<BezPath> {
-        let key = (self.engine.revision(), self.selection.clone());
+        let key = (
+            self.engine.revision(),
+            self.selection.clone(),
+            self.builder.use_guides,
+        );
         if let Some(h) = self.builder.hover.borrow().as_ref() {
             if h.key == key && inside(&h.part, p) {
                 return Some(h.part.clone());
             }
         }
         let areas: Vec<BezPath> = self.builder_pieces().into_iter().map(|q| q.area).collect();
-        let part = part_at(&areas, p)?;
+        let part = part_at_cut(&areas, &self.builder_lines(), p)?;
         *self.builder.hover.borrow_mut() = Some(Hover {
             key,
             part: part.clone(),
@@ -656,5 +748,55 @@ mod tests {
         let c = square(&mut app, 50.0, 50.0, 60.0, 60.0);
         app.builder_cancel();
         assert!(app.doc().find_shape(c).is_some(), "not the tool's to undo");
+    }
+
+    /// Lines cut the parts too: a square crossed by a vertical and a
+    /// sloping line, each part on one side of both (#3558).
+    #[test]
+    fn lines_cut_a_square_into_parts() {
+        use tracedraw_core::document::GuideLine;
+        let areas = vec![rect(0.0, 0.0, 20.0, 20.0)];
+        let lines = [
+            GuideLine::Vertical { x: 5.0 },
+            GuideLine::Angled {
+                x: 0.0,
+                y: 0.0,
+                angle: 45.0,
+            },
+        ];
+        let left = part_at_cut(&areas, &lines[..1], Point::new(2.0, 10.0)).unwrap();
+        assert!((area(&left) - 100.0).abs() < 1e-6, "{}", area(&left));
+        let below = part_at_cut(&areas, &lines[1..], Point::new(15.0, 5.0)).unwrap();
+        assert!((area(&below) - 200.0).abs() < 1e-6, "{}", area(&below));
+        let corner = part_at_cut(&areas, &lines, Point::new(15.0, 5.0)).unwrap();
+        assert!((area(&corner) - 187.5).abs() < 1e-6, "{}", area(&corner));
+        assert!(part_at_cut(&areas, &lines, Point::new(5.0, 10.0)).is_none(), "on a line");
+    }
+
+    /// With Use Guidelines on, the page's guidelines cut the objects: a
+    /// click splits a square at a guideline, which stays; off, the square
+    /// is one part (#3558).
+    #[test]
+    fn use_guidelines_cuts_the_objects_at_the_guidelines() {
+        use tracedraw_core::document::GuideLine;
+        let mut app = App::headless();
+        let a = square(&mut app, 0.0, 0.0, 20.0, 20.0);
+        let page = app.page;
+        app.run(Command::AddGuide {
+            page,
+            guide: GuideLine::Vertical { x: 5.0 }.into(),
+        });
+        let guides = app.page_guides();
+        app.select(vec![a]);
+        app.set_tool(Tool::ShapeBuilder);
+        let off = app.builder_part_at(Point::new(2.0, 10.0)).unwrap();
+        assert!((area(&off) - 400.0).abs() < 1e-6);
+        app.builder.use_guides = true;
+        let on = app.builder_part_at(Point::new(2.0, 10.0)).unwrap();
+        assert!((area(&on) - 100.0).abs() < 1e-6, "{}", area(&on));
+        app.builder_take(Point::new(2.0, 10.0));
+        app.builder_finish(false);
+        assert!((page_area(&app, a) - 300.0).abs() < 1e-6, "{}", page_area(&app, a));
+        assert_eq!(app.page_guides(), guides, "the guideline stays");
     }
 }

@@ -1244,6 +1244,9 @@ fn shape_builder_bar(app: &mut App, ui: &mut Ui) {
     vsep(ui);
     ui.checkbox(&mut app.builder.keep_originals, tr("toolbar.builder_keep"))
         .rich_tip(crate::ui::tips::keyed("toolbar.builder_keep"));
+    // The guidelines cut the objects too (#3558), off by default.
+    ui.checkbox(&mut app.builder.use_guides, tr("toolbar.builder_guides"))
+        .rich_tip(crate::ui::tips::keyed("toolbar.builder_guides"));
     vsep(ui);
     let made = app.builder.session_steps > 0;
     if ui
@@ -2529,6 +2532,9 @@ fn text_properties(app: &mut App, ui: &mut Ui) {
     if let Some(curve) = app.text_curve() {
         curve_text_button(app, ui, curve);
     }
+    // The vertical alignment in the frame, beside the alignment, for
+    // paragraph text (#3543): the Text docker's list, nearer at hand.
+    text_vertical_align_list(app, ui);
     // Horizontal or vertical text, offered with a CJK interface language
     // or for text in those scripts (#257).
     if app.vertical_text_offered() {
@@ -3098,6 +3104,46 @@ pub(crate) fn text_size_list(app: &mut App, ui: &mut Ui) -> bool {
         return true;
     }
     false
+}
+
+/// The vertical alignment of paragraph text in its frame (#3543): a
+/// button with the alignment's picture dropping Top, Center and Bottom.
+/// Shown only while paragraph text is selected or edited.
+fn text_vertical_align_list(app: &mut App, ui: &mut Ui) {
+    use tracedraw_core::VerticalAlign;
+    let Some(current) = app.frame_text_vertical_align() else {
+        return;
+    };
+    let (rect, resp) = ui.allocate_exact_size(
+        Vec2::splat(crate::ui::propbar::btn()),
+        egui::Sense::click(),
+    );
+    crate::ui::propbar::frame(ui, rect, resp.hovered(), false);
+    crate::ui::text_docker::paint_vertical_align(
+        ui.painter(),
+        egui::Rect::from_center_size(rect.center(), Vec2::splat(Tokens::prop_icon())),
+        current,
+        Tokens::icon(),
+    );
+    let resp = resp.rich_tip(tr("docker.vertical_align"));
+    let mut picked = None;
+    egui::Popup::menu(&resp)
+        .id(egui::Id::new("bar_text_valign"))
+        .show(|ui| {
+            for (v, key) in [
+                (VerticalAlign::Top, "docker.valign_top"),
+                (VerticalAlign::Center, "docker.valign_center"),
+                (VerticalAlign::Bottom, "docker.valign_bottom"),
+            ] {
+                if ui.selectable_label(current == v, tr(key)).clicked() {
+                    picked = Some(v);
+                    ui.close();
+                }
+            }
+        });
+    if let Some(v) = picked {
+        app.set_frame_text_vertical_align(v);
+    }
 }
 
 /// The alignment: a button with the alignment's picture dropping the

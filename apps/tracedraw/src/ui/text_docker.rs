@@ -367,7 +367,7 @@ fn number(
 
 /// The picture of a vertical alignment: a frame with three lines at its
 /// top, middle or bottom.
-fn paint_vertical_align(p: &egui::Painter, r: Rect, v: VerticalAlign, color: Color32) {
+pub(crate) fn paint_vertical_align(p: &egui::Painter, r: Rect, v: VerticalAlign, color: Color32) {
     let f = r.shrink(1.0);
     p.rect_stroke(f, 0.0, Stroke::new(1.0, color), egui::StrokeKind::Inside);
     let block = 7.0;
