@@ -13,15 +13,21 @@ full, row-by-row status.
 - Text > Change Case: with part of a text selected while editing, only the selected letters change; without a selection the whole text changes as before (#3762).
 - Interactive fill: Ctrl+click on a palette colour mixes it into the selected gradient node instead of the whole fill (#3747).
 - Colour eyedropper: on the outline of a filled object it reads the outline colour, and inside it reads the fill (#3784).
-
-## 0.50.0 (2026-11-21)
-
-- Text > Bullets: a bullet or number can have its own colour, bold and italic instead of the first letter's (#3682). Lists can have levels: each level is set in by its own indent and numbers on its own, starting again under each paragraph above it, with Restart and Continue numbering; Text > Increase List Level and Decrease List Level move the bulleted paragraphs, a number taking 1, a, i and a symbol the next plain bullet by level (#3685).
 - Text property bar: paragraph text's vertical alignment in its frame (top, middle, bottom) beside the text alignment (#3543).
 - Objects docker: a bitmap's row names its colour mode, as the status bar does (#3557).
 - Palette menu: Change Selection to This Palette changes every colour of the selected objects to the nearest colour of that palette, in one undo step (#3534).
 - Shape Builder: a Use guidelines option (off by default) lets the guidelines shown cut the objects into parts too; the guidelines stay where they are (#3558).
 - Palette menu: Show Color Names (off by default) opens the palette out as a scrolling list of swatches with their names (#3512).
+- Options > Tools > Pick: "Cross hair to the window edges", off by default, carries the cross hair pointer's lines to the edges of the drawing window (#2996).
+- Objects docker: the Guides row's right-click menu cuts, copies and pastes its guidelines and moves them to all pages, the odd pages or the even pages (#3578).
+- Objects docker: Ctrl+click and Shift+click select several guidelines (#3575).
+- Objects docker: a guideline can be renamed from its right-click menu; the name shows on its row (#3574).
+- Edit > Copy Visible Area puts what the drawing window shows on the clipboard as a picture (#3527).
+- Object > Align and Distribute > Arrange in Grid puts different objects in rows and columns with set gaps (#3489).
+
+## 0.50.0 (2026-11-21)
+
+- Text > Bullets: a bullet or number can have its own colour, bold and italic instead of the first letter's (#3682). Lists can have levels: each level is set in by its own indent and numbers on its own, starting again under each paragraph above it, with Restart and Continue numbering; Text > Increase List Level and Decrease List Level move the bulleted paragraphs, a number taking 1, a, i and a symbol the next plain bullet by level (#3685).
 - Layer effects: a live Halftone effect turns an object, with its other effects, into round, square, diamond or line dots in RGB light, CMYK ink or one colour; the inner shadow gains Spread, which keeps the shadow solid over part of its blur before it fades.
 - Trace dialog: with AI turned on and a service that makes pictures, Clean up a pencil sketch shows a words field and Clean up with AI, which has the service redraw the sketch and traces the result into curves; hidden while AI is off.
 - Pick tool, rotate mode (second click): holding Shift while turning by a corner handle or a node also scales the selection, keeping its proportions, by how far the pointer is from the centre of rotation (#3772).
