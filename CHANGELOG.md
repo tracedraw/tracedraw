@@ -40,8 +40,13 @@ full, row-by-row status.
 - Saving as .cdr: a picture in the CMYK colour mode (after Convert Colors to CMYK, or read as CMYK) is saved as a CMYK image and opens as CMYK; it was saved as RGB and opened in RGB (#3699).
 - Missing fonts can take their automatic stand-ins without asking: "Always use the automatic fonts" in the Missing Fonts dialog, or Options > Global > Warnings, applies them for the session or replaces them in the drawing when a file opens (#3725).
 - Trace Bitmap: a flat-colour logo, also one saved as a compressed picture, no longer shows white specks and broken light lines where its colours meet. A few blots of the ground left inside the art put the ground over the outline it surrounds, and the page showed along the edge they share; the ground now goes under the art as one shape and such blots are covered (#3727).
+- On a phone, a drawing opened or started (from the browser too) now shows in front of the open panel, which covered the whole drawing area so the file seemed not to open; the panel's tab opens it again (#3735).
+- WMF export: dashed outlines keep their dashes when the file is placed in another document; each dash is written as a line of its own, with the outline's line ends (#3741).
+- Panels: Own Window in a panel's tab and title menus gives it a window of its own, which can go to another monitor; it keeps its place and size, and unticking brings the panel back into the main window (#2884).
 - Workspace files carry every other preference too, such as the color mode of new drawings, the document defaults, units and tool settings, as a new part to check on export and import; files, window and computer-specific settings stay out (#3721).
 - Saving as .cdr version 7 to 13: pictures are written as the files of version 14 and later hold them, so a cropped picture or one made with Convert to Bitmap no longer goes missing when a version 13 file is opened (#3696, #3698).
+- PDF import: a list item whose text begins with a tab after its bullet no longer has its first word (such as डॉ. in a Hindi list) slide back over the bullet; the text starts where its first letter was drawn (#3718).
+- Printing straight to a Windows printer: when the driver draws the page at another size than the paper, the page is scaled back to the paper, so a 100 mm square prints at 100 mm instead of stretched one way and squashed the other; what the driver says goes in the log (#3697).
 - Dragging a shadow or an object no longer makes the drawing window flicker in bands (#3562).
 - Insert Formula: Hindi and other scripts are shaped as text, vowel signs with their letters and spaces kept (#3572).
 - .cdr: paragraph frames of several columns from version 27 files keep their columns (#3506).

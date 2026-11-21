@@ -478,6 +478,7 @@ pub fn windows_print_script(
     format!(
         r#"$ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
+try {{ Add-Type -Namespace TraceDrawPrint -Name Gdi -MemberDefinition '[DllImport("gdi32.dll")] public static extern int GetDeviceCaps(IntPtr hdc, int index);' }} catch {{ }}
 $sheets = New-Object System.Collections.ArrayList
 {list}$doc = New-Object System.Drawing.Printing.PrintDocument
 $doc.PrinterSettings.PrinterName = {printer}
@@ -504,6 +505,28 @@ $doc.add_QueryPageSettings({{
 $doc.add_PrintPage({{
     param($sender, $e)
     $g = $e.Graphics
+    # The page the driver drew on must be the paper asked for: when its
+    # size at the resolution it says differs from the paper by more than
+    # 2% on an axis (a resolution other than the one printed at, or
+    # another paper scaled onto this one), a millimetre drawn is not a
+    # millimetre on paper and a square comes out stretched (#3697), so
+    # the page is scaled back to the paper.
+    $sx = 1.0; $sy = 1.0
+    $paper = $e.PageSettings.Bounds
+    try {{
+        $hdc = $g.GetHdc()
+        try {{
+            $pw = [TraceDrawPrint.Gdi]::GetDeviceCaps($hdc, 110)
+            $ph = [TraceDrawPrint.Gdi]::GetDeviceCaps($hdc, 111)
+            $lx = [TraceDrawPrint.Gdi]::GetDeviceCaps($hdc, 88)
+            $ly = [TraceDrawPrint.Gdi]::GetDeviceCaps($hdc, 90)
+        }} finally {{ $g.ReleaseHdc($hdc) }}
+        $fx = ($pw / $g.DpiX) / ($paper.Width / 100.0)
+        $fy = ($ph / $g.DpiY) / ($paper.Height / 100.0)
+        [Console]::Out.WriteLine('page ' + $pw + ' x ' + $ph + ' px at ' + $g.DpiX + ' x ' + $g.DpiY + ' dpi (device ' + $lx + ' x ' + $ly + '), paper ' + $paper.Width + ' x ' + $paper.Height)
+        if ($fx -gt 0 -and [Math]::Abs($fx - 1) -ge 0.02) {{ $sx = $fx }}
+        if ($fy -gt 0 -and [Math]::Abs($fy - 1) -ge 0.02) {{ $sy = $fy }}
+    }} catch {{ }}
     $g.PageUnit = [System.Drawing.GraphicsUnit]::Millimeter
     if ([Math]::Abs($g.DpiX - {dpi}) -lt 1 -and [Math]::Abs($g.DpiY - {dpi}) -lt 1) {{
         $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::NearestNeighbor
@@ -513,7 +536,12 @@ $doc.add_PrintPage({{
     $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::Half
     $attr = New-Object System.Drawing.Imaging.ImageAttributes
     $attr.SetWrapMode([System.Drawing.Drawing2D.WrapMode]::TileFlipXY)
-    $mx = $e.PageSettings.HardMarginX * 0.254; $my = $e.PageSettings.HardMarginY * 0.254
+    if ($sx -ne 1.0 -or $sy -ne 1.0) {{
+        $g.ScaleTransform([single]$sx, [single]$sy)
+        [Console]::Out.WriteLine('page scaled ' + $sx + ' x ' + $sy + ' to the paper')
+    }}
+    $hx = $e.PageSettings.HardMarginX * 0.254; $hy = $e.PageSettings.HardMarginY * 0.254
+    $mx = $hx / $sx; $my = $hy / $sy
     foreach ($tile in $sheets[$state.i].tiles) {{
         $img = [System.Drawing.Image]::FromFile($tile[0])
         $x = [single]($tile[1] - $mx); $y = [single]($tile[2] - $my)
@@ -1138,6 +1166,49 @@ mod tests {
         ));
         assert!(!s.contains("Rectangle]::Round"), "{s}");
         assert!(s.contains("sheet(s) at 1200 dpi"), "{s}");
+    }
+
+    /// A page the driver draws at another size than its paper, as when
+    /// it says another resolution than it prints at, is scaled back to
+    /// the paper, so a 100 mm square prints at 100 mm and not stretched
+    /// (#3697); the unprintable edge is taken off in paper millimetres.
+    #[test]
+    fn windows_pages_are_scaled_back_to_their_paper() {
+        let sheets = [(210.0, 297.0, vec![tile("a.png", 1.0, 2.0, 3.0, 4.0)])];
+        let s = windows_print_script("P", &sheets, 600.0, 1, false, "");
+        assert!(
+            s.contains("public static extern int GetDeviceCaps(IntPtr hdc, int index);"),
+            "{s}"
+        );
+        assert!(s.contains("$paper = $e.PageSettings.Bounds"), "{s}");
+        // PHYSICALWIDTH and PHYSICALHEIGHT, the page the driver draws on.
+        assert!(
+            s.contains("$pw = [TraceDrawPrint.Gdi]::GetDeviceCaps($hdc, 110)"),
+            "{s}"
+        );
+        assert!(
+            s.contains("$ph = [TraceDrawPrint.Gdi]::GetDeviceCaps($hdc, 111)"),
+            "{s}"
+        );
+        assert!(s.contains("$g.ReleaseHdc($hdc)"), "{s}");
+        assert!(
+            s.contains("$fx = ($pw / $g.DpiX) / ($paper.Width / 100.0)"),
+            "{s}"
+        );
+        assert!(
+            s.contains("$fy = ($ph / $g.DpiY) / ($paper.Height / 100.0)"),
+            "{s}"
+        );
+        assert!(s.contains("[Math]::Abs($fx - 1) -ge 0.02"), "{s}");
+        assert!(
+            s.contains("$g.ScaleTransform([single]$sx, [single]$sy)"),
+            "{s}"
+        );
+        assert!(s.contains("$mx = $hx / $sx; $my = $hy / $sy"), "{s}");
+        // Scaled before any tile is drawn.
+        let scale = s.find("ScaleTransform").expect("scale");
+        let draw = s.find("$g.DrawImage").expect("draw");
+        assert!(scale < draw);
     }
 
     /// The printer's resolution: its current setting, else the finest it

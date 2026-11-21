@@ -3558,6 +3558,42 @@ pub fn page_to_wmf(doc: &tracedraw_core::Document, page_index: usize) -> Vec<u8>
     out
 }
 
+/// The dashes of a dashed outline along `path` (page space) as open
+/// subpaths, to be drawn with a solid pen; None for a solid outline.
+/// The lengths are the pattern's multiples of the outline width (at
+/// least a hairline); dashes fitted to the corners stay fitted.
+fn wmf_dashes(path: &BezPath, s: &Stroke, scale: f64) -> Option<BezPath> {
+    let w = if s.scale_with_object {
+        s.width * scale
+    } else {
+        s.width
+    };
+    let w = if w.is_finite() {
+        w.max(Stroke::HAIRLINE)
+    } else {
+        Stroke::HAIRLINE
+    };
+    let mut dashes: Vec<f64> = s.dash.iter().map(|d| (d * w).max(0.0)).collect();
+    if dashes.is_empty()
+        || !dashes.iter().all(|d| d.is_finite())
+        || dashes.iter().sum::<f64>() <= 1e-9
+    {
+        return None;
+    }
+    if s.align_dashes {
+        return Some(tracedraw_core::shaping::aligned_dashes(path, &dashes));
+    }
+    if dashes.len() % 2 == 1 {
+        dashes = [dashes.clone(), dashes].concat();
+    }
+    // A dot (a dash of no length) is drawn by the pen's round cap; the
+    // flattened polyline needs two points, so it gets a tiny length.
+    for d in dashes.iter_mut().step_by(2) {
+        *d = d.max(1e-3);
+    }
+    Some(kurbo::dash(path.iter(), 0.0, &dashes).collect())
+}
+
 struct WmfWriter<'a> {
     recs: Vec<Vec<u8>>,
     /// Object slots in use; GDI gives a new object the lowest free slot.
@@ -3640,12 +3676,19 @@ impl WmfWriter<'_> {
                 } else {
                     self.tw(w).max(1)
                 };
-                let style: i16 = match s.dash.len() {
-                    0 => 0,
-                    2 if s.dash[0] <= 1.5 => 2,
-                    2 => 1,
-                    4 => 3,
-                    _ => 4,
+                // A dashed outline is written as its dashes, each a line
+                // of its own with a solid pen (see `wmf_dashes`): a dashed
+                // pen style is drawn solid once the pen is wider than a
+                // pixel, and has no lengths of its own (#3741). The pen
+                // takes the outline's caps so each dash ends as drawn.
+                let style: i16 = if s.dash.is_empty() {
+                    0
+                } else {
+                    match s.cap {
+                        LineCap::Butt => 0x200,
+                        LineCap::Square => 0x100,
+                        LineCap::Round => 0,
+                    }
                 };
                 let [c0, c1] = Self::color_words(s.color);
                 self.rec(0x02FA, &[style, wt, wt, c0, c1]);
@@ -3740,6 +3783,11 @@ impl WmfWriter<'_> {
             self.delete(b);
         }
         if let Some(s) = stroke {
+            let dashed = wmf_dashes(path, s, scale);
+            let polys = match &dashed {
+                Some(d) => Self::polylines(d),
+                None => polys,
+            };
             let p = self.create_pen(Some(s), scale);
             self.select(p);
             for (pts, closed) in &polys {
@@ -3995,6 +4043,101 @@ impl WmfWriter<'_> {
 mod wmf_export_tests {
     use super::*;
     use tracedraw_core::{geometry::Rect, Document};
+
+    /// The records of a WMF body (after the two headers): function and
+    /// parameter words.
+    fn wmf_records(wmf: &[u8]) -> Vec<(u16, Vec<i16>)> {
+        let mut out = Vec::new();
+        let mut i = 40;
+        while i + 6 <= wmf.len() {
+            let words = u32::from_le_bytes([wmf[i], wmf[i + 1], wmf[i + 2], wmf[i + 3]]) as usize;
+            let func = u16::from_le_bytes([wmf[i + 4], wmf[i + 5]]);
+            let params = (0..words.saturating_sub(3))
+                .map(|k| i16::from_le_bytes([wmf[i + 6 + 2 * k], wmf[i + 7 + 2 * k]]))
+                .collect();
+            out.push((func, params));
+            if words < 3 {
+                break;
+            }
+            i += words * 2;
+        }
+        out
+    }
+
+    /// A dashed outline goes out as its dashes, each a line drawn with a
+    /// solid pen: a dashed pen style is drawn solid once the pen is
+    /// wider than a pixel, so placed in a document the line came out
+    /// continuous (#3741).
+    #[test]
+    fn a_dashed_outline_is_written_as_its_dashes() {
+        let mut doc = Document::new("t", Size::new(120.0, 50.0));
+        let mut ids = doc.ids().clone();
+        let mut path = tracedraw_core::geometry::BezPath::new();
+        path.move_to((10.0, 25.0));
+        path.line_to((110.0, 25.0));
+        let mut line = Shape::new(
+            ids.shape(),
+            ShapeKind::Path {
+                path,
+                closed: false,
+            },
+        );
+        let mut st = Stroke::new(Color::BLACK, 1.0);
+        st.cap = LineCap::Butt;
+        st.dash = vec![4.0, 2.0];
+        line.stroke = Some(st);
+        line.fill = Fill::None;
+        doc.pages[0].layers[0].shapes.push(line);
+        doc.set_ids(ids);
+        let recs = wmf_records(&page_to_wmf(&doc, 0));
+        let pens: Vec<&Vec<i16>> = recs
+            .iter()
+            .filter(|(f, _)| *f == 0x02FA)
+            .map(|(_, p)| p)
+            .collect();
+        assert_eq!(pens.len(), 1, "{pens:?}");
+        // Solid, flat ends, 1 mm wide (57 twips).
+        assert_eq!(pens[0][0], 0x200);
+        assert_eq!(pens[0][1], 57);
+        let mut lines: Vec<&Vec<i16>> = recs
+            .iter()
+            .filter(|(f, _)| *f == 0x0325)
+            .map(|(_, p)| p)
+            .collect();
+        lines.sort_by_key(|p| p[1]);
+        // 100 mm at 4 mm on and 2 mm off: 17 dashes.
+        assert_eq!(lines.len(), 17);
+        let tw = |mm: f64| (mm / 25.4 * 1440.0).round() as i16;
+        let first = lines[0];
+        assert_eq!((first[1], first[first.len() - 2]), (tw(10.0), tw(14.0)));
+        let second = lines[1];
+        assert_eq!(second[1], tw(16.0));
+    }
+
+    /// A solid outline stays one line with a solid pen.
+    #[test]
+    fn a_solid_outline_stays_one_line() {
+        let mut doc = Document::new("t", Size::new(120.0, 50.0));
+        let mut ids = doc.ids().clone();
+        let mut path = tracedraw_core::geometry::BezPath::new();
+        path.move_to((10.0, 25.0));
+        path.line_to((110.0, 25.0));
+        let mut line = Shape::new(
+            ids.shape(),
+            ShapeKind::Path {
+                path,
+                closed: false,
+            },
+        );
+        line.stroke = Some(Stroke::new(Color::BLACK, 1.0));
+        line.fill = Fill::None;
+        doc.pages[0].layers[0].shapes.push(line);
+        doc.set_ids(ids);
+        let recs = wmf_records(&page_to_wmf(&doc, 0));
+        assert_eq!(recs.iter().filter(|(f, _)| *f == 0x0325).count(), 1);
+        let pen = recs.iter().find(|(f, _)| *f == 0x02FA).map(|(_, p)| p[0]);
+        assert_eq!(pen, Some(0));
+    }
 
     /// The export maps its twips onto the frame (MM_ANISOTROPIC), so
     /// programs that place it (Word, PowerPoint) show the whole page
