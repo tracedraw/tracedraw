@@ -1578,7 +1578,7 @@ pub struct App {
     pub main_window_doc: Option<(u64, u32)>,
     /// Whether each paragraph text overflows its frame, by document
     /// revision (laying text out every frame would be slow).
-    pub overflow_cache: std::cell::RefCell<(u64, std::collections::HashMap<ShapeId, bool>)>,
+    pub overflow_cache: std::cell::RefCell<std::collections::HashMap<ShapeId, (u64, bool)>>,
     /// Paragraph texts flowed in the frames a drag gives them (#1327).
     pub live_reflow: std::cell::RefCell<crate::text_frames::LiveReflow>,
     /// The Shape Builder's parts crossed and the one under the pointer
