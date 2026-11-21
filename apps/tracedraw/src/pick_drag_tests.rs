@@ -17,6 +17,15 @@ use tracedraw_core::{ShapeId, ShapeKind};
 mod field_focus_tests;
 
 fn frame(ctx: &egui::Context, app: &mut App, events: Vec<Event>, modifiers: Modifiers) {
+    run_frame(ctx, app, events, modifiers);
+}
+
+fn run_frame(
+    ctx: &egui::Context,
+    app: &mut App,
+    events: Vec<Event>,
+    modifiers: Modifiers,
+) -> egui::FullOutput {
     // The keys held come first, as the windowing layer sends them.
     let mut all = vec![Event::ModifiersChanged(modifiers)];
     all.extend(events);
@@ -33,6 +42,155 @@ fn frame(ctx: &egui::Context, app: &mut App, events: Vec<Event>, modifiers: Modi
     crate::interaction::release_chorded_left(ctx, &mut input);
     let mut out = ctx.run_ui(input, |ui| crate::ui::root(app, ui));
     out.textures_delta.clear();
+    out
+}
+
+/// The hover hint and menu offer Fit Text to Path on the same target.
+/// Hovering, opening the menu and cancelling leave the drawing intact.
+#[test]
+fn right_drop_text_fits_the_ellipse_at_the_release_point() {
+    let (ctx, mut app, rectangle) = setup();
+    let text = app
+        .new_shape(ShapeKind::Text {
+            spans: vec![tracedraw_core::TextSpan::new("Letters", "sans-serif", 24.0)],
+            origin: Point::new(35.0, 160.0),
+            frame: None,
+            align: tracedraw_core::TextAlign::Left,
+            para: Default::default(),
+            on_path: None,
+        })
+        .expect("text");
+    let ellipse = app
+        .new_shape(ShapeKind::Ellipse {
+            rect: Rect::new(45.0, 60.0, 145.0, 120.0),
+            arc: None,
+        })
+        .expect("ellipse");
+    let before = app.doc().clone();
+    let off_path = Point::new(95.0, 120.0 + app.object_pick_tol() / 2.0);
+    let blank = Point::new(170.0, 120.0);
+    let label = crate::i18n::tr("menu.text.fit_text_to_path");
+    let check_feedback = |out: egui::FullOutput, shown| {
+        assert_eq!(
+            out.platform_output.cursor_icon == egui::CursorIcon::PointingHand,
+            shown
+        );
+        assert_eq!(
+            out.shapes
+                .iter()
+                .any(|c| matches!(&c.shape, egui::Shape::Text(t) if t.galley.text() == label)),
+            shown,
+            "pointer hint"
+        );
+        let accent = egui::epaint::ColorMode::Solid(crate::theme::Tokens::ACCENT);
+        assert_eq!(
+            out.shapes.iter().any(|c| matches!(&c.shape, egui::Shape::Path(p) if p.stroke.width == 2.0 && p.stroke.color == accent)),
+            shown,
+            "highlighted outline"
+        );
+    };
+    let mut drop = |source, target| {
+        app.select(vec![source]);
+        let from = app.view.to_screen(bounds(&app, source).center());
+        let to = app.view.to_screen(target);
+        let mods = Modifiers::NONE;
+        frame(&ctx, &mut app, vec![Event::PointerMoved(from)], mods);
+        frame(
+            &ctx,
+            &mut app,
+            vec![button(from, true, PointerButton::Secondary, mods)],
+            mods,
+        );
+        frame(
+            &ctx,
+            &mut app,
+            vec![Event::PointerMoved(from.lerp(to, 0.1))],
+            mods,
+        );
+        let on_target = source == text && target == off_path;
+        let out = run_frame(&ctx, &mut app, vec![Event::PointerMoved(to)], mods);
+        check_feedback(out, on_target);
+        if on_target {
+            let out = run_frame(&ctx, &mut app, Vec::new(), Modifiers::SHIFT);
+            check_feedback(out, false);
+            let blank = app.view.to_screen(blank);
+            let out = run_frame(&ctx, &mut app, vec![Event::PointerMoved(blank)], mods);
+            check_feedback(out, false);
+            let out = run_frame(&ctx, &mut app, vec![Event::PointerMoved(to)], mods);
+            check_feedback(out, true);
+        }
+        assert_eq!(*app.doc(), before);
+        let out = run_frame(
+            &ctx,
+            &mut app,
+            vec![button(to, false, PointerButton::Secondary, mods)],
+            mods,
+        );
+        assert_ne!(
+            out.platform_output.cursor_icon,
+            egui::CursorIcon::PointingHand
+        );
+        assert!(app.drop_menu.is_some());
+        let item = frame_shapes(&ctx, &mut app, Vec::new())
+            .into_iter()
+            .find_map(|s| {
+                let egui::Shape::Text(t) = s else {
+                    return None;
+                };
+                (t.galley.text() == label).then(|| t.visual_bounding_rect().center())
+            });
+        assert_eq!(*app.doc(), before);
+        if let Some(item) = item {
+            click_at(&ctx, &mut app, item, mods);
+        } else {
+            frame(&ctx, &mut app, vec![key(egui::Key::Escape, mods)], mods);
+            frame(&ctx, &mut app, vec![key_up(egui::Key::Escape, mods)], mods);
+            assert_eq!(*app.doc(), before);
+        }
+        assert!(app.drop_menu.is_none());
+        item.is_some()
+    };
+    assert!(!drop(rectangle, off_path), "a non-text source");
+    assert!(!drop(text, blank), "no target");
+    assert!(drop(text, off_path), "a text over the ellipse");
+    assert_eq!(app.selection, vec![text]);
+    assert_eq!(app.doc().find_shape(ellipse), before.find_shape(ellipse));
+    let shape = app.doc().find_shape(text).expect("text");
+    let ShapeKind::Text {
+        on_path: Some(fit),
+        origin,
+        spans,
+        ..
+    } = &shape.kind
+    else {
+        panic!("text did not fit to the ellipse");
+    };
+    assert_eq!(fit.distance, 0.0);
+    assert_eq!(spans[0].text, "Letters");
+    let start = fit.path.segments().next().expect("first segment");
+    let start = shape.transform * (*origin + kurbo::ParamCurve::start(&start).to_vec2());
+    assert!(start.distance(Point::new(95.0, 120.0)) < 0.1, "{start:?}");
+    assert_eq!(fit.source.map(|source| source.shape), Some(ellipse));
+    let attached = app.doc().clone();
+    app.run(tracedraw_core::Command::SetShapeKind {
+        shape: ellipse,
+        kind: ShapeKind::Ellipse {
+            rect: Rect::new(45.0, 55.0, 145.0, 144.0),
+            arc: None,
+        },
+    });
+    let fit = app.fitted_text().expect("still fitted");
+    let start = fit.on_path.path.segments().next().expect("first segment");
+    let start = fit.to_page * kurbo::ParamCurve::start(&start);
+    assert!(start.distance(Point::new(95.0, 144.0)) < 0.1, "{start:?}");
+    let resized = app.doc().clone();
+    app.undo();
+    assert_eq!(*app.doc(), attached);
+    app.redo();
+    assert_eq!(*app.doc(), resized);
+    app.undo();
+    app.undo();
+    assert_eq!(*app.doc(), before);
 }
 
 /// Frames until the page's picture is the one for what it shows now: no

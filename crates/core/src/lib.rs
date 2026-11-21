@@ -50,6 +50,7 @@ pub mod style;
 pub mod surface_map;
 pub mod table;
 pub mod text_flow;
+pub mod text_path;
 pub mod tiles;
 pub mod toc;
 
