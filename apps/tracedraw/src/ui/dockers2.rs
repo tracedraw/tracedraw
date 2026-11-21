@@ -9,7 +9,7 @@ use crate::i18n::{tr, trf};
 use crate::theme::Tokens;
 use crate::ui::tips::RichTip;
 use egui::Ui;
-use tracedraw_core::{document::ShapeKind, live::Effect, Color, Command, Fill, ShapeId};
+use tracedraw_core::{document::ShapeKind, geometry::Affine, live::Effect, Color, Command, Fill, ShapeId};
 
 /// The colour picker every colour of the drawing uses (#442).
 fn color_button(ui: &mut Ui, c: &mut Color) -> bool {
@@ -2978,7 +2978,7 @@ pub(crate) fn symbol_uses(doc: &tracedraw_core::Document, index: usize) -> usize
 
 fn symbols(app: &mut App, ui: &mut Ui) {
     let has = !app.selection.is_empty();
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         if ui
             .add_enabled(has, egui::Button::new(tr("docker.new_symbol")))
             .rich_tip(crate::ui::tips::keyed("docker.new_symbol"))
@@ -2986,6 +2986,16 @@ fn symbols(app: &mut App, ui: &mut Ui) {
             .clicked()
         {
             app.create_symbol_from_selection();
+        }
+        // Every group copying the selected one becomes an instance where
+        // it stood, labels staying text (#2343).
+        if ui
+            .add_enabled(has, egui::Button::new(tr("docker.symbolize_similar")))
+            .rich_tip(tr("docker.symbolize_similar_tip"))
+            .rich_disabled_tip(tr("docker.symbolize_similar_tip"))
+            .clicked()
+        {
+            app.symbolize_similar();
         }
         if ui
             .button(tr("docker.revert_to_objects"))
@@ -2995,78 +3005,159 @@ fn symbols(app: &mut App, ui: &mut Ui) {
             app.revert_symbol_instances();
         }
     });
+    ui.add(
+        egui::TextEdit::singleline(&mut app.symbol_filter)
+            .hint_text(tr("docker.symbol_search"))
+            .desired_width(f32::INFINITY),
+    )
+    .rich_tip(tr("docker.symbol_search"));
+    let filter = app.symbol_filter.to_lowercase();
     let syms: Vec<(usize, String)> = app
         .doc()
         .symbols
         .iter()
         .enumerate()
+        .filter(|(_, s)| filter.is_empty() || s.name.to_lowercase().contains(&filter))
         .map(|(i, s)| (i, s.name.clone()))
         .collect();
     let editing = app.symbol_edit_index();
+    let count = app.doc().symbols.len();
+    let selected_index = app.selected_shapes().iter().find_map(|s| match s.kind {
+        ShapeKind::SymbolInstance { index } => Some(index),
+        _ => None,
+    });
     let mut thumbs = std::mem::take(&mut app.symbol_thumbs);
     thumbs.begin_frame();
     let drawing = (app.engine.instance(), app.engine.revision());
     for (i, name) in syms {
-        ui.horizontal(|ui| {
-            // What the symbol draws, beside its name (#3249).
-            symbol_picture(app, ui, &mut thumbs, drawing, i);
-            ui.label(&name);
-            if ui
-                .small_button(tr("docker.insert"))
-                .rich_tip(crate::ui::tips::pair(
-                    "docker.insert",
-                    "docker.insert_symbol_desc",
-                ))
-                .clicked()
-            {
-                app.insert_symbol_instance(i);
-            }
-            // Edit: the symbol's objects edited on the page; Finish while
-            // they are (#1980).
-            if editing == Some(i) {
-                if ui
-                    .small_button(tr("clip.finish"))
-                    .rich_tip(tr("menu.object.symbol_finish"))
-                    .clicked()
-                {
-                    app.finish_clip_frame_edit();
-                }
-                // Cancel: the edit ends and the symbol stays as it was
-                // (#3437).
-                if ui
-                    .small_button(tr("docker.cancel_symbol_edit"))
-                    .rich_tip(tr("docker.cancel_symbol_edit_tip"))
-                    .clicked()
-                {
-                    app.cancel_symbol_edit();
-                }
-            } else if ui
-                .add_enabled(
-                    app.clip_frame_edit.is_none(),
-                    egui::Button::new(tr("docker.edit_symbol")).small(),
-                )
-                .rich_tip(crate::ui::tips::pair(
-                    "docker.edit_symbol",
-                    "docker.edit_symbol_desc",
-                ))
-                .clicked()
-            {
-                app.edit_symbol(i);
-            }
-            // A copy of the symbol, placed nowhere (#3437).
-            if ui
-                .add_enabled(
-                    app.clip_frame_edit.is_none(),
-                    egui::Button::new(tr("docker.duplicate_symbol")).small(),
-                )
-                .rich_tip(tr("docker.duplicate_symbol_tip"))
-                .clicked()
-            {
-                app.duplicate_symbol(i);
-            }
-            let uses = symbol_uses(app.doc(), i);
-            dim(ui, trf("docker.instances_n", &[("n", &uses.to_string())]));
-        });
+        let selected = selected_index == Some(i);
+        egui::Frame::new()
+            .fill(egui::Color32::from_white_alpha(6))
+            .corner_radius(4.0)
+            .inner_margin(6.0)
+            .stroke(if selected {
+                egui::Stroke::new(1.5, ui.style().visuals.selection.stroke.color)
+            } else {
+                egui::Stroke::NONE
+            })
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    // What the symbol draws, beside its name (#3249).
+                    symbol_picture(app, ui, &mut thumbs, drawing, i);
+                    let renaming = app
+                        .symbol_rename
+                        .as_ref()
+                        .filter(|(idx, _)| *idx == i)
+                        .map(|(_, s)| s.clone());
+                    if let Some(mut text) = renaming {
+                        let resp = ui.add(
+                            egui::TextEdit::singleline(&mut text).desired_width(90.0),
+                        );
+                        if !resp.has_focus() && !resp.lost_focus() {
+                            resp.request_focus();
+                        }
+                        if resp.lost_focus() || ui.input(|inp| inp.key_pressed(egui::Key::Enter)) {
+                            app.rename_symbol(i, text.clone());
+                            app.symbol_rename = None;
+                        } else if ui.input(|inp| inp.key_pressed(egui::Key::Escape)) {
+                            app.symbol_rename = None;
+                        } else {
+                            app.symbol_rename = Some((i, text));
+                        }
+                    } else {
+                        let resp = ui.label(&name);
+                        if resp.double_clicked() {
+                            app.symbol_rename = Some((i, name.clone()));
+                        }
+                        resp.rich_tip(tr("docker.rename_symbol_tip"));
+                    }
+                    let uses = symbol_uses(app.doc(), i);
+                    dim(ui, trf("docker.instances_n", &[("n", &uses.to_string())]));
+                });
+                ui.horizontal(|ui| {
+                    if ui
+                        .small_button(tr("docker.insert"))
+                        .rich_tip(crate::ui::tips::pair(
+                            "docker.insert",
+                            "docker.insert_symbol_desc",
+                        ))
+                        .clicked()
+                    {
+                        app.insert_symbol_instance(i);
+                    }
+                    // Edit: the symbol's objects edited on the page; Finish
+                    // while they are (#1980).
+                    if editing == Some(i) {
+                        if ui
+                            .small_button(tr("clip.finish"))
+                            .rich_tip(tr("menu.object.symbol_finish"))
+                            .clicked()
+                        {
+                            app.finish_clip_frame_edit();
+                        }
+                        // Cancel: the edit ends and the symbol stays as it
+                        // was (#3437).
+                        if ui
+                            .small_button(tr("docker.cancel_symbol_edit"))
+                            .rich_tip(tr("docker.cancel_symbol_edit_tip"))
+                            .clicked()
+                        {
+                            app.cancel_symbol_edit();
+                        }
+                    } else if ui
+                        .add_enabled(
+                            app.clip_frame_edit.is_none(),
+                            egui::Button::new(tr("docker.edit_symbol")).small(),
+                        )
+                        .rich_tip(crate::ui::tips::pair(
+                            "docker.edit_symbol",
+                            "docker.edit_symbol_desc",
+                        ))
+                        .clicked()
+                    {
+                        app.edit_symbol(i);
+                    }
+                    // Merge this symbol into another, without a window:
+                    // the first press picks the source, a press on another
+                    // symbol's button merges the source into it.
+                    let picking = app.symbol_replace_source;
+                    let label = if picking == Some(i) {
+                        tr("dialog.cancel")
+                    } else if picking.is_some() {
+                        tr("docker.replace_target")
+                    } else {
+                        tr("docker.replace_symbol")
+                    };
+                    if ui
+                        .add_enabled(
+                            count > 1 && app.clip_frame_edit.is_none(),
+                            egui::Button::new(label).small(),
+                        )
+                        .rich_tip(tr("docker.replace_symbol_tip"))
+                        .clicked()
+                    {
+                        match picking {
+                            Some(src) if src == i => app.symbol_replace_source = None,
+                            Some(src) => {
+                                app.merge_symbols(src, i);
+                                app.symbol_replace_source = None;
+                            }
+                            None => app.symbol_replace_source = Some(i),
+                        }
+                    }
+                    // A copy of the symbol, placed nowhere (#3437).
+                    if ui
+                        .add_enabled(
+                            app.clip_frame_edit.is_none(),
+                            egui::Button::new(tr("docker.duplicate_symbol")).small(),
+                        )
+                        .rich_tip(tr("docker.duplicate_symbol_tip"))
+                        .clicked()
+                    {
+                        app.duplicate_symbol(i);
+                    }
+                });
+            });
     }
     thumbs.trim(crate::object_thumbs::MAX_BYTES / 4);
     if thumbs.waiting {
@@ -3075,6 +3166,15 @@ fn symbols(app: &mut App, ui: &mut Ui) {
     app.symbol_thumbs = thumbs;
     if app.doc().symbols.is_empty() {
         dim(ui, tr("docker.symbols_hint"));
+    }
+    if app.symbol_replace_source.is_some() {
+        if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            app.symbol_replace_source = None;
+        }
+        dim(ui, tr("docker.replace_pick"));
+    }
+    if let Some(r) = app.symbolize_report.clone() {
+        dim(ui, r);
     }
 }
 
@@ -3105,6 +3205,13 @@ fn symbol_picture(
         ShapeId(u64::MAX - index as u64),
         ShapeKind::SymbolInstance { index },
     );
+    // Centre the definition in the tile: definitions saved by older files
+    // may sit away from the origin, which left their preview blank.
+    let mut shape = shape;
+    if let Some(sym) = app.doc().symbols.get(index) {
+        let c = sym.shape.bounds().center();
+        shape.transform = Affine::translate((-c.x, -c.y));
+    }
     let ppp = ui.ctx().pixels_per_point().max(0.5);
     let inner = r.shrink(2.0);
     let px = (inner.width() * ppp).round().max(4.0) as u32;

@@ -31085,3 +31085,219 @@ fn alt_drags_the_node_by_its_handle() {
     assert!(((n2 - nend) - (c2 - end)).hypot() < 1e-6, "the handle kept its place about it");
     assert!((n1 - c1).hypot() < 1e-6, "the other segment's start handle stays");
 }
+
+/// Symbols docker > By similarity (#2343): the sample group, a moved
+/// copy and a copy nested in a holder group become instances of one
+/// symbol where each group stood, the holder keeping its child slot;
+/// one undo puts every group back.
+#[test]
+fn symbolize_similar_in_place() {
+    use tracedraw_core::{Color, Command, Fill, Shape};
+    let (ctx, mut app, rect) = setup();
+    app.run(Command::DeleteShapes { shapes: vec![rect] });
+    let layer = app.active_layer().expect("layer");
+    // The two rectangles every copy of the sample repeats.
+    let pair = |app: &mut App| -> Vec<Shape> {
+        let mut children = Vec::new();
+        for x in [0.0, 10.0] {
+            let mut s = Shape::new(
+                app.engine.new_shape_id(),
+                ShapeKind::Rect {
+                    rect: Rect::new(x, 0.0, x + 5.0, 5.0),
+                    radius: 0.0,
+                    corners: None,
+                },
+            );
+            s.fill = Fill::Solid(Color::rgb8(200, 30, 30));
+            children.push(s);
+        }
+        children
+    };
+    let mut sample = Shape::new(
+        app.engine.new_shape_id(),
+        ShapeKind::Group {
+            children: pair(&mut app),
+        },
+    );
+    sample.transform = Affine::translate((20.0, 20.0));
+    let mut moved = Shape::new(
+        app.engine.new_shape_id(),
+        ShapeKind::Group {
+            children: pair(&mut app),
+        },
+    );
+    moved.transform = Affine::translate((80.0, 60.0));
+    let mut nested = Shape::new(
+        app.engine.new_shape_id(),
+        ShapeKind::Group {
+            children: pair(&mut app),
+        },
+    );
+    nested.transform = Affine::translate((5.0, 5.0));
+    let mut holder = Shape::new(
+        app.engine.new_shape_id(),
+        ShapeKind::Group {
+            children: vec![nested.clone()],
+        },
+    );
+    holder.transform = Affine::translate((140.0, 30.0));
+    let (sample_id, moved_id, holder_id, nested_id) =
+        (sample.id, moved.id, holder.id, nested.id);
+    for shape in [sample, moved, holder] {
+        app.engine
+            .run(&Command::AddShape { layer, shape })
+            .expect("add");
+    }
+    app.select(vec![sample_id]);
+    app.symbolize_similar();
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    assert_eq!(app.doc().symbols.len(), 1, "one symbol for every copy");
+    assert!(app.symbolize_report.is_some(), "the result is reported");
+    assert!(
+        app.symbolize_report
+            .as_deref()
+            .unwrap_or_default()
+            .contains("Symbol 1"),
+        "{:?}",
+        app.symbolize_report
+    );
+    let shapes = |app: &App| -> Vec<Shape> {
+        app.doc()
+            .all_layers()
+            .find(|l| l.id == layer)
+            .expect("layer")
+            .shapes
+            .clone()
+    };
+    let now = shapes(&app);
+    assert_eq!(now.len(), 3, "the layer keeps its three slots");
+    assert_eq!(now[2].id, holder_id, "the holder stays");
+    // The sample and the moved copy became instances in their places.
+    for (slot, x, y) in [(0, 20.0, 20.0), (1, 80.0, 60.0)] {
+        assert!(
+            matches!(now[slot].kind, ShapeKind::SymbolInstance { index: 0 }),
+            "slot {slot}: {:?}",
+            now[slot].kind
+        );
+        let b = now[slot].bounds();
+        assert!(close(b.x0, x) && close(b.y0, y), "slot {slot}: {b:?}");
+    }
+    // The nested copy became an instance inside its holder.
+    let ShapeKind::Group { children } = &now[2].kind else {
+        panic!("holder")
+    };
+    assert_eq!(children.len(), 1);
+    assert!(matches!(
+        children[0].kind,
+        ShapeKind::SymbolInstance { index: 0 }
+    ));
+    // One undo puts every group back.
+    app.undo();
+    assert_eq!(app.doc().symbols.len(), 0);
+    let back = shapes(&app);
+    assert_eq!(
+        back.iter().map(|s| s.id).collect::<Vec<_>>(),
+        vec![sample_id, moved_id, holder_id]
+    );
+    for s in &back {
+        assert!(matches!(s.kind, ShapeKind::Group { .. }), "{:?}", s.kind);
+    }
+    let ShapeKind::Group { children } = &back[2].kind else {
+        panic!("holder")
+    };
+    assert_eq!(children[0].id, nested_id);
+    assert!(matches!(children[0].kind, ShapeKind::Group { .. }));
+}
+
+/// Symbols docker > Replace: merging symbol 0 into symbol 1 moves every
+/// instance to the target, the source definition goes and the target's
+/// index shifts down a place; one undo brings both symbols back.
+#[test]
+fn merge_symbols_via_app() {
+    let (ctx, mut app, _rect) = setup();
+    // Two symbols from two different rectangles; each creation leaves
+    // an instance of the new symbol selected.
+    app.create_symbol_from_selection();
+    let a0 = app.selection[0];
+    let second = app
+        .new_shape(ShapeKind::Rect {
+            rect: Rect::new(100.0, 80.0, 130.0, 100.0),
+            radius: 0.0,
+            corners: None,
+        })
+        .expect("rect");
+    app.select(vec![second]);
+    app.create_symbol_from_selection();
+    let b0 = app.selection[0];
+    assert_eq!(app.doc().symbols.len(), 2);
+    // One more instance of each.
+    app.insert_symbol_instance(0);
+    let a1 = app.selection[0];
+    app.insert_symbol_instance(1);
+    let b1 = app.selection[0];
+    let index_of = |app: &App, id: ShapeId| {
+        match &app.doc().find_shape(id).expect("instance").kind {
+            ShapeKind::SymbolInstance { index } => *index,
+            k => panic!("{k:?}"),
+        }
+    };
+    assert_eq!(index_of(&app, a0), 0);
+    assert_eq!(index_of(&app, a1), 0);
+    assert_eq!(index_of(&app, b0), 1);
+    assert_eq!(index_of(&app, b1), 1);
+    app.merge_symbols(0, 1);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    assert_eq!(app.doc().symbols.len(), 1, "the source definition goes");
+    assert_eq!(app.doc().symbols[0].name, "Symbol 2");
+    for id in [a0, a1, b0, b1] {
+        assert_eq!(
+            index_of(&app, id),
+            0,
+            "every instance follows, the target shifted"
+        );
+    }
+    assert!(app.symbolize_report.is_some(), "the merge is reported");
+    app.undo();
+    assert_eq!(app.doc().symbols.len(), 2, "one undo brings both back");
+    assert_eq!(app.doc().symbols[0].name, "Symbol 1");
+    assert_eq!(index_of(&app, a0), 0);
+    assert_eq!(index_of(&app, a1), 0);
+    assert_eq!(index_of(&app, b0), 1);
+    assert_eq!(index_of(&app, b1), 1);
+}
+
+/// The Replace pick (`app.symbol_replace_source`) and the merge's guard:
+/// while a symbol edit is going on, `merge_symbols` refuses with a status
+/// message and the pick stays; once the edit is finished the pick merges
+/// the source into the target in one step.
+#[test]
+fn replace_pick_and_merge_guard() {
+    let (_ctx, mut app, _rect) = setup();
+    app.create_symbol_from_selection();
+    let second = app
+        .new_shape(ShapeKind::Rect {
+            rect: Rect::new(100.0, 80.0, 130.0, 100.0),
+            radius: 0.0,
+            corners: None,
+        })
+        .expect("rect");
+    app.select(vec![second]);
+    app.create_symbol_from_selection();
+    assert_eq!(app.doc().symbols.len(), 2);
+    app.symbol_replace_source = Some(0);
+    // Edit symbol 0: the clip frame edit the merge must wait for.
+    app.edit_symbol(0);
+    assert!(app.clip_frame_edit.is_some(), "the symbol edit is going on");
+    app.merge_symbols(0, 1);
+    assert_eq!(app.doc().symbols.len(), 2, "the merge is refused");
+    assert_eq!(
+        app.status,
+        crate::i18n::tr("status.symbol_merge_finish_edit")
+    );
+    assert_eq!(app.symbol_replace_source, Some(0), "the pick stays");
+    assert!(app.clip_frame_edit.is_some(), "the edit stays");
+    // With the edit finished, the same pick merges source into target.
+    app.finish_clip_frame_edit();
+    app.merge_symbols(0, 1);
+    assert_eq!(app.doc().symbols.len(), 1, "merged in one step");
+}

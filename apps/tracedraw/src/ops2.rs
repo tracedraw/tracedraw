@@ -6155,6 +6155,105 @@ impl App {
         self.selection = vec![id];
     }
 
+    /// Symbols docker > By similarity: every group copying the selected
+    /// group, at any depth of layers, groups and clip frames, becomes an
+    /// instance of one symbol where the group stood; the group's labels
+    /// stay text beside the instance (#2343). One undo step.
+    pub fn symbolize_similar(&mut self) {
+        let shapes = self.selected_shapes();
+        // The sample: a selected group, else a selected instance's
+        // definition, else the selected non-text objects themselves.
+        let graphics: Vec<Shape> = if let Some(g) = shapes
+            .iter()
+            .find(|s| matches!(s.kind, ShapeKind::Group { .. }))
+        {
+            tracedraw_core::symbols::split_group(g)
+                .map(|(gr, _)| gr.into_iter().cloned().collect())
+                .unwrap_or_default()
+        } else if let Some(index) = shapes.iter().find_map(|s| match s.kind {
+            ShapeKind::SymbolInstance { index } => Some(index),
+            _ => None,
+        }) {
+            self.doc()
+                .symbols
+                .get(index)
+                .map(|sym| {
+                    tracedraw_core::symbols::definition_objects(&sym.shape)
+                        .into_iter()
+                        .cloned()
+                        .collect()
+                })
+                .unwrap_or_default()
+        } else {
+            shapes
+                .iter()
+                .filter(|s| !matches!(s.kind, ShapeKind::Text { .. }))
+                .cloned()
+                .collect()
+        };
+        if graphics.is_empty() {
+            self.status = crate::i18n::tr("status.symbolize_needs_group");
+            self.symbolize_report = Some(crate::i18n::tr("status.symbolize_needs_group"));
+            return;
+        }
+        let refs: Vec<&Shape> = graphics.iter().collect();
+        let plan = match tracedraw_core::symbols::plan_graphics(self.doc(), &refs, None) {
+            Ok(p) => p,
+            Err(e) => {
+                self.status = e;
+                return;
+            }
+        };
+        if plan.matches.is_empty() {
+            self.status = crate::i18n::tr("status.symbolize_none");
+            self.symbolize_report = Some(crate::i18n::tr("status.symbolize_none"));
+            return;
+        }
+        let cmds = tracedraw_core::symbols::commands(&plan, || self.engine.new_shape_id());
+        if let Err(e) = self.engine.run_batch("Symbolize Similar", &cmds) {
+            self.status = e.to_string();
+            return;
+        }
+        self.symbolize_report = Some(crate::i18n::trf(
+            "status.symbolized",
+            &[
+                ("n", &plan.matches.len().to_string()),
+                ("name", &plan.name),
+            ],
+        ));
+        self.selection.clear();
+    }
+
+    /// Symbols docker: rename symbol `index` (double-click its name).
+    pub fn rename_symbol(&mut self, index: usize, name: String) {
+        let name = name.trim().to_string();
+        if name.is_empty() {
+            return;
+        }
+        self.run(Command::SetSymbolName { index, name });
+    }
+
+    /// Symbols docker > Replace: merge symbol `from` into `to`; every
+    /// instance follows and the source definition goes. One undo step.
+    pub fn merge_symbols(&mut self, from: usize, to: usize) {
+        if self.clip_frame_edit.is_some() {
+            self.status = crate::i18n::tr("status.symbol_merge_finish_edit");
+            return;
+        }
+        let (Some(a), Some(b)) = (
+            self.doc().symbols.get(from).map(|s| s.name.clone()),
+            self.doc().symbols.get(to).map(|s| s.name.clone()),
+        ) else {
+            return;
+        };
+        let n = crate::ui::dockers2::symbol_uses(self.doc(), from);
+        self.run(Command::MergeSymbols { from, to });
+        self.symbolize_report = Some(crate::i18n::trf(
+            "status.symbol_merged",
+            &[("n", &n.to_string()), ("from", &a), ("to", &b)],
+        ));
+    }
+
     pub fn insert_symbol_instance(&mut self, index: usize) {
         let Some(layer) = self.active_layer() else {
             return;

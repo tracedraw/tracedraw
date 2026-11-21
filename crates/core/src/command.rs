@@ -182,6 +182,11 @@ pub enum Command {
         index: usize,
         shape: Shape,
     },
+    /// Rename symbol `index` (double-click its name in the Symbols panel).
+    SetSymbolName {
+        index: usize,
+        name: String,
+    },
     /// Replace objects where they stand: each `(id, shape)` swaps the
     /// object of that id for the shape given, keeping its place in its
     /// layer, group or clip frame and its order among the neighbours
@@ -679,6 +684,7 @@ impl Command {
             Command::SetRasterFx { .. } => "Effect",
             Command::AddSymbol { .. } => "New Symbol",
             Command::SetSymbolShape { .. } => "Edit Symbol",
+            Command::SetSymbolName { .. } => "Rename Symbol",
             Command::ReplaceShapes { .. } => "Replace Objects",
             Command::MergeSymbols { .. } => "Replace Symbol",
             Command::MovePage { .. } => "Move Page",
@@ -981,6 +987,13 @@ impl Command {
                     sym.shape = shape.clone();
                     sym.shape.scale_grid = grid;
                 }
+            }
+            Command::SetSymbolName { index, name } => {
+                let sym = doc
+                    .symbols
+                    .get_mut(*index)
+                    .ok_or(Error::SymbolNotFound(*index))?;
+                sym.name = name.clone();
             }
             Command::ReplaceShapes { replacements } => {
                 for (id, shape) in replacements {
@@ -5542,6 +5555,51 @@ mod tests {
             })
             .is_err());
         assert_eq!(order(&e), vec![1, 2, 3, 4]);
+    }
+
+    /// Rename Symbol changes the name, keeps the instances, and one undo
+    /// puts the old name back; an index that is not there is refused.
+    #[test]
+    fn renaming_a_symbol_keeps_its_instances() {
+        use crate::document::{ShapeKind, Symbol};
+        let mut e = crate::Engine::default();
+        let layer = e.document().pages[0].layers[0].id;
+        e.run(&Command::AddSymbol {
+            symbol: Symbol {
+                name: "Old".into(),
+                shape: Shape::new(
+                    ShapeId(0),
+                    ShapeKind::Rect {
+                        rect: Rect::new(0.0, 0.0, 5.0, 5.0),
+                        radius: 0.0,
+                        corners: None,
+                    },
+                ),
+            },
+        })
+        .unwrap();
+        let id = e.new_shape_id();
+        let mut inst = Shape::new(id, ShapeKind::SymbolInstance { index: 0 });
+        inst.transform = Affine::translate((10.0, 10.0));
+        e.run(&Command::AddShape { layer, shape: inst }).unwrap();
+        e.run(&Command::SetSymbolName {
+            index: 0,
+            name: "New".into(),
+        })
+        .unwrap();
+        assert_eq!(e.document().symbols[0].name, "New");
+        assert!(matches!(
+            e.document().find_shape(id).unwrap().kind,
+            ShapeKind::SymbolInstance { index: 0 }
+        ));
+        e.undo();
+        assert_eq!(e.document().symbols[0].name, "Old");
+        assert!(e
+            .run(&Command::SetSymbolName {
+                index: 5,
+                name: "X".into(),
+            })
+            .is_err());
     }
 
     /// Replace Symbol merges one symbol into another: every instance,
