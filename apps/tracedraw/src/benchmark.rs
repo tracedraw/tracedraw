@@ -510,8 +510,10 @@ pub fn time_drawing() -> (f64, f64) {
 /// The advanced test on a drawing of `objects` objects: the whole view
 /// drawn, drawn zoomed in four times, every object moved, the drawing
 /// saved and opened as `.tdraw`, and exported as PDF. `step` is told
-/// each task before it runs.
-pub fn time_tasks(objects: usize, step: &mut dyn FnMut(&'static str)) -> Vec<Task> {
+/// each task before it runs, and stops the test with `false` (the
+/// window was closed or the run cancelled, #3665): the tasks timed so
+/// far come back and the drawing is let go.
+pub fn time_tasks(objects: usize, step: &mut dyn FnMut(&'static str) -> bool) -> Vec<Task> {
     let mut out = Vec::new();
     let doc = sample_document_of(objects.saturating_sub(1));
     let Some(page) = doc.pages.first().map(|p| p.id) else {
@@ -525,14 +527,18 @@ pub fn time_tasks(objects: usize, step: &mut dyn FnMut(&'static str)) -> Vec<Tas
         })
     };
     let opts = sample_options();
-    step(TASK_REDRAW);
+    if !step(TASK_REDRAW) {
+        return out;
+    }
     task(
         TASK_REDRAW,
         best_of(2, || {
             let _ = tracedraw_render::render_page(&doc, page, &opts);
         }),
     );
-    step(TASK_ZOOM);
+    if !step(TASK_ZOOM) {
+        return out;
+    }
     let zoomed = zoomed_options(4.0);
     task(
         TASK_ZOOM,
@@ -541,7 +547,9 @@ pub fn time_tasks(objects: usize, step: &mut dyn FnMut(&'static str)) -> Vec<Tas
         }),
     );
     // Every object moved, with the copy of the drawing that Undo keeps.
-    step(TASK_MOVE);
+    if !step(TASK_MOVE) {
+        return out;
+    }
     let mut moved = doc.clone();
     let shift = tracedraw_core::geometry::Affine::translate((5.0, 5.0));
     task(
@@ -556,7 +564,9 @@ pub fn time_tasks(objects: usize, step: &mut dyn FnMut(&'static str)) -> Vec<Tas
             std::hint::black_box(copy);
         }),
     );
-    step(TASK_SAVE);
+    if !step(TASK_SAVE) {
+        return out;
+    }
     let mut bytes = Vec::new();
     task(
         TASK_SAVE,
@@ -566,14 +576,18 @@ pub fn time_tasks(objects: usize, step: &mut dyn FnMut(&'static str)) -> Vec<Tas
                 doc.write_tdraw_version(&mut bytes, tracedraw_core::document::TDRAW_FORMAT_VERSION);
         }),
     );
-    step(TASK_OPEN);
+    if !step(TASK_OPEN) {
+        return out;
+    }
     task(
         TASK_OPEN,
         best_of(1, || {
             let _ = std::hint::black_box(Document::from_tdraw_bytes(&bytes));
         }),
     );
-    step(TASK_PDF);
+    if !step(TASK_PDF) {
+        return out;
+    }
     task(
         TASK_PDF,
         best_of(1, || {
@@ -586,8 +600,11 @@ pub fn time_tasks(objects: usize, step: &mut dyn FnMut(&'static str)) -> Vec<Tas
 /// Sixty rectangles with shadows drawn for the screen, with the graphics
 /// card blurring the shadows and without it (Options > General, "Blur
 /// shadows on the graphics card"); `card` turns that on or off for the
-/// time of each half.
-pub fn time_shadows(card: &mut dyn FnMut(bool), step: &mut dyn FnMut(&'static str)) -> Vec<Task> {
+/// time of each half. `step` stops it with `false`, as in [`time_tasks`].
+pub fn time_shadows(
+    card: &mut dyn FnMut(bool),
+    step: &mut dyn FnMut(&'static str) -> bool,
+) -> Vec<Task> {
     let mut doc = sample_document_of(60);
     let mut k = 0;
     for layer in doc.pages.iter_mut().flat_map(|p| p.layers.iter_mut()) {
@@ -608,7 +625,9 @@ pub fn time_shadows(card: &mut dyn FnMut(bool), step: &mut dyn FnMut(&'static st
     let opts = sample_options();
     let mut out = Vec::new();
     for (on, key) in [(true, TASK_SHADOWS_CARD), (false, TASK_SHADOWS_PROCESSOR)] {
-        step(key);
+        if !step(key) {
+            break;
+        }
         card(on);
         let _ = tracedraw_render::render_page(&doc, page, &opts);
         let seconds = best_of(2, || {
@@ -789,7 +808,10 @@ mod tests {
     #[test]
     fn the_tasks_of_the_advanced_test_run() {
         let mut told = Vec::new();
-        let tasks = time_tasks(200, &mut |k| told.push(k));
+        let tasks = time_tasks(200, &mut |k| {
+            told.push(k);
+            true
+        });
         let keys: Vec<&str> = tasks.iter().map(|t| t.key.as_str()).collect();
         let want = [
             TASK_REDRAW,
@@ -803,10 +825,28 @@ mod tests {
         assert_eq!(told, want);
         assert!(tasks.iter().all(|t| t.objects == 200 && t.seconds >= 0.0));
         let mut card = Vec::new();
-        let shadows = time_shadows(&mut |on| card.push(on), &mut |_| {});
+        let shadows = time_shadows(&mut |on| card.push(on), &mut |_| true);
         assert_eq!(card, [true, false]);
         assert_eq!(shadows.len(), 2);
         assert_eq!(shadows[0].objects, 61);
+    }
+
+    /// A run stopped at a task (its window closed, #3665) times nothing
+    /// more: the tasks before it come back, and the shadows are not
+    /// drawn once stopped.
+    #[test]
+    fn a_stopped_run_times_no_more_tasks() {
+        let mut told = Vec::new();
+        let tasks = time_tasks(200, &mut |k| {
+            told.push(k);
+            k != TASK_MOVE
+        });
+        let keys: Vec<&str> = tasks.iter().map(|t| t.key.as_str()).collect();
+        assert_eq!(keys, [TASK_REDRAW, TASK_ZOOM]);
+        assert_eq!(told, [TASK_REDRAW, TASK_ZOOM, TASK_MOVE]);
+        let mut card = Vec::new();
+        assert!(time_shadows(&mut |on| card.push(on), &mut |_| false).is_empty());
+        assert!(card.is_empty());
     }
 
     /// The whole benchmark on this computer, to see the numbers:
