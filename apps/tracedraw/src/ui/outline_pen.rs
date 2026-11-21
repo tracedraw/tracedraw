@@ -11,6 +11,7 @@ use crate::app::App;
 use crate::i18n::tr;
 use crate::theme::Tokens;
 use crate::ui::tips::RichTip;
+use egui::emath::GuiRounding;
 use egui::{Color32, Pos2, Rect, Sense, Stroke as EStroke, Ui, Vec2};
 use tracedraw_core::patch::{StrokeField, StrokeMix};
 use tracedraw_core::{LineCap, LineJoin, OutlinePosition, Stroke, WidthNode};
@@ -362,7 +363,7 @@ fn general(ui: &mut Ui, st: &mut OutlinePenState, lib: &crate::ui::line_style::O
         if !mixed(st, StrokeField::Dash) {
             let r = resp.response.rect.shrink2(Vec2::new(8.0, 0.0));
             let r = Rect::from_min_max(r.min, Pos2::new(r.max.x - 18.0, r.max.y));
-            dash_line(ui.painter(), r, &st.stroke.dash);
+            dash_line(ui.painter(), r, &st.stroke.dash, Tokens::text());
         }
         if ui
             .button("\u{2026}")
@@ -886,7 +887,7 @@ fn variable(ui: &mut Ui, st: &mut OutlinePenState, lib: &crate::ui::line_style::
 
 /// The pictures of the dialog's buttons.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Pic {
+pub(super) enum Pic {
     DashDefault,
     DashAlign,
     JoinMiter,
@@ -900,6 +901,9 @@ enum Pic {
     Inside,
 }
 
+pub(super) const PICTURE_SIZE: f32 = 20.0;
+const DISABLED_PICTURE_OPACITY: f32 = 0.55;
+
 /// A 28 x 24 button with a picture; true when clicked.
 fn pic_button(ui: &mut Ui, pic: Pic, on: bool, enabled: bool, tip: &str) -> bool {
     let (rect, resp) = ui.allocate_exact_size(Vec2::new(28.0, 24.0), Sense::click());
@@ -909,21 +913,33 @@ fn pic_button(ui: &mut Ui, pic: Pic, on: bool, enabled: bool, tip: &str) -> bool
     let ink = if enabled {
         Tokens::text()
     } else {
-        Tokens::text_dim().gamma_multiply(0.5)
+        Tokens::text_dim().gamma_multiply(DISABLED_PICTURE_OPACITY)
     };
-    draw_pic(p, rect.shrink(4.0), pic, ink);
+    draw_pic(
+        p,
+        Rect::from_center_size(rect.center(), Vec2::splat(PICTURE_SIZE)),
+        pic,
+        ink,
+    );
     enabled && resp.clicked()
 }
 
-fn draw_pic(p: &egui::Painter, r: Rect, pic: Pic, ink: Color32) {
-    let thin = EStroke::new(1.0, ink);
-    let thick = |w: f32| EStroke::new(w, ink);
-    let (l, t, rt, b) = (r.left(), r.top(), r.right(), r.bottom());
-    let c = r.center();
+pub(super) fn draw_pic(p: &egui::Painter, r: Rect, pic: Pic, ink: Color32) {
+    // A square grid keeps the pictures proportional in either button layout.
+    let side = r.width().min(r.height()).min(PICTURE_SIZE);
+    let scale = side / 16.0;
+    let ppp = p.pixels_per_point();
+    let origin = (r.center() - Vec2::splat(side / 2.0)).round_to_pixels(ppp);
+    let at = |x: f32, y: f32| origin + Vec2::new(x, y) * scale;
+    let box_at = |x0, y0, x1, y1| Rect::from_min_max(at(x0, y0), at(x1, y1));
+    let guide = EStroke::new(
+        (scale / ppp).max(1.0 / ppp),
+        Tokens::field().blend(ink.gamma_multiply(0.5)),
+    );
     match pic {
         Pic::DashDefault | Pic::DashAlign => {
             // An L of dashes; aligned ones meet in the corner.
-            let pts = [Pos2::new(l, b), Pos2::new(l, t), Pos2::new(rt, t)];
+            let pts = [at(2.0, 15.0), at(2.0, 2.0), at(15.0, 2.0)];
             let seg = |a: Pos2, z: Pos2, from: f32, to: f32| [a + (z - a) * from, a + (z - a) * to];
             for (a, z) in [(pts[0], pts[1]), (pts[1], pts[2])] {
                 let runs: &[(f32, f32)] = if pic == Pic::DashAlign {
@@ -932,120 +948,99 @@ fn draw_pic(p: &egui::Painter, r: Rect, pic: Pic, ink: Color32) {
                     &[(0.1, 0.35), (0.55, 0.8)]
                 };
                 for (f, g) in runs {
-                    p.line_segment(seg(a, z, *f, *g), thick(2.0));
+                    p.line_segment(seg(a, z, *f, *g), EStroke::new(2.4 * scale, ink));
                 }
             }
         }
         Pic::JoinMiter | Pic::JoinRound | Pic::JoinBevel => {
-            // A thick corner, its outer edge as the join makes it.
-            let w = 6.0;
-            let inner = Pos2::new(l + w, t + w);
-            let mut outer = vec![Pos2::new(l, b)];
+            // Two solid arms meet at the corner produced by the join.
+            p.rect_filled(box_at(6.0, 2.0, 14.0, 6.0), 0.0, ink);
+            p.rect_filled(box_at(2.0, 6.0, 6.0, 14.0), 0.0, ink);
             match pic {
-                Pic::JoinMiter => outer.push(Pos2::new(l, t)),
+                Pic::JoinMiter => {
+                    p.rect_filled(box_at(2.0, 2.0, 6.0, 6.0), 0.0, ink);
+                }
                 Pic::JoinBevel => {
-                    outer.push(Pos2::new(l, t + w));
-                    outer.push(Pos2::new(l + w, t));
+                    p.add(egui::Shape::convex_polygon(
+                        vec![at(2.0, 6.0), at(6.0, 2.0), at(6.0, 6.0)],
+                        ink,
+                        EStroke::NONE,
+                    ));
                 }
                 _ => {
-                    for k in 0..=6 {
-                        let a = std::f32::consts::PI + std::f32::consts::FRAC_PI_2 * k as f32 / 6.0;
-                        outer.push(Pos2::new(l + w + w * a.cos(), t + w + w * a.sin()));
+                    let mut corner = vec![at(6.0, 6.0)];
+                    for k in 0..=8 {
+                        let a = std::f32::consts::PI + std::f32::consts::FRAC_PI_2 * k as f32 / 8.0;
+                        corner.push(at(6.0 + 4.0 * a.cos(), 6.0 + 4.0 * a.sin()));
                     }
+                    p.add(egui::Shape::convex_polygon(corner, ink, EStroke::NONE));
                 }
             }
-            outer.push(Pos2::new(rt, t));
-            let mut shape = outer.clone();
-            shape.push(Pos2::new(rt, t + w));
-            shape.push(inner);
-            shape.push(Pos2::new(l + w, b));
-            p.add(egui::Shape::closed_line(shape, thin));
-            p.line_segment(
-                [
-                    Pos2::new(l + w / 2.0, b),
-                    Pos2::new(l + w / 2.0, t + w / 2.0),
+            let x = p.round_to_pixel_center(at(4.0, 4.0).x);
+            let y = p.round_to_pixel_center(at(4.0, 4.0).y);
+            p.add(egui::Shape::line(
+                vec![
+                    Pos2::new(x, at(0.0, 14.0).y),
+                    Pos2::new(x, y),
+                    Pos2::new(at(14.0, 0.0).x, y),
                 ],
-                EStroke::new(1.0, Tokens::ACCENT),
-            );
-            p.line_segment(
-                [
-                    Pos2::new(l + w / 2.0, t + w / 2.0),
-                    Pos2::new(rt, t + w / 2.0),
-                ],
-                EStroke::new(1.0, Tokens::ACCENT),
-            );
+                guide,
+            ));
         }
         Pic::CapButt | Pic::CapRound | Pic::CapSquare => {
-            // A thick line ending at the path's end (a thin upright).
-            let end = c.x + 2.0;
-            let h = 4.0;
-            let reach = match pic {
-                Pic::CapButt => end,
-                _ => end + h,
-            };
-            let body =
-                Rect::from_min_max(Pos2::new(l, c.y - h), Pos2::new(reach.min(end), c.y + h));
-            p.rect_stroke(body, 0.0, thin, egui::StrokeKind::Middle);
+            // The short ticks mark the same path end in all three pictures.
+            let x = p.round_to_pixel_center(at(10.0, 8.0).x);
+            p.line_segment(
+                [Pos2::new(x, at(0.0, 2.0).y), Pos2::new(x, at(0.0, 4.0).y)],
+                guide,
+            );
+            p.line_segment(
+                [Pos2::new(x, at(0.0, 12.0).y), Pos2::new(x, at(0.0, 14.0).y)],
+                guide,
+            );
+            p.rect_filled(box_at(1.0, 5.0, 10.0, 11.0), 0.0, ink);
             match pic {
                 Pic::CapRound => {
-                    let pts: Vec<Pos2> = (0..=8)
-                        .map(|k| {
-                            let a = -std::f32::consts::FRAC_PI_2
-                                + std::f32::consts::PI * k as f32 / 8.0;
-                            Pos2::new(end + h * a.cos(), c.y + h * a.sin())
-                        })
-                        .collect();
-                    p.add(egui::Shape::line(pts, thin));
+                    p.circle_filled(at(10.0, 8.0), 3.0 * scale, ink);
                 }
                 Pic::CapSquare => {
-                    p.rect_stroke(
-                        Rect::from_min_max(Pos2::new(end, c.y - h), Pos2::new(end + h, c.y + h)),
-                        0.0,
-                        thin,
-                        egui::StrokeKind::Middle,
-                    );
+                    p.rect_filled(box_at(10.0, 5.0, 13.0, 11.0), 0.0, ink);
                 }
                 _ => {}
             }
+            let y = p.round_to_pixel_center(at(1.0, 8.0).y);
             p.line_segment(
-                [Pos2::new(l, c.y), Pos2::new(end, c.y)],
-                EStroke::new(1.0, Tokens::ACCENT),
+                [Pos2::new(at(1.0, 0.0).x, y), Pos2::new(at(10.0, 0.0).x, y)],
+                guide,
             );
-            p.line_segment([Pos2::new(end, t), Pos2::new(end, b)], thin);
         }
         Pic::Outside | Pic::Center | Pic::Inside => {
-            // The path (a thin line) and the outline's band against it.
-            let band = 6.0;
-            let y = c.y;
-            let (y0, y1) = match pic {
-                Pic::Outside => (y - band, y),
-                Pic::Center => (y - band / 2.0, y + band / 2.0),
-                _ => (y, y + band),
+            // Keep the outline's size fixed and move its reference path.
+            let path = match pic {
+                Pic::Outside => 7.0,
+                Pic::Center => 4.0,
+                _ => 1.0,
             };
-            p.rect_filled(
-                Rect::from_min_max(Pos2::new(l, y0), Pos2::new(rt, y1)),
-                0.0,
-                ink,
-            );
-            p.line_segment(
-                [Pos2::new(l, y), Pos2::new(rt, y)],
-                EStroke::new(1.0, Tokens::ACCENT),
-            );
-            // The object's inside, light, below the path.
-            p.rect_stroke(
-                Rect::from_min_max(Pos2::new(l, y), Pos2::new(rt, b)),
-                0.0,
-                EStroke::new(1.0, Tokens::text_dim()),
-                egui::StrokeKind::Inside,
-            );
+            let path_x = p.round_to_pixel_center(at(path, path).x);
+            let path_y = p.round_to_pixel_center(at(path, path).y);
+            p.rect_filled(box_at(2.0, 2.0, 14.0, 6.0), 0.0, ink);
+            p.rect_filled(box_at(2.0, 6.0, 6.0, 14.0), 0.0, ink);
+            p.add(egui::Shape::line(
+                vec![
+                    Pos2::new(path_x, at(0.0, 14.0).y),
+                    Pos2::new(path_x, path_y),
+                    Pos2::new(at(14.0, 0.0).x, path_y),
+                ],
+                guide,
+            ));
         }
     }
 }
 
 /// A dash pattern drawn as a line across `r`.
-fn dash_line(p: &egui::Painter, r: Rect, dash: &[f64]) {
+pub(super) fn dash_line(p: &egui::Painter, r: Rect, dash: &[f64], color: Color32) {
     let y = r.center().y;
-    let ink = EStroke::new(2.0, Tokens::text());
+    let ink = EStroke::new(2.0, color);
     if dash.is_empty() {
         p.line_segment([Pos2::new(r.left(), y), Pos2::new(r.right(), y)], ink);
         return;
@@ -1076,6 +1071,243 @@ mod tests {
     use super::*;
     use tracedraw_core::geometry::Rect as PRect;
     use tracedraw_core::ShapeKind;
+
+    /// Button width cannot stretch a pictogram; every option has a solid,
+    /// distinct silhouette on the same square grid at common display scales.
+    #[test]
+    fn outline_pictograms_keep_their_proportions_and_silhouettes() {
+        let groups: &[&[Pic]] = &[
+            &[Pic::CapButt, Pic::CapRound, Pic::CapSquare],
+            &[Pic::JoinMiter, Pic::JoinRound, Pic::JoinBevel],
+            &[Pic::Outside, Pic::Center, Pic::Inside],
+        ];
+        for ppp in [1.0, 1.25, 2.0] {
+            let render = |pic, width, height| {
+                let ctx = egui::Context::default();
+                ctx.set_pixels_per_point(ppp);
+                let mut out = ctx.run_ui(Default::default(), |ui| {
+                    draw_pic(
+                        ui.painter(),
+                        Rect::from_center_size(Pos2::new(24.0, 24.0), Vec2::new(width, height)),
+                        pic,
+                        Color32::BLACK,
+                    );
+                });
+                out.textures_delta.clear();
+                out.shapes.into_iter().map(|s| s.shape).collect::<Vec<_>>()
+            };
+            for group in groups {
+                let mut previous = Vec::new();
+                for pic in *group {
+                    let shapes = render(*pic, PICTURE_SIZE, PICTURE_SIZE);
+                    for side in [16.0, PICTURE_SIZE] {
+                        assert_eq!(
+                            render(*pic, side, side),
+                            render(*pic, 28.0, side),
+                            "{pic:?}, size {side}, scale {ppp}"
+                        );
+                    }
+                    assert!(
+                        shapes.iter().any(|s| match s {
+                            egui::Shape::Rect(r) => r.fill == Color32::BLACK,
+                            egui::Shape::Circle(c) => c.fill == Color32::BLACK,
+                            egui::Shape::Path(p) => p.fill == Color32::BLACK,
+                            _ => false,
+                        }),
+                        "{pic:?} needs a solid silhouette"
+                    );
+                    for other in &previous {
+                        assert_ne!(&shapes, other, "{pic:?} needs a distinct picture");
+                    }
+                    previous.push(shapes);
+                }
+            }
+        }
+    }
+
+    fn pictogram_raster(pic: Pic, ppp: f32) -> crate::help_shots::Raster {
+        crate::help_shots::rasterise(32, 32, ppp, |p| {
+            p.rect_filled(p.clip_rect(), 0.0, Tokens::field());
+            draw_pic(
+                p,
+                Rect::from_center_size(Pos2::new(16.0, 16.0), Vec2::splat(PICTURE_SIZE)),
+                pic,
+                Tokens::text(),
+            );
+        })
+    }
+
+    #[test]
+    fn disabled_dash_pictures_keep_a_clear_stroke() {
+        for pic in [Pic::DashDefault, Pic::DashAlign] {
+            let ctx = egui::Context::default();
+            let mut out = ctx.run_ui(Default::default(), |ui| {
+                pic_button(ui, pic, false, false, "docker.align_dashes");
+            });
+            out.textures_delta.clear();
+            let strokes: Vec<_> = out
+                .shapes
+                .iter()
+                .filter_map(|s| match &s.shape {
+                    egui::Shape::LineSegment { stroke, .. } => Some(stroke),
+                    _ => None,
+                })
+                .collect();
+            assert!(!strokes.is_empty(), "{pic:?} has visible dashes");
+            for stroke in strokes {
+                assert!((stroke.width - 3.0).abs() < 0.01, "{pic:?}: {stroke:?}");
+                assert!(
+                    (135..=145).contains(&stroke.color.a()),
+                    "{pic:?}: {stroke:?}"
+                );
+            }
+        }
+    }
+
+    /// The position choices keep equal visible ink bounds, and the caps
+    /// differ by several visible pixels after tessellation and rasterisation.
+    #[test]
+    fn outline_pictograms_have_equal_sizes_and_distinct_caps() {
+        use crate::theme::{set_theme, Theme};
+
+        for theme in [Theme::Light, Theme::Dark] {
+            set_theme(theme);
+            let ink = Tokens::text();
+            for pic in [Pic::JoinMiter, Pic::JoinRound, Pic::JoinBevel] {
+                let join = pictogram_raster(pic, 1.0);
+                assert!(
+                    join.rgb(13, 20)
+                        .into_iter()
+                        .zip([ink.r(), ink.g(), ink.b()])
+                        .all(|(pixel, color)| pixel.abs_diff(color) < 48),
+                    "{theme:?}: {pic:?} keeps a solid arm beside the center path"
+                );
+            }
+            let cap = pictogram_raster(Pic::CapButt, 1.0);
+            assert!(
+                cap.rgb(11, 16)
+                    .into_iter()
+                    .zip(cap.rgb(11, 13))
+                    .any(|(line, body)| line.abs_diff(body) > 48),
+                "{theme:?}: the center path is visible inside the solid cap"
+            );
+            for ppp in [1.0_f32, 1.25, 2.0] {
+                let pixels = (32.0 * ppp).round() as usize;
+                let bounds = |img: &crate::help_shots::Raster| {
+                    let (mut left, mut top) = (pixels, pixels);
+                    let (mut right, mut bottom) = (0, 0);
+                    let mut found = false;
+                    for y in 0..pixels {
+                        for x in 0..pixels {
+                            let near_ink = img
+                                .rgb(x, y)
+                                .into_iter()
+                                .zip([ink.r(), ink.g(), ink.b()])
+                                .all(|(c, i)| c.abs_diff(i) < 48);
+                            if near_ink {
+                                found = true;
+                                left = left.min(x);
+                                top = top.min(y);
+                                right = right.max(x);
+                                bottom = bottom.max(y);
+                            }
+                        }
+                    }
+                    assert!(found, "{theme:?}, scale {ppp}: the icon is visible");
+                    (left, top, right, bottom)
+                };
+                let outside = bounds(&pictogram_raster(Pic::Outside, ppp));
+                for pic in [Pic::Center, Pic::Inside] {
+                    assert_eq!(
+                        bounds(&pictogram_raster(pic, ppp)),
+                        outside,
+                        "{pic:?} must keep the same visible size on {theme:?}, scale {ppp}"
+                    );
+                }
+                for (a, b) in [
+                    (Pic::CapButt, Pic::CapRound),
+                    (Pic::CapButt, Pic::CapSquare),
+                    (Pic::CapRound, Pic::CapSquare),
+                ] {
+                    let first = pictogram_raster(a, ppp);
+                    let second = pictogram_raster(b, ppp);
+                    let mut different = 0;
+                    for y in 0..pixels {
+                        for x in 0..pixels {
+                            if first
+                                .rgb(x, y)
+                                .into_iter()
+                                .zip(second.rgb(x, y))
+                                .any(|(c, d)| c.abs_diff(d) > 32)
+                            {
+                                different += 1;
+                            }
+                        }
+                    }
+                    let least = (4.0 * ppp * ppp).floor() as usize;
+                    assert!(
+                        different >= least,
+                        "{a:?} and {b:?} differ at only {different} pixels on {theme:?}, scale {ppp}"
+                    );
+                }
+            }
+        }
+        set_theme(Theme::Light);
+    }
+
+    /// Render the outline pictures at native and double resolution.
+    /// TRACEDRAW_OUTLINE_ICON_SHOTS names the output folder.
+    #[test]
+    #[ignore]
+    fn outline_pictogram_shots() {
+        use crate::theme::{set_theme, Theme};
+
+        let Some(dir) = std::env::var_os("TRACEDRAW_OUTLINE_ICON_SHOTS") else {
+            return;
+        };
+        let dir = std::path::PathBuf::from(dir);
+        std::fs::create_dir_all(&dir).expect("screenshot folder");
+        for (name, theme) in [("light", Theme::Light), ("dark", Theme::Dark)] {
+            set_theme(theme);
+            for ppp in [1.0, 2.0] {
+                let img = crate::help_shots::rasterise(120, 144, ppp, |p| {
+                    p.rect_filled(p.clip_rect(), 0.0, Tokens::field());
+                    for (row, choices) in [
+                        [Pic::CapButt, Pic::CapRound, Pic::CapSquare],
+                        [Pic::JoinMiter, Pic::JoinRound, Pic::JoinBevel],
+                        [Pic::Outside, Pic::Center, Pic::Inside],
+                    ]
+                    .iter()
+                    .enumerate()
+                    {
+                        for (col, pic) in choices.iter().enumerate() {
+                            let center =
+                                Pos2::new(20.0 + col as f32 * 40.0, 18.0 + row as f32 * 36.0);
+                            draw_pic(
+                                p,
+                                Rect::from_center_size(center, Vec2::splat(PICTURE_SIZE)),
+                                *pic,
+                                Tokens::text(),
+                            );
+                        }
+                    }
+                    for (col, pic) in [Pic::DashDefault, Pic::DashAlign].iter().enumerate() {
+                        draw_pic(
+                            p,
+                            Rect::from_center_size(
+                                Pos2::new(20.0 + col as f32 * 40.0, 126.0),
+                                Vec2::splat(PICTURE_SIZE),
+                            ),
+                            *pic,
+                            Tokens::text_dim().gamma_multiply(DISABLED_PICTURE_OPACITY),
+                        );
+                    }
+                });
+                img.save(&dir.join(format!("outline-icons-{name}-{ppp}x.png")));
+            }
+        }
+        set_theme(Theme::Light);
+    }
 
     /// The dialog's width list and the property bar's width list offer
     /// the same widths in every outline unit, and the dialog's labels are
