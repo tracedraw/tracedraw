@@ -182,6 +182,20 @@ pub enum Command {
         index: usize,
         shape: Shape,
     },
+    /// Replace objects where they stand: each `(id, shape)` swaps the
+    /// object of that id for the shape given, keeping its place in its
+    /// layer, group or clip frame and its order among the neighbours
+    /// (Symbolize Similar puts each instance where its group was).
+    ReplaceShapes {
+        replacements: Vec<(ShapeId, Shape)>,
+    },
+    /// Merge symbol `from` into symbol `to` (Replace Symbol): every
+    /// instance of `from`, on any page or master layer, in groups, clip
+    /// frames and inside other symbols' definitions, becomes an instance
+    /// of `to`; the definition of `from` goes and the indices after it
+    /// shift down. One undo step. A symbol cannot merge into itself, nor
+    /// into one whose definition draws it.
+    MergeSymbols { from: usize, to: usize },
     /// Move a page to another index (Page Sorter drag).
     MovePage {
         page: PageId,
@@ -665,6 +679,8 @@ impl Command {
             Command::SetRasterFx { .. } => "Effect",
             Command::AddSymbol { .. } => "New Symbol",
             Command::SetSymbolShape { .. } => "Edit Symbol",
+            Command::ReplaceShapes { .. } => "Replace Objects",
+            Command::MergeSymbols { .. } => "Replace Symbol",
             Command::MovePage { .. } => "Move Page",
             Command::DeleteLayer { .. } => "Delete Layer",
             Command::SetLayerVisible { .. } => "Layer Visibility",
@@ -964,6 +980,74 @@ impl Command {
                     let grid = shape.scale_grid.clone().or(sym.shape.scale_grid.take());
                     sym.shape = shape.clone();
                     sym.shape.scale_grid = grid;
+                }
+            }
+            Command::ReplaceShapes { replacements } => {
+                for (id, shape) in replacements {
+                    let slot = doc
+                        .find_shape_mut(*id)
+                        .ok_or(Error::ShapeNotFound(*id))?;
+                    *slot = shape.clone();
+                }
+            }
+            Command::MergeSymbols { from, to } => {
+                let (from, to) = (*from, *to);
+                if from >= doc.symbols.len() {
+                    return Err(Error::SymbolNotFound(from));
+                }
+                if to >= doc.symbols.len() {
+                    return Err(Error::SymbolNotFound(to));
+                }
+                // Into itself, or into a symbol whose definition draws the
+                // source: the result would draw itself without end.
+                if from == to
+                    || crate::document::draws_symbol(&doc.symbols[to].shape, from, &doc.symbols)
+                {
+                    return Err(Error::SymbolCycle(from));
+                }
+                fn remap(s: &mut Shape, from: usize, to: usize) {
+                    match &mut s.kind {
+                        ShapeKind::SymbolInstance { index } if *index == from => *index = to,
+                        ShapeKind::Group { children } => {
+                            children.iter_mut().for_each(|c| remap(c, from, to))
+                        }
+                        ShapeKind::ClipFrame { frame, contents } => {
+                            remap(frame, from, to);
+                            contents.iter_mut().for_each(|c| remap(c, from, to));
+                        }
+                        _ => {}
+                    }
+                }
+                for l in doc.all_layers_mut() {
+                    for s in &mut l.shapes {
+                        remap(s, from, to);
+                    }
+                }
+                for sym in &mut doc.symbols {
+                    remap(&mut sym.shape, from, to);
+                }
+                doc.symbols.remove(from);
+                // The indices after the removed one shift down a place.
+                fn shift(s: &mut Shape, from: usize) {
+                    match &mut s.kind {
+                        ShapeKind::SymbolInstance { index } if *index > from => *index -= 1,
+                        ShapeKind::Group { children } => {
+                            children.iter_mut().for_each(|c| shift(c, from))
+                        }
+                        ShapeKind::ClipFrame { frame, contents } => {
+                            shift(frame, from);
+                            contents.iter_mut().for_each(|c| shift(c, from));
+                        }
+                        _ => {}
+                    }
+                }
+                for l in doc.all_layers_mut() {
+                    for s in &mut l.shapes {
+                        shift(s, from);
+                    }
+                }
+                for sym in &mut doc.symbols {
+                    shift(&mut sym.shape, from);
                 }
             }
             Command::MovePage { page, to } => {
@@ -5389,6 +5473,170 @@ mod tests {
         assert!(f.handles.is_some());
         let t1 = f.param_at(s.bounds(), thirty * p0).expect("after");
         assert!((t0 - t1).abs() < 1e-9, "{t0} {t1}");
+    }
+
+    /// Replace Objects swaps each object where it stands: the order among
+    /// its neighbours, on the layer and inside a group, stays; one undo
+    /// puts the old objects back; an id that is not there is refused.
+    #[test]
+    fn replace_shapes_keep_the_place_and_the_order() {
+        use crate::document::ShapeKind;
+        let rect = |id: u64, x: f64| {
+            Shape::new(
+                ShapeId(id),
+                ShapeKind::Rect {
+                    rect: Rect::new(x, 0.0, x + 5.0, 5.0),
+                    radius: 0.0,
+                    corners: None,
+                },
+            )
+        };
+        let mut e = crate::Engine::default();
+        let layer = e.document().pages[0].layers[0].id;
+        for id in [1, 2, 3] {
+            e.run(&Command::AddShape {
+                layer,
+                shape: rect(id, id as f64 * 10.0),
+            })
+            .unwrap();
+        }
+        let group = Shape::new(
+            ShapeId(4),
+            ShapeKind::Group {
+                children: vec![rect(5, 0.0), rect(6, 10.0)],
+            },
+        );
+        e.run(&Command::AddShape { layer, shape: group }).unwrap();
+        let order = |e: &crate::Engine| -> Vec<u64> {
+            e.document().pages[0].layers[0]
+                .shapes
+                .iter()
+                .map(|s| s.id.raw())
+                .collect()
+        };
+        assert_eq!(order(&e), vec![1, 2, 3, 4]);
+        // The middle object and the group's second child swap in place.
+        e.run(&Command::ReplaceShapes {
+            replacements: vec![(ShapeId(2), rect(20, 20.0)), (ShapeId(6), rect(60, 10.0))],
+        })
+        .unwrap();
+        assert_eq!(order(&e), vec![1, 20, 3, 4], "the layer order stays");
+        let g = e.document().find_shape(ShapeId(4)).unwrap();
+        let ShapeKind::Group { children } = &g.kind else {
+            panic!("group")
+        };
+        assert_eq!(
+            children.iter().map(|c| c.id.raw()).collect::<Vec<_>>(),
+            vec![5, 60],
+            "the group order stays"
+        );
+        assert!(
+            (children[1].bounds().x0 - 10.0).abs() < 1e-9,
+            "the new child keeps the place"
+        );
+        e.undo();
+        assert_eq!(order(&e), vec![1, 2, 3, 4]);
+        assert!(e
+            .run(&Command::ReplaceShapes {
+                replacements: vec![(ShapeId(99), rect(99, 0.0))],
+            })
+            .is_err());
+        assert_eq!(order(&e), vec![1, 2, 3, 4]);
+    }
+
+    /// Replace Symbol merges one symbol into another: every instance,
+    /// nested in a group or inside another definition, follows; the source
+    /// goes and the indices after it shift; one undo brings it all back.
+    /// A merge into itself, or into a symbol that draws the source, is
+    /// refused.
+    #[test]
+    fn merging_symbols_remaps_instances_and_shifts_indices() {
+        use crate::document::{ShapeKind, Symbol};
+        let rect = |w: f64| {
+            Shape::new(
+                ShapeId(0),
+                ShapeKind::Rect {
+                    rect: Rect::new(0.0, 0.0, w, 5.0),
+                    radius: 0.0,
+                    corners: None,
+                },
+            )
+        };
+        let instance = |id: u64, index: usize| {
+            Shape::new(ShapeId(id), ShapeKind::SymbolInstance { index })
+        };
+        let mut e = crate::Engine::default();
+        let layer = e.document().pages[0].layers[0].id;
+        for (name, w) in [("A", 10.0), ("B", 20.0), ("C", 30.0)] {
+            e.run(&Command::AddSymbol {
+                symbol: Symbol {
+                    name: name.into(),
+                    shape: rect(w),
+                },
+            })
+            .unwrap();
+        }
+        // C's definition draws an instance of A: merging A into C cycles.
+        let c_def = Shape::new(
+            ShapeId(0),
+            ShapeKind::Group {
+                children: vec![rect(30.0), instance(0, 0)],
+            },
+        );
+        e.run(&Command::SetSymbolShape {
+            index: 2,
+            shape: c_def,
+        })
+        .unwrap();
+        e.run(&Command::AddShape {
+            layer,
+            shape: instance(1, 0),
+        })
+        .unwrap();
+        e.run(&Command::AddShape {
+            layer,
+            shape: instance(2, 2),
+        })
+        .unwrap();
+        let nested = Shape::new(
+            ShapeId(3),
+            ShapeKind::Group {
+                children: vec![instance(4, 0)],
+            },
+        );
+        e.run(&Command::AddShape { layer, shape: nested }).unwrap();
+        let index_of = |e: &crate::Engine, id: u64| -> usize {
+            let s = e.document().find_shape(ShapeId(id)).unwrap();
+            let ShapeKind::SymbolInstance { index } = s.kind else {
+                panic!("instance")
+            };
+            index
+        };
+        // Into itself and into C (which draws A) are refused.
+        assert!(e.run(&Command::MergeSymbols { from: 0, to: 0 }).is_err());
+        assert!(e.run(&Command::MergeSymbols { from: 0, to: 2 }).is_err());
+        assert_eq!(e.document().symbols.len(), 3);
+        // A into B: the instances follow, C shifts down a place.
+        e.run(&Command::MergeSymbols { from: 0, to: 1 }).unwrap();
+        let names: Vec<&str> = e.document().symbols.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, vec!["B", "C"]);
+        assert_eq!(index_of(&e, 1), 0, "the plain instance follows B");
+        assert_eq!(index_of(&e, 4), 0, "the nested instance follows B");
+        assert_eq!(index_of(&e, 2), 1, "C shifted down a place");
+        let c = &e.document().symbols[1].shape;
+        let ShapeKind::Group { children } = &c.kind else {
+            panic!("group")
+        };
+        let ShapeKind::SymbolInstance { index } = children[1].kind else {
+            panic!("instance")
+        };
+        assert_eq!(index, 0, "the instance inside C's definition follows too");
+        e.undo();
+        let names: Vec<&str> = e.document().symbols.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, vec!["A", "B", "C"]);
+        assert_eq!(index_of(&e, 1), 0);
+        assert_eq!(index_of(&e, 2), 2);
+        assert_eq!(index_of(&e, 4), 0);
     }
 
     /// Edit Symbol (#1980): a new definition shows in every instance at
