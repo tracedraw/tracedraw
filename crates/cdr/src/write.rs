@@ -1345,12 +1345,63 @@ fn container_xml(doc: &Document, previews: &Previews) -> String {
 }
 
 /// `META-INF/metadata.xml`: the format and the version that wrote the
-/// file (`CoreVersion`, in hundreds) and the title.
+/// file (`CoreVersion`, in hundreds), the title and the document
+/// information (#3411) under the standard XMP properties: author
+/// (`dc:creator`), subject (`dc:description`), keywords (`dc:subject`),
+/// copyright (`dc:rights`), notes (`exif:UserComment`) and rating
+/// (`xmp:Rating`); empty fields are left out.
 fn metadata_xml(v: Ver, doc: &Document) -> String {
+    let md = &doc.metadata;
+    let alt = |tag: &str, value: &str| {
+        format!(
+            "            <{tag}>\n                <rdf:Alt>\n                    <rdf:li xml:lang=\"x-default\">{}</rdf:li>\n                </rdf:Alt>\n            </{tag}>\n",
+            xml_escape(value)
+        )
+    };
+    let list = |tag: &str, kind: &str, values: Vec<&str>| {
+        let mut x = format!("            <{tag}>\n                <rdf:{kind}>\n");
+        for v in values {
+            x.push_str(&format!(
+                "                    <rdf:li>{}</rdf:li>\n",
+                xml_escape(v)
+            ));
+        }
+        x.push_str(&format!("                </rdf:{kind}>\n            </{tag}>\n"));
+        x
+    };
+    let mut info = String::new();
+    let author = md.author.trim();
+    if !author.is_empty() {
+        info.push_str(&list("dc:creator", "Seq", vec![author]));
+    }
+    if !md.subject.trim().is_empty() {
+        info.push_str(&alt("dc:description", md.subject.trim()));
+    }
+    let keywords: Vec<&str> = md
+        .keywords
+        .split([',', ';'])
+        .map(str::trim)
+        .filter(|k| !k.is_empty())
+        .collect();
+    if !keywords.is_empty() {
+        info.push_str(&list("dc:subject", "Bag", keywords));
+    }
+    if !md.copyright.trim().is_empty() {
+        info.push_str(&alt("dc:rights", md.copyright.trim()));
+    }
+    if !md.notes.trim().is_empty() {
+        info.push_str(&alt("exif:UserComment", md.notes.trim()));
+    }
+    if md.rating > 0 {
+        info.push_str(&format!(
+            "            <xmp:Rating>{}</xmp:Rating>\n",
+            md.rating.min(5)
+        ));
+    }
     format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>\n<x:xmpmeta xmlns:x=\"adobe:ns:meta/\">\n    <rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">\n        <rdf:Description rdf:about=\"\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\" xmlns:cdr=\"{METADATA_NS}\">\n            <dc:format>{PACKAGE_MEDIA_TYPE}</dc:format>\n            <cdr:CoreVersion>{}</cdr:CoreVersion>\n            <dc:title>\n                <rdf:Alt>\n                    <rdf:li xml:lang=\"x-default\">{}</rdf:li>\n                </rdf:Alt>\n            </dc:title>\n        </rdf:Description>\n    </rdf:RDF>\n</x:xmpmeta>\n",
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>\n<x:xmpmeta xmlns:x=\"adobe:ns:meta/\">\n    <rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">\n        <rdf:Description rdf:about=\"\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\" xmlns:xmp=\"http://ns.adobe.com/xap/1.0/\" xmlns:exif=\"http://ns.adobe.com/exif/1.0/\" xmlns:cdr=\"{METADATA_NS}\">\n            <dc:format>{PACKAGE_MEDIA_TYPE}</dc:format>\n            <cdr:CoreVersion>{}</cdr:CoreVersion>\n{}{info}        </rdf:Description>\n    </rdf:RDF>\n</x:xmpmeta>\n",
         u32::from(v.0) * 100,
-        xml_escape(&doc.title)
+        alt("dc:title", &doc.title)
     )
 }
 

@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Save and open .cdr: the document information (author, subject, keywords, copyright, notes and rating) goes into the file and is read back from it (#3411).
+- Text: a private-use character missing from its font is no longer looked for in every installed font, which made a drawing in an old symbol font that is not installed take minutes to open on a system with thousands of fonts (#3371).
 - Export EMF: the fill and outline records of each shape carry the shape's bounds, so the file no longer shows up empty when placed in a text document (#3743).
 - Import EPS: shadings stored as resources keep their colours, filters stacked on the file data no longer swallow the image that follows, and the standard dictionaries open with `begin`, so diagonal stripes and gradients come in as drawn instead of flat grey with the pictures missing (#3556).
 - Text > Change Case: with part of a text selected while editing, only the selected letters change; without a selection the whole text changes as before (#3762).

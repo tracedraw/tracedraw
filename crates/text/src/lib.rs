@@ -3972,6 +3972,9 @@ impl FontSystem {
                 }
             }
         }
+        if !searched_in_every_face(c) {
+            return None;
+        }
         let db = self.db();
         let mut any = None;
         for f in db.faces() {
@@ -5991,6 +5994,17 @@ pub fn upright(ch: char) -> bool {
     )
 }
 
+/// Whether a character missing from its own face is looked for in every
+/// font of the system. Not a private-use character (U+E000 to U+F8FF and
+/// the two supplementary private planes): each font puts its own pictures
+/// there, so another font's glyph is never the one meant, and the search
+/// read every font once per such character. A drawing in an old symbol
+/// font that is not installed, whose letters sit in that range, took
+/// minutes to open on a system with thousands of fonts (#3371).
+fn searched_in_every_face(c: char) -> bool {
+    !matches!(c as u32, 0xE000..=0xF8FF | 0xF0000..=0x10FFFF)
+}
+
 /// The tallest metrics among a line's glyphs; `fallback` for a line with
 /// none (a larger first span elsewhere in the paragraph, such as a big
 /// first letter, does not open up the other lines).
@@ -6872,6 +6886,18 @@ fn decoration_rects(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #3371: a private-use character missing from its face is not looked
+    /// for in every installed font; other characters still are.
+    #[test]
+    fn private_use_characters_are_not_searched_in_every_font() {
+        for c in ['\u{E000}', '\u{F041}', '\u{F8FF}', '\u{F0000}', '\u{10FFFD}'] {
+            assert!(!searched_in_every_face(c), "{c:?}");
+        }
+        for c in ['a', '\u{0915}', '\u{D7FF}', '\u{F900}', '\u{1F600}'] {
+            assert!(searched_in_every_face(c), "{c:?}");
+        }
+    }
 
     /// d#2122: a Hebrew file name of two words reads right to left, the
     /// second word left of the first, with Latin and digits kept left to
