@@ -10758,3 +10758,16 @@ shapegen.slice_keep_desc = "Leave the selection in place and add the sliced copy
 shapegen.slice_apply = "Slice Selection"
 shapegen.slice_apply_desc = "Cut the selected objects, text or pictures into the pieces and move each one; each piece is a clip frame you can still edit."
 status.shape_generator_sliced = "Selection sliced"
+
+# Page-range layers
+docker.range_pages = "পরিসরের পৃষ্ঠা" # mt
+docker.range_pages_desc = "নির্বাচিত পৃষ্ঠা পরিসরে ভাগ করা স্তর। স্তর যোগ করতে ডান ক্লিক করুন।" # mt
+docker.new_range_layer = "নতুন পরিসরের স্তর..." # mt
+docker.range_layer_n = "পরিসরের স্তর {n}" # mt
+docker.page_range = "পৃষ্ঠা পরিসর" # mt
+docker.page_range_desc = "পৃষ্ঠার অবস্থান 1 থেকে শুরু। উদাহরণ 1-8, 12, 15-20। ভবিষ্যতের পৃষ্ঠাও বেছে নেওয়া যায়।" # mt
+docker.page_range_invalid = "পৃষ্ঠা নম্বর বা পরিসর লিখুন, যেমন 1-8, 12, 15-20।" # mt
+docker.page_range_matches = "বর্তমান {total} পৃষ্ঠার মধ্যে {n}" # mt
+docker.range_no_current_page = "স্তরের পরিসরের একটি পৃষ্ঠা বাছুন, পৃষ্ঠা যোগ করুন বা পরিসর বদলান।" # mt
+docker.range_name_required = "স্তরের নাম লিখুন।" # mt
+docker.page_range_example = "1-8, 12, 15-20" # mt

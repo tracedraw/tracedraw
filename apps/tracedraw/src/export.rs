@@ -91,11 +91,15 @@ pub(crate) fn export_document(app: &App, st: &ExportState) -> (Document, Rect) {
         }
         // The pages chosen, in the order chosen (#1382).
         let mut tmp = doc.with_spread_overhangs(st.bleed_mm.max(doc.metadata.bleed));
+        let indexes = export_page_indexes(app, st);
+        if tmp.master.iter().any(|l| l.page_range.is_some()) {
+            return (tmp.with_master_layers_on_pages(&indexes), app.page_rect());
+        }
         let mut all: Vec<_> = std::mem::take(&mut tmp.pages)
             .into_iter()
             .map(Some)
             .collect();
-        tmp.pages = export_page_indexes(app, st)
+        tmp.pages = indexes
             .into_iter()
             .filter_map(|i| all.get_mut(i).and_then(Option::take))
             .collect();
@@ -521,14 +525,20 @@ pub(crate) fn cmyk_pixels(
     pid: tracedraw_core::PageId,
     dpi: f64,
 ) -> Option<(u32, u32, Vec<u8>)> {
-    let mut page = doc.page(pid).ok()?.clone();
+    let mut one = if doc.master.iter().any(|l| l.page_range.is_some()) {
+        let index = doc.pages.iter().position(|p| p.id == pid)?;
+        doc.with_master_layers_on_pages(&[index])
+    } else {
+        let mut one = doc.clone();
+        one.pages.retain(|p| p.id == pid);
+        one
+    };
+    let mut page = one.page(pid).ok()?.clone();
     for layer in page.layers.iter_mut() {
         for s in layer.shapes.iter_mut() {
             map_colors(s, &spot_as_cmyk);
         }
     }
-    let mut one = doc.clone();
-    one.pages.retain(|p| p.id == pid);
     let mut out: Option<(u32, u32, Vec<u8>)> = None;
     for ink in 0..4 {
         *one.pages.first_mut()? = plate_page(&page, Plate::Process(ink));
@@ -1786,11 +1796,16 @@ pub fn print_sheets(app: &App, st: &PrintState) -> Document {
         src.with_spread_overhangs(src.metadata.bleed)
     };
     let keep = printed_pages(app, st);
-    let mut i = 0;
-    doc.pages.retain(|_| {
-        i += 1;
-        keep.contains(&(i - 1))
-    });
+    if doc.master.iter().any(|l| l.page_range.is_some()) {
+        let indexes: Vec<_> = (0..doc.pages.len()).filter(|i| keep.contains(i)).collect();
+        doc = doc.with_master_layers_on_pages(&indexes);
+    } else {
+        let mut i = 0;
+        doc.pages.retain(|_| {
+            i += 1;
+            keep.contains(&(i - 1))
+        });
+    }
     // Selection: only the selected objects of the current page (none of
     // the master layers' others, no page background), and the area they
     // cover is the page printed: the layout, the sheet the size of the
@@ -3619,6 +3634,116 @@ mod tests {
     }
 
     use super::*;
+
+    fn range_export_drawing() -> (App, ShapeId) {
+        use tracedraw_core::{Color, Fill, Layer, MasterScope, Page, PageRanges, Shape};
+        let mut doc = Document::new("range book", Size::new(100.0, 200.0));
+        doc.pages[0].name = "1".into();
+        for number in 2..=3 {
+            let page = Page {
+                id: doc.ids_mut().page(),
+                name: number.to_string(),
+                size: Size::new(100.0, 200.0),
+                layers: vec![Layer::new(doc.ids_mut().layer(), "Page")],
+                guides: Vec::new(),
+                background: None,
+            };
+            doc.pages.push(page);
+        }
+        let mut layer = Layer::master(doc.ids_mut().layer(), "Range", MasterScope::All);
+        layer.page_range = Some(PageRanges::parse("2-3").expect("range"));
+        let mut shape = Shape::new(
+            doc.ids_mut().shape(),
+            ShapeKind::Rect {
+                rect: Rect::new(50.0, 1.0, 60.0, 10.0),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        shape.name = Some("range-marker".into());
+        shape.stroke = None;
+        shape.fill = Fill::Solid(Color::rgb8(255, 0, 0));
+        let marker = shape.id;
+        layer.shapes.push(shape);
+        doc.master.push(layer);
+        let mut app = App::headless();
+        app.page = doc.pages[2].id;
+        app.engine = tracedraw_core::Engine::new(doc);
+        (app, marker)
+    }
+
+    fn range_markers(page: &tracedraw_core::Page) -> usize {
+        fn count(shape: &tracedraw_core::Shape) -> usize {
+            usize::from(shape.name.as_deref() == Some("range-marker"))
+                + match &shape.kind {
+                    ShapeKind::Group { children } => children.iter().map(count).sum(),
+                    ShapeKind::ClipFrame { contents, .. } => contents.iter().map(count).sum(),
+                    _ => 0,
+                }
+        }
+        page.layers.iter().flat_map(|l| &l.shapes).map(count).sum()
+    }
+
+    #[test]
+    fn range_layers_keep_their_source_pages_in_reordered_exports() {
+        let (app, _) = range_export_drawing();
+        let state = ExportState {
+            all_pages: true,
+            page_list: true,
+            pages: "3, 1, 2".into(),
+            ..Default::default()
+        };
+        let (out, _) = export_document(&app, &state);
+        assert_eq!(
+            out.pages
+                .iter()
+                .map(|p| p.name.as_str())
+                .collect::<Vec<_>>(),
+            ["3", "1", "2"]
+        );
+        assert_eq!(
+            out.pages.iter().map(range_markers).collect::<Vec<_>>(),
+            [1, 0, 1]
+        );
+        assert!(out.master.is_empty());
+        assert!(app.doc().master[0].page_range.is_some());
+    }
+
+    #[test]
+    fn range_layers_keep_their_source_pages_in_subset_prints() {
+        let (app, marker) = range_export_drawing();
+        let state = PrintState {
+            range: 2,
+            pages: "3, 1".into(),
+            ..Default::default()
+        };
+        let out = print_sheets(&app, &state);
+        assert_eq!(out.pages.len(), 2);
+        assert_eq!(
+            out.pages.iter().map(range_markers).collect::<Vec<_>>(),
+            [0, 1]
+        );
+        let mut app = app;
+        app.selection = vec![marker];
+        let selection = print_sheets(
+            &app,
+            &PrintState {
+                range: 3,
+                ..Default::default()
+            },
+        );
+        assert_eq!(selection.pages.len(), 1);
+        assert_eq!(range_markers(&selection.pages[0]), 1);
+    }
+
+    #[test]
+    fn range_layers_reach_cmyk_subpage_renders() {
+        let (app, _) = range_export_drawing();
+        let (w, h, pixels) =
+            cmyk_pixels(app.doc(), app.doc().pages[1].id, 25.4).expect("CMYK page");
+        let pixel = ((h - 5) * w + 55) as usize * 4;
+        assert!(pixels[pixel..pixel + 4].iter().any(|ink| *ink > 0));
+    }
 
     /// Separations to files: each plate in a document of its own named
     /// after its ink, every sheet on it; the empty ones left out when asked.

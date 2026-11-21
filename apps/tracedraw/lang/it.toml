@@ -10758,3 +10758,16 @@ shapegen.slice_keep_desc = "Leave the selection in place and add the sliced copy
 shapegen.slice_apply = "Slice Selection"
 shapegen.slice_apply_desc = "Cut the selected objects, text or pictures into the pieces and move each one; each piece is a clip frame you can still edit."
 status.shape_generator_sliced = "Selection sliced"
+
+# Page-range layers
+docker.range_pages = "Pagine per intervallo" # mt
+docker.range_pages_desc = "Livelli condivisi negli intervalli scelti. Clic destro per aggiungere un livello." # mt
+docker.new_range_layer = "Nuovo livello per intervallo..." # mt
+docker.range_layer_n = "Livello per intervallo {n}" # mt
+docker.page_range = "Intervallo di pagine" # mt
+docker.page_range_desc = "Usare posizioni da 1. Esempi 1-8, 12, 15-20. Sono ammesse pagine future." # mt
+docker.page_range_invalid = "Inserire numeri o intervalli, per esempio 1-8, 12, 15-20." # mt
+docker.page_range_matches = "{n} di {total} pagine attuali" # mt
+docker.range_no_current_page = "Scegliere una pagina dell'intervallo, aggiungere pagine o modificare l'intervallo." # mt
+docker.range_name_required = "Inserire un nome per il livello." # mt
+docker.page_range_example = "1-8, 12, 15-20" # mt

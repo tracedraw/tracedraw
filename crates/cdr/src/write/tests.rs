@@ -4,6 +4,8 @@ use tracedraw_core::{
     geometry::Size,
 };
 
+mod page_range_tests;
+
 fn doc_with(shapes: Vec<Shape>) -> Document {
     let mut doc = Document::new("w", Size::new(200.0, 100.0));
     doc.pages[0].layers[0].name = "Ink".into();

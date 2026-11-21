@@ -10758,3 +10758,16 @@ shapegen.slice_keep_desc = "Leave the selection in place and add the sliced copy
 shapegen.slice_apply = "Slice Selection"
 shapegen.slice_apply_desc = "Cut the selected objects, text or pictures into the pieces and move each one; each piece is a clip frame you can still edit."
 status.shape_generator_sliced = "Selection sliced"
+
+# Page-range layers
+docker.range_pages = "Bereichsseiten" # mt
+docker.range_pages_desc = "Gemeinsame Ebenen für ausgewählte Seitenbereiche. Rechtsklick zum Hinzufügen." # mt
+docker.new_range_layer = "Neue Bereichsebene..." # mt
+docker.range_layer_n = "Bereichsebene {n}" # mt
+docker.page_range = "Seitenbereich" # mt
+docker.page_range_desc = "Seitenpositionen ab 1 verwenden. Beispiele 1-8, 12, 15-20. Zukünftige Seiten sind erlaubt." # mt
+docker.page_range_invalid = "Seitennummern oder Bereiche eingeben, etwa 1-8, 12, 15-20." # mt
+docker.page_range_matches = "{n} von {total} vorhandenen Seiten" # mt
+docker.range_no_current_page = "Eine Seite im Ebenenbereich wählen, Seiten hinzufügen oder den Bereich ändern." # mt
+docker.range_name_required = "Einen Ebenennamen eingeben." # mt
+docker.page_range_example = "1-8, 12, 15-20" # mt
