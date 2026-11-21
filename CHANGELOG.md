@@ -277,6 +277,14 @@ full, row-by-row status.
 - While a text is being typed, the commands and tools given a function key in Options > Customization > Commands, F13 to F24 of large keyboards among them, or a Ctrl key the typing does not use, now run; the typing swallowed those keys (#3251).
 - Alt pressed and let go alone lights the menu bar on Windows too, where Alt arrives as a key press of its own after the change of the modifiers.
 - Full-screen preview (F9) fills the display at the current canvas's centre and zoom, revealing the surrounding drawing in the extra screen area. It fitted the page and every object together, shrinking the visible drawing to include distant objects, and left the window's title bar showing. Esc, F9 or a click restores the previous window state and editing view; the exit hint hides after 1.5 seconds.
+- Options > Customization > Context Menus lets you show, hide and reorder
+  operations independently in 32 right-click menu locations. Expand submenus
+  to see their children, then drag a handle or use Move Up and Move Down to
+  reorder items at the same level. Parent menus move with their children.
+  Search keeps the parent path visible. Restore one or all menus to reset
+  visibility and order. OK saves the choices; Cancel restores the choices
+  from when Options opened. The settings page fits narrow desktop windows.
+  Main menus, shortcuts and command search keep their commands.
 - Lens docker: Apply with Frozen keeps what the lens shows, as a picture inside the object, and the object keeps that look when moved. It used to drop the lens, and the object went back to its own colour (#3097).
 - Pictures of a page made by a macro (Document.ExportBitmap, Export), by Print as bitmap and by `tracedraw-cli convert` to PNG fill every pixel, as File > Export has since 0.48.0: they still had a light line along the top and right edge when the page was not a whole number of pixels at the resolution (#2866).
 - `.cdr` (version 16 and later): a fountain transparency whose nodes are not stored as greys, or whose nodes the object's style does not list, opens graded instead of solid or evenly see-through (#3095).

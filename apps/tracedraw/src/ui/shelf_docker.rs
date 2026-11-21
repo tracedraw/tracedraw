@@ -213,24 +213,37 @@ fn tile(app: &mut App, ui: &mut Ui, uid: u64, name: &str, budget: &mut usize) ->
         ghost(app, ui, texture.as_ref(), frame.size());
     }
     let released = resp.drag_stopped() && app.shelf.dragging == Some(uid);
-    egui::Popup::context_menu(&resp)
-        .id(egui::Id::new(("shelf_item_menu", uid)))
-        .style(crate::ui::menus::menu_popup_style)
-        .show(|ui| {
-            crate::ui::menus::body(ui, |ui| {
-                if crate::ui::menus::item(ui, "shelf.place", "", true) {
-                    app.shelf_place(uid, None);
+    crate::ui::context_menus::filter_popup(
+        egui::Popup::context_menu(&resp)
+            .id(egui::Id::new(("shelf_item_menu", uid)))
+            .style(crate::ui::menus::menu_popup_style),
+        &app.settings.context_menus,
+        "shelf",
+    )
+    .show(|ui| {
+        let _menu = crate::ui::context_menus::Scope::new(&app.settings.context_menus, "shelf");
+        crate::ui::menus::body(ui, |ui| {
+            crate::ui::context_menu_filter::ordered_menu! { ui;
+                "shelf.place" => {
+                    if crate::ui::menus::item(ui, "shelf.place", "", true) {
+                        app.shelf_place(uid, None);
+                    }
+                },
+                "shelf.rename" => {
+                    if crate::ui::menus::item(ui, "shelf.rename", "", true) {
+                        app.shelf.selected = Some(uid);
+                        app.shelf.renaming = Some((uid, name.to_string()));
+                    }
+                },
+                "shelf.remove" => {
+                    crate::ui::menus::sep(ui);
+                    if crate::ui::menus::item(ui, "shelf.remove", "", true) {
+                        ask_to_remove(app, uid);
+                    }
                 }
-                if crate::ui::menus::item(ui, "shelf.rename", "", true) {
-                    app.shelf.selected = Some(uid);
-                    app.shelf.renaming = Some((uid, name.to_string()));
-                }
-                crate::ui::menus::sep(ui);
-                if crate::ui::menus::item(ui, "shelf.remove", "", true) {
-                    ask_to_remove(app, uid);
-                }
-            })
-        });
+            }
+        })
+    });
     (rect, released)
 }
 
