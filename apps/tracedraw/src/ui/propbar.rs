@@ -20,7 +20,7 @@ pub const BAR_H: f32 = 37.0;
 const ROW: f32 = 19.0;
 /// A property bar button's side: 28 px at the medium button size, with
 /// a [`Tokens::prop_icon`] icon.
-fn btn() -> f32 {
+pub(crate) fn btn() -> f32 {
     crate::theme::Tokens::prop_button()
 }
 

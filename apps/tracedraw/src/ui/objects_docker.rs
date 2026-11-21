@@ -176,7 +176,21 @@ enum Look {
 pub fn object_label(s: &Shape) -> String {
     match s.name.as_deref().map(str::trim) {
         Some(n) if !n.is_empty() => n.to_string(),
-        _ => crate::ui::dockers::tagged_kind(s, kind_name(&s.kind)),
+        _ => {
+            let kind = match &s.kind {
+                // A bitmap shows its colour mode too, as in the status
+                // bar (#3557).
+                k @ ShapeKind::Bitmap { png, .. } => trf(
+                    "status.bitmap_mode",
+                    &[
+                        ("k", &kind_name(k)),
+                        ("mode", &tr(crate::bitmap_fx::mode_key(s.cmyk_bitmap, png))),
+                    ],
+                ),
+                k => kind_name(k),
+            };
+            crate::ui::dockers::tagged_kind(s, kind)
+        }
     }
 }
 
@@ -3102,6 +3116,33 @@ pub(crate) mod tests {
         assert_eq!(object_label(&s), "Water");
         s.name = Some("   ".into());
         assert_eq!(object_label(&s), "Rectangle");
+    }
+
+    /// A bitmap's row names its colour mode, as the status bar does
+    /// (#3557); a name still wins.
+    #[test]
+    fn a_bitmap_row_shows_its_colour_mode() {
+        crate::i18n::set_language("en");
+        let png = {
+            let mut pm = tiny_skia::Pixmap::new(1, 1).expect("pixmap");
+            pm.fill(tiny_skia::Color::WHITE);
+            pm.encode_png().expect("png")
+        };
+        let mut s = Shape::new(
+            ShapeId(1),
+            ShapeKind::Bitmap {
+                rect: tracedraw_core::geometry::Rect::new(0.0, 0.0, 10.0, 10.0),
+                width_px: 1,
+                height_px: 1,
+                png: png.into(),
+                fx: None,
+            },
+        );
+        assert_eq!(object_label(&s), "Bitmap 1 x 1 px (RGB)");
+        s.cmyk_bitmap = true;
+        assert_eq!(object_label(&s), "Bitmap 1 x 1 px (CMYK)");
+        s.name = Some("Photo".into());
+        assert_eq!(object_label(&s), "Photo");
     }
 
     /// Each object's row has its own eye and padlock: a click hides or

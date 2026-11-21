@@ -157,6 +157,19 @@ pub fn encode_gray(img: &RgbaImage) -> Option<Vec<u8>> {
     Some(buf.into_inner())
 }
 
+/// The language key of a bitmap's colour mode name, as the status bar
+/// and the Objects docker show it.
+pub fn mode_key(cmyk: bool, png: &[u8]) -> &'static str {
+    match mode_of(cmyk, png) {
+        ColorMode::Cmyk => "convert_colors.cmyk",
+        ColorMode::Grayscale => "convert_colors.gray",
+        ColorMode::Paletted => "dialog.convert_mode_paletted",
+        ColorMode::Lab => "convert_colors.lab",
+        ColorMode::BlackWhite => "dialog.convert_mode_bw",
+        ColorMode::Rgb => "convert_colors.rgb",
+    }
+}
+
 /// The colour mode a bitmap is in: CMYK when marked so, black and white
 /// when its PNG is 1-bit (or marked so), grayscale when its PNG holds
 /// one grey channel, indexed when it holds a palette, Lab

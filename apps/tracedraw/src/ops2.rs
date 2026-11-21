@@ -3877,6 +3877,52 @@ impl App {
         }
     }
 
+    /// The vertical alignment the text property bar shows (#3543): that
+    /// of the first paragraph text in a frame among the text being edited
+    /// or the selected texts; `None` with no such text.
+    pub fn frame_text_vertical_align(&self) -> Option<tracedraw_core::VerticalAlign> {
+        self.hyphenation_targets().iter().find_map(|id| {
+            match &self.doc().find_shape(*id)?.kind {
+                ShapeKind::Text {
+                    frame: Some(_),
+                    para,
+                    ..
+                } => Some(para.vertical_align),
+                _ => None,
+            }
+        })
+    }
+
+    /// Set the vertical alignment in the frame of the text being edited,
+    /// or of every selected paragraph text, from the text property bar
+    /// (#3543), as the Text docker does for one text. One undo step.
+    pub fn set_frame_text_vertical_align(&mut self, v: tracedraw_core::VerticalAlign) {
+        let mut cmds = Vec::new();
+        for id in self.hyphenation_targets() {
+            let Some(s) = self.doc().find_shape(id) else {
+                continue;
+            };
+            let mut kind = s.kind.clone();
+            if let ShapeKind::Text {
+                frame: Some(_),
+                para,
+                ..
+            } = &mut kind
+            {
+                if para.vertical_align != v {
+                    para.vertical_align = v;
+                    cmds.push(Command::SetShapeKind { shape: id, kind });
+                }
+            }
+        }
+        if cmds.is_empty() {
+            return;
+        }
+        if let Err(e) = self.engine.run_batch("Vertical Alignment", &cmds) {
+            self.status = format!("Vertical Alignment: {e}");
+        }
+    }
+
     /// The texts Text > Use Hyphenation acts on: the one being edited,
     /// else the selected ones.
     fn hyphenation_targets(&self) -> Vec<ShapeId> {
@@ -5033,6 +5079,71 @@ impl App {
         let mut colors = Vec::new();
         Self::colors_of(&self.selected_shapes(), &mut colors);
         self.add_colors_to_palette(i, &colors)
+    }
+
+    /// Every colour of the selected objects (fills, outlines, gradient
+    /// stops, at any depth inside groups) changed to the nearest colour
+    /// of palette `i`, one undo step (#3534): a design moved from one
+    /// palette to another. The registration colour stays. False when
+    /// nothing changed.
+    pub fn fit_selection_to_palette(&mut self, i: usize) -> bool {
+        if !self.has_document() || self.selection.is_empty() {
+            return false;
+        }
+        let Some(targets) = self.palettes.get(i).map(|p| {
+            p.colors
+                .iter()
+                .map(|(_, c)| *c)
+                .filter(|c| *c != Color::Registration)
+                .collect::<Vec<_>>()
+        }) else {
+            return false;
+        };
+        if targets.is_empty() {
+            return false;
+        }
+        let nearest = |c: Color| -> Color {
+            targets
+                .iter()
+                .copied()
+                .min_by(|a, b| c.delta_e(*a).total_cmp(&c.delta_e(*b)))
+                .unwrap_or(c)
+        };
+        let used = std::cell::RefCell::new(Vec::<Color>::new());
+        for s in self.selected_shapes() {
+            let mut s = s.clone();
+            tracedraw_core::color_convert::map_shape_colors(&mut s, &|c| {
+                let mut u = used.borrow_mut();
+                if !u.contains(&c) {
+                    u.push(c);
+                }
+                c
+            });
+        }
+        let pairs: Vec<(Color, Color)> = used
+            .into_inner()
+            .into_iter()
+            .filter(|c| *c != Color::Registration)
+            .map(|c| (c, nearest(c)))
+            .filter(|(a, b)| a != b)
+            .collect();
+        if pairs.is_empty() {
+            self.status = tr("palette.fit_selection_none");
+            return false;
+        }
+        let shapes = self.selection.clone();
+        if let Err(e) = self.engine.run_batch(
+            "Fit Colors to Palette",
+            &[Command::ReplaceColors {
+                pairs: pairs.clone(),
+                shapes,
+            }],
+        ) {
+            self.status = e.to_string();
+            return false;
+        }
+        self.status = trf("palette.fit_selection_done", &[("n", &pairs.len().to_string())]);
+        true
     }
 
     /// Keep the palettes made in TraceDraw (no file behind them) in the
@@ -6488,6 +6599,92 @@ mod tests {
         assert_eq!(c[3], 255);
         app.undo();
         assert!(app.doc().find_shape(blue).is_some());
+    }
+
+    /// #3543: the text property bar's vertical alignment sets it in the
+    /// frame of every selected paragraph text in one undo step; artistic
+    /// text has none to show.
+    #[test]
+    fn the_text_bar_sets_the_vertical_alignment_of_paragraph_text() {
+        use tracedraw_core::VerticalAlign;
+        let mut app = App::headless();
+        let text = |app: &mut App, frame: Option<tracedraw_core::Size>| {
+            app.new_shape(ShapeKind::Text {
+                spans: vec![tracedraw_core::TextSpan::new("lorem ipsum", "DejaVu Sans", 10.0)],
+                origin: kurbo::Point::new(20.0, 150.0),
+                frame,
+                align: tracedraw_core::TextAlign::Left,
+                para: Default::default(),
+                on_path: None,
+            })
+            .expect("text")
+        };
+        let artistic = text(&mut app, None);
+        app.select(vec![artistic]);
+        assert_eq!(app.frame_text_vertical_align(), None);
+        let a = text(&mut app, Some(tracedraw_core::Size::new(100.0, 60.0)));
+        let b = text(&mut app, Some(tracedraw_core::Size::new(80.0, 40.0)));
+        app.select(vec![artistic, a, b]);
+        assert_eq!(app.frame_text_vertical_align(), Some(VerticalAlign::Top));
+        let steps = app.engine.history_labels().0.len();
+        app.set_frame_text_vertical_align(VerticalAlign::Bottom);
+        assert_eq!(app.engine.history_labels().0.len(), steps + 1);
+        let valign = |app: &App, id| match &app.doc().find_shape(id).expect("text").kind {
+            ShapeKind::Text { para, .. } => para.vertical_align,
+            _ => unreachable!(),
+        };
+        assert_eq!((valign(&app, a), valign(&app, b)), (VerticalAlign::Bottom, VerticalAlign::Bottom));
+        assert_eq!(app.frame_text_vertical_align(), Some(VerticalAlign::Bottom));
+        app.undo();
+        assert_eq!(valign(&app, a), VerticalAlign::Top);
+    }
+
+    /// A palette bar changes the selected objects' colours to its nearest
+    /// ones, inside groups too, one undo step; other objects keep theirs
+    /// (#3534).
+    #[test]
+    fn the_selection_moves_to_the_nearest_colours_of_a_palette() {
+        let mut app = App::headless();
+        let rect = |app: &mut App, x: f64| {
+            app.new_shape(ShapeKind::Rect {
+                rect: kurbo::Rect::new(x, 0.0, x + 10.0, 10.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect")
+        };
+        let a = rect(&mut app, 0.0);
+        let b = rect(&mut app, 20.0);
+        let c = rect(&mut app, 40.0);
+        app.select(vec![a]);
+        app.apply_fill(Fill::Solid(Color::rgb8(250, 10, 10)));
+        app.select(vec![b]);
+        app.apply_fill(Fill::Solid(Color::rgb8(10, 10, 240)));
+        app.select(vec![c]);
+        app.apply_fill(Fill::Solid(Color::rgb8(250, 10, 10)));
+        app.select(vec![a, b]);
+        app.group_selection();
+        let red = Color::rgb8(255, 0, 0);
+        let blue = Color::rgb8(0, 0, 255);
+        app.palettes.push(crate::palette::Palette {
+            name: "Two".into(),
+            key: "",
+            colors: vec![("Red".into(), red), ("Blue".into(), blue)],
+            builtin: false,
+            path: None,
+        });
+        let i = app.palettes.len() - 1;
+        let steps = app.engine.history_labels().0.len();
+        assert!(app.fit_selection_to_palette(i));
+        assert_eq!(app.engine.history_labels().0.len(), steps + 1);
+        let fill = |app: &App, id| app.doc().find_shape(id).expect("shape").fill.clone();
+        assert_eq!(fill(&app, a), Fill::Solid(red));
+        assert_eq!(fill(&app, b), Fill::Solid(blue));
+        assert_eq!(fill(&app, c), Fill::Solid(Color::rgb8(250, 10, 10)));
+        // Already in the palette: nothing to change.
+        assert!(!app.fit_selection_to_palette(i));
+        app.undo();
+        assert_eq!(fill(&app, a), Fill::Solid(Color::rgb8(250, 10, 10)));
     }
 
     fn symbol_of(app: &mut App, rect: kurbo::Rect) -> ShapeId {

@@ -115,3 +115,8 @@ que objetos sobrepostos se cortam, arrastando sobre elas.
 Segure <kbd>Alt</kbd> ao arrastar para remover as partes: elas são
 recortadas e nada novo é criado. Um clique numa parte a torna um objeto à
 parte. Os objetos continuam selecionados, com o novo, para seguir montando.
+
+Marque **Usar linhas-guia** na barra de propriedades para que as
+linhas-guia visíveis na página também cortem os objetos em partes, como
+se cada uma fosse uma linha traçada sobre eles. As linhas-guia ficam onde
+estão. Vem desligado.

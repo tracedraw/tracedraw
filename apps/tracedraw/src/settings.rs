@@ -1435,6 +1435,10 @@ pub struct PalettePrefs {
     /// title left out): its rows or columns flow from it (see
     /// `ui::palette::floating_flow`).
     pub float_size: [f32; 2],
+    /// The colours' names beside their swatches in the palette opened
+    /// out by a strip's double arrow, a scrolling list (#3512). Off by
+    /// default: the swatches in a grid.
+    pub show_names: bool,
 }
 
 /// The most rows (or columns) a docked palette bar shows.
@@ -1648,6 +1652,7 @@ impl Default for PalettePrefs {
             swatch_size: SWATCH_DEFAULT,
             document_swatch_size: 0,
             float_size: FLOAT_SIZE,
+            show_names: false,
         }
     }
 }

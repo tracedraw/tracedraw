@@ -412,6 +412,10 @@ pub enum Command {
     /// objects follow a colour style that changes (#778).
     ReplaceColors {
         pairs: Vec<(crate::Color, crate::Color)>,
+        /// Only these objects (any depth inside them); empty: the whole
+        /// drawing (#3534).
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        shapes: Vec<ShapeId>,
     },
     /// Move `shapes` directly in front of (or behind) `reference` in its layer.
     OrderRelative {
@@ -1371,8 +1375,15 @@ impl Command {
             Command::ReplaceFontFamily { from, to } => {
                 doc.replace_font_family(from, to);
             }
-            Command::ReplaceColors { pairs } => {
-                crate::color_convert::replace_colors(doc, pairs);
+            Command::ReplaceColors { pairs, shapes } => {
+                if shapes.is_empty() {
+                    crate::color_convert::replace_colors(doc, pairs);
+                } else {
+                    for id in shapes {
+                        any(doc, *id)?;
+                    }
+                    crate::color_convert::replace_colors_in(doc, shapes, pairs);
+                }
             }
             Command::OrderRelative {
                 shapes,
