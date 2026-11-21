@@ -2077,6 +2077,36 @@ pub struct ParagraphStyle {
     /// [`crate::text_flow`]); not saved.
     #[serde(skip)]
     pub flow: crate::text_flow::FrameFlow,
+    /// Which bullets this text draws when it is one part of a text drawn
+    /// in parts ([`Shape::text_parts`], #3682); `None` (a whole text):
+    /// every bullet, in its paragraph's first letter's look. Set only on
+    /// the parts, never in a drawing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bullet_part: Option<BulletPart>,
+}
+
+/// The bullets a part of a text drawn in parts draws (#3682).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum BulletPart {
+    /// The characters' part: bullets without a colour of their own, with
+    /// the paragraph's first letter.
+    Text,
+    /// Only the bullets of this colour of their own, no characters.
+    Color(crate::Color),
+}
+
+impl BulletPart {
+    /// Whether a bullet of `own` colour (`None`: none of its own) whose
+    /// paragraph's first letter is drawn (`letter_drawn`) is drawn in
+    /// this part (`None`: a whole text).
+    pub fn draws(part: Option<BulletPart>, own: Option<crate::Color>, letter_drawn: bool) -> bool {
+        match (part, own) {
+            (None, _) | (Some(BulletPart::Text), None) => letter_drawn,
+            (Some(BulletPart::Text), Some(_)) => false,
+            (Some(BulletPart::Color(c)), Some(o)) => c == o,
+            (Some(BulletPart::Color(_)), None) => false,
+        }
+    }
 }
 
 /// The distance between the default tab stops of a paragraph with no
@@ -2356,6 +2386,7 @@ impl Default for ParagraphStyle {
             vertical_columns: VerticalColumns::RightToLeft,
             direction: TextDirection::LeftToRight,
             frame_fill: None,
+            bullet_part: None,
             flow: crate::text_flow::FrameFlow::default(),
         }
     }
@@ -2533,7 +2564,40 @@ pub struct BulletStyle {
     /// the bullet standing out on its own. On: they go back to the left
     /// indent, under the bullet.
     pub no_hanging: bool,
+    /// The bullet's or number's own colour; `None` = the colour of the
+    /// paragraph's first letter (#3682).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color: Option<crate::Color>,
+    /// The bullet's or number's own bold and italic; `None` = as the
+    /// paragraph's first letter (#3682).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bold: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub italic: Option<bool>,
+    /// The list level, 0 for the top: each level is set in by
+    /// `level_indent` and numbers on its own, starting again under each
+    /// paragraph of the level above (#3685).
+    #[serde(skip_serializing_if = "is_zero_u32")]
+    pub level: u32,
+    /// How far each list level is set in, mm (#3685).
+    pub level_indent: f64,
+    /// This paragraph's number starts again at `start`, though the
+    /// paragraph before it is numbered on the same level (#3685).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub restart: bool,
+    /// After paragraphs without bullets, this paragraph's number goes on
+    /// from the last number given on its level instead of starting again
+    /// (#3685).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub continue_list: bool,
 }
+
+fn is_zero_u32(v: &u32) -> bool {
+    *v == 0
+}
+
+/// The deepest list level a bullet can have (#3685).
+pub const MAX_LIST_LEVEL: u32 = 20;
 
 impl Default for BulletStyle {
     fn default() -> Self {
@@ -2547,6 +2611,13 @@ impl Default for BulletStyle {
             baseline_shift: 0.0,
             offset: 0.0,
             no_hanging: false,
+            color: None,
+            bold: None,
+            italic: None,
+            level: 0,
+            level_indent: 6.35,
+            restart: false,
+            continue_list: false,
         }
     }
 }
@@ -2555,6 +2626,52 @@ impl BulletStyle {
     /// Nothing beyond the plain symbol bullet: not written to files.
     pub fn is_plain(&self) -> bool {
         *self == BulletStyle::default()
+    }
+
+    /// How far the bullet sits past the left indent: its distance from
+    /// the frame plus its list level's indent (#3685), mm.
+    pub fn lead(&self) -> f64 {
+        let step = if self.level_indent.is_finite() {
+            self.level_indent.max(0.0)
+        } else {
+            0.0
+        };
+        self.offset.max(0.0) + self.level.min(MAX_LIST_LEVEL) as f64 * step
+    }
+
+    /// One list level deeper (`deeper`) or higher (#3685). A number takes
+    /// the next numbering of 1, a, i and a symbol the next of the plain
+    /// bullets, so each level shows apart; `symbol` is the paragraph's
+    /// bullet character. False when the level does not change.
+    pub fn change_level(&mut self, symbol: &mut String, deeper: bool) -> bool {
+        let level = if deeper {
+            (self.level + 1).min(MAX_LIST_LEVEL)
+        } else {
+            self.level.saturating_sub(1)
+        };
+        if level == self.level {
+            return false;
+        }
+        self.level = level;
+        const NUMBERS: [Numbering; 3] = [
+            Numbering::Arabic,
+            Numbering::LowerAlpha,
+            Numbering::LowerRoman,
+        ];
+        const SYMBOLS: [&str; 3] = ["\u{2022}", "\u{25E6}", "\u{25AA}"];
+        let step = |at: usize, n: usize| {
+            if deeper {
+                (at + 1) % n
+            } else {
+                (at + n - 1) % n
+            }
+        };
+        if let Some(at) = NUMBERS.iter().position(|k| *k == self.numbering) {
+            self.numbering = NUMBERS[step(at, NUMBERS.len())];
+        } else if let Some(at) = SYMBOLS.iter().position(|c| c == symbol) {
+            *symbol = SYMBOLS[step(at, SYMBOLS.len())].to_string();
+        }
+        true
     }
 
     /// What the bullet of a paragraph numbered `n` shows: `symbol` or
@@ -2570,19 +2687,43 @@ impl BulletStyle {
 /// The number of each paragraph's bullet, given whether each has bullets
 /// and how it is set: the first of a run of numbered paragraphs takes its
 /// start, the next ones count on; a paragraph without bullets, or with a
-/// symbol, ends the run (#1443).
+/// symbol, ends the run (#1443). Each list level counts on its own: a
+/// paragraph ends the runs of the levels below it, so a sub-list starts
+/// again under each paragraph above it. `restart` starts a paragraph at
+/// its start within a run, and `continue_list` goes on from the last
+/// number of its level after paragraphs without bullets (#3685).
 pub fn bullet_numbers<'a>(paras: impl IntoIterator<Item = (bool, &'a BulletStyle)>) -> Vec<u32> {
     let mut out = Vec::new();
-    let mut next: Option<u32> = None;
+    // The number last given on each level in the current run, and the
+    // last ever given on each level.
+    let mut run: Vec<Option<u32>> = Vec::new();
+    let mut last: Vec<Option<u32>> = Vec::new();
     for (on, b) in paras {
-        if !on || b.numbering == Numbering::Symbol {
-            next = None;
+        if !on {
+            run.clear();
             out.push(0);
             continue;
         }
-        let n = next.unwrap_or(b.start.max(1));
+        let level = b.level.min(MAX_LIST_LEVEL) as usize;
+        run.resize(level + 1, None);
+        if last.len() <= level {
+            last.resize(level + 1, None);
+        }
+        if b.numbering == Numbering::Symbol {
+            run[level] = None;
+            out.push(0);
+            continue;
+        }
+        let start = b.start.max(1);
+        let n = match run[level] {
+            _ if b.restart => start,
+            Some(n) => n + 1,
+            None if b.continue_list => last[level].map_or(start, |n| n + 1),
+            None => start,
+        };
+        run[level] = Some(n);
+        last[level] = Some(n);
         out.push(n);
-        next = Some(n + 1);
     }
     out
 }
@@ -3734,11 +3875,33 @@ impl Shape {
     /// other shapes and for text whose characters all take the object's
     /// fill, outline and overprint.
     pub fn text_parts(&self) -> Option<Vec<Shape>> {
-        let ShapeKind::Text { spans, .. } = &self.kind else {
+        let ShapeKind::Text {
+            spans, align, para, ..
+        } = &self.kind
+        else {
             return None;
         };
-        if spans.iter().any(|s| s.layout_only)
-            || spans.iter().all(|s| {
+        if spans.iter().any(|s| s.layout_only) || para.bullet_part.is_some() {
+            return None;
+        }
+        // Bullets and numbers of a colour of their own: each colour is a
+        // part of its own (#3682).
+        let mut bullet_colors: Vec<crate::Color> = Vec::new();
+        let styled = spans.iter().any(|s| s.paragraph.is_some());
+        let styles = if styled {
+            crate::paragraphs::paragraph_styles(spans, *align, para)
+        } else {
+            vec![(*align, para.clone())]
+        };
+        for (_, ps) in &styles {
+            if let (true, Some(c)) = (ps.bullets, ps.bullet.color) {
+                if !bullet_colors.contains(&c) {
+                    bullet_colors.push(c);
+                }
+            }
+        }
+        if bullet_colors.is_empty()
+            && spans.iter().all(|s| {
                 s.fill.is_none()
                     && s.outline.is_none()
                     && s.overprint_fill.is_none_or(|o| o == self.overprint_fill)
@@ -3748,6 +3911,7 @@ impl Shape {
         {
             return None;
         }
+        let bullet_part = (!bullet_colors.is_empty()).then_some(BulletPart::Text);
         let look = |s: &TextSpan| -> TextLook {
             let fill = s.fill.clone().unwrap_or_else(|| self.fill.clone());
             let stroke = match &s.outline {
@@ -3769,7 +3933,7 @@ impl Shape {
                 looks.push(l);
             }
         }
-        let parts = looks
+        let mut parts = looks
             .into_iter()
             .enumerate()
             .map(|(i, l)| {
@@ -3784,6 +3948,7 @@ impl Shape {
                         s.overprint_outline = None;
                     }
                     para.frame_fill = None;
+                    para.bullet_part = bullet_part;
                 }
                 part.fill = l.fill;
                 part.stroke = l.stroke;
@@ -3794,7 +3959,25 @@ impl Shape {
                 }
                 part
             })
-            .collect();
+            .collect::<Vec<_>>();
+        for c in bullet_colors {
+            let mut part = self.clone();
+            if let ShapeKind::Text { spans, para, .. } = &mut part.kind {
+                for s in spans.iter_mut() {
+                    s.layout_only = true;
+                    s.background = None;
+                    s.fill = None;
+                    s.outline = None;
+                    s.overprint_fill = None;
+                    s.overprint_outline = None;
+                }
+                para.frame_fill = None;
+                para.bullet_part = Some(BulletPart::Color(c));
+            }
+            part.fill = Fill::Solid(c);
+            part.shadow = None;
+            parts.push(part);
+        }
         Some(parts)
     }
 
@@ -8083,6 +8266,75 @@ mod tests {
         assert_eq!(n, vec![3, 4, 0, 3, 0, 3]);
     }
 
+    /// List levels (#3685): each level counts on its own and starts again
+    /// under each paragraph above it; Restart starts again within a run,
+    /// Continue goes on after paragraphs without bullets; one level
+    /// deeper sets the bullet in and takes the next numbering or symbol.
+    #[test]
+    fn list_levels_number_on_their_own() {
+        use super::{bullet_numbers, BulletStyle, Numbering, MAX_LIST_LEVEL};
+        let top = BulletStyle {
+            numbering: Numbering::Arabic,
+            ..Default::default()
+        };
+        let sub = BulletStyle {
+            level: 1,
+            numbering: Numbering::LowerAlpha,
+            ..Default::default()
+        };
+        let restart = BulletStyle {
+            restart: true,
+            ..top.clone()
+        };
+        let cont = BulletStyle {
+            continue_list: true,
+            ..top.clone()
+        };
+        let n = bullet_numbers([
+            (true, &top),
+            (true, &sub),
+            (true, &sub),
+            (true, &top),
+            (true, &sub),
+            (true, &top),
+            (true, &restart),
+            (false, &top),
+            (true, &cont),
+            (false, &top),
+            (true, &top),
+        ]);
+        assert_eq!(n, vec![1, 1, 2, 2, 1, 3, 1, 0, 2, 0, 1]);
+        assert_eq!(sub.label("", 2), "b.");
+        // Set in by the level's indent, past the bullet's offset.
+        let deep = BulletStyle {
+            offset: 2.0,
+            level: 2,
+            level_indent: 5.0,
+            ..Default::default()
+        };
+        assert_eq!(deep.lead(), 12.0);
+        assert_eq!(BulletStyle::default().lead(), 0.0);
+        // Deeper and higher.
+        let mut b = top.clone();
+        let mut sym = String::from("1");
+        assert!(b.change_level(&mut sym, true));
+        assert_eq!((b.level, b.numbering), (1, Numbering::LowerAlpha));
+        assert!(b.change_level(&mut sym, true));
+        assert_eq!((b.level, b.numbering), (2, Numbering::LowerRoman));
+        assert!(b.change_level(&mut sym, false));
+        assert_eq!((b.level, b.numbering), (1, Numbering::LowerAlpha));
+        let mut s = BulletStyle::default();
+        let mut dot = String::from("\u{2022}");
+        assert!(s.change_level(&mut dot, true));
+        assert_eq!(dot, "\u{25E6}");
+        assert!(s.change_level(&mut dot, false));
+        assert_eq!(dot, "\u{2022}");
+        assert!(!s.change_level(&mut dot, false), "already at the top");
+        s.level = MAX_LIST_LEVEL;
+        assert!(!s.change_level(&mut dot, true), "already at the deepest");
+        assert!(!s.is_plain());
+    }
+
     /// Columns of their own widths share the frame in proportion and
     /// turn round right to left (#2192); equal columns stay as they were.
     #[test]
@@ -10862,6 +11114,60 @@ mod tests {
             },
         );
         assert!(rect.text_parts().is_none());
+    }
+
+    /// A bullet of its own colour (#3682) is drawn in a part of its own,
+    /// which draws no characters, and the characters' part leaves it out.
+    #[test]
+    fn bullets_of_their_own_colour_are_a_part_of_their_own() {
+        use crate::color::Color;
+        let red = Color::rgb8(255, 0, 0);
+        let para = ParagraphStyle {
+            bullets: true,
+            bullet: BulletStyle {
+                color: Some(red),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut shape = Shape::new(
+            ShapeId(1),
+            ShapeKind::Text {
+                spans: vec![TextSpan::new("ab", "Arial", 12.0)],
+                origin: Point::ZERO,
+                frame: None,
+                align: Default::default(),
+                para,
+                on_path: None,
+            },
+        );
+        shape.fill = Fill::Solid(Color::BLACK);
+        let parts = shape.text_parts().expect("parts");
+        assert_eq!(parts.len(), 2);
+        let part = |p: &Shape| match &p.kind {
+            ShapeKind::Text { spans, para, .. } => {
+                (spans.iter().all(|s| s.layout_only), para.bullet_part)
+            }
+            _ => panic!("text"),
+        };
+        assert_eq!(part(&parts[0]), (false, Some(BulletPart::Text)));
+        assert_eq!(parts[0].fill, Fill::Solid(Color::BLACK));
+        assert_eq!(part(&parts[1]), (true, Some(BulletPart::Color(red))));
+        assert_eq!(parts[1].fill, Fill::Solid(red));
+        assert!(parts.iter().all(|p| p.text_parts().is_none()));
+        assert!(!BulletPart::draws(Some(BulletPart::Text), Some(red), true));
+        assert!(BulletPart::draws(Some(BulletPart::Text), None, true));
+        assert!(BulletPart::draws(
+            Some(BulletPart::Color(red)),
+            Some(red),
+            false
+        ));
+        assert!(BulletPart::draws(None, Some(red), true));
+        // Without a colour of its own the text is drawn whole.
+        if let ShapeKind::Text { para, .. } = &mut shape.kind {
+            para.bullet.color = None;
+        }
+        assert!(shape.text_parts().is_none());
     }
 
     #[test]

@@ -4550,6 +4550,13 @@ fn text_menu(app: &mut App, ui: &mut Ui) {
     if item(ui, "menu.text.toggle_bullets", "Ctrl+Shift+L", is_para) {
         app.toggle_bullets();
     }
+    // List levels (#3685).
+    if item(ui, "menu.text.list_level_down", "", is_para) {
+        app.change_list_level(true);
+    }
+    if item(ui, "menu.text.list_level_up", "", is_para) {
+        app.change_list_level(false);
+    }
     if item(ui, "menu.text.drop_cap", "", true) {
         app.dialog = Dialog::TextDropCap;
     }

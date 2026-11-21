@@ -3844,6 +3844,39 @@ impl App {
         }
     }
 
+    /// Text > Increase List Level and Decrease List Level (#3685): the
+    /// paragraphs with bullets at the caret of the paragraph text being
+    /// edited, else every paragraph with bullets of the selected
+    /// paragraph text, go one list level deeper or back up, each from its
+    /// own level. A number takes the next numbering of 1, a, i and a
+    /// symbol the next plain bullet, so the levels show apart.
+    pub fn change_list_level(&mut self, deeper: bool) {
+        let targets: Vec<Shape> = match &self.text_edit {
+            Some(te) => self
+                .doc()
+                .find_shape(te.shape)
+                .cloned()
+                .into_iter()
+                .collect(),
+            None => self.selected_shapes(),
+        }
+        .into_iter()
+        .filter(|s| matches!(s.kind, ShapeKind::Text { frame: Some(_), .. }))
+        .collect();
+        for s in targets {
+            let range = self.paragraph_range(s.id);
+            let mut kind = s.kind.clone();
+            tracedraw_core::paragraphs::edit_paragraph_formats(&mut kind, range, |f| {
+                if f.bullets {
+                    f.bullet.change_level(&mut f.bullet_char, deeper);
+                }
+            });
+            if kind != s.kind {
+                self.run(Command::SetShapeKind { shape: s.id, kind });
+            }
+        }
+    }
+
     /// The texts Text > Use Hyphenation acts on: the one being edited,
     /// else the selected ones.
     fn hyphenation_targets(&self) -> Vec<ShapeId> {

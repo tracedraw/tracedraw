@@ -29437,6 +29437,45 @@ fn ctrl_shift_l_turns_bullets_on_and_off() {
     assert_eq!(row.shortcut, "Ctrl+Shift+L");
 }
 
+/// Text > Increase List Level and Decrease List Level (#3685): the
+/// paragraphs with bullets of the selected paragraph text go one level
+/// deeper and back, numbers taking the next numbering; without bullets
+/// nothing changes. One Undo takes a step back.
+#[test]
+fn list_level_menu_items_move_bulleted_paragraphs() {
+    let (ctx, mut app, _) = setup();
+    let id = paragraph_frame(&ctx, &mut app, 12);
+    let bullet = |app: &App| {
+        let s = app.doc().find_shape(id).cloned().expect("text");
+        app.paragraph_style_of(&s).expect("paragraph").1.bullet
+    };
+    app.set_tool(Tool::Pick);
+    app.select(vec![id]);
+    let unchanged = app.doc().find_shape(id).cloned();
+    app.change_list_level(true);
+    assert_eq!(app.doc().find_shape(id).cloned(), unchanged, "no bullets");
+    app.edit_paragraph_style(id, |p| {
+        p.bullets = true;
+        p.bullet.numbering = tracedraw_core::Numbering::Arabic;
+    });
+    app.change_list_level(true);
+    let b = bullet(&app);
+    assert_eq!(
+        (b.level, b.numbering),
+        (1, tracedraw_core::Numbering::LowerAlpha)
+    );
+    app.change_list_level(false);
+    assert_eq!(bullet(&app).level, 0);
+    app.change_list_level(false);
+    assert_eq!(bullet(&app).level, 0, "already at the top");
+    app.undo();
+    assert_eq!(bullet(&app).level, 1);
+    let entries = crate::ui::menus::commands(&mut app, &ctx);
+    for key in ["menu.text.list_level_down", "menu.text.list_level_up"] {
+        assert!(entries.iter().any(|e| e.key == key), "{key}");
+    }
+}
+
 /// File > Import of several files at once (discussion #2695): each waits
 /// for its own click in turn, and all of them end up selected together;
 /// Esc calls off the one waiting and those after it.

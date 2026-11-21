@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Text > Bullets: a bullet or number can have its own colour, bold and italic instead of the first letter's (#3682). Lists can have levels: each level is set in by its own indent and numbers on its own, starting again under each paragraph above it, with Restart and Continue numbering; Text > Increase List Level and Decrease List Level move the bulleted paragraphs, a number taking 1, a, i and a symbol the next plain bullet by level (#3685).
 - Layer effects: a live Halftone effect turns an object, with its other effects, into round, square, diamond or line dots in RGB light, CMYK ink or one colour; the inner shadow gains Spread, which keeps the shadow solid over part of its blur before it fades.
 - Trace dialog: with AI turned on and a service that makes pictures, Clean up a pencil sketch shows a words field and Clean up with AI, which has the service redraw the sketch and traces the result into curves; hidden while AI is off.
 - Pick tool, rotate mode (second click): holding Shift while turning by a corner handle or a node also scales the selection, keeping its proportions, by how far the pointer is from the centre of rotation (#3772).

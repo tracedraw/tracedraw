@@ -8337,6 +8337,86 @@ fn bullet_settings(
         p.bullet.no_hanging = !hanging;
         changed = true;
     }
+    // The bullet's or number's own colour, bold and italic (#3682).
+    let mut own_color = p.bullet.color.is_some();
+    ui.horizontal(|ui| {
+        if ui
+            .checkbox(&mut own_color, tr("dialog.bullet_color"))
+            .rich_tip(crate::ui::tips::keyed("dialog.bullet_color"))
+            .changed()
+        {
+            p.bullet.color = own_color.then_some(tracedraw_core::Color::BLACK);
+            changed = true;
+        }
+        if let Some(c) = p.bullet.color.as_mut() {
+            changed |= crate::ui::color_picker::color_button(ui, c);
+        }
+    });
+    let mut own_style = p.bullet.bold.is_some() || p.bullet.italic.is_some();
+    ui.horizontal(|ui| {
+        if ui
+            .checkbox(&mut own_style, tr("dialog.bullet_style"))
+            .rich_tip(crate::ui::tips::keyed("dialog.bullet_style"))
+            .changed()
+        {
+            p.bullet.bold = own_style.then_some(false);
+            p.bullet.italic = own_style.then_some(false);
+            changed = true;
+        }
+        if own_style {
+            for (key, v) in [
+                ("dialog.bullet_bold", &mut p.bullet.bold),
+                ("dialog.bullet_italic", &mut p.bullet.italic),
+            ] {
+                let mut on = v.unwrap_or(false);
+                if ui
+                    .checkbox(&mut on, tr(key))
+                    .rich_tip(crate::ui::tips::keyed(key))
+                    .changed()
+                {
+                    *v = Some(on);
+                    changed = true;
+                }
+            }
+        }
+    });
+    // The list level, from 1 for the top (#3685).
+    crate::ui::tips::tip_over(ui, crate::ui::tips::keyed("dialog.bullet_level"), |ui| {
+        ui.horizontal(|ui| {
+            ui.label(tr("dialog.bullet_level"));
+            let mut shown = p.bullet.level + 1;
+            if ui
+                .add(
+                    crate::ui::field::NumField::new(&mut shown)
+                        .range(1..=tracedraw_core::MAX_LIST_LEVEL + 1),
+                )
+                .changed()
+            {
+                p.bullet.level = shown.saturating_sub(1).min(tracedraw_core::MAX_LIST_LEVEL);
+                changed = true;
+            }
+        })
+    });
+    let tip = crate::ui::tips::keyed("dialog.bullet_level_indent");
+    changed |= unit_value(
+        ui,
+        &tr("dialog.bullet_level_indent"),
+        &tip,
+        &mut p.bullet.level_indent,
+        u,
+    );
+    p.bullet.level_indent = p.bullet.level_indent.max(0.0);
+    if p.bullet.numbering != Numbering::Symbol {
+        for (key, v) in [
+            ("dialog.bullet_restart", &mut p.bullet.restart),
+            ("dialog.bullet_continue", &mut p.bullet.continue_list),
+        ] {
+            changed |= ui
+                .checkbox(v, tr(key))
+                .rich_tip(crate::ui::tips::keyed(key))
+                .changed();
+        }
+    }
     changed
 }
 

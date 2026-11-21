@@ -5066,12 +5066,19 @@ impl FontSystem {
             // and its indent; the lines after the first hang there too,
             // or go back under the bullet (#1443).
             let bullet = if ps.bullets {
-                ps.bullet.offset.max(0.0) + ps.bullet_indent
+                ps.bullet.lead() + ps.bullet_indent
             } else {
                 0.0
             };
             let indent_first = ps.left_indent + ps.first_line_indent + bullet;
-            let indent_rest = ps.left_indent + if ps.bullet.no_hanging { 0.0 } else { bullet };
+            // Without hanging, the lines after the first go back under the
+            // bullet, set in by its list level (#3685).
+            let under = if ps.bullets {
+                ps.bullet.lead() - ps.bullet.offset.max(0.0)
+            } else {
+                0.0
+            };
+            let indent_rest = ps.left_indent + if ps.bullet.no_hanging { under } else { bullet };
             let para_start = para_starts.get(pi).copied().unwrap_or(0);
             if col_boxes.is_none() {
                 // Artistic text: one line a paragraph, and one more for
@@ -5335,11 +5342,8 @@ impl FontSystem {
                             line.cap_x = Some(line.x0 - cap_w);
                         }
                         if ps.bullets {
-                            line.bullet_x = Some(
-                                line.x0 - cap_w - indent
-                                    + ps.left_indent
-                                    + ps.bullet.offset.max(0.0),
-                            );
+                            line.bullet_x =
+                                Some(line.x0 - cap_w - indent + ps.left_indent + ps.bullet.lead());
                         }
                     }
                     lines.push(line);
@@ -5508,7 +5512,14 @@ impl FontSystem {
             // Bullet.
             if let (Some(bx), false) = (line.bullet_x, artistic) {
                 let first_span = glyphs.first().map(|g| g.span).unwrap_or(0);
-                if let Some(span) = spans.get(first_span).filter(|_| span_drawn(first_span)) {
+                // In a text drawn in parts, a bullet of its own colour is
+                // drawn in that colour's part (#3682).
+                let drawn = tracedraw_core::BulletPart::draws(
+                    ps.bullet_part,
+                    ps.bullet.color,
+                    span_drawn(first_span),
+                );
+                if let Some(span) = spans.get(first_span).filter(|_| drawn) {
                     // The symbol or the paragraph's number, in the
                     // bullet's own font, size and shift (#1443).
                     let label = ps.bullet.label(
@@ -5524,6 +5535,13 @@ impl FontSystem {
                     }
                     if ps.bullet.baseline_shift.is_finite() {
                         bspan.baseline_shift_pt += ps.bullet.baseline_shift / PT_MM;
+                    }
+                    // Its own bold and italic (#3682).
+                    if let Some(b) = ps.bullet.bold {
+                        bspan.bold = b;
+                    }
+                    if let Some(i) = ps.bullet.italic {
+                        bspan.italic = i;
                     }
                     let b = self.shape_run(&bspan, 0, &label, size_scale, 0, ps, &[]);
                     let mut bpen = bx;
@@ -7726,6 +7744,16 @@ mod tests {
             "{}",
             back.lines[1].edges[0]
         );
+        // A list level sets the bullet and the text in by its indent, and
+        // without hanging the next lines go back under the bullet there
+        // (#3685).
+        let mut deep = symbols.clone();
+        deep.bullet.level = 2;
+        deep.bullet.level_indent = 5.0;
+        assert!((x(&lay("a", &deep)) - x(&lay("a", &symbols)) - 10.0).abs() < 1e-6);
+        deep.bullet.no_hanging = true;
+        let back = lay(&long, &deep);
+        assert!((back.lines[1].edges[0] - 10.0).abs() < 1e-6);
     }
 
     #[test]
