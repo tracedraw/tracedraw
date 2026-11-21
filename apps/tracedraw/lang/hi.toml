@@ -2693,7 +2693,7 @@ menu.edit.delete = "हटाएँ"
 menu.edit.duplicate = "डुप्लिकेट"
 menu.edit.find_and_replace = "खोजें और बदलें"
 menu.edit.paste = "पेस्ट"
-menu.edit.paste_in_view = "दृश्य में पेस्ट करें"
+menu.edit.paste_in_view = "पॉइंटर पर चिपकाएँ"
 menu.edit.paste_above_selection = "चयन के ऊपर चिपकाएँ" # mt
 menu.edit.paste_special = "विशेष पेस्ट..."
 menu.edit.redo = "फिर से करें"
@@ -10759,3 +10759,7 @@ shapegen.slice_keep_desc = "Leave the selection in place and add the sliced copy
 shapegen.slice_apply = "Slice Selection"
 shapegen.slice_apply_desc = "Cut the selected objects, text or pictures into the pieces and move each one; each piece is a clip frame you can still edit."
 status.shape_generator_sliced = "Selection sliced"
+
+status.pasting = "चिपकाया जा रहा है..."
+
+status.clipboard_failed = "क्लिपबोर्ड से चिपकाया नहीं जा सका: {e}"

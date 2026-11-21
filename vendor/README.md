@@ -113,16 +113,19 @@ change marked `TraceDraw:` in a comment.
   and answers no other request, so TraceDraw's own picture read timed
   out, the picture never pasted and the window froze for about 24 s.
   `native/paste_gate.rs` holds `set_paste_text_gate` (exported from the
-  crate root) and `blocks`, which `EpiIntegration::on_window_event`
+  crate root) and `blocked_key`, which `EpiIntegration::on_window_event`
   calls before handing an event to egui-winit: a real paste key press
   (`is_paste_key`, egui-winit's `is_paste_command` with its logical or
-  physical key) is not handed over when the gate answers `false`, so
-  egui-winit neither reads the clipboard nor sends a paste event, as when
-  the clipboard holds no text; the application sees the key's release
-  and pastes by itself. `blocks` also follows the modifier keys from
-  `ModifiersChanged`. With no gate set, nothing changes. TraceDraw's
+  physical key) is added directly to egui's input when the gate answers
+  `false`, so egui-winit does not read the clipboard. The application
+  receives the original press, its modifiers and repeat flag immediately.
+  Waiting for V's release lost the shortcut when Ctrl was released first,
+  so an image paste sometimes required several tries. `blocked_key` also
+  follows the modifier keys from `ModifiersChanged`. With no gate set,
+  nothing changes. TraceDraw's
   gate (`clipboard::paste_may_read_text`) reads the X11 clipboard's
-  types and lets the text be read only when a text type is offered.
+  types and lets the text be read only when a text type is offered; on
+  Windows it inspects the Unicode-text format without opening the clipboard.
   TraceDraw's tests include and run the key test
   (`clipboard::eframe_paste_gate::tests`). When moving to a newer egui,
   check whether egui-winit still reads the text this way.

@@ -2693,7 +2693,7 @@ menu.edit.delete = "Excluir"
 menu.edit.duplicate = "Duplicar"
 menu.edit.find_and_replace = "Localizar e substituir"
 menu.edit.paste = "Colar"
-menu.edit.paste_in_view = "Colar na visualização"
+menu.edit.paste_in_view = "Colar no ponteiro"
 menu.edit.paste_above_selection = "Colar acima da seleção" # mt
 menu.edit.paste_special = "Colar especial..."
 menu.edit.redo = "Refazer"
@@ -10759,3 +10759,7 @@ shapegen.slice_keep_desc = "Deixa a seleção no lugar e adiciona a cópia fatia
 shapegen.slice_apply = "Fatiar seleção"
 shapegen.slice_apply_desc = "Corta os objetos, textos ou imagens selecionados nas peças e move cada uma; cada peça é uma moldura de recorte que continua editável."
 status.shape_generator_sliced = "Seleção fatiada"
+
+status.pasting = "Colando..."
+
+status.clipboard_failed = "Não foi possível colar da área de transferência: {e}"

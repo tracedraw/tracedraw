@@ -2693,7 +2693,7 @@ menu.edit.delete = "削除"
 menu.edit.duplicate = "複製"
 menu.edit.find_and_replace = "検索と置換"
 menu.edit.paste = "貼り付け"
-menu.edit.paste_in_view = "表示位置に貼り付け"
+menu.edit.paste_in_view = "ポインターの位置に貼り付け"
 menu.edit.paste_above_selection = "選択範囲の上に貼り付け" # mt
 menu.edit.paste_special = "形式を選択して貼り付け..."
 menu.edit.redo = "やり直し"
@@ -10759,3 +10759,7 @@ shapegen.slice_keep_desc = "Leave the selection in place and add the sliced copy
 shapegen.slice_apply = "Slice Selection"
 shapegen.slice_apply_desc = "Cut the selected objects, text or pictures into the pieces and move each one; each piece is a clip frame you can still edit."
 status.shape_generator_sliced = "Selection sliced"
+
+status.pasting = "貼り付け中..."
+
+status.clipboard_failed = "クリップボードから貼り付けできませんでした: {e}"

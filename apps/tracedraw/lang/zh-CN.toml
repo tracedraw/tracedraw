@@ -2693,7 +2693,7 @@ menu.edit.delete = "删除"
 menu.edit.duplicate = "再制副本"
 menu.edit.find_and_replace = "查找和替换"
 menu.edit.paste = "粘贴"
-menu.edit.paste_in_view = "粘贴到视图中"
+menu.edit.paste_in_view = "粘贴到鼠标位置"
 menu.edit.paste_above_selection = "粘贴到所选对象上方" # mt
 menu.edit.paste_special = "选择性粘贴..."
 menu.edit.redo = "重做"
@@ -10759,3 +10759,7 @@ shapegen.slice_keep_desc = "Leave the selection in place and add the sliced copy
 shapegen.slice_apply = "Slice Selection"
 shapegen.slice_apply_desc = "Cut the selected objects, text or pictures into the pieces and move each one; each piece is a clip frame you can still edit."
 status.shape_generator_sliced = "Selection sliced"
+
+status.pasting = "正在粘贴..."
+
+status.clipboard_failed = "无法从剪贴板粘贴：{e}"
