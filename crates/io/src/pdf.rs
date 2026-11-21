@@ -1300,7 +1300,9 @@ impl PageWriter<'_> {
             fx: _,
         } = &shape.kind
         {
-            if let Some((mut rgb, alpha)) = decode_png_rgb_alpha(png) {
+            let painted = crate::bitmap_fill_png(shape, parent);
+            let source = painted.as_deref().unwrap_or(png);
+            if let Some((mut rgb, alpha)) = decode_png_rgb_alpha(source) {
                 let name = format!("Im{}", self.images.len());
                 // Composited over white below when the file has no soft
                 // masks: the ink channels would keep the clear parts.
@@ -1324,7 +1326,7 @@ impl PageWriter<'_> {
                 // with (#1659): its screen pixels made it RGB, or in a
                 // CMYK file a new mix of inks, so black ink alone came
                 // out on four plates.
-                let inks = (!blended)
+                let inks = (!blended && painted.is_none())
                     .then(|| process_inks(shape, png, *width_px, *height_px))
                     .flatten();
                 let kind = if inks.is_some() {

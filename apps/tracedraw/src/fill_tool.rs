@@ -284,22 +284,37 @@ impl App {
             let b = s.page_path().bounding_box();
             let old = s.effects.iter().find_map(|e| match e {
                 tracedraw_core::live::Effect::Transparency {
-                    mask: Fill::Fountain(f),
+                    mask,
                     merge,
                     target,
-                } if f.kind != FountainKind::Shaped => Some((f.clone(), *merge, *target)),
+                } => match mask {
+                    Fill::Fountain(f) if f.kind != FountainKind::Shaped => {
+                        Some((Some(f.clone()), *merge, *target))
+                    }
+                    // A detached shadow can carry a merge mode in a solid
+                    // mask even before it takes its first gradient.
+                    _ if s.bitmap_alpha_fill => Some((None, *merge, *target)),
+                    _ => None,
+                },
                 _ => None,
             });
-            let (mut f, merge, target) = old.unwrap_or_else(|| {
-                (
-                    Fountain::two(
-                        FountainKind::Linear,
-                        tracedraw_core::Color::WHITE,
-                        tracedraw_core::Color::BLACK,
-                        0.0,
-                    ),
-                    self.transparency_default.merge,
-                    self.transparency_default.target,
+            let (existing, merge, target) = old.unwrap_or_else(|| {
+                if s.bitmap_alpha_fill {
+                    (None, tracedraw_core::live::MergeMode::Normal, 2)
+                } else {
+                    (
+                        None,
+                        self.transparency_default.merge,
+                        self.transparency_default.target,
+                    )
+                }
+            });
+            let mut f = existing.unwrap_or_else(|| {
+                Fountain::two(
+                    FountainKind::Linear,
+                    tracedraw_core::Color::WHITE,
+                    tracedraw_core::Color::BLACK,
+                    0.0,
                 )
             });
             let d = to - from;

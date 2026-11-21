@@ -200,6 +200,11 @@ pub(crate) fn not_held(s: &Shape) -> bool {
     ) {
         return false;
     }
+    // A painted bitmap has a plain picture as its stand-in. Keep the
+    // original alpha and editable fill for TraceDraw.
+    if s.bitmap_alpha_fill && matches!(s.kind, ShapeKind::Bitmap { .. }) {
+        return true;
+    }
     let fill = match &s.fill {
         Fill::None | Fill::Solid(_) => false,
         Fill::Fountain(f) => f.handles.is_some() || f.to_plain(64) != *f,
