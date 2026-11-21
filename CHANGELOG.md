@@ -4,6 +4,10 @@ Versions follow the tags of this repository; every push to `main` also
 publishes a nightly build. [`docs/features.md`](docs/features.md) has the
 full, row-by-row status.
 
+## Unreleased
+
+- Large drawings: dragging a fill or an outline colour in a picker repaints only the part of the page the selection covers, and paint commands skip the two text passes they cannot change, so a live colour drag stays quick on heavy pages (#3559; PR #3627 by ratmanz0000).
+
 ## 0.50.1 (2026-11-21)
 
 - Windows: Help > Updates > Install finishes when Explorer holds the thumbnail handler (it shows `.cdr` and `.tdraw` pictures): the quiet setup stopped with no word on a file in use, for a copy installed for the current user. The setup now moves that file aside before installing and closes only TraceDraw's programs; it writes a log, and the status bar says so at the next start when an update did not finish (#3816).
