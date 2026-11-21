@@ -48,6 +48,7 @@ pub mod shaping;
 pub mod spreads;
 pub mod style;
 pub mod surface_map;
+pub mod symbols;
 pub mod table;
 pub mod text_flow;
 pub mod tiles;

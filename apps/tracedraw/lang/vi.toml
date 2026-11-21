@@ -10754,3 +10754,23 @@ dialog.arrange_grid_gap_h = "Khoảng cách ngang:" # mt
 dialog.arrange_grid_gap_h_desc = "Khoảng trống giữa các cột, theo đơn vị của bản vẽ." # mt
 dialog.arrange_grid_gap_v = "Khoảng cách dọc:" # mt
 dialog.arrange_grid_gap_v_desc = "Khoảng trống giữa các hàng, theo đơn vị của bản vẽ." # mt
+
+dialog.symbol_merge_desc = "{n} instances of {from} will become instances of {to}. {from} will be removed. One undo step reverses this." # mt
+dialog.symbol_merge_from = "Source" # mt
+dialog.symbol_merge_ok = "Replace and merge" # mt
+dialog.symbol_merge_title = "Replace symbol" # mt
+dialog.symbol_merge_to = "Target" # mt
+docker.replace_pick = "Pick the target symbol, or press Esc to cancel." # mt
+docker.replace_symbol = "Replace" # mt
+docker.replace_symbol_tip = "Merge this symbol into another: every instance follows and this definition is removed." # mt
+docker.replace_target = "Merge into this symbol" # mt
+docker.symbol_search = "Search symbols" # mt
+docker.symbolize_similar = "By similarity" # mt
+docker.symbolize_similar_tip = "Turn every group that copies the selected group into an instance of one symbol, where each group stands; labels stay editable text." # mt
+status.symbol_merge_finish_edit = "Finish or cancel the symbol edit before replacing." # mt
+status.symbol_merged = "Merged {n} instances of {from} into {to}" # mt
+status.symbolize_needs_group = "Select a group to symbolize by similarity." # mt
+status.symbolize_none = "No group copies the selection." # mt
+status.symbolized = "Found {n} similar groups -> {name}" # mt
+
+docker.rename_symbol_tip = "Nhấp đúp vào tên để đổi tên biểu tượng." # mt
