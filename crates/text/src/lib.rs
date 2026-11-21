@@ -3664,8 +3664,13 @@ impl FontSystem {
         let p = Arc::new(self.layout(req).path);
         let b = (!p.elements().is_empty()).then(|| p.bounding_box());
         if let Ok(mut c) = self.cache.lock() {
-            if c.len() > 2000 {
-                c.clear();
+            // Evict down to the limit one entry at a time: clearing the
+            // whole cache made every text re-shape after any overflow,
+            // which on a drawing with many texts cost a full re-shape per
+            // keystroke.
+            while c.len() > 2000 {
+                let Some(k) = c.keys().next().cloned() else { break };
+                c.remove(&k);
             }
             c.insert(key, (p.clone(), b));
         }
@@ -4748,9 +4753,16 @@ impl FontSystem {
         if glyphs <= SHAPED_GLYPHS {
             if let Ok(mut c) = self.shaped.lock() {
                 // Few: what is kept is for the texts being worked on now.
-                let kept: usize = c.values().map(|s| s.glyphs()).sum();
-                if c.len() >= SHAPED_KEPT || kept + glyphs > SHAPED_GLYPHS {
-                    c.clear();
+                // Evict one entry at a time until the new one fits, instead
+                // of clearing everything: a full clear made every text
+                // re-shape on the next frame, a full re-shape per keystroke
+                // on drawings with many texts.
+                let mut kept: usize = c.values().map(|s| s.glyphs()).sum();
+                while c.len() >= SHAPED_KEPT || kept + glyphs > SHAPED_GLYPHS {
+                    let Some(k) = c.keys().next().cloned() else { break };
+                    if let Some(old) = c.remove(&k) {
+                        kept = kept.saturating_sub(old.glyphs());
+                    }
                 }
                 c.insert(key, shaped.clone());
             }
