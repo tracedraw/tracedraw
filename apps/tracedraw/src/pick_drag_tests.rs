@@ -20376,8 +20376,11 @@ fn the_trace_dialog_rests_once_the_trace_is_in() {
         while app.trace_live.shown.is_none() || app.trace_live.busy() {
             frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
             std::thread::sleep(std::time::Duration::from_millis(3));
+            // The wait covers one full trace of the 800 x 800 picture:
+            // 52 to 57 s measured on a 4-core desktop, more on a slow
+            // runner; 60 s crossed the cap and flaked CI four times.
             assert!(
-                t.elapsed() < std::time::Duration::from_secs(60),
+                t.elapsed() < std::time::Duration::from_secs(120),
                 "the trace never came"
             );
         }
@@ -20424,7 +20427,7 @@ fn the_trace_dialog_rests_once_the_trace_is_in() {
             Modifiers::NONE,
         );
         let t = std::time::Instant::now();
-        while app.trace_live.busy() && t.elapsed() < std::time::Duration::from_secs(60) {
+        while app.trace_live.busy() && t.elapsed() < std::time::Duration::from_secs(120) {
             frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
             std::thread::sleep(std::time::Duration::from_millis(3));
         }
