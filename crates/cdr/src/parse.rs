@@ -327,6 +327,13 @@ pub(crate) const ARG_GUIDE_LINE: u32 = 16000;
 pub(crate) const ARG_BLEND_STEPS: u32 = 3000;
 /// Object type of a contour's linked group (`LIST lnkg`).
 const OBJ_CONTOUR_GROUP: u32 = 15;
+/// Object type of a drop shadow's linked group (`LIST lnkg`, version 15).
+const OBJ_DROP_SHADOW: u32 = 23;
+/// Length of the drop shadow record (argument 3000 of its linked group).
+const DROP_SHADOW_RECORD_LEN: usize = 107;
+/// Millimetres of feathering for each unit of the record's feathering
+/// (its default, 15, as the 1.5 mm a new shadow takes here).
+const DROP_SHADOW_FEATHER_MM: f64 = 0.1;
 /// Length of the contour record (argument 3000 of a contour's linked
 /// group) in the one layout seen, version 9.
 const CONTOUR_RECORD_LEN: usize = 44;
@@ -4139,6 +4146,57 @@ impl<'a> Ctx<'a> {
         Some((steps, settings))
     }
 
+    /// The drop shadow of a linked group whose own `lgob` holds a `loda`
+    /// of object type 23 ([`OBJ_DROP_SHADOW`]): an empty group that
+    /// follows the object it shadows (version 15, #3222; later versions
+    /// keep a picture of the shadow in the group, drawn as it is). Its
+    /// argument of type 3000 is a record of 119 bytes starting with u32
+    /// 0x514 and u32 111 (offsets from the record's start): the offset
+    /// as two i32 in the units of the coordinates at 8 and 12, the
+    /// opacity as a u32 out of 255 at 16, the feathering as a u32 at 20,
+    /// the colour at 57 and the merge code at 103 (9 multiplies, 0
+    /// Normal, as the transparency record's). The other fields are not
+    /// read; the shadow is flat, feathered in the middle.
+    fn drop_shadow_record(&mut self, group: &Chunk) -> Option<tracedraw_core::document::Shadow> {
+        let lgob = group.children.iter().find(|k| k.is(b"lgob"))?;
+        let loda = lgob.children.iter().find(|k| k.is(b"loda"))?;
+        let d = self.data(loda);
+        let l = self.read_loda(d)?;
+        if l.kind != OBJ_DROP_SHADOW {
+            return None;
+        }
+        let arg = l.args.iter().find(|a| a.ty == ARG_BLEND_STEPS)?;
+        let rec = d.get(arg.off..arg.end)?;
+        if rec.len() < DROP_SHADOW_RECORD_LEN || rec[..8] != [0x14, 0x05, 0, 0, 0x6f, 0, 0, 0] {
+            return None;
+        }
+        let mut r = self.reader_at(rec, 8);
+        let dx = f64::from(r.i32()?) * UNIT_MM;
+        let dy = f64::from(r.i32()?) * UNIT_MM;
+        let opacity = f64::from(r.u32()?.min(255)) / 255.0;
+        let feather = f64::from(r.u32()?.min(500));
+        let mut r = self.reader_at(rec, 57);
+        let color = self.read_color(&mut r)?;
+        let merge = match self.reader_at(rec, 103).u32()? {
+            9 => tracedraw_core::live::MergeMode::Multiply,
+            0 => tracedraw_core::live::MergeMode::Normal,
+            code => {
+                self.report.warn(format!(
+                    "drop shadow merge mode {code} not read; the shadow multiplies"
+                ));
+                tracedraw_core::live::MergeMode::Multiply
+            }
+        };
+        Some(tracedraw_core::document::Shadow {
+            offset: tracedraw_core::geometry::Vec2::new(dx, dy),
+            opacity,
+            blur: feather * DROP_SHADOW_FEATHER_MM,
+            color,
+            merge,
+            ..Default::default()
+        })
+    }
+
     /// The offset (mm) of a contour's linked group (`LIST lnkg` whose own
     /// `lgob` holds a `loda` of object type 15): the u32 at the start of
     /// its argument of type 3000, in the units of the coordinates. The
@@ -5223,7 +5281,13 @@ impl<'a> Ctx<'a> {
                 // between its two end objects, its `loda` of object type 7
                 // holding the step count (#597).
                 if out.len() == before {
-                    if let Some((steps, settings)) = self.blend_steps(c) {
+                    // A version 15 drop shadow: an empty linked group
+                    // after its object, its record holding the settings.
+                    if let Some(shadow) = self.drop_shadow_record(c) {
+                        if let Some(owner) = out.last_mut() {
+                            owner.shadow = Some(shadow);
+                        }
+                    } else if let Some((steps, settings)) = self.blend_steps(c) {
                         let steps = self.budget_blend_steps(steps);
                         blends.push((before, steps, settings));
                     }
@@ -11593,6 +11657,76 @@ pub(crate) mod tests {
             })
             .collect();
         (steps, rep)
+    }
+
+    /// A version 15 drop shadow is an empty linked group after its object,
+    /// its `loda` of object type 23 holding a record of 119 bytes: the
+    /// offset, the opacity out of 255, the feathering, the colour and the
+    /// merge code (#3222). The ellipse before it gets the shadow; the one
+    /// after it keeps none, and nothing is drawn for the group.
+    #[test]
+    fn version_15_drop_shadow_goes_to_the_object_before_it() {
+        let v = 15u16;
+        let identity = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
+        let ellipse = |x: i32| {
+            let mut c = i32s(&[x, -100_000, x + 200_000, 100_000]);
+            c.extend_from_slice(&u32s(&[0]));
+            list(
+                b"obj ",
+                &[
+                    chunk(b"loda", &loda(OBJ_ELLIPSE, &[(ARG_COORDS, c)])),
+                    chunk(b"trfd", &trfd(v, identity)),
+                ]
+                .concat(),
+            )
+        };
+        let record = |merge: u32| {
+            let mut r = u32s(&[0x514, 111]);
+            r.extend_from_slice(&i32s(&[69_478, -31_429]));
+            r.extend_from_slice(&u32s(&[200, 15, 3]));
+            r.extend_from_slice(&[0; 12]);
+            r.extend_from_slice(&1.0f64.to_le_bytes());
+            r.extend_from_slice(&u32s(&[0]));
+            r.extend_from_slice(&[1, 12, 0, 0, 0]);
+            // CMYK black: model 2, palette 5, C M Y K 0 0 0 100.
+            r.extend_from_slice(&[2, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 100]);
+            r.extend_from_slice(&[0; 30]);
+            r.extend_from_slice(&u32s(&[1, merge]));
+            r.extend_from_slice(&[0; 12]);
+            assert_eq!(r.len(), 119);
+            r
+        };
+        let group = |merge: u32| {
+            let args = vec![(3000, record(merge)), (100, u32s(&[0x23c5e88]))];
+            list(b"lnkg", &list(b"lgob", &chunk(b"loda", &loda(23, &args))))
+        };
+        for (merge, mode) in [
+            (9, tracedraw_core::live::MergeMode::Multiply),
+            (0, tracedraw_core::live::MergeMode::Normal),
+        ] {
+            let objects = [ellipse(0), group(merge), ellipse(600_000)].concat();
+            let body = [
+                chunk(b"mcfg", &mcfg(v, 2_540_000, 2_540_000)),
+                list(b"page", &list(b"layr", &objects)),
+            ]
+            .concat();
+            let (doc, _) = parse(&riff(b"CDRD", &body), v);
+            // The layer lists its objects from the top.
+            let shapes = &doc.pages[0].layers[0].shapes;
+            assert_eq!(shapes.len(), 2);
+            assert!(shapes[0].shadow.is_none());
+            let s = shapes[1].shadow.expect("the shadow of the first ellipse");
+            assert!((s.offset.x - 6.9478).abs() < 1e-9, "{:?}", s.offset);
+            assert!((s.offset.y + 3.1429).abs() < 1e-9, "{:?}", s.offset);
+            assert!((s.opacity - 200.0 / 255.0).abs() < 1e-9);
+            assert!((s.blur - 1.5).abs() < 1e-9);
+            assert_eq!(
+                s.color,
+                tracedraw_core::color::Color::cmyk_pct(0.0, 0.0, 0.0, 100.0)
+            );
+            assert_eq!(s.merge, mode);
+            assert!(s.perspective.is_none());
+        }
     }
 
     /// A step count field holding no count a blend can have (0, or a

@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Open .cdr version 15: drop shadows are read and drawn beneath their objects, with their offset, opacity, feathering, colour and merge mode, where they were missing (#3222).
 - Open .cdr version 15: uniform transparencies are read (objects meant to be see-through opened solid and hid what lay behind them), a transparency that multiplies darkens what lies beneath instead of mixing as Normal, and envelopes on objects and groups bend them as drawn instead of leaving them flat and out of place (#3222).
 - Save and open .cdr: the document information (author, subject, keywords, copyright, notes and rating) goes into the file and is read back from it (#3411).
 - Text: a private-use character missing from its font is no longer looked for in every installed font, which made a drawing in an old symbol font that is not installed take minutes to open on a system with thousands of fonts (#3371).
