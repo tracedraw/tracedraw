@@ -186,7 +186,8 @@ impl Default for PdfPreset {
         PdfPreset {
             name: String::new(),
             standard: 0,
-            output_condition: "FOGRA39".into(),
+            // Empty: the drawing's CMYK profile (#3829).
+            output_condition: String::new(),
             flatten_dpi: 300.0,
             bookmarks: true,
             show_bookmarks: false,
@@ -305,7 +306,8 @@ impl Default for PublishPrefs {
     fn default() -> Self {
         PublishPrefs {
             standard: 0,
-            output_condition: "FOGRA39".into(),
+            // Empty: the drawing's CMYK profile (#3829).
+            output_condition: String::new(),
             flatten_dpi: 300.0,
             bookmarks: true,
             show_bookmarks: false,
@@ -777,12 +779,13 @@ pub fn publish(app: &App, st: &PublishState, path: &Path) -> Result<String, Stri
     }
     let tz = crate::time_tracker::local_zone();
     let when = crate::time_tracker::date_time(crate::time_tracker::unix_now(), &tz);
-    let opts = st.options_for(
+    let mut opts = st.options_for(
         &doc,
         &app.document_name(),
         &when,
         crate::export::pdfx_profile(app, st.prefs.standard()),
     );
+    opts.output_condition = crate::export::output_condition(app, &opts.output_condition);
     let (pdf, report) = tracedraw_io::pdf::document_to_pdf_report(&doc, &opts);
     crate::files::write(path, pdf).map_err(|e| e.to_string())?;
     let mut msg = trf("status.exported", &[("path", &path.display().to_string())]);
@@ -831,7 +834,7 @@ pub fn dialog(app: &mut App, ctx: &Context, st: &mut PublishState, close: &mut b
             ui.set_min_height(HEIGHT);
             match st.tab {
                 Tab::General => general(app, ui, st),
-                Tab::Color => color(ui, st),
+                Tab::Color => color(app, ui, st),
                 Tab::Document => document(ui, st),
                 Tab::Objects => objects(ui, st),
                 Tab::Prepress => prepress(ui, st),
@@ -1084,7 +1087,7 @@ fn group(ui: &mut Ui, title: &str, add: impl FnOnce(&mut Ui)) {
 }
 
 /// Color: the output intent of the PDF/X standards.
-fn color(ui: &mut Ui, st: &mut PublishState) {
+fn color(app: &App, ui: &mut Ui, st: &mut PublishState) {
     let standard = st.prefs.standard();
     if standard == PdfStandard::None {
         note(ui, "publish.color_plain");
@@ -1093,7 +1096,8 @@ fn color(ui: &mut Ui, st: &mut PublishState) {
     row(ui, &tr("dialog.output_condition"), |ui| {
         ui.add_sized(
             [220.0, 20.0],
-            egui::TextEdit::singleline(&mut st.prefs.output_condition),
+            egui::TextEdit::singleline(&mut st.prefs.output_condition)
+                .hint_text(crate::export::drawing_output_condition(app)),
         );
     });
     note(ui, "dialog.pdfx_profile_note");

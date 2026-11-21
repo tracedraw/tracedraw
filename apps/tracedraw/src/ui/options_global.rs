@@ -218,7 +218,11 @@ pub fn file_formats_page(app: &mut App, ui: &mut Ui) {
             ui,
             crate::ui::tips::keyed("dialog.output_condition"),
             |ui| {
-                ui.add(egui::TextEdit::singleline(&mut f.output_condition).desired_width(130.0));
+                ui.add(
+                    egui::TextEdit::singleline(&mut f.output_condition)
+                        .hint_text(tr("dialog.output_condition_drawing"))
+                        .desired_width(130.0),
+                );
             },
         );
 

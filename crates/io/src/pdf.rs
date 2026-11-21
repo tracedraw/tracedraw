@@ -2906,9 +2906,13 @@ pub fn document_to_pdf_report(doc: &Document, opts: &PdfOptions) -> (Vec<u8>, Pd
             let id = pdf.stream(&format!("/N {n}"), icc);
             format!(" /DestOutputProfile {id} 0 R")
         });
+        // A press the ICC registry names goes by its registered name, the
+        // condition as given (a profile's name, say) staying beside it
+        // (#3829).
+        let identifier = registered_condition(&condition).unwrap_or(&condition);
         let intent = pdf.add_str(format!(
             "<< /Type /OutputIntent /S /GTS_PDFX /OutputConditionIdentifier {} /OutputCondition {} /RegistryName (http://www.color.org) /Info {}{} >>",
-            pdf_text_any(&condition),
+            pdf_text_any(identifier),
             pdf_text_any(&condition),
             pdf_text_any(&condition),
             profile_ref.unwrap_or_default()
@@ -2972,6 +2976,52 @@ fn output_profile<'a>(opts: &'a PdfOptions, doc: &'a Document) -> Option<&'a [u8
             .map(|p| p.data.as_slice())
             .filter(|icc| icc_channels(icc) == 4)
     })
+}
+
+/// The name the ICC characterization data registry gives the printing
+/// condition `name` stands for: a registered name itself, or the name of
+/// a well-known CMYK profile made for one ("U.S. Web Coated (SWOP) v2"
+/// is "CGATS TR 001", "Coated FOGRA39 (ISO 12647-2:2004)" and "ISO Coated
+/// v2" are "FOGRA39"). `None` for others: they go by their own name,
+/// with their profile embedded (#3829).
+pub fn registered_condition(name: &str) -> Option<&'static str> {
+    const FOGRA: [&str; 12] = [
+        "FOGRA27", "FOGRA28", "FOGRA29", "FOGRA30", "FOGRA39", "FOGRA40", "FOGRA45", "FOGRA47",
+        "FOGRA51", "FOGRA52", "FOGRA53", "FOGRA54",
+    ];
+    let n = name.trim().to_ascii_uppercase();
+    let compact: String = n.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
+    for f in FOGRA {
+        if compact.contains(f) {
+            return Some(f);
+        }
+    }
+    for id in [
+        "CGATS TR 001",
+        "CGATS TR 002",
+        "CGATS TR 003",
+        "CGATS TR 005",
+        "CGATS TR 006",
+    ] {
+        if compact.contains(&id.replace(' ', "")) {
+            return Some(id);
+        }
+    }
+    let by_profile: [(&str, &str); 9] = [
+        ("ISOCOATEDV2", "FOGRA39"),
+        ("PSOCOATEDV3", "FOGRA51"),
+        ("PSOUNCOATEDV3", "FOGRA52"),
+        ("SWOP2006COATED3", "CGATS TR 003"),
+        ("SWOP2006COATED5", "CGATS TR 005"),
+        ("GRACOL2006", "CGATS TR 006"),
+        ("WEBCOATEDSWOPV2", "CGATS TR 001"),
+        ("JAPANCOLOR2001COATED", "JC200103"),
+        ("JC200103", "JC200103"),
+    ];
+    by_profile
+        .iter()
+        .find(|(k, _)| compact.contains(k))
+        .map(|(_, id)| *id)
 }
 
 /// The output condition an embedded profile stands for: its description,
@@ -4782,6 +4832,46 @@ mod pdfx_tests {
         );
         assert!(text.contains("/OutputConditionIdentifier (FOGRA39)"));
         assert!(text.contains("/DestOutputProfile"));
+    }
+
+    /// #3829: a condition named by its profile ("U.S. Web Coated (SWOP)
+    /// v2", the drawing's) goes by the name the ICC registry gives that
+    /// press, the profile's name kept as the condition; a registered name
+    /// is its own identifier, and an unknown one goes by its own name.
+    #[test]
+    fn a_well_known_profile_goes_by_its_registered_condition() {
+        assert_eq!(registered_condition("U.S. Web Coated (SWOP) v2"), Some("CGATS TR 001"));
+        assert_eq!(
+            registered_condition("Coated FOGRA39 (ISO 12647-2:2004)"),
+            Some("FOGRA39")
+        );
+        assert_eq!(registered_condition("ISO Coated v2 (ECI)"), Some("FOGRA39"));
+        assert_eq!(registered_condition("PSO Coated v3"), Some("FOGRA51"));
+        assert_eq!(registered_condition("Japan Color 2001 Coated"), Some("JC200103"));
+        assert_eq!(registered_condition("GRACoL2006_Coated1v2"), Some("CGATS TR 006"));
+        assert_eq!(registered_condition("cgats tr 001"), Some("CGATS TR 001"));
+        assert_eq!(registered_condition("FOGRA39"), Some("FOGRA39"));
+        assert_eq!(registered_condition("Generic CMYK (open)"), None);
+        let doc = doc_with_transparent_rect();
+        let text = pdfx(
+            &doc,
+            PdfOptions {
+                standard: PdfStandard::X1a,
+                output_condition: "U.S. Web Coated (SWOP) v2".into(),
+                ..Default::default()
+            },
+        );
+        assert!(text.contains("/OutputConditionIdentifier (CGATS TR 001)"), "{text}");
+        assert!(text.contains("/OutputCondition (U.S. Web Coated \\(SWOP\\) v2)"), "{text}");
+        let text = pdfx(
+            &doc,
+            PdfOptions {
+                standard: PdfStandard::X1a,
+                output_condition: "House press".into(),
+                ..Default::default()
+            },
+        );
+        assert!(text.contains("/OutputConditionIdentifier (House press)"));
     }
 
     #[test]

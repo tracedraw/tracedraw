@@ -4,6 +4,11 @@ Versions follow the tags of this repository; every push to `main` also
 publishes a nightly build. [`docs/features.md`](docs/features.md) has the
 full, row-by-row status.
 
+## 0.50.2 (2026-11-21)
+
+- PDF/X: the output condition follows the drawing's CMYK profile (the one loaded in Colour Management, else the one the drawing carries or was made with), shown greyed in the field while none is typed; it was "FOGRA39" whatever the drawing's profile, so a drawing for U.S. Web Coated (SWOP) v2 went out labelled for another press. A well-known profile goes by the ICC registry's name ("CGATS TR 001" for SWOP v2) as the output condition identifier (#3829).
+- Export Selected only: a blend inside a clip frame or a group keeps its steps where the drawing shows them; they came out as a staircase running off to one side in the PNG or JPEG (#3832).
+
 ## 0.50.1 (2026-11-21)
 
 - Windows: Help > Updates > Install finishes when Explorer holds the thumbnail handler (it shows `.cdr` and `.tdraw` pictures): the quiet setup stopped with no word on a file in use, for a copy installed for the current user. The setup now moves that file aside before installing and closes only TraceDraw's programs; it writes a log, and the status bar says so at the next start when an update did not finish (#3816).

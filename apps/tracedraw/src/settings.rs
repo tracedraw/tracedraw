@@ -946,7 +946,7 @@ fn default_desktop() -> [u8; 3] {
 }
 
 /// How many one-time upgrades `Settings::upgrade` knows.
-const UPGRADES: u32 = 9;
+const UPGRADES: u32 = 10;
 
 fn default_outline_units() -> String {
     "pt".into()
@@ -2656,7 +2656,9 @@ impl Settings {
     ///    options again; 8. the window goes through XWayland on a
     ///    Wayland desktop without title bars for programs (#2486); 9. Save
     ///    As shows TraceDraw's Save Drawing dialog, with the type and the
-    ///    version, again (#3811).
+    ///    version, again (#3811); 10. the PDF/X output condition left at
+    ///    "FOGRA39", the old default, follows the drawing's CMYK profile
+    ///    (#3829).
     pub fn upgrade(mut self) -> Settings {
         self.autocorrect.upgrade();
         if self.upgrades < 1 {
@@ -2722,6 +2724,19 @@ impl Settings {
         // once; turned on again afterwards the system's dialog stays.
         if self.upgrades < 9 {
             self.system_save_dialog = false;
+        }
+        // The PDF/X output condition was "FOGRA39" by default, kept with
+        // the preferences at the first export, whatever CMYK profile the
+        // drawing had (#3829). Left at it, it follows the drawing now.
+        if self.upgrades < 10 {
+            for c in [
+                &mut self.formats.output_condition,
+                &mut self.publish_pdf.output_condition,
+            ] {
+                if c.trim() == "FOGRA39" {
+                    c.clear();
+                }
+            }
         }
         self.upgrades = self.upgrades.max(UPGRADES);
         self.migrate_ai();
@@ -3790,6 +3805,22 @@ mod tests {
         let s = migrated(r#"{"ai_image": {}}"#);
         assert_eq!(s.ai, crate::ai::AiPrefs::default());
         assert!(s.ai_image.is_none());
+    }
+
+    /// #3829: the PDF/X output condition kept at "FOGRA39", the old
+    /// default, follows the drawing's CMYK profile once; another typed
+    /// stays, and so does "FOGRA39" chosen again afterwards.
+    #[test]
+    fn the_old_default_output_condition_follows_the_drawing() {
+        let old = migrated(
+            r#"{"upgrades": 9, "formats": {"output_condition": "FOGRA39"}, "publish_pdf": {"output_condition": "FOGRA39"}}"#,
+        );
+        assert!(old.formats.output_condition.is_empty());
+        assert!(old.publish_pdf.output_condition.is_empty());
+        let typed = migrated(r#"{"upgrades": 9, "formats": {"output_condition": "FOGRA51"}}"#);
+        assert_eq!(typed.formats.output_condition, "FOGRA51");
+        let chosen = migrated(r#"{"upgrades": 10, "formats": {"output_condition": "FOGRA39"}}"#);
+        assert_eq!(chosen.formats.output_condition, "FOGRA39");
     }
 
     /// #3811: Save As shows TraceDraw's Save Drawing dialog, with the type

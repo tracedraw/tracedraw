@@ -328,6 +328,11 @@ dialog's choices, and Export for Web and Office keep their own (#617,
   their outlines included (also those of objects inside a group), so an
   outline is never cut at the file's edge (#2290,
   `export::tests::a_selection_exported_alone_keeps_its_whole_outline`).
+  The objects are moved to the file's corner; a blend's steps keep
+  running to its end object. A blend inside a clip frame or a group
+  moves with it, and its end was moved once more, so its steps came out
+  as a staircase running off to one side (#3832,
+  `export::tests::a_clipped_blend_exported_as_the_selection_keeps_its_steps`).
 - Under the format's settings: Selected only and the export range; at
   the bottom, above OK and Cancel, "Do not show this dialog again" (see
   "Skipping the options").

@@ -177,8 +177,8 @@ rest starts as always: one copy, all pages, 100 %, as in the document.
 What File > Export (Ctrl+E) starts with (`formats`): the format (SVG),
 the resolution of bitmap formats (300 dpi, 1 to 2400), the JPEG and
 WebP quality (90, 1 to 100), Transparent background (on), the PDF
-standard (PDF 1.4), the PDF/X output condition (FOGRA39, at most 64
-characters) and the PDF bleed (0 mm, 0 to 50). Within a session File >
+standard (PDF 1.4), the PDF/X output condition (empty: the
+drawing's CMYK profile, #3829; at most 64 characters) and the PDF bleed (0 mm, 0 to 50). Within a session File >
 Export always starts with the choices of the last export (format,
 resolution, quality, transparency, WebP lossless, all pages, PDF choices
 and preset; not Selected only, which starts off again, nor the file's

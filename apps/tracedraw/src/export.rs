@@ -208,7 +208,7 @@ fn document_file(
             let opts = PdfOptions {
                 standard,
                 output_profile: pdfx_profile(app, standard),
-                output_condition: st.output_condition.clone(),
+                output_condition: output_condition(app, &st.output_condition),
                 bleed_mm: if ext == "pdf" { st.bleed_mm } else { 0.0 },
                 title: Some(if st.title.trim().is_empty() {
                     app.document_title().trim_end_matches('*').to_string()
@@ -477,6 +477,41 @@ pub(crate) fn pdfx_profile(app: &App, standard: tracedraw_io::pdf::PdfStandard) 
     (!p.is_empty())
         .then(|| crate::files::read(&p).ok())
         .flatten()
+}
+
+/// The printing condition a PDF/X file is made for when none is typed
+/// (#3829): the CMYK profile embedded as its output intent, the one
+/// picked under Colour Management, else the drawing's own CMYK profile,
+/// the one its CMYK colours were chosen in (File > New's colour settings,
+/// or the profile a `.cdr` carries). It was "FOGRA39" whatever the
+/// drawing's profile.
+pub(crate) fn drawing_output_condition(app: &App) -> String {
+    let c = &app.settings.color;
+    let picked = c.cmyk_profile.trim();
+    if !c.cmyk_profile_path.trim().is_empty() && !picked.is_empty() {
+        return picked.to_string();
+    }
+    let doc = app.doc();
+    [
+        doc.cmyk_profile.as_ref().map(|p| p.name.trim()).unwrap_or(""),
+        doc.metadata.cmyk_profile.trim(),
+        picked,
+    ]
+    .into_iter()
+    .find(|n| !n.is_empty())
+    .unwrap_or("")
+    .to_string()
+}
+
+/// The output condition typed, else the one the drawing stands for
+/// ([`drawing_output_condition`]).
+pub(crate) fn output_condition(app: &App, typed: &str) -> String {
+    let typed = typed.trim();
+    if typed.is_empty() {
+        drawing_output_condition(app)
+    } else {
+        typed.to_string()
+    }
 }
 
 /// The CMYK profile a CMYK bitmap export carries (#1763): the one the
@@ -1644,25 +1679,20 @@ pub fn print_area<'a>(shapes: impl Iterator<Item = &'a tracedraw_core::Shape>) -
     ))
 }
 
-/// The copies of their end objects that the blends of `s` (and of the
-/// objects inside it) keep, in page space, moved by `t` along with `s`:
-/// a page-space transformation of the start object alone, with no end
-/// object to bring the copy up to date from (the end was not exported
-/// with the start), would otherwise leave the steps running to where the
-/// end used to be (#1541).
+/// The copies of their end objects that the blends of `s` keep, in the
+/// space `s` lies in (the page, for an object on a layer), moved by `t`
+/// along with `s`: a page-space transformation of the start object alone,
+/// with no end object to bring the copy up to date from (the end was not
+/// exported with the start), would otherwise leave the steps running to
+/// where the end used to be (#1541). The blends of the objects inside a
+/// group or a clip frame lie in its space and moved with it: moving their
+/// ends too sent their steps off by `t` again, so a blend in a clip frame
+/// exported as the selection came out as a staircase of steps (#3832).
 fn carry_blend_ends(s: &mut tracedraw_core::Shape, t: Affine) {
     for e in s.effects.iter_mut() {
         if let tracedraw_core::live::Effect::Blend { end, .. } = e {
             end.transform_by(t);
         }
-    }
-    match &mut s.kind {
-        ShapeKind::Group { children } => children.iter_mut().for_each(|c| carry_blend_ends(c, t)),
-        ShapeKind::ClipFrame { frame, contents } => {
-            carry_blend_ends(frame, t);
-            contents.iter_mut().for_each(|c| carry_blend_ends(c, t));
-        }
-        _ => {}
     }
 }
 
@@ -3619,6 +3649,110 @@ mod tests {
     }
 
     use super::*;
+
+    /// #3832: a blend inside a clip frame (or a group) exported as the
+    /// selection keeps its steps where the drawing shows them. The frame
+    /// is moved to the exported page's corner, its contents with it; the
+    /// end copy of the blend inside was moved once more, and its steps ran
+    /// off in a staircase. A blend on the layer still has its end carried.
+    #[test]
+    fn a_clipped_blend_exported_as_the_selection_keeps_its_steps() {
+        use tracedraw_core::geometry::Rect;
+        use tracedraw_core::live::Effect;
+        let mut app = App::headless();
+        let rect = |app: &mut App, r: Rect| {
+            app.new_shape(ShapeKind::Rect {
+                rect: r,
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect")
+        };
+        let a = rect(&mut app, Rect::new(10.0, 100.0, 20.0, 120.0));
+        let b = rect(&mut app, Rect::new(150.0, 100.0, 190.0, 120.0));
+        app.select(vec![a, b]);
+        app.blend_selection(20, 0.0, 0.0, 0.0);
+        let c = rect(&mut app, Rect::new(10.0, 10.0, 20.0, 30.0));
+        let d = rect(&mut app, Rect::new(60.0, 10.0, 70.0, 30.0));
+        app.select(vec![c, d]);
+        app.blend_selection(5, 0.0, 0.0, 0.0);
+        let frame = rect(&mut app, Rect::new(5.0, 95.0, 195.0, 125.0));
+        app.place_inside(vec![a, b], frame);
+        let end_of = |s: &tracedraw_core::Shape| {
+            s.effects.iter().find_map(|e| match e {
+                Effect::Blend { end, .. } => Some(end.bounds()),
+                _ => None,
+            })
+        };
+        fn find(s: &tracedraw_core::Shape, id: ShapeId) -> Option<&tracedraw_core::Shape> {
+            if s.id == id {
+                return Some(s);
+            }
+            match &s.kind {
+                ShapeKind::ClipFrame { contents, .. } => contents.iter().find_map(|c| find(c, id)),
+                ShapeKind::Group { children } => children.iter().find_map(|c| find(c, id)),
+                _ => None,
+            }
+        }
+        let start_in = |doc: &Document, id: ShapeId| {
+            doc.pages[0].layers[0]
+                .shapes
+                .iter()
+                .find_map(|s| find(s, id))
+                .cloned()
+                .expect("start")
+        };
+        let inside = end_of(&start_in(app.doc(), a)).expect("blend");
+        app.select(vec![frame]);
+        let (doc, bounds) = selection_document(&app);
+        let moved = end_of(&start_in(&doc, a)).expect("blend");
+        assert_eq!(moved, inside, "the frame carried it: not moved again");
+        // On the layer, the end is carried with the start.
+        let on_layer = end_of(app.doc().find_shape(c).expect("c")).expect("blend");
+        app.select(vec![c]);
+        let (doc, b2) = selection_document(&app);
+        let carried = end_of(&doc.pages[0].layers[0].shapes[0]).expect("blend");
+        assert!((carried.x0 - (on_layer.x0 - b2.x0)).abs() < 1e-9, "{carried:?}");
+        assert!(bounds.width() > 0.0);
+    }
+
+    /// #3829: a PDF/X file is made for the drawing's CMYK profile, not for
+    /// "FOGRA39" whatever the drawing's colour settings: a drawing made in
+    /// "U.S. Web Coated (SWOP) v2" goes out for that press (its registered
+    /// name, "CGATS TR 001"). A condition typed in the dialog stays.
+    #[test]
+    fn a_pdfx_export_is_made_for_the_drawings_cmyk_profile() {
+        let mut app = App::headless();
+        app.settings.color.cmyk_profile_path.clear();
+        let settings = crate::new_document::NewDocSettings {
+            cmyk_profile: "U.S. Web Coated (SWOP) v2".into(),
+            ..Default::default()
+        };
+        app.engine.replace(settings.build("Press".into()));
+        let st = ExportState {
+            pdf_standard: 1,
+            ..ExportState::default()
+        };
+        assert!(st.output_condition.is_empty(), "the drawing's by default");
+        assert_eq!(drawing_output_condition(&app), "U.S. Web Coated (SWOP) v2");
+        let pdf = |app: &App, st: &ExportState| {
+            let bytes = document_file(app, app.doc(), "pdf", st).expect("pdf");
+            String::from_utf8_lossy(&bytes).into_owned()
+        };
+        let text = pdf(&app, &st);
+        assert!(text.contains("/OutputConditionIdentifier (CGATS TR 001)"));
+        assert!(text.contains("/OutputCondition (U.S. Web Coated \\(SWOP\\) v2)"));
+        assert!(!text.contains("FOGRA39"));
+        let typed = ExportState {
+            output_condition: "FOGRA51".into(),
+            ..st
+        };
+        assert!(pdf(&app, &typed).contains("/OutputConditionIdentifier (FOGRA51)"));
+        // Publish to PDF goes by the drawing too.
+        assert!(crate::ui::publish_pdf::PublishPrefs::default()
+            .output_condition
+            .is_empty());
+    }
 
     /// Separations to files: each plate in a document of its own named
     /// after its ink, every sheet on it; the empty ones left out when asked.

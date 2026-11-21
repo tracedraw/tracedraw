@@ -139,7 +139,8 @@ impl Default for ExportState {
             pdf_standard: 0,
             ai_version: 0,
             bleed_mm: 0.0,
-            output_condition: "FOGRA39".into(),
+            // Empty: the drawing's CMYK profile (#3829).
+            output_condition: String::new(),
             script: None,
             title: String::new(),
             tags: String::new(),
@@ -5438,8 +5439,11 @@ fn export_dialog(app: &mut App, ctx: &Context, st: &mut ExportState, close: &mut
                     if st.pdf_standard > 0 {
                         ui.horizontal(|ui| {
                             ui.label(tr("dialog.output_condition"));
-                            ui.text_edit_singleline(&mut st.output_condition)
-                                .rich_tip(crate::ui::tips::keyed("dialog.output_condition"));
+                            ui.add(
+                                egui::TextEdit::singleline(&mut st.output_condition)
+                                    .hint_text(crate::export::drawing_output_condition(app)),
+                            )
+                            .rich_tip(crate::ui::tips::keyed("dialog.output_condition"));
                         });
                         ui.label(
                             egui::RichText::new(tr("dialog.pdfx_profile_note"))
