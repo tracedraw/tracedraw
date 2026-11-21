@@ -4,6 +4,10 @@ Versions follow the tags of this repository; every push to `main` also
 publishes a nightly build. [`docs/features.md`](docs/features.md) has the
 full, row-by-row status.
 
+## Unreleased
+
+- Pictures: a decoded picture stays in the cache while it fits the whole picture budget, where it used to be dropped once it took more than half of it, so a picture whose level takes most of the budget was decoded again on every draw of the view. The budget follows the machine, read again at every decode: half of the scarcer of the free physical memory and the free commit limit (physical plus what the page file may still take), counting back the bytes the cache holds, at least 64 MiB and at most a quarter of the memory of the machine (a 32-bit process: a quarter of its address space). On a nearly full machine (a pagefile on a full disk) the budget stops at 64 MiB instead of running the process out of memory, and where free memory cannot be read (the browser, macOS, Android) the fixed budget stands (512 MB, 256 MB in the browser).
+
 ## 0.50.1 (2026-11-21)
 
 - Windows: Help > Updates > Install finishes when Explorer holds the thumbnail handler (it shows `.cdr` and `.tdraw` pictures): the quiet setup stopped with no word on a file in use, for a copy installed for the current user. The setup now moves that file aside before installing and closes only TraceDraw's programs; it writes a log, and the status bar says so at the next start when an update did not finish (#3816).
