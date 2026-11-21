@@ -142,6 +142,8 @@ ao longo de uma curva ligados a ela, também abre assim: a curva mantém os
 objetos nela, com o espaçamento e o giro que o arquivo tinha, e editar a
 curva os posiciona de novo.
 
+![Objetos mantidos ao vivo numa onda, com as alças de espaçamento e giro](../../img/objects-fit-objects-to-path-live.png)
+
 ## Dicas e limites {#tips}
 
 - Numa forma fechada, os objetos dão a volta inteira, o lado de fechamento

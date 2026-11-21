@@ -146,6 +146,8 @@ cabe não é desenhado, impresso nem exportado. Para fazê-lo caber:
 
 [[menu.text > menu.text.show_text_frames]] mostra ou oculta as molduras.
 
+![Um texto de parágrafo como bloco tipográfico: cada linha preenche a largura do quadro](../../img/text-adding-text-type-block.png)
+
 ## Mover e girar caracteres {#characters}
 
 Com a ferramenta [[tool.shape]], o texto mostra um nó em cada caractere:
@@ -201,6 +203,10 @@ de texto de sempre:
 
 Arraste o texto para deslizá-lo pelo caminho, ou através do caminho para
 afastá-lo dele.
+
+![Curvar texto: círculo, arco, tigela e onda](../../img/text-adding-text-curve-text.png)
+
+![Letras radiais em volta de um mostrador](../../img/text-adding-text-radial.png)
 
 ## Outros comandos de texto {#commands}
 

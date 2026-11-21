@@ -61,6 +61,8 @@ preenchimento do painel [[docker.properties]]:
 
 Uma faixa abaixo do tipo mostra toda a sequência de cores como será desenhada.
 
+![Um degradê de pontos de cor com os quatro pontos no canvas](../../img/color-fills-color-points.png)
+
 ## A caixa de diálogo Editar preenchimento {#edit-fill}
 
 <kbd>F11</kbd> abre a caixa de diálogo [[edit_fill.title]] no preenchimento da
@@ -185,6 +187,8 @@ mistura, ou desfaça para voltar.
   correndo entre manchas escuras e claras (cores A e B), o glitter com
   grãos brilhantes. Não muda com o ângulo de visão; PDF e SVG levam como
   imagem.
+
+![As texturas Holográfico e Brilho holográfico](../../img/color-fills-holographic.png)
 
 ## Vários preenchimentos em um objeto {#several-fills}
 

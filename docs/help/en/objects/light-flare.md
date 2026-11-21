@@ -25,3 +25,7 @@ selected; move it onto the light in your picture. Each part is an ordinary
 object with a see-through gradient, so you can ungroup the flare, recolour
 a part, or move a disc on its own. The dialog keeps its settings for the
 next flare.
+
+![The Light Flare dialog box](../../img/objects-light-flare.png)
+
+![A light flare inserted over a dark background](../../img/objects-light-flare-insert.png)

@@ -100,6 +100,8 @@ its own centre, in one undo step. With **Random** on, each object takes an
 amount of its own somewhere between none and the amount set, so a row of
 copies can be varied at once. The dialog keeps the amounts for next time.
 
+![The Transform Each dialog box](../../img/objects-transforming-transform-each.png)
+
 ## Undoing transformations {#clear}
 
 [[menu.object > menu.object.clear_transformations]] takes the selected objects

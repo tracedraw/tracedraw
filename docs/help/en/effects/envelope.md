@@ -68,3 +68,5 @@ edge, and the object bends smoothly around it, so arrows can be pulled into a
 star or a word into a wave. Pictures bend through the grid too. **Add Mesh** again starts a fresh grid with the
 columns and rows set; [[effect.mesh_envelope]] shows in the effect stack of the
 Effects panel, and Convert to Curves makes it part of the curves.
+
+![A mesh envelope of four columns and two rows bending a group, its grid points dragged](../../img/effects-envelope-mesh.png)

@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Help: the Shape Generator page shows each of its twenty generators at work, the panel beside what Create drew, in English and Portuguese; the tools and commands of 0.50.0 (Shape Builder, Combine Shapes, Curvature Pen, mesh envelope, layer effects, colour points and holographic fills, Blend, Curve Text, Type block, live Fit to Path, rotational symmetry, Light Flare, Transform Each, outline gradients along the line, View > Separations) get pictures of how to use them. The pictures are drawn from the app itself, headlessly (`web/help_shots.sh`).
 - Open .cdr version 15: drop shadows are read and drawn beneath their objects, with their offset, opacity, feathering, colour and merge mode, where they were missing (#3222).
 - Open .cdr version 15: uniform transparencies are read (objects meant to be see-through opened solid and hid what lay behind them), a transparency that multiplies darkens what lies beneath instead of mixing as Normal, and envelopes on objects and groups bend them as drawn instead of leaving them flat and out of place (#3222).
 - Save and open .cdr: the document information (author, subject, keywords, copyright, notes and rating) goes into the file and is read back from it (#3411).

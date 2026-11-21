@@ -63,6 +63,8 @@ outline was drawn along, and round ends and corners become arcs.
 The settings of new objects are explained in
 [Object styles and defaults](../templates-styles/object-styles.md#document-defaults).
 
+![An outline whose gradient runs along the line](../../img/lines-shapes-outlines-along-the-line.png)
+
 ## Outline Color {#outline-color}
 
 The [[tool.outline_color]] tool (<kbd>Shift+F12</kbd>) opens the

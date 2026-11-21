@@ -75,3 +75,5 @@ Imagens também se dobram pela grade.
 **Adicionar malha** de novo começa uma grade nova com as colunas e linhas
 escolhidas; [[effect.mesh_envelope]] aparece na pilha de efeitos do painel
 Efeitos, e Converter em curvas a torna parte das curvas.
+
+![Um envelope de malha de quatro colunas e duas linhas dobrando um grupo, com pontos da grade arrastados](../../img/effects-envelope-mesh.png)

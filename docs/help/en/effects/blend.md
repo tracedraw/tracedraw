@@ -76,6 +76,8 @@ blending as one shape.
 The object acceleration moves the steps toward one end also when the blend
 follows no path. A bitmap effect on the start object keeps the blend drawn.
 
+![A blend made with the Blend tool, bent into a curve by its round handle](../../img/effects-blend-bend.png)
+
 ## Blending along a path {#path}
 
 1. Select the blend.

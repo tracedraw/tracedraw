@@ -81,6 +81,9 @@ group as one combined curve, in the top object's paint. In the
 object inside the group updates the combined curve, and Convert to Curves
 makes it permanent.
 
+![Break into Pieces: every piece of three overlapping objects, pulled apart here to show them](../../img/lines-shapes-shaping-pieces-1.png)
+
+![Piece Outlines: each piece as an outline in its colour](../../img/lines-shapes-shaping-pieces-2.png)
 
 ## Cutting along an object, into a grid, and cleaning up {#cutting}
 
@@ -97,6 +100,8 @@ makes it permanent.
   of the page. The status bar says how many went.
 
 Each of these is one undo step.
+
+![The Cut into Grid window over a selected ellipse](../../img/lines-shapes-shaping-cutting.png)
 
 ## The Shaping panel {#shaping-docker}
 

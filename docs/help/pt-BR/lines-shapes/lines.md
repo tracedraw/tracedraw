@@ -136,6 +136,8 @@ pontos que você clica, sem alças para puxar.
 O resultado é uma curva comum cujos nós são os pontos clicados, e a
 ferramenta [[tool.shape]] a edita como qualquer outra.
 
+![Quatro cliques com a Caneta de curvatura: uma curva suave passa por cada ponto](../../img/lines-shapes-lines-curvature-pen.png)
+
 ## Polilinha {#polyline}
 
 A ferramenta [[tool.polyline]] desenha segmentos retos um após o outro: clique

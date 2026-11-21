@@ -103,6 +103,8 @@ ligado, cada objeto recebe uma quantidade própria entre nenhuma e a definida,
 para variar de uma vez uma fileira de cópias. O diálogo guarda as quantidades
 para a próxima vez.
 
+![A caixa de diálogo Transformar cada um](../../img/objects-transforming-transform-each.png)
+
 ## Desfazer transformações {#clear}
 
 [[menu.object > menu.object.clear_transformations]] devolve os objetos

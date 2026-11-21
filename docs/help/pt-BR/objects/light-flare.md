@@ -25,3 +25,7 @@ leve-o até a luz da sua imagem. Cada parte é um objeto comum com um degradê
 transparente, então você pode desagrupar o reflexo, mudar a cor de uma parte
 ou mover um disco sozinho. O diálogo guarda as configurações para o próximo
 reflexo.
+
+![A caixa de diálogo Reflexo de luz](../../img/objects-light-flare.png)
+
+![Um reflexo de luz inserido sobre um fundo escuro](../../img/objects-light-flare-insert.png)

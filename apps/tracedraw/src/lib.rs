@@ -126,6 +126,10 @@ mod grammar;
 mod guides;
 mod help;
 #[cfg(test)]
+mod help_scene_list;
+#[cfg(test)]
+mod help_scenes;
+#[cfg(test)]
 mod help_shots;
 mod hunspell;
 mod i18n;

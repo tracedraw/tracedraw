@@ -56,6 +56,8 @@ the [[docker.properties]] panel:
 
 A strip under the type shows the whole run of colors as it will be drawn.
 
+![A colour points gradient with its four points on the canvas](../../img/color-fills-color-points.png)
+
 ## The Edit Fill dialog box {#edit-fill}
 
 <kbd>F11</kbd> opens the [[edit_fill.title]] dialog box on the fill of the
@@ -176,6 +178,8 @@ go back.
   through dark and light patches (colors A and B), the glitter with
   sparkling grains. It does not change with the viewing angle; PDF and SVG
   carry it as a picture.
+
+![The Holographic and Holo glitter textures](../../img/color-fills-holographic.png)
 
 ## Several fills on one object {#several-fills}
 

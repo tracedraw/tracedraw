@@ -142,6 +142,8 @@ click, with no handles to pull.
 The result is an ordinary curve whose nodes are the points you clicked, so
 the [[tool.shape]] tool edits it like any other.
 
+![Four clicks with the Curvature Pen: a smooth curve runs through each point](../../img/lines-shapes-lines-curvature-pen.png)
+
 ## Polyline {#polyline}
 
 The [[tool.polyline]] tool draws straight segments one after the other:

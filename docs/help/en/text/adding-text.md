@@ -145,6 +145,8 @@ drawn, printed or exported. To make it fit:
 
 [[menu.text > menu.text.show_text_frames]] shows or hides the frames.
 
+![A paragraph text set as a type block: each line fills the frame width](../../img/text-adding-text-type-block.png)
+
 ## Moving and turning characters {#characters}
 
 With the [[tool.shape]] tool, text shows a node at each character: drag nodes
@@ -199,6 +201,10 @@ bar shows the path's fields first, then the usual text fields:
 
 Drag the text to slide it along the path, or across the path to move it away
 from it.
+
+![Curve Text: circle, arch, bowl and wave](../../img/text-adding-text-curve-text.png)
+
+![Radial letters round a dial](../../img/text-adding-text-radial.png)
 
 ## Other text commands {#commands}
 

@@ -78,6 +78,8 @@ Uma sombra interna na lista Efeitos de camada também tem **Espalhamento**:
 mantém a sombra sólida nessa parte do desfoque antes de ela sumir, para
 uma borda mais funda e arredondada.
 
+![Meio-tom em tinta CMYK, losangos numa cor e linhas](../../img/effects-effects-docker-halftone.png)
+
 ## Outros comandos de efeito {#commands}
 
 - [[menu.effects > menu.effects.flatten]] transforma os efeitos dos objetos
@@ -123,3 +125,5 @@ atualizados enquanto você edita o objeto:
 **Variação** dá outro padrão aos efeitos aleatórios. O mesmo valor sempre
 desenha o mesmo resultado. Converter em curvas torna os efeitos de contorno
 definitivos.
+
+![Borda áspera, preenchimento de rabisco, moldura, marcas de corte e borda suave](../../img/effects-effects-docker-hand-made.png)

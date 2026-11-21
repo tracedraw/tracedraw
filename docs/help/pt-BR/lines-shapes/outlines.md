@@ -66,6 +66,8 @@ Para transformar um contorno em um objeto que pode ser preenchido, escolha
 As configurações dos novos objetos são explicadas em
 [Estilos de objeto e padrões](../templates-styles/object-styles.md#document-defaults).
 
+![Um contorno com degradê ao longo da linha](../../img/lines-shapes-outlines-along-the-line.png)
+
 ## Cor do contorno {#outline-color}
 
 A ferramenta [[tool.outline_color]] (<kbd>Shift+F12</kbd>) abre o painel

@@ -138,6 +138,8 @@ along a curve and linked to it, opens this way too: the curve keeps the
 objects on it, at the spacing and turn the file had, so editing the curve
 places them again.
 
+![Objects kept live on a wave, with the spacing and turn handles](../../img/objects-fit-objects-to-path-live.png)
+
 ## Tips and limits {#tips}
 
 - On a closed shape the objects go all the way round, the closing side

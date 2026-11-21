@@ -86,6 +86,9 @@ grupo como uma curva combinada, com a pintura do objeto de cima. Na entrada
 objeto dentro do grupo atualiza a curva, e Converter em curvas a torna
 definitiva.
 
+![Quebrar em pedaços: cada pedaço de três objetos sobrepostos, afastados aqui para aparecerem](../../img/lines-shapes-shaping-pieces-1.png)
+
+![Contornos dos pedaços: cada pedaço como contorno na sua cor](../../img/lines-shapes-shaping-pieces-2.png)
 
 ## Cortar por um objeto, em grade, e limpar {#cutting}
 
@@ -101,6 +104,8 @@ definitiva.
   camadas destravadas da página. A barra de status diz quantos saíram.
 
 Cada um é um só passo de desfazer.
+
+![A janela Cortar em grade sobre uma elipse selecionada](../../img/lines-shapes-shaping-cutting.png)
 
 ## O painel Modelagem {#shaping-docker}
 

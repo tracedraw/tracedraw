@@ -74,6 +74,8 @@ An inner shadow in the Layer effects list also has **Spread**: it keeps
 the shadow solid over that share of its blur before it fades, for a
 deeper, rounder edge.
 
+![Halftone in CMYK ink, diamonds in one colour, and lines](../../img/effects-effects-docker-halftone.png)
+
 ## Other effect commands {#commands}
 
 - [[menu.effects > menu.effects.flatten]] turns the effects of the selected
@@ -118,3 +120,5 @@ each changing as you edit the object:
 
 **Variation** gives the random effects another pattern. The same value always
 draws the same result. Convert to Curves makes the outline effects permanent.
+
+![Rough edge, sketch fill, shape frame, trim marks and soft edge](../../img/effects-effects-docker-hand-made.png)
