@@ -91,6 +91,12 @@ pub enum Effect {
         corners: Vec<usize>,
         #[serde(default)]
         mapping: crate::envelope::Mapping,
+        /// The box the frame maps, in the object's own space, when it is
+        /// not the box of the object's outline: an object that left a
+        /// group keeps the group's envelope over the group's box, so it
+        /// stays bent as it was (#3714). Older files have none.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reference: Option<Rect>,
     },
     /// Perspective: the four corners of the bounding box moved.
     Perspective { corners: [Point; 4] },
@@ -1171,11 +1177,12 @@ fn warp_outline(e: &Effect, p: &BezPath, b: Rect) -> Option<BezPath> {
             handles,
             corners,
             mapping,
+            reference,
         } => {
             let frame = crate::envelope::Frame::from_parts(nodes, handles, corners)?;
             Some(crate::envelope::apply_in(
                 p,
-                b,
+                reference.unwrap_or(b),
                 &frame,
                 *keep_lines,
                 *mapping,
@@ -1485,6 +1492,7 @@ impl Effect {
             handles: frame.handles.clone(),
             corners: frame.corners.to_vec(),
             mapping,
+            reference: None,
         }
     }
 
@@ -1726,6 +1734,13 @@ pub fn evaluate(shape: &Shape) -> Evaluated {
 /// the outline before the body is built (#2214), so the box is the
 /// outline's there too.
 pub fn warp_box(shape: &Shape, at: usize) -> Rect {
+    // An envelope kept from a group maps the group's box (#3714).
+    if let Some(Effect::Envelope {
+        reference: Some(r), ..
+    }) = shape.effects.get(at)
+    {
+        return *r;
+    }
     let mut s = shape.clone();
     s.effects.truncate(at);
     s.effects.retain(Effect::warps_outline);
@@ -1778,11 +1793,12 @@ fn warp_shape(main: &mut Shape, effect: &Effect) {
             handles,
             corners,
             mapping,
+            reference,
         } => {
             if let Some(frame) = crate::envelope::Frame::from_parts(nodes, handles, corners) {
                 // Pictures bend through the same map, their pixels
                 // resampled (#3608); the outlines of the rest bend after.
-                let b = main.local_path().bounding_box();
+                let b = reference.unwrap_or_else(|| main.local_path().bounding_box());
                 if let Some(map) = crate::envelope::point_map(b, &frame, *mapping) {
                     let key = {
                         use std::hash::{Hash, Hasher};
@@ -1799,7 +1815,8 @@ fn warp_shape(main: &mut Shape, effect: &Effect) {
                         crate::bitmap_warp::bend(pic, m, key, &map)
                     });
                 }
-                reshape(main, &|p, b| {
+                reshape(main, &|p, own| {
+                    let b = reference.unwrap_or(own);
                     crate::envelope::apply_in(p, b, &frame, *keep_lines, *mapping)
                 });
             }
@@ -4615,6 +4632,72 @@ pub fn take_group_perspectives(member: &mut Shape, group_path: &BezPath, group: 
     member.parked_effects = parked;
 }
 
+/// The envelopes of a group an object leaves (Ungroup), kept on the
+/// object so it stays bent as it was (#3714). Each maps the group's box
+/// as the envelopes before it left it, seen in the object's own space,
+/// and goes at the front of the object's stack, where the group's warp
+/// reached its outline. Only when the group's other effects bend nothing
+/// and the object is only moved and scaled in the group (the group's box
+/// is still a box in its space); otherwise nothing is carried.
+pub fn take_group_envelopes(member: &mut Shape, group_path: &BezPath, group: &[Effect]) {
+    if !group.iter().any(|e| matches!(e, Effect::Envelope { .. }))
+        || group
+            .iter()
+            .any(|e| e.warps_outline() && !matches!(e, Effect::Envelope { .. }))
+    {
+        return;
+    }
+    let [a, b, c, d, _, _] = member.transform.as_coeffs();
+    if b.abs() > 1e-9 || c.abs() > 1e-9 || a <= 1e-9 || d <= 1e-9 {
+        return;
+    }
+    let inv = member.transform.inverse();
+    let mut path = group_path.clone();
+    let mut taken = Vec::new();
+    for e in group {
+        let Effect::Envelope {
+            nodes,
+            keep_lines,
+            handles,
+            corners,
+            mapping,
+            reference,
+        } = e
+        else {
+            continue;
+        };
+        let Some(frame) = crate::envelope::Frame::from_parts(nodes, handles, corners) else {
+            continue;
+        };
+        let bx = reference.unwrap_or_else(|| path.bounding_box());
+        if bx.width() < 1e-9 || bx.height() < 1e-9 {
+            continue;
+        }
+        taken.push(Effect::Envelope {
+            nodes: nodes.iter().map(|p| inv * *p).collect(),
+            keep_lines: *keep_lines,
+            handles: handles.iter().map(|h| h.map(|p| inv * p)).collect(),
+            corners: corners.clone(),
+            mapping: *mapping,
+            reference: Some(Rect::from_points(
+                inv * Point::new(bx.x0, bx.y0),
+                inv * Point::new(bx.x1, bx.y1),
+            )),
+        });
+        path = crate::envelope::apply_in(&path, bx, &frame, *keep_lines, *mapping);
+    }
+    if taken.is_empty() {
+        return;
+    }
+    let mut stack = member.effect_stack();
+    for (i, e) in taken.into_iter().enumerate() {
+        stack.insert(i, (e, true));
+    }
+    let (effects, parked) = Shape::split_stack(stack);
+    member.effects = effects;
+    member.parked_effects = parked;
+}
+
 /// Solve the 8 parameters of a homography from 4 point pairs.
 pub fn homography(src: &[Point; 4], dst: &[Point; 4]) -> Option<[f64; 8]> {
     let mut m = [[0.0f64; 9]; 8];
@@ -6531,6 +6614,7 @@ mod tests {
                 handles: Vec::new(),
                 corners: Vec::new(),
                 mapping: crate::envelope::Mapping::Putty,
+                reference: None,
             });
             let main = evaluate(&s).main;
             let pic = match &main.kind {

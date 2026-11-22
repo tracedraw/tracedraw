@@ -154,10 +154,16 @@ fn with_frame(effects: &[Effect], at: usize, frame: &Frame) -> Vec<Effect> {
         if let Effect::Envelope {
             keep_lines,
             mapping,
+            reference,
             ..
         } = e
         {
+            // An envelope kept from a group still maps the group's box.
+            let reference = *reference;
             *e = Effect::from_envelope(frame, *keep_lines, *mapping);
+            if let Effect::Envelope { reference: r, .. } = e {
+                *r = reference;
+            }
         }
     }
     out
@@ -824,7 +830,14 @@ impl App {
                 _ => (self.envelope_keep_lines, self.envelope_mapping),
             };
             if let Some(e) = effects.get_mut(at) {
+                let reference = match e {
+                    Effect::Envelope { reference, .. } => *reference,
+                    _ => None,
+                };
                 *e = Effect::from_envelope(&make(b), keep, mapping);
+                if let Effect::Envelope { reference: r, .. } = e {
+                    *r = reference;
+                }
             }
             cmds.push(Command::SetEffects { shape: id, effects });
         }

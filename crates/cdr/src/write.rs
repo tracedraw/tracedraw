@@ -5952,6 +5952,7 @@ impl<'a> Writer<'a> {
         let [e @ Effect::Envelope {
             keep_lines: false,
             mapping: Mapping::Putty,
+            reference: None,
             ..
         }] = s.effects.as_slice()
         else {

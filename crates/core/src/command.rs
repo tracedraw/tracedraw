@@ -1943,8 +1943,9 @@ impl Command {
             Command::Ungroup { group } => {
                 let (layer_id, idx) = doc.locate(*group)?;
                 let g = doc.layer_mut(layer_id)?.shapes.remove(idx);
-                // The group's perspective stays on each of its objects, which
-                // are drawn as they were (#674); its other effects go.
+                // The group's perspective and envelopes stay on each of its
+                // objects, which are drawn as they were (#674, #3714); its
+                // other effects go.
                 let group_path = g.local_path();
                 let group_effects = g.effects.clone();
                 let pieces: Vec<Shape> = match g.kind {
@@ -1956,6 +1957,8 @@ impl Command {
                                 &group_path,
                                 &group_effects,
                             );
+                            // And its envelopes, so text stays bent (#3714).
+                            crate::live::take_group_envelopes(&mut c, &group_path, &group_effects);
                             c.absorb(g.transform);
                             // The group's uniform transparency stays on
                             // each of its objects.
@@ -3977,6 +3980,100 @@ mod tests {
                     // Contours are fitted with curves within 0.05 mm (#821).
                     assert!((g - w).abs() < 0.05, "{effects:?}: {got:?} != {want:?}");
                 }
+            }
+        }
+    }
+
+    /// A group's envelope stays on each of its objects when it is ungrouped
+    /// (#3714), mapping the group's box, so each is drawn where it was in
+    /// the group, and the envelope can still be edited.
+    #[test]
+    fn ungrouping_keeps_the_envelope_on_each_object() {
+        use crate::geometry::Shape as _;
+        use crate::live::Effect;
+        let mut doc = Document::default();
+        let layer = doc.pages[0].layers[0].id;
+        let a = rect(&mut doc, 0.0);
+        let mut b = rect(&mut doc, 20.0);
+        b.transform = Affine::translate((3.0, 4.0)) * Affine::scale_non_uniform(1.5, 0.5);
+        let (ia, ib) = (a.id, b.id);
+        for s in [a, b] {
+            Command::AddShape { layer, shape: s }
+                .apply(&mut doc)
+                .unwrap();
+        }
+        Command::Group {
+            shapes: vec![ia, ib],
+        }
+        .apply(&mut doc)
+        .unwrap();
+        let gid = doc.layer(layer).unwrap().shapes[0].id;
+        Command::TransformShapes {
+            shapes: vec![gid],
+            transform: Affine::translate((5.0, 7.0)) * Affine::rotate(0.3),
+        }
+        .apply(&mut doc)
+        .unwrap();
+        let bb = doc.find_shape(gid).unwrap().local_path().bounding_box();
+        let mut nodes = crate::envelope::default_nodes(bb);
+        nodes[1].y -= 6.0;
+        nodes[5].y += 8.0;
+        let envelope = Effect::Envelope {
+            nodes,
+            keep_lines: false,
+            handles: Vec::new(),
+            corners: Vec::new(),
+            mapping: crate::envelope::Mapping::Putty,
+            reference: None,
+        };
+        Command::SetEffects {
+            shape: gid,
+            effects: vec![envelope],
+        }
+        .apply(&mut doc)
+        .unwrap();
+        let main = crate::live::evaluate(doc.find_shape(gid).unwrap()).main;
+        let ShapeKind::Group { children } = &main.kind else {
+            panic!("a group: {:?}", main.kind);
+        };
+        let drawn: Vec<_> = children
+            .iter()
+            .map(|c| {
+                let mut c = c.clone();
+                c.transform_by(main.transform);
+                c.visual_bounds()
+            })
+            .collect();
+        Command::Ungroup { group: gid }.apply(&mut doc).unwrap();
+        for (id, want) in [ia, ib].into_iter().zip(drawn) {
+            let s = doc.find_shape(id).unwrap();
+            assert!(
+                matches!(
+                    s.effects.as_slice(),
+                    [Effect::Envelope {
+                        reference: Some(_),
+                        ..
+                    }]
+                ),
+                "{:?}",
+                s.effects
+            );
+            // The envelope tool edits it in the group's box.
+            let Effect::Envelope {
+                reference: Some(r), ..
+            } = &s.effects[0]
+            else {
+                unreachable!()
+            };
+            assert_eq!(crate::live::warp_box(s, 0), *r);
+            let got = s.visual_bounds();
+            for (g, w) in [
+                (got.x0, want.x0),
+                (got.y0, want.y0),
+                (got.x1, want.x1),
+                (got.y1, want.y1),
+            ] {
+                assert!((g - w).abs() < 1e-6, "{got:?} != {want:?}");
             }
         }
     }

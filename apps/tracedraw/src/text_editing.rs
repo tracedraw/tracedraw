@@ -1730,6 +1730,7 @@ mod tests {
                 handles: vec![],
                 corners: vec![],
                 mapping: Default::default(),
+                reference: None,
             }],
         });
         // The place of the sixth letter as laid out, and where the
