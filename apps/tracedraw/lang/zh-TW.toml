@@ -10951,3 +10951,6 @@ dialog.pn_skip_last = "Last pages without a number:"
 dialog.pn_skip_last_desc = "How many pages at the end, such as a back cover, show no page number."
 dialog.pn_skip = "Pages without a number:"
 dialog.pn_skip_desc = "Pages that show no number, such as \"5, 9-10\". The numbering goes on after them without counting them."
+options.preview_background = "背景：" # mt
+options.preview_background_tip = "全螢幕預覽 (F9) 中頁面周圍的顏色。較暗的顏色比白色更護眼；頁面本身仍為白色。" # mt
+preview.keys_hint = "+ 和 - 或滾輪縮放；Page Up 和 Page Down 切換頁面" # mt

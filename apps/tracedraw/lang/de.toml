@@ -10951,3 +10951,6 @@ dialog.pn_skip_last = "Letzte Seiten ohne Nummer:" # mt
 dialog.pn_skip_last_desc = "Wie viele Seiten am Ende, etwa eine Rückseite, keine Seitenzahl zeigen." # mt
 dialog.pn_skip = "Seiten ohne Nummer:" # mt
 dialog.pn_skip_desc = "Seiten ohne Nummer, etwa \"5, 9-10\". Die Nummerierung geht danach weiter, ohne sie zu zählen." # mt
+options.preview_background = "Hintergrund:" # mt
+options.preview_background_tip = "Die Farbe um die Seite in der Vollbildvorschau (F9). Eine dunklere Farbe schont die Augen mehr als Weiß; die Seite selbst bleibt weiß." # mt
+preview.keys_hint = "+ und - oder das Mausrad zoomen; Bild auf und Bild ab wechseln die Seite" # mt

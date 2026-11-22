@@ -548,6 +548,9 @@ pub(crate) fn commands(
                     from: Some((bar, i)),
                 });
             }
+            if resp.clicked() && bar_items::customization_open(app) {
+                crate::ui::options::pick_bar_item(app, id);
+            }
         } else if resp.clicked() {
             match tool {
                 Some(t) => app.choose_tool(t),
@@ -777,7 +780,11 @@ fn tool_button(
             .data(|d| d.get_temp::<bool>(flyout_press_id).unwrap_or(false));
     if resp.clicked() && !(has_flyout && on_arrow) && !opened_by_press {
         app.flyout_open = None;
-        app.choose_tool(shown);
+        if crate::ui::bar_items::customization_open(app) {
+            crate::ui::options::pick_bar_item(app, shown.id());
+        } else {
+            app.choose_tool(shown);
+        }
     }
     // Double-clicking a tool button: Pick selects every object, Shape
     // every node, Zoom fits the drawing, Rectangle adds a frame around
@@ -915,7 +922,11 @@ fn flyout(app: &mut App, ui: &mut Ui, gi: usize, button: Rect, dock: crate::ui::
                             );
                         }
                         if rr.on_hover_ui(|ui| tool_tooltip(ui, *t, &keys)).clicked() {
-                            app.choose_tool(*t);
+                            if crate::ui::bar_items::customization_open(app) {
+                                crate::ui::options::pick_bar_item(app, t.id());
+                            } else {
+                                app.choose_tool(*t);
+                            }
                             close = true;
                         }
                         if SEPARATE_AFTER.contains(t) {

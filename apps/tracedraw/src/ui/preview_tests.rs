@@ -22,7 +22,7 @@ fn timed_frame(
 
 fn has_exit_hint(output: &egui::FullOutput) -> bool {
     output.shapes.iter().any(|shape| {
-        matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == tr("preview.exit_hint"))
+        matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text().starts_with(&tr("preview.exit_hint")))
     })
 }
 
@@ -531,4 +531,38 @@ fn fullscreen_reveals_nearby_objects_outside_the_editor_without_fitting_distant_
         "nearby object appears at the original scale: {color:?}"
     );
     output.textures_delta.clear();
+}
+
+/// In the full-screen preview, + and - zoom about the middle, Page Down
+/// and Page Up show the next and previous page fitted to the screen, and
+/// the colour round the page is the one chosen in the options (#3930).
+#[test]
+fn preview_keys_zoom_and_turn_the_pages() {
+    let (ctx, mut app) = setup();
+    app.add_page();
+    app.goto_page(0);
+    let first = app.page;
+    app.settings.preview_background = [30, 30, 30];
+    frame(&ctx, &mut app, WINDOW, false, vec![key(Key::F9, true)]);
+    let zoom = app.preview_session.as_ref().expect("preview").zoom;
+    frame(&ctx, &mut app, WINDOW, true, vec![key(Key::Plus, true)]);
+    let zoomed = app.preview_session.as_ref().expect("preview").zoom;
+    assert!((zoomed / zoom - 1.25).abs() < 1e-9, "{zoom} -> {zoomed}");
+    frame(&ctx, &mut app, WINDOW, true, vec![key(Key::Minus, true)]);
+    let back = app.preview_session.as_ref().expect("preview").zoom;
+    assert!((back - zoom).abs() < 1e-9, "{zoom} -> {back}");
+    frame(&ctx, &mut app, WINDOW, true, vec![key(Key::PageDown, true)]);
+    assert!(app.fullscreen_preview, "the keys keep the preview open");
+    assert_ne!(app.page, first, "Page Down shows the next page");
+    let session = app.preview_session.as_ref().expect("preview");
+    assert_eq!(session.bounds, app.page_rect(), "fitted to the page");
+    frame(&ctx, &mut app, WINDOW, true, vec![key(Key::PageDown, true)]);
+    assert_ne!(app.page, first, "no page after the last");
+    frame(&ctx, &mut app, WINDOW, true, vec![key(Key::PageUp, true)]);
+    assert_eq!(app.page, first, "Page Up goes back");
+    let mut out = ctx.run_ui(input(WINDOW, true, Vec::new()), |ui| crate::ui::root(&mut app, ui));
+    out.textures_delta.clear();
+    let dark = egui::Color32::from_rgb(30, 30, 30);
+    assert!(out.shapes.iter().any(|s| matches!(&s.shape,
+        egui::Shape::Rect(r) if r.fill == dark && r.rect.width() > 1000.0)));
 }

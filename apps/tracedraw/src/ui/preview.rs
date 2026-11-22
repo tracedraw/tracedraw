@@ -210,18 +210,93 @@ fn frame_bounds(app: &App, size: egui::Vec2) -> tracedraw_core::geometry::Rect {
 /// it fills the screen before it draws the drawing (#3830).
 const FULL_SCREEN_WAIT: f64 = 0.5;
 
+/// What a key or the wheel asks of the full-screen preview (#3930).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum PreviewInput {
+    /// Zoom by this factor about the middle of the screen.
+    Zoom(f64),
+    /// The next page (+1) or the one before (-1), fitted to the screen.
+    Page(i32),
+}
+
+/// The keys and wheel turns of this frame, in the full-screen preview:
+/// the plus and minus keys (and the wheel) zoom, Page Down / Page Up and
+/// the arrows go to the next or previous page (#3930).
+pub(crate) fn preview_keys(i: &egui::InputState) -> Vec<PreviewInput> {
+    use egui::Key;
+    let mut out = Vec::new();
+    if i.key_pressed(Key::Plus) || i.key_pressed(Key::Equals) {
+        out.push(PreviewInput::Zoom(1.25));
+    }
+    if i.key_pressed(Key::Minus) {
+        out.push(PreviewInput::Zoom(0.8));
+    }
+    let wheel = i.smooth_scroll_delta.y;
+    if wheel != 0.0 {
+        out.push(PreviewInput::Zoom(1.0015_f64.powf(f64::from(wheel))));
+    }
+    for k in [Key::PageDown, Key::ArrowRight, Key::ArrowDown] {
+        if i.key_pressed(k) {
+            out.push(PreviewInput::Page(1));
+        }
+    }
+    for k in [Key::PageUp, Key::ArrowLeft, Key::ArrowUp] {
+        if i.key_pressed(k) {
+            out.push(PreviewInput::Page(-1));
+        }
+    }
+    out
+}
+
+/// Do what [`preview_keys`] found: zoom the preview, or show another
+/// page fitted to a screen of `size` points. Selection preview, which
+/// fits the selection, only changes page.
+pub(crate) fn apply_preview_keys(app: &mut App, keys: &[PreviewInput], size: egui::Vec2) {
+    for k in keys {
+        match *k {
+            PreviewInput::Zoom(f) => {
+                if let Some(session) = &mut app.preview_session {
+                    session.zoom = (session.zoom * f).clamp(0.01, 500.0);
+                }
+            }
+            PreviewInput::Page(step) => {
+                let n = app.doc().pages.len();
+                let at = app.page_index() as i64 + i64::from(step);
+                if n < 2 || at < 0 || at >= n as i64 {
+                    continue;
+                }
+                app.goto_page(at as usize);
+                let page = app.page_rect();
+                if let Some(session) = &mut app.preview_session {
+                    let fit = (f64::from(size.x) / page.width().max(1e-6))
+                        .min(f64::from(size.y) / page.height().max(1e-6));
+                    session.bounds = page;
+                    session.zoom = (fit * 0.95).max(1e-6);
+                }
+            }
+        }
+    }
+}
+
 pub fn fullscreen(app: &mut App, ui: &mut Ui) {
     let ctx = ui.ctx().clone();
     if app.preview_session.is_none() {
         begin(app, &ctx, app.preview_selected_only);
     }
+    let keys = ctx.input(preview_keys);
+    if !keys.is_empty() {
+        let size = ctx.content_rect().size();
+        apply_preview_keys(app, &keys, size);
+    }
+    let [r, g, b] = app.settings.preview_background;
+    let background = egui::Color32::from_rgb(r, g, b);
     egui::CentralPanel::default()
         .frame(
             egui::Frame::new()
                 .fill(if app.preview_selected_only {
                     egui::Color32::from_gray(40)
                 } else {
-                    egui::Color32::WHITE
+                    background
                 })
                 .inner_margin(0.0),
         )
@@ -313,8 +388,19 @@ pub fn fullscreen(app: &mut App, ui: &mut Ui) {
                 let pos = rect.center() - size / 2.0;
                 let page_rect = egui::Rect::from_min_size(pos, size);
                 let painter = painter.with_clip_rect(page_rect);
+                let at = |x: f64, y: f64| {
+                    page_rect.min
+                        + egui::vec2(
+                            ((x - bounds.x0) * zoom) as f32,
+                            ((bounds.y1 - y) * zoom) as f32,
+                        )
+                };
+                let sheet = egui::Rect::from_two_pos(at(page.x0, page.y0), at(page.x1, page.y1));
                 if !app.preview_selected_only {
-                    painter.rect_filled(page_rect, 0.0, egui::Color32::WHITE);
+                    // The colour chosen round the page, the page itself
+                    // white as paper (#3930).
+                    painter.rect_filled(page_rect, 0.0, background);
+                    painter.rect_filled(sheet, 0.0, egui::Color32::WHITE);
                 }
                 painter.image(
                     tex.id(),
@@ -325,15 +411,6 @@ pub fn fullscreen(app: &mut App, ui: &mut Ui) {
                 // Options > Display > Full-screen preview > Show page border:
                 // round the page, inside what is shown.
                 if !app.preview_selected_only && app.settings.preview_page_border {
-                    let at = |x: f64, y: f64| {
-                        page_rect.min
-                            + egui::vec2(
-                                ((x - bounds.x0) * zoom) as f32,
-                                ((bounds.y1 - y) * zoom) as f32,
-                            )
-                    };
-                    let sheet =
-                        egui::Rect::from_two_pos(at(page.x0, page.y0), at(page.x1, page.y1));
                     painter.rect_stroke(
                         sheet,
                         0.0,
@@ -348,8 +425,15 @@ pub fn fullscreen(app: &mut App, ui: &mut Ui) {
                 .map_or(0.0, |session| session.hint_until - now);
             if hint_left > 0.0 {
                 ctx.request_repaint_after(std::time::Duration::from_secs_f64(hint_left));
+                // How to leave, and the keys that zoom and turn the pages
+                // (#3930).
+                let text = if app.preview_selected_only {
+                    tr("preview.exit_hint")
+                } else {
+                    format!("{}\n{}", tr("preview.exit_hint"), tr("preview.keys_hint"))
+                };
                 let hint = painter.layout_no_wrap(
-                    tr("preview.exit_hint"),
+                    text,
                     egui::FontId::proportional(12.0),
                     egui::Color32::from_gray(200),
                 );

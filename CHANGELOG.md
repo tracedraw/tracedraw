@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Customize: with the Options window open on Customization, clicking a tool or button on a toolbar or the toolbox picks that command in the Commands list, ready for a new shortcut; the Object Size box opened by its shortcut takes the width at once from the keyboard, and Enter applies it (#3890).
+- Full-screen preview (F9): a background colour for round the page (Options > Display), + and - or the wheel zoom, and Page Up and Page Down change the page (#3930).
 - Print Merged Document: the merged drawing is made only to be printed, so once the Print dialog and Print Preview are closed it is gone again and the drawing you merged is back in front, instead of an extra merged drawing staying open after every print or preview. Create Merged Document is the command that keeps the merged drawing (discussion #1610).
 - Cross hair to the window edges: the lines also follow the Shape tool's pointer, crossing at its tip (discussion #3268).
 - Settings kept next to the program (portable use): pictures sent to an outside editor and the automatic backups go in a folder beside the program too, not in the system's temporary or user folders (#3908).

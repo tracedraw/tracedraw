@@ -10951,3 +10951,6 @@ dialog.pn_skip_last = "Ultime pagine senza numero:" # mt
 dialog.pn_skip_last_desc = "Quante pagine alla fine, come una quarta di copertina, non mostrano il numero di pagina." # mt
 dialog.pn_skip = "Pagine senza numero:" # mt
 dialog.pn_skip_desc = "Pagine senza numero, come \"5, 9-10\". La numerazione continua dopo di esse senza contarle." # mt
+options.preview_background = "Sfondo:" # mt
+options.preview_background_tip = "Il colore intorno alla pagina nell'anteprima a schermo intero (F9). Un colore più scuro stanca meno la vista del bianco; la pagina resta bianca." # mt
+preview.keys_hint = "+ e - o la rotellina fanno lo zoom; Pag su e Pag giù cambiano pagina" # mt
