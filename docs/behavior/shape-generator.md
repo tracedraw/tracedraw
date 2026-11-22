@@ -233,3 +233,24 @@ the settings) and `ui/shape_gen_docker.rs`. Issues #3412 and #3413.
 - Preview: drag from empty space adds a pin and sets its pull, drag a
   pin's end or start edits it, right click deletes it (Voronoi keeps its
   site editing instead).
+
+## Backgrounds (`shape_gen_bg.rs`)
+
+- Palette: 1 to 6 colours; `Paint::Tone(t)` fills with the colour a share
+  t / 255 along it, mixed linearly between neighbouring colours. The i-th
+  of n shapes gets t = i / (n - 1) (the first colour for one shape).
+- Layered waves: band 0 (the back) is the whole box when there are two
+  or more; band i of n has its level at h (n - i) / n and an edge sampled at 97 points: the level plus
+  amplitude % of h times a weighted sum of `Detail` sines (frequency near
+  k x Waves across, random phase, weights 1/k times 0.5 to 1.5, summed
+  to 1), clamped to the box; Catmull-Rom curve through them, closed down
+  to the bottom (or up to the top) corners.
+- Blobs: points round a circle at evenly spaced angles nudged by up to
+  0.2 x randomness of a step, each at r (1 - randomness x u); closed
+  Catmull-Rom curve. One blob: centred, r = size % of the shorter side
+  / 2. Several: centres at random in the box, r scaled by 0.45 to 1.
+- Soft gradient: the box as a closed rectangle filled with a smooth
+  `Mesh` of size x size cells; every node a random palette colour, inner
+  nodes moved by up to 0.45 x wander % of a cell (edge nodes stay on the
+  edge). The mesh moves with the drawing onto the page. Deform and split
+  do not apply to it.

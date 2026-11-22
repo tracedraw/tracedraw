@@ -57,10 +57,13 @@ pub enum GenKind {
     SpaceCurve,
     SliceGrid,
     Growth,
+    LayerWaves,
+    Blobs,
+    SoftGradient,
 }
 
 impl GenKind {
-    pub const ALL: [GenKind; 21] = [
+    pub const ALL: [GenKind; 24] = [
         GenKind::DotGrid,
         GenKind::Truchet,
         GenKind::Tessellation,
@@ -82,6 +85,9 @@ impl GenKind {
         GenKind::SpaceCurve,
         GenKind::SliceGrid,
         GenKind::Growth,
+        GenKind::LayerWaves,
+        GenKind::Blobs,
+        GenKind::SoftGradient,
     ];
     pub fn key(self) -> &'static str {
         match self {
@@ -106,6 +112,9 @@ impl GenKind {
             GenKind::SpaceCurve => "shapegen.kind_space_curve",
             GenKind::SliceGrid => "shapegen.kind_slice",
             GenKind::Growth => "shapegen.kind_growth",
+            GenKind::LayerWaves => "shapegen.kind_layer_waves",
+            GenKind::Blobs => "shapegen.kind_blobs",
+            GenKind::SoftGradient => "shapegen.kind_soft_gradient",
         }
     }
     /// Whether the generator works from the panel's picked selection (an
@@ -564,6 +573,27 @@ pub struct ShapeGenSettings {
     /// The lines inside: colour and width (0 keeps the line width), mm.
     pub split_color: [u8; 3],
     pub split_width: f64,
+
+    // Backgrounds (layered waves, blobs, soft gradient).
+    /// The palette, 1 to 6 colours.
+    pub bg_colors: Vec<[u8; 3]>,
+    /// Layered waves: bands, how high the waves go (% of Height), waves
+    /// across, sine waves added per band, and the side they rise from.
+    pub bg_layers: u32,
+    pub bg_amplitude: f64,
+    pub bg_frequency: f64,
+    pub bg_complexity: u32,
+    pub bg_side: crate::shape_gen_bg::WaveSide,
+    /// Blobs: how many, points round each, how much they vary (%) and
+    /// their size (% of the box's shorter side).
+    pub bg_blob_count: u32,
+    pub bg_blob_points: u32,
+    pub bg_randomness: f64,
+    pub bg_blob_size: f64,
+    /// Soft gradient: mesh cells per side and how far inner nodes wander
+    /// (% of a cell).
+    pub bg_mesh_size: u32,
+    pub bg_jitter: f64,
 }
 
 impl Default for ShapeGenSettings {
@@ -725,6 +755,18 @@ impl Default for ShapeGenSettings {
             split_center: None,
             split_color: [255, 205, 220],
             split_width: 0.0,
+            bg_colors: crate::shape_gen_bg::default_palette(),
+            bg_layers: 5,
+            bg_amplitude: 10.0,
+            bg_frequency: 1.0,
+            bg_complexity: 3,
+            bg_side: crate::shape_gen_bg::WaveSide::Bottom,
+            bg_blob_count: 1,
+            bg_blob_points: 7,
+            bg_randomness: 35.0,
+            bg_blob_size: 80.0,
+            bg_mesh_size: 3,
+            bg_jitter: 40.0,
         }
     }
 }
@@ -744,6 +786,11 @@ pub enum Paint {
     Ink(u8),
     /// Lines inside the split shape: the second colour and width.
     Accent,
+    /// Filled with the colour this share (0 to 255) along
+    /// [`Generated::palette`], no outline.
+    Tone(u8),
+    /// Filled with [`Generated::mesh`], no outline.
+    Mesh,
 }
 
 #[derive(Debug, Clone)]
@@ -765,6 +812,10 @@ pub struct Generated {
     pub frame: Option<Rect>,
     /// Voronoi sites, for editing them in the panel.
     pub sites: Vec<Point>,
+    /// The palette [`Paint::Tone`] picks from.
+    pub palette: Vec<[u8; 3]>,
+    /// The mesh fill of [`Paint::Mesh`] curves, in the drawing's space.
+    pub mesh: Option<tracedraw_core::Mesh>,
 }
 
 impl Generated {
@@ -976,6 +1027,20 @@ impl ShapeGenSettings {
         }
         s.warp_reach = clampf(s.warp_reach, 1.0, 100.0, d.warp_reach);
         s.split_width = clampf(s.split_width, 0.0, 50.0, 0.0);
+        s.bg_colors.truncate(crate::shape_gen_bg::MAX_COLORS);
+        if s.bg_colors.is_empty() {
+            s.bg_colors = d.bg_colors.clone();
+        }
+        s.bg_layers = s.bg_layers.clamp(1, 40);
+        s.bg_amplitude = clampf(s.bg_amplitude, 0.0, 100.0, d.bg_amplitude);
+        s.bg_frequency = clampf(s.bg_frequency, 0.1, 20.0, d.bg_frequency);
+        s.bg_complexity = s.bg_complexity.clamp(1, 6);
+        s.bg_blob_count = s.bg_blob_count.clamp(1, 200);
+        s.bg_blob_points = s.bg_blob_points.clamp(3, 24);
+        s.bg_randomness = clampf(s.bg_randomness, 0.0, 90.0, d.bg_randomness);
+        s.bg_blob_size = clampf(s.bg_blob_size, 1.0, 300.0, d.bg_blob_size);
+        s.bg_mesh_size = s.bg_mesh_size.clamp(1, 8);
+        s.bg_jitter = clampf(s.bg_jitter, 0.0, 100.0, d.bg_jitter);
         s.split_shape = s
             .split_shape
             .take()
@@ -1010,6 +1075,9 @@ pub fn generate(settings: &ShapeGenSettings) -> Generated {
         GenKind::SpaceCurve => crate::shape_gen_fill::space_curve(&s, &mut out),
         GenKind::SliceGrid => crate::shape_gen_slice::slice_grid(&s, &mut out),
         GenKind::Growth => crate::shape_gen_growth::growth(&s, &mut out),
+        GenKind::LayerWaves => crate::shape_gen_bg::waves(&s, &mut out),
+        GenKind::Blobs => crate::shape_gen_bg::blobs(&s, &mut out),
+        GenKind::SoftGradient => crate::shape_gen_bg::soft_gradient(&s, &mut out),
     }
     crate::shape_gen_warp::post(&s, &mut out);
     out
@@ -2233,6 +2301,8 @@ impl crate::app::App {
             }
             st
         };
+        let palette = g.palette.clone();
+        let mesh = g.mesh.as_ref().map(|m| m.transformed(shift));
         let mut children: Vec<Shape> = Vec::new();
         let make = |app: &mut Self, path: BezPath, closed: bool, paint: Paint| {
             let id = app.engine.new_shape_id();
@@ -2259,6 +2329,18 @@ impl crate::app::App {
                 Paint::Accent => {
                     shape.fill = Fill::None;
                     shape.stroke = Some(accent.clone());
+                }
+                Paint::Tone(t) => {
+                    let [r, g, b] = crate::shape_gen_bg::palette_color(&palette, t as f64 / 255.0);
+                    shape.fill = Fill::Solid(tracedraw_core::Color::rgb8(r, g, b));
+                    shape.stroke = None;
+                }
+                Paint::Mesh => {
+                    shape.fill = match &mesh {
+                        Some(m) => Fill::Mesh(m.clone()),
+                        None => Fill::Solid(color),
+                    };
+                    shape.stroke = None;
                 }
             }
             shape

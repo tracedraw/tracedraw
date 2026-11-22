@@ -98,6 +98,7 @@ mod files;
 mod fill_page;
 mod shape3d;
 mod shape_gen;
+mod shape_gen_bg;
 mod shape_gen_cells;
 mod shape_gen_curves;
 mod shape_gen_fill;

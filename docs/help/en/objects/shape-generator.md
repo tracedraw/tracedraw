@@ -138,6 +138,9 @@ shaped by the [[shapegen.tile_angle]].
   [Filling a shape](#fills).
 - [[shapegen.kind_slice]]: cuts the selection into strips or a grid and
   moves each piece, see [Slicing a selection](#slice).
+- [[shapegen.kind_layer_waves]], [[shapegen.kind_blobs]] and
+  [[shapegen.kind_soft_gradient]]: filled backgrounds in the colours you
+  choose, see [Backgrounds](#backgrounds).
 
 Generators that make random choices have a [[shapegen.seed]]: the same seed
 always gives the same result, and [[shapegen.new_seed]] picks another one.
@@ -306,3 +309,28 @@ select it, click [[shapegen.split_pick]], and choose to draw the parts
 inside in the [[shapegen.split_color]] and [[shapegen.split_width]], or to
 keep only the parts inside or outside. Create centres the drawing on the
 picked shape, and the pieces stay open lines.
+
+## Backgrounds {#backgrounds}
+
+Three generators make filled backgrounds the size of the box, in the
+[[shapegen.bg_colors]] you choose (add colours with +, remove the last
+with the minus button). Each [[shapegen.seed]] gives another variation.
+
+- [[shapegen.kind_layer_waves]]: [[shapegen.bg_layers]] filled bands
+  stacked from the back to the front; the back one, in the first colour,
+  fills the box. Their edges are smooth waves: [[shapegen.bg_amplitude]] sets how high they
+  go, [[shapegen.bg_frequency]] how many run across, [[shapegen.bg_complexity]]
+  how lively their edges are, and [[shapegen.bg_side]] whether they rise from the bottom or hang from
+  the top.
+- [[shapegen.kind_blobs]]: soft organic shapes. One blob sits in the
+  middle; with more [[shapegen.bg_blob_count]] they are scattered over the
+  box in the palette's colours. [[shapegen.bg_blob_points]] and
+  [[shapegen.bg_randomness]] set how lumpy they are.
+- [[shapegen.kind_soft_gradient]]: one rectangle with a smooth mesh fill
+  whose points take the palette's colours at random, so the colours melt
+  into each other. [[shapegen.bg_mesh_size]] sets how many patches of
+  colour there are and [[shapegen.bg_jitter]] how freely they flow.
+
+The waves and blobs are ordinary filled curves and the gradient is an
+ordinary mesh fill, so they can be edited, recoloured and exported like
+any other object; add grain or blur with the effects if you like.

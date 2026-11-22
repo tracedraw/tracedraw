@@ -141,6 +141,9 @@ quadrados ou hexágonos formados pelo [[shapegen.tile_angle]].
   [Preencher uma forma](#fills).
 - [[shapegen.kind_slice]]: corta a seleção em faixas ou numa grade e move
   cada pedaço, veja [Fatiar uma seleção](#slice).
+- [[shapegen.kind_layer_waves]], [[shapegen.kind_blobs]] e
+  [[shapegen.kind_soft_gradient]]: fundos preenchidos nas cores que
+  você escolher, veja [Fundos](#backgrounds).
 
 Os geradores que fazem escolhas aleatórias têm uma [[shapegen.seed]]: a
 mesma semente sempre dá o mesmo resultado, e [[shapegen.new_seed]] escolhe
@@ -320,3 +323,29 @@ texto: selecione-o, clique em [[shapegen.split_pick]] e escolha desenhar as
 partes de dentro com a [[shapegen.split_color]] e a [[shapegen.split_width]],
 ou manter só as partes de dentro ou de fora. Criar centraliza o desenho na
 forma escolhida, e os pedaços continuam linhas abertas.
+
+## Fundos {#backgrounds}
+
+Três geradores fazem fundos preenchidos do tamanho da caixa, nas
+[[shapegen.bg_colors]] que você escolher (adicione cores com +, remova a
+última com o botão de menos). Cada [[shapegen.seed]] dá outra variação.
+
+- [[shapegen.kind_layer_waves]]: [[shapegen.bg_layers]] faixas preenchidas
+  empilhadas de trás para a frente; a de trás, na primeira cor, preenche a
+  caixa. As bordas são ondas suaves: [[shapegen.bg_amplitude]] define a
+  altura, [[shapegen.bg_frequency]] quantas passam pela largura,
+  [[shapegen.bg_complexity]] o quanto as bordas são vivas, e
+  [[shapegen.bg_side]] se as faixas sobem da base ou descem do topo.
+- [[shapegen.kind_blobs]]: formas orgânicas suaves. Um blob fica no meio;
+  com mais [[shapegen.bg_blob_count]] eles se espalham pela caixa nas cores
+  da paleta. [[shapegen.bg_blob_points]] e [[shapegen.bg_randomness]]
+  definem o quanto são irregulares.
+- [[shapegen.kind_soft_gradient]]: um retângulo com um preenchimento de
+  malha suave cujos pontos recebem as cores da paleta ao acaso, para as
+  cores se fundirem. [[shapegen.bg_mesh_size]] define quantas manchas de cor
+  há e [[shapegen.bg_jitter]] o quanto elas fluem livremente.
+
+As ondas e os blobs são curvas preenchidas comuns e o degradê é um
+preenchimento de malha comum, então podem ser editados, recoloridos e
+exportados como qualquer outro objeto; adicione grão ou desfoque com os
+efeitos, se quiser.

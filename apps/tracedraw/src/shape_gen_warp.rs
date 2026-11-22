@@ -50,12 +50,12 @@ impl SplitMode {
 }
 
 /// Whether deform and split apply to a generator: not the cone template
-/// (made at real size), the slice grid (it cuts the selection) or the
-/// live growth.
+/// (made at real size), the slice grid (it cuts the selection), the
+/// live growth or the soft gradient (a mesh fill).
 pub fn applies(kind: GenKind) -> bool {
     !matches!(
         kind,
-        GenKind::ConeTemplate | GenKind::SliceGrid | GenKind::Growth
+        GenKind::ConeTemplate | GenKind::SliceGrid | GenKind::Growth | GenKind::SoftGradient
     )
 }
 
