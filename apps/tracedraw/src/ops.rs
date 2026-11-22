@@ -501,6 +501,11 @@ impl App {
             return;
         }
         let shapes = self.selection.clone();
+        // Artistic texts make one text, still text (#3763: Combine made
+        // them curves).
+        if self.combine_texts(&shapes) {
+            return;
+        }
         // Objects of one group (selected inside it): the curve they make
         // stays in the group, where the bottom one was (#2640: Combine
         // did nothing there).
@@ -520,6 +525,101 @@ impl App {
         let mut kept = shapes.clone();
         self.doc().retain_existing(&mut kept);
         self.selection = kept;
+    }
+
+    /// [`Self::combine`] on artistic texts of one layer, turned alike:
+    /// one text of them all, read from the top line down and left to
+    /// right, a space between texts on one line and a line break between
+    /// lines, each part keeping its own look. The top left one keeps its
+    /// place and id; false (nothing done) for other
+    /// selections. Breaking the text apart gives its lines back.
+    fn combine_texts(&mut self, ids: &[tracedraw_core::ShapeId]) -> bool {
+        let doc = self.doc();
+        let mut parts: Vec<(tracedraw_core::ShapeId, Vec<tracedraw_core::document::TextSpan>, Point, f64)> =
+            Vec::new();
+        let mut first: Option<Shape> = None;
+        let mut parent = None;
+        for id in ids {
+            let Some(s) = doc.find_shape(*id) else {
+                return false;
+            };
+            let ShapeKind::Text {
+                spans,
+                origin,
+                frame: None,
+                on_path: None,
+                ..
+            } = &s.kind
+            else {
+                return false;
+            };
+            if spans.is_empty() || !s.effects.is_empty() {
+                return false;
+            }
+            let Ok((here, _)) = doc.locate(*id) else {
+                return false;
+            };
+            match (&first, parent) {
+                (None, _) => {
+                    first = Some(s.clone());
+                    parent = Some(here);
+                }
+                (Some(f), Some(p)) => {
+                    if p != here || !f.transform.as_coeffs().iter().zip(s.transform.as_coeffs()).all(|(a, b)| (a - b).abs() < 1e-9) {
+                        return false;
+                    }
+                }
+                _ => return false,
+            }
+            let size = spans.iter().map(|t| t.size_pt).fold(0.0, f64::max) * 25.4 / 72.0;
+            parts.push((*id, spans.clone(), *origin, size));
+        }
+        if parts.len() < 2 {
+            return false;
+        }
+        // Top line first (y goes up), then left to right.
+        parts.sort_by(|a, b| {
+            let same = (a.2.y - b.2.y).abs() < 0.5 * a.3.max(b.3);
+            if same {
+                a.2.x.total_cmp(&b.2.x)
+            } else {
+                b.2.y.total_cmp(&a.2.y)
+            }
+        });
+        let Some(Shape { kind: ShapeKind::Text { align, para, .. }, .. }) = first else {
+            return false;
+        };
+        let keep = parts[0].0;
+        let origin = parts[0].2;
+        let mut spans = parts[0].1.clone();
+        for w in parts.windows(2) {
+            let (prev, next) = (&w[0], &w[1]);
+            let same = (prev.2.y - next.2.y).abs() < 0.5 * prev.3.max(next.3);
+            let mut gap = next.1[0].clone();
+            gap.text = if same { " ".into() } else { "\n".into() };
+            spans.push(gap);
+            spans.extend(next.1.iter().cloned());
+        }
+        let kind = ShapeKind::Text {
+            spans,
+            origin,
+            frame: None,
+            align,
+            para,
+            on_path: None,
+        };
+        let gone: Vec<tracedraw_core::ShapeId> =
+            parts.iter().skip(1).map(|p| p.0).collect();
+        let cmds = vec![
+            Command::SetShapeKind { shape: keep, kind },
+            Command::DeleteShapes { shapes: gone },
+        ];
+        if let Err(e) = self.engine.run_batch("Combine", &cmds) {
+            self.status = e.to_string();
+            return true;
+        }
+        self.select(vec![keep]);
+        true
     }
 
     /// [`Self::combine`] on objects of one group: made curves, then one
@@ -872,6 +972,101 @@ impl App {
         Some(cmds)
     }
 
+    /// The commands that break the paragraph text `id` apart (`None` when
+    /// it is in a chain of frames, vertical, overflowing or one line): one
+    /// artistic text per line as the frame lays it out, where the line is
+    /// drawn, with the same look; the first keeps the object (#3763: Break
+    /// Apart did nothing on a text frame). Breaking a line again gives its
+    /// words, then its letters.
+    fn frame_text_break_commands(
+        &mut self,
+        id: tracedraw_core::ShapeId,
+    ) -> Option<Vec<Command>> {
+        if self.chain_of(id).len() > 1 {
+            return None;
+        }
+        let doc = self.doc();
+        let (layer, index) = doc.locate(id).ok()?;
+        let shape = doc.find_shape(id)?.clone();
+        let ShapeKind::Text {
+            spans,
+            origin,
+            frame: Some(frame),
+            para,
+            on_path: None,
+            ..
+        } = &shape.kind
+        else {
+            return None;
+        };
+        let (layout, _) = crate::text_editing::layout_of_text_shape(
+            &shape,
+            tracedraw_core::geometry::Affine::IDENTITY,
+        )?;
+        let text: Vec<char> = tracedraw_core::document::spans_text(spans).chars().collect();
+        if layout.vertical || layout.overflow || layout.fitted_chars < text.len() {
+            return None;
+        }
+        // Each line without the spaces it ends or starts with; empty lines
+        // are left out.
+        let lines: Vec<(usize, usize)> = layout
+            .lines
+            .iter()
+            .filter_map(|l| {
+                let (mut a, mut b) = (l.start_char, l.end_char.min(text.len()));
+                while a < b && text[a].is_whitespace() {
+                    a += 1;
+                }
+                while b > a && text[b - 1].is_whitespace() {
+                    b -= 1;
+                }
+                (a < b).then_some((a, b))
+            })
+            .collect();
+        if lines.len() < 2 {
+            return None;
+        }
+        let shift = tracedraw_core::document::text_layout_shift(
+            *origin,
+            Some(*frame),
+            false,
+            para.columns_from_right(),
+        );
+        let mut para = para.clone();
+        para.vertical_align = Default::default();
+        let mut cmds = Vec::new();
+        for (k, (a, b)) in lines.iter().enumerate() {
+            let (head, _) = tracedraw_core::document::split_spans_at(spans, *b);
+            let (_, piece) = tracedraw_core::document::split_spans_at(&head, *a);
+            let (x, baseline, _, _) = layout.caret(*a)?;
+            let at = shift * tracedraw_core::geometry::Point::new(x, baseline);
+            let kind = ShapeKind::Text {
+                spans: piece,
+                origin: at,
+                frame: None,
+                align: tracedraw_core::document::TextAlign::Left,
+                para: para.clone(),
+                on_path: None,
+            };
+            if k == 0 {
+                cmds.push(Command::SetShapeKind { shape: id, kind });
+            } else {
+                let mut s = shape.clone();
+                s.id = self.engine.new_shape_id();
+                s.uid = None;
+                s.kind = kind;
+                let new_id = s.id;
+                cmds.push(Command::AddShape { layer, shape: s });
+                cmds.push(Command::Reorder {
+                    shape: new_id,
+                    layer,
+                    index: index + k,
+                });
+            }
+        }
+        Some(cmds)
+    }
+
     /// The commands that break the artistic text `id` apart (`None` when
     /// it is not artistic text, or holds a single character): each piece
     /// a text object of its own with the same look, placed where its
@@ -903,6 +1098,9 @@ impl App {
         let doc = self.doc();
         let (layer, index) = doc.locate(id).ok()?;
         let shape = doc.find_shape(id)?.clone();
+        if matches!(&shape.kind, ShapeKind::Text { frame: Some(_), on_path: None, .. }) {
+            return self.frame_text_break_commands(id);
+        }
         let ShapeKind::Text {
             spans,
             origin,

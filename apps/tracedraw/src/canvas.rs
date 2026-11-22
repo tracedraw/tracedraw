@@ -2127,6 +2127,13 @@ fn draw_anchors(app: &App, painter: &Painter) {
                 shown.push((to, false));
             }
         }
+        // Before the drag, the anchors of the object under the pointer, so
+        // the connector can start on the one wanted (#3860).
+        (Tool::Connector | Tool::RightAngleConnector | Tool::RoundedConnector, Drag::None) => {
+            if let Some(id) = app.pointer_page.and_then(|p| app.hit_test(p)) {
+                shown.push((id, false));
+            }
+        }
         _ => {}
     }
     for (id, editing) in shown {

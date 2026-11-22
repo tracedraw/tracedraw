@@ -1013,8 +1013,26 @@ fn layer_rows(
         }
     });
     if open {
+        // While a PowerClip's contents are edited they stay listed inside
+        // it (#3846: the frame showed as an object of its own beside
+        // them), so a content can still be dragged out of it.
+        let contents = app.clip_edit_contents();
+        let frame = app.clip_frame_edit.as_ref().map(|(f, _)| *f);
         for s in layer.shapes.iter().rev() {
+            if contents.contains(&s.id) {
+                continue;
+            }
             object_rows(app, ui, s, LAYER_OBJECT_DEPTH, act);
+            if Some(s.id) == frame {
+                for c in app
+                    .page_layers()
+                    .iter()
+                    .flat_map(|l| l.shapes.iter().rev())
+                    .filter(|c| contents.contains(&c.id))
+                {
+                    object_rows(app, ui, c, LAYER_OBJECT_DEPTH + 1, act);
+                }
+            }
         }
     }
 }
@@ -2713,7 +2731,13 @@ fn drop_rows(app: &mut App, ids: &[ShapeId], drop: RowDrop) {
         }
         RowDrop::Layer(l) => Some(l),
     };
+    let frees = frees_clip_contents(app, ids, drop);
     let cmds = drop_commands(app, ids, drop);
+    if cmds.is_empty() && frees {
+        // Already on that layer: only out of the PowerClip.
+        free_clip_contents(app, ids);
+        return;
+    }
     let Some(layer) = layer.filter(|_| !cmds.is_empty()) else {
         return;
     };
@@ -2735,6 +2759,43 @@ fn drop_rows(app: &mut App, ids: &[ShapeId], drop: RowDrop) {
     }
     app.picked_layer = Some(layer);
     app.select(ids.to_vec());
+    if frees {
+        free_clip_contents(app, ids);
+    }
+}
+
+/// `ids`, contents of the PowerClip being edited, stay out of it when the
+/// edit ends (#3846); with nothing left inside, the edit ends now.
+fn free_clip_contents(app: &mut App, ids: &[ShapeId]) {
+    if let Some((_, outside)) = app.clip_frame_edit.as_mut() {
+        outside.extend(ids.iter().copied());
+    }
+    if app.clip_edit_contents().is_empty() {
+        app.finish_clip_frame_edit();
+    }
+    app.select(ids.to_vec());
+}
+
+/// Whether dropping the rows of `ids` where `drop` says takes them out
+/// of the PowerClip whose contents are being edited (#3846): they are all
+/// contents, and they go onto a layer, or beside the frame or an object
+/// outside it. They then stay out when the edit ends.
+fn frees_clip_contents(app: &App, ids: &[ShapeId], drop: RowDrop) -> bool {
+    let Some((frame, outside)) = &app.clip_frame_edit else {
+        return false;
+    };
+    let contents = app.clip_edit_contents();
+    if ids.is_empty() || !ids.iter().all(|id| contents.contains(id)) {
+        return false;
+    }
+    let out = |id: ShapeId| id == *frame || outside.contains(&id);
+    match drop {
+        RowDrop::Layer(_) => true,
+        RowDrop::Object { reference, .. } => {
+            out(reference) || app.doc().ancestors(reference).into_iter().any(out)
+        }
+        RowDrop::Into(_) | RowDrop::Clip(_) => false,
+    }
 }
 
 /// Whether rows carrying `ids` can be dropped into `target` as a
@@ -5069,6 +5130,38 @@ mod drag_tests {
         );
         assert_eq!(order(&app, 0), [c, a, g]);
         assert_eq!(children(&app, g), [b]);
+    }
+
+    /// #3846: while a PowerClip's contents are edited (after a click on a
+    /// content's row) they stay listed inside the frame's row, and a
+    /// content's row dragged onto the layer's row takes it out of the
+    /// PowerClip for good; the others go back in when the edit ends.
+    #[test]
+    fn a_content_row_dragged_out_of_a_powerclip_frees_it() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        let a = app.new_shape(rect_kind()).expect("a");
+        let b = app.new_shape(rect_kind()).expect("b");
+        let c = app.new_shape(rect_kind()).expect("c");
+        clip_rows(&mut app, &[b, c], a);
+        app.select(vec![a]);
+        app.edit_clip_frame();
+        assert!(app.clip_frame_edit.is_some());
+        frame(&ctx, &mut app, Vec::new());
+        let (ra, rb, rc) = (object_row(&ctx, a), object_row(&ctx, b), object_row(&ctx, c));
+        // Listed under the frame, one step in.
+        assert!(rb.top() >= ra.bottom() - 0.5 && rc.top() >= ra.bottom() - 0.5, "{ra:?} {rb:?} {rc:?}");
+        let layer = app.active_layer().expect("layer");
+        let rl = layer_row(&ctx, layer);
+        app.select(vec![c]);
+        drag(&ctx, &mut app, rc.center(), rl.center());
+        app.finish_clip_frame_edit();
+        let contents = match &app.doc().find_shape(a).expect("a").kind {
+            ShapeKind::ClipFrame { contents, .. } => contents.iter().map(|s| s.id).collect::<Vec<_>>(),
+            other => panic!("{other:?}"),
+        };
+        assert_eq!(contents, [b]);
+        assert!(app.doc().shape(c).is_ok(), "c on the layer, free");
     }
 
     /// PowerClips in the list (#3053): a row let go in the middle of
