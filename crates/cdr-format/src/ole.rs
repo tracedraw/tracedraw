@@ -260,7 +260,28 @@ pub fn package_label(data: &[u8]) -> Option<String> {
     if label.is_empty() || label.iter().any(|&b| b < 0x20) {
         return None;
     }
-    Some(label.iter().map(|&b| b as char).collect())
+    if let Ok(s) = std::str::from_utf8(label) {
+        return Some(s.to_string());
+    }
+    // Single-byte ANSI label: decode CP1251 when high bytes sit in the
+    // Cyrillic block without mixed ASCII letters, else Latin-1.
+    let cyr = label.iter().filter(|&&b| b >= 0xC0 || b == 0xA8 || b == 0xB8).count();
+    let stem_end = label.iter().rposition(|&b| b == b'.').unwrap_or(label.len());
+    let asc = label[..stem_end].iter().filter(|&&b| b.is_ascii_alphabetic()).count();
+    if cyr >= 2 && asc == 0 {
+        Some(label.iter().map(|&b| cp1251_char(b)).collect())
+    } else {
+        Some(label.iter().map(|&b| b as char).collect())
+    }
+}
+
+fn cp1251_char(b: u8) -> char {
+    match b {
+        0xA8 => '\u{0401}',
+        0xB8 => '\u{0451}',
+        0xC0..=0xFF => char::from_u32(0x0410 + u32::from(b - 0xC0)).unwrap_or('?'),
+        _ => b as char,
+    }
 }
 
 /// The cached pictures (`\x02OlePres000` streams) of the embedded objects

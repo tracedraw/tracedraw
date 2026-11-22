@@ -68,6 +68,41 @@ pub fn install() {
     });
 }
 
+/// Pick a Windows GDI `(charset, Encoding)` that encodes every character of
+/// `spans` without loss; `None` when the text mixes scripts no single
+/// 8-bit/DBCS code page covers (it then exports to WMF as exact curves
+/// instead of turning letters into `?`).
+fn pick_wmf_charset(spans: &[TextSpan]) -> Option<(u8, &'static encoding_rs::Encoding)> {
+    use encoding_rs::*;
+    let text: String = spans.iter().map(|s| s.text.as_str()).collect();
+    if text.is_ascii() {
+        return Some((0, WINDOWS_1252));
+    }
+    const CANDIDATES: &[(u8, &Encoding)] = &[
+        (0, WINDOWS_1252),
+        (204, WINDOWS_1251),
+        (238, WINDOWS_1250),
+        (161, WINDOWS_1253),
+        (162, WINDOWS_1254),
+        (163, WINDOWS_1258),
+        (177, WINDOWS_1255),
+        (178, WINDOWS_1256),
+        (186, WINDOWS_1257),
+        (222, WINDOWS_874),
+        (134, GBK),
+        (128, SHIFT_JIS),
+        (136, BIG5),
+        (129, EUC_KR),
+    ];
+    for &(cs, enc) in CANDIDATES {
+        let (_, _, unmappable) = enc.encode(&text);
+        if !unmappable {
+            return Some((cs, enc));
+        }
+    }
+    None
+}
+
 /// Build a document with every imported object on one layer.
 pub fn to_document(imp: Imported, title: &str) -> tracedraw_core::Document {
     let mut doc = tracedraw_core::Document::new(title, imp.size);
@@ -149,6 +184,10 @@ struct Font {
     italic: bool,
     underline: bool,
     strikeout: bool,
+    /// Windows GDI `lfCharSet` (0 ANSI, 1 default, 128 Shift-JIS, 129 Hangul,
+    /// 134 GBK, 136 Big5, 161 Greek, 162 Turkish, 163 Vietnamese, 177 Hebrew,
+    /// 178 Arabic, 186 Baltic, 204 Russian, 222 Thai, 238 East Europe).
+    charset: u8,
     /// Tenths of a degree, counter-clockwise.
     escapement: f64,
 }
@@ -162,9 +201,77 @@ impl Default for Font {
             italic: false,
             underline: false,
             strikeout: false,
+            charset: 1,
             escapement: 0.0,
         }
     }
+}
+
+fn charset_encoding(charset: u8) -> Option<&'static encoding_rs::Encoding> {
+    use encoding_rs::*;
+    Some(match charset {
+        128 => SHIFT_JIS,
+        129 | 130 => EUC_KR,
+        134 => GBK,
+        136 => BIG5,
+        161 => WINDOWS_1253,
+        162 => WINDOWS_1254,
+        163 => WINDOWS_1258,
+        177 => WINDOWS_1255,
+        178 => WINDOWS_1256,
+        186 => WINDOWS_1257,
+        204 => WINDOWS_1251,
+        222 => WINDOWS_874,
+        238 => WINDOWS_1250,
+        _ => return None,
+    })
+}
+
+/// Heuristic for single-byte GDI strings marked `DEFAULT_CHARSET` (1) or
+/// `ANSI_CHARSET` (0) on Cyrillic systems: Cyrillic words are runs of
+/// `0xC0..=0xFF` (plus `0xA8`/`0xB8`) without ASCII Latin letters inside
+/// the same word, whereas Western CP1252 words mix ASCII letters with a
+/// few accented high bytes (`João`).
+fn looks_like_cp1251(bytes: &[u8]) -> bool {
+    let is_cyr_byte = |b: u8| b >= 0xC0 || b == 0xA8 || b == 0xB8;
+    let cp1252_hole = |b: u8| matches!(b, 0x81 | 0x8D | 0x8F | 0x90 | 0x9D);
+    if bytes.iter().any(|&b| cp1252_hole(b)) && bytes.iter().any(|&b| is_cyr_byte(b)) {
+        return true;
+    }
+    let mut pure_cyr_words = 0usize;
+    let mut mixed_words = 0usize;
+    for word in bytes.split(|&b| b.is_ascii_whitespace() || b.is_ascii_punctuation()) {
+        let cyr = word.iter().filter(|&&b| is_cyr_byte(b)).count();
+        if cyr == 0 {
+            continue;
+        }
+        let asc = word.iter().filter(|&&b| b.is_ascii_alphabetic()).count();
+        if asc > 0 {
+            mixed_words += 1;
+        } else if cyr >= 2 {
+            pure_cyr_words += 1;
+        }
+    }
+    pure_cyr_words > 0 && pure_cyr_words > mixed_words
+}
+
+/// Decode an 8-bit GDI string according to its `LOGFONT.lfCharSet`.
+fn decode_gdi_bytes(bytes: &[u8], charset: u8) -> String {
+    if charset == 2 {
+        return bytes.iter().map(|&b| b as char).collect();
+    }
+    if let Some(enc) = charset_encoding(charset) {
+        return enc.decode_without_bom_handling(bytes).0.into_owned();
+    }
+    if let Ok(s) = std::str::from_utf8(bytes) {
+        return s.to_string();
+    }
+    let enc = if looks_like_cp1251(bytes) {
+        encoding_rs::WINDOWS_1251
+    } else {
+        encoding_rs::WINDOWS_1252
+    };
+    enc.decode_without_bom_handling(bytes).0.into_owned()
 }
 
 #[derive(Clone, Debug)]
@@ -734,6 +841,57 @@ impl<'a> Player<'a> {
         s.fill = Fill::Solid(self.dc.text_color);
         s.stroke = None;
         self.emit(s);
+    }
+
+    /// Emit a run of raw glyph indices (`ETO_GLYPH_INDEX`): resolves back
+    /// to editable Unicode text when the font's `cmap` covers every glyph,
+    /// else emits exact vector outlines so shaped non-Latin runs never
+    /// turn into `.notdef` question marks.
+    fn glyph_run(&mut self, x: f64, y: f64, gids: &[u16], adv_logical: &[f64]) {
+        if gids.is_empty() || self.shapes.len() >= MAX_SHAPES {
+            return;
+        }
+        let f = self.dc.font.clone();
+        let scale = self.scale();
+        let em_mm = if f.height < 0.0 {
+            -f.height * scale
+        } else if f.height > 0.0 {
+            f.height * scale * 0.85
+        } else {
+            12.0 * scale
+        };
+        let adv_mm: Vec<f64> = adv_logical.iter().map(|d| d * scale).collect();
+        match tracedraw_core::document::text_outline::resolve_glyph_indices(
+            &tracedraw_core::document::text_outline::GlyphRunRequest {
+                family: &f.face,
+                bold: f.bold,
+                italic: f.italic,
+                em_mm,
+                gids,
+                advances_mm: &adv_mm,
+            },
+        ) {
+            Some(tracedraw_core::document::text_outline::ResolvedGlyphRun::Text(s)) => {
+                self.text(x, y, s);
+            }
+            Some(tracedraw_core::document::text_outline::ResolvedGlyphRun::Path(path)) => {
+                let origin = self.to_page(x, y);
+                let dy = match self.dc.text_align & 24 {
+                    24 => 0.0,
+                    8 => 0.2 * em_mm,
+                    _ => -0.8 * em_mm,
+                };
+                let rot = (f.escapement / 10.0).to_radians();
+                let mut s = self.new_shape(ShapeKind::Path { path, closed: true });
+                s.transform = Affine::translate(origin.to_vec2())
+                    * Affine::rotate(rot)
+                    * Affine::translate(Vec2::new(0.0, dy));
+                s.fill = Fill::Solid(self.dc.text_color);
+                s.stroke = None;
+                self.emit(s);
+            }
+            None => {}
+        }
     }
 
     /// A DIB (BITMAPINFOHEADER + pixels) placed in the logical rectangle.
@@ -1458,6 +1616,7 @@ impl Player<'_> {
                     italic: u8_at(r, 32) != 0,
                     underline: u8_at(r, 33) != 0,
                     strikeout: u8_at(r, 34) != 0,
+                    charset: u8_at(r, 35),
                     face: {
                         let f = utf16_at(r, 40, 32);
                         if f.is_empty() {
@@ -1474,14 +1633,40 @@ impl Player<'_> {
                 let (x, y) = (i32_at(r, 36) as f64, i32_at(r, 40) as f64);
                 let n = (u32_at(r, 44) as usize).min(100_000);
                 let off_s = u32_at(r, 48) as usize;
-                let text = if ty == 84 {
-                    utf16_at(r, off_s, n)
+                let opts = u32_at(r, 52);
+                let off_dx = u32_at(r, 72) as usize;
+                if opts & 0x0010 != 0 {
+                    // ETO_GLYPH_INDEX: 16-bit font glyph indices at `off_s`,
+                    // not UTF-16 code units.
+                    let gids: Vec<u16> = (0..n)
+                        .filter_map(|i| {
+                            let at = off_s.checked_add(i.checked_mul(2)?)?;
+                            (at + 2 <= r.len()).then(|| u16_at(r, at))
+                        })
+                        .collect();
+                    let dx_step = if opts & 0x2000 != 0 { 8usize } else { 4usize };
+                    let adv: Vec<f64> = if off_dx > 0 {
+                        (0..n)
+                            .filter_map(|i| {
+                                let at = off_dx.checked_add(i.checked_mul(dx_step)?)?;
+                                (at + 4 <= r.len()).then(|| i32_at(r, at) as f64)
+                            })
+                            .collect()
+                    } else {
+                        Vec::new()
+                    };
+                    self.glyph_run(x, y, &gids, &adv);
                 } else {
-                    r.get(off_s..off_s.saturating_add(n))
-                        .map(|s| s.iter().map(|b| *b as char).collect())
-                        .unwrap_or_default()
-                };
-                self.text(x, y, text);
+                    let text = if ty == 84 {
+                        utf16_at(r, off_s, n)
+                    } else {
+                        let charset = self.dc.font.charset;
+                        r.get(off_s..off_s.saturating_add(n))
+                            .map(|s| decode_gdi_bytes(s, charset))
+                            .unwrap_or_default()
+                    };
+                    self.text(x, y, text);
+                }
             }
             // Records with no effect on the geometry.
             1 | 13 | 15 | 16 | 20 | 21 | 23 | 26 | 28 | 29 | 31 | 32 | 41 | 48 | 49 | 50 | 51
@@ -1815,14 +2000,17 @@ impl Player<'_> {
             }
             0x02FB => {
                 // CREATEFONTINDIRECT: LOGFONT with 8-bit face name.
+                let charset = u8_at(r, p + 13);
                 let face: String = r
                     .get(p + 18..)
                     .map(|s| {
-                        s.iter()
+                        let raw: Vec<u8> = s
+                            .iter()
+                            .copied()
                             .take(32)
-                            .take_while(|b| **b != 0)
-                            .map(|b| *b as char)
-                            .collect()
+                            .take_while(|b| *b != 0)
+                            .collect();
+                        decode_gdi_bytes(&raw, charset)
                     })
                     .unwrap_or_default();
                 let font = Font {
@@ -1832,6 +2020,7 @@ impl Player<'_> {
                     italic: u8_at(r, p + 10) != 0,
                     underline: u8_at(r, p + 11) != 0,
                     strikeout: u8_at(r, p + 12) != 0,
+                    charset,
                     face: if face.is_empty() {
                         "Arial".into()
                     } else {
@@ -1902,9 +2091,10 @@ impl Player<'_> {
             0x0521 => {
                 // TEXTOUT: count, string, y, x.
                 let n = u16_at(r, p) as usize;
+                let charset = self.dc.font.charset;
                 let text: String = r
                     .get(p + 2..p + 2 + n)
-                    .map(|s| s.iter().map(|b| *b as char).collect())
+                    .map(|s| decode_gdi_bytes(s, charset))
                     .unwrap_or_default();
                 let o = p + 2 + n.div_ceil(2) * 2;
                 let (y, x) = (i16_at(r, o) as f64, i16_at(r, o + 2) as f64);
@@ -1919,11 +2109,29 @@ impl Player<'_> {
                 if opts & 0x6 != 0 {
                     o += 8;
                 }
-                let text: String = r
-                    .get(o..o + n)
-                    .map(|s| s.iter().map(|b| *b as char).collect())
-                    .unwrap_or_default();
-                self.text(x, y, text);
+                if opts & 0x0010 != 0 {
+                    let gids: Vec<u16> = (0..n)
+                        .filter_map(|i| {
+                            let at = o.checked_add(i.checked_mul(2)?)?;
+                            (at + 2 <= r.len()).then(|| u16_at(r, at))
+                        })
+                        .collect();
+                    let dx_at = o.saturating_add(n.saturating_mul(2));
+                    let adv: Vec<f64> = (0..n)
+                        .filter_map(|i| {
+                            let at = dx_at.checked_add(i.checked_mul(2)?)?;
+                            (at + 2 <= r.len()).then(|| i16_at(r, at) as f64)
+                        })
+                        .collect();
+                    self.glyph_run(x, y, &gids, &adv);
+                } else {
+                    let charset = self.dc.font.charset;
+                    let text: String = r
+                        .get(o..o + n)
+                        .map(|s| decode_gdi_bytes(s, charset))
+                        .unwrap_or_default();
+                    self.text(x, y, text);
+                }
             }
             0x0F43 | 0x0B41 | 0x0940 => {
                 // STRETCHDIB: rop(4) usage(2) srcH srcW srcY srcX dstH dstW dstY dstX, DIB.
@@ -3922,6 +4130,9 @@ impl WmfWriter<'_> {
             Fill::Fountain(f) => f.first_color(),
             _ => Color::BLACK,
         };
+        let Some((charset, enc)) = pick_wmf_charset(spans) else {
+            return;
+        };
         // LOGFONT: height, width, escapement, orientation, weight, italic,
         // underline, strikeout, charset, out/clip precision, quality,
         // pitch, face name (32 bytes).
@@ -3937,13 +4148,9 @@ impl WmfWriter<'_> {
         lf.push(first.italic as u8);
         lf.push(u8::from(first.underline.is_on()));
         lf.push(u8::from(first.strikethrough.is_on()));
-        lf.extend_from_slice(&[1, 0, 0, 0, 0]);
-        let mut face: Vec<u8> = first
-            .font_family
-            .chars()
-            .map(|ch| if ch.is_ascii() { ch as u8 } else { b'?' })
-            .take(31)
-            .collect();
+        lf.extend_from_slice(&[charset, 0, 0, 0, 0]);
+        let (face_cow, _, _) = enc.encode(&first.font_family);
+        let mut face: Vec<u8> = face_cow.iter().copied().take(31).collect();
         face.resize(32, 0);
         lf.extend_from_slice(&face);
         let f = self.alloc();
@@ -3965,16 +4172,8 @@ impl WmfWriter<'_> {
             }
             let local = Point::new(origin.x, origin.y - i as f64 * line_h / scale.max(1e-9));
             let (x, y) = self.pt(transform * local);
-            let bytes: Vec<u8> = line
-                .chars()
-                .map(|ch| {
-                    if (ch as u32) < 256 {
-                        ch as u32 as u8
-                    } else {
-                        b'?'
-                    }
-                })
-                .collect();
+            let (encoded, _, _) = enc.encode(line);
+            let bytes: Vec<u8> = encoded.into_owned();
             let mut body = Vec::new();
             body.extend_from_slice(&y.to_le_bytes());
             body.extend_from_slice(&x.to_le_bytes());
@@ -4081,7 +4280,7 @@ impl WmfWriter<'_> {
                 origin,
                 align,
                 ..
-            } if text_as_records(shape, transform) => {
+            } if text_as_records(shape, transform) && pick_wmf_charset(spans).is_some() => {
                 self.text(shape, transform, spans, *origin, *align)
             }
             ShapeKind::Bitmap { rect, png, .. } => {
@@ -4484,6 +4683,54 @@ mod wmf_export_tests {
                 assert_eq!(pm.pixels()[1].blue(), 255);
             }
             k => panic!("{k:?}"),
+        }
+    }
+
+    #[test]
+    fn wmf_and_gdi_text_preserve_non_latin_scripts_without_question_marks() {
+        let samples = [
+            "Позиция: Бумага А4, чёрная",
+            "Zażółć gęślą jaźń",
+            "Příliš žluťoučký kůň",
+            "Καλημέρα κόσμε",
+            "İstanbul Boğazı",
+            "Đà Nă\u{0303}ng, Viê\u{0323}t Nam",
+            "שלום עולם",
+            "مرحبا بالعالم",
+            "สวัสดีชาวโลก",
+            "表格数据：纸张",
+            "日本語の表",
+            "한국어 표 데이터",
+        ];
+        for sample in samples {
+            let mut doc = Document::new("t", Size::new(120.0, 40.0));
+            let mut ids = doc.ids().clone();
+            let mut t = Shape::new(
+                ids.shape(),
+                ShapeKind::Text {
+                    spans: vec![TextSpan::new(sample, "Arial", 12.0)],
+                    origin: Point::new(10.0, 20.0),
+                    frame: None,
+                    align: TextAlign::Left,
+                    para: ParagraphStyle::default(),
+                    on_path: None,
+                },
+            );
+            t.fill = Fill::Solid(Color::BLACK);
+            t.stroke = None;
+            doc.pages[0].layers[0].shapes.push(t);
+            doc.set_ids(ids);
+            let wmf = page_to_wmf(&doc, 0);
+            let mut ids2 = IdSource::default();
+            let imp = parse(&wmf, &mut ids2).expect("wmf parses");
+            assert_eq!(imp.shapes.len(), 1, "{sample}");
+            match &imp.shapes[0].kind {
+                ShapeKind::Text { spans, .. } => {
+                    assert_eq!(spans[0].text, sample, "round-trip for {sample}");
+                    assert!(!spans[0].text.contains('?'));
+                }
+                other => panic!("expected text for {sample}, got {other:?}"),
+            }
         }
     }
 }

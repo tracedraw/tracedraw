@@ -94,6 +94,9 @@ pub fn install() {
     tracedraw_core::document::text_outline::set(|req| fonts().outline_cached(req).as_ref().clone());
     tracedraw_core::document::text_outline::set_bounds(|req| fonts().bounds_cached(req));
     tracedraw_core::document::text_outline::set_glyphs(|req| fonts().glyph_layout(req));
+    tracedraw_core::document::text_outline::set_glyph_indices(|req| {
+        fonts().resolve_glyph_indices(req)
+    });
     tracedraw_core::document::text_outline::set_lines(|req| {
         let layout = fonts().layout(req);
         // Lines past what fits the frame flow on (to a linked frame);
@@ -1671,6 +1674,62 @@ fn script_fonts(c: char) -> &'static [&'static str] {
             "Lohit Devanagari",
         ],
         0x0980..=0x09FF => &["Noto Sans Bengali", "Nirmala UI", "Vrinda", "Lohit Bengali"],
+        0x0A00..=0x0D7F => &[
+            "Nirmala UI",
+            "Noto Sans Tamil",
+            "Noto Sans Telugu",
+            "Noto Sans Kannada",
+            "Noto Sans Malayalam",
+            "Noto Sans Gujarati",
+            "Noto Sans Gurmukhi",
+            "Latha",
+            "Gautami",
+            "Tunga",
+            "Kartika",
+            "Shruti",
+            "Raavi",
+        ],
+        // Cyrillic and Cyrillic Extended (Russian, Ukrainian, Belarusian,
+        // Serbian, Bulgarian, Kazakh, Kyrgyz, Mongolian).
+        0x0400..=0x052F | 0x2DE0..=0x2DFF | 0xA640..=0xA69F => &[
+            "Arial",
+            "Segoe UI",
+            "Calibri",
+            "Tahoma",
+            "Liberation Sans",
+            "DejaVu Sans",
+            "Noto Sans",
+            "FreeSans",
+        ],
+        // Greek and Greek Extended.
+        0x0370..=0x03FF | 0x1F00..=0x1FFF => &[
+            "Arial",
+            "Segoe UI",
+            "Calibri",
+            "Tahoma",
+            "Liberation Sans",
+            "DejaVu Sans",
+            "Noto Sans",
+        ],
+        // Armenian and Georgian.
+        0x0530..=0x058F | 0x10A0..=0x10FF | 0x1C90..=0x1CBF | 0x2D00..=0x2D2F => &[
+            "Sylfaen",
+            "Segoe UI",
+            "DejaVu Sans",
+            "Noto Sans Armenian",
+            "Noto Sans Georgian",
+            "Arial",
+        ],
+        // Latin Extended (Central European, Turkish, Vietnamese, Baltic).
+        0x0100..=0x024F | 0x1E00..=0x1EFF => &[
+            "Arial",
+            "Segoe UI",
+            "Calibri",
+            "Tahoma",
+            "Liberation Sans",
+            "DejaVu Sans",
+            "Noto Sans",
+        ],
         _ => &[
             "DejaVu Sans",
             "Noto Sans",
@@ -3407,6 +3466,82 @@ impl FontSystem {
     /// [`substitutes`]), else a sans-serif, else anything.
     fn face_for(&self, family: &str, bold: bool, italic: bool) -> Option<fontdb::ID> {
         self.face_and_weight(family, bold, italic).map(|(id, _)| id)
+    }
+
+    /// Resolve a metafile `ETO_GLYPH_INDEX` run against the installed face
+    /// of `req.family`: back to Unicode text when every glyph has a Unicode
+    /// `cmap` entry, else to exact vector outlines placed with
+    /// `req.advances_mm`.
+    pub fn resolve_glyph_indices(
+        &self,
+        req: &tracedraw_core::document::text_outline::GlyphRunRequest<'_>,
+    ) -> Option<tracedraw_core::document::text_outline::ResolvedGlyphRun> {
+        use tracedraw_core::document::text_outline::ResolvedGlyphRun;
+        if req.gids.is_empty() {
+            return None;
+        }
+        self.ask_for(req.family);
+        let db = self.db();
+        let (id, _) = self.own_face(&db, req.family, req.bold, req.italic)?;
+        db.with_face_data(id, |data, index| {
+            let face = ttf_parser::Face::parse(data, index).ok()?;
+            let mut chars: HashMap<u16, char> = HashMap::new();
+            if let Some(cmap) = face.tables().cmap {
+                for st in cmap.subtables {
+                    if !st.is_unicode() {
+                        continue;
+                    }
+                    st.codepoints(|cp| {
+                        if let (Some(c), Some(g)) = (
+                            char::from_u32(cp).filter(|c| !c.is_control()),
+                            st.glyph_index(cp).filter(|g| g.0 != 0),
+                        ) {
+                            chars.entry(g.0).or_insert(c);
+                        }
+                    });
+                }
+            }
+            if req.gids.iter().all(|g| chars.contains_key(g)) {
+                let s: String = req
+                    .gids
+                    .iter()
+                    .filter_map(|g| chars.get(g).copied())
+                    .collect();
+                if !s.is_empty() {
+                    return Some(ResolvedGlyphRun::Text(s));
+                }
+            }
+            let upm = f64::from(face.units_per_em().max(1));
+            let scale = req.em_mm / upm;
+            if !scale.is_finite() || scale <= 0.0 {
+                return None;
+            }
+            let mut sink = OutlineSink {
+                path: BezPath::new(),
+                scale,
+                x: 0.0,
+                y: 0.0,
+            };
+            let mut pen_x = 0.0;
+            for (i, &gid) in req.gids.iter().enumerate() {
+                sink.x = pen_x;
+                let _ = face.outline_glyph(ttf_parser::GlyphId(gid), &mut sink);
+                let adv = req
+                    .advances_mm
+                    .get(i)
+                    .copied()
+                    .filter(|v| v.is_finite())
+                    .unwrap_or_else(|| {
+                        f64::from(
+                            face.glyph_hor_advance(ttf_parser::GlyphId(gid))
+                                .unwrap_or(0),
+                        ) * scale
+                    });
+                pen_x += adv;
+            }
+            (!sink.path.elements().is_empty()).then_some(ResolvedGlyphRun::Path(sink.path))
+        })
+        .flatten()
     }
 
     /// [`FontSystem::face_for`] with the weight the text is to be drawn

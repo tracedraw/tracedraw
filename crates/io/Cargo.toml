@@ -32,6 +32,7 @@ cfb = "0.15"
 # text drawn right to left back in the order it is typed; the same version
 # the text layout uses.
 unicode-bidi = "0.3"
+encoding_rs.workspace = true
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 # The raw inks of a CMYK JPEG in a PDF, which the image decoder above
 # turns into RGB as if they were stored inverted (#2322).

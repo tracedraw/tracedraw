@@ -2987,9 +2987,11 @@ fn user_dir(env: &str, name: &str) -> Option<std::path::PathBuf> {
 // ----- print merge ---------------------------------------------------------------
 
 /// The text of a data file as spreadsheets save it: UTF-8 (with or
-/// without the byte order mark), UTF-16 with its mark (Excel's Unicode
-/// Text), else code page 1252 (Excel's CSV on Windows), which failed to
-/// read as UTF-8 (#495).
+/// without the byte order mark), UTF-16 with its mark (Unicode Text), or
+/// the legacy Windows/CJK code page that matches the byte patterns and
+/// active language (CP1251 for Cyrillic, GBK/Shift-JIS/Big5/EUC-KR for
+/// CJK, CP1250..1258/874 for European/Middle-Eastern/Thai CSVs, and
+/// CP1252 by default, #495).
 pub fn decode_text(bytes: &[u8]) -> String {
     if let Some(rest) = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]) {
         return String::from_utf8_lossy(rest).into_owned();
@@ -3013,13 +3015,78 @@ pub fn decode_text(bytes: &[u8]) -> String {
     if let Some(rest) = bytes.strip_prefix(&[0xFE, 0xFF]) {
         return utf16(rest, false);
     }
-    match std::str::from_utf8(bytes) {
-        Ok(s) => s.to_string(),
-        Err(_) => bytes
-            .iter()
-            .map(|&b| crate::ui::glyphs_docker::from_cp1252(b).unwrap_or('\u{FFFD}'))
-            .collect(),
+    if let Ok(s) = std::str::from_utf8(bytes) {
+        return s.to_string();
     }
+    decode_legacy_csv_bytes(bytes)
+}
+
+fn decode_legacy_csv_bytes(bytes: &[u8]) -> String {
+    use encoding_rs::*;
+    let cp1252_hole = |b: u8| matches!(b, 0x81 | 0x8D | 0x8F | 0x90 | 0x9D);
+    let is_cyr = |b: u8| b >= 0xC0 || b == 0xA8 || b == 0xB8;
+    let mut pure_cyr_words = 0usize;
+    let mut mixed_words = 0usize;
+    for word in bytes.split(|&b| b.is_ascii_whitespace() || b.is_ascii_punctuation()) {
+        let cyr = word.iter().filter(|&&b| is_cyr(b)).count();
+        if cyr == 0 {
+            continue;
+        }
+        let asc = word.iter().filter(|&&b| b.is_ascii_alphabetic()).count();
+        if asc > 0 {
+            mixed_words += 1;
+        } else if cyr >= 2 {
+            pure_cyr_words += 1;
+        }
+    }
+    let has_holes = bytes.iter().any(|&b| cp1252_hole(b));
+    let lang = crate::i18n::language();
+
+    // Language-preferred multibyte or single-byte encoding when it decodes
+    // without replacement errors and the input is not mixed-Latin CP1252.
+    if mixed_words == 0 {
+        let lang_enc: Option<&'static Encoding> = match lang.as_str() {
+            "ru" if pure_cyr_words > 0 || has_holes => Some(WINDOWS_1251),
+            "zh-CN" => Some(GBK),
+            "zh-TW" => Some(BIG5),
+            "ja" => Some(SHIFT_JIS),
+            "cs" | "pl" if has_holes => Some(WINDOWS_1250),
+            "tr" if has_holes => Some(WINDOWS_1254),
+            "vi" if has_holes => Some(WINDOWS_1258),
+            "ar" if has_holes => Some(WINDOWS_1256),
+            _ => None,
+        };
+        if let Some(enc) = lang_enc {
+            let (cow, _, had_errors) = enc.decode(bytes);
+            if !had_errors {
+                return cow.into_owned();
+            }
+        }
+    }
+
+    // Multibyte CJK without replacement errors when CP1252 has holes or
+    // dense C1 bytes (`0x81..=0x9F` outside `0x80` Euro).
+    let c1_non_euro = bytes
+        .iter()
+        .filter(|&&b| (0x81..=0x9F).contains(&b))
+        .count();
+    if has_holes || (c1_non_euro >= 2 && mixed_words == 0) {
+        for enc in [SHIFT_JIS, GBK, EUC_KR, BIG5] {
+            let (cow, _, had_errors) = enc.decode(bytes);
+            if !had_errors {
+                return cow.into_owned();
+            }
+        }
+    }
+
+    if pure_cyr_words > 0 && pure_cyr_words > mixed_words {
+        return WINDOWS_1251.decode_without_bom_handling(bytes).0.into_owned();
+    }
+
+    bytes
+        .iter()
+        .map(|&b| crate::ui::glyphs_docker::from_cp1252(b).unwrap_or('\u{FFFD}'))
+        .collect()
 }
 
 /// Records of a CSV text: the first row names the fields; the separator
@@ -5657,6 +5724,14 @@ mod tests {
         let (h, r) = parse_csv(&decode_text(ansi));
         assert_eq!(h, vec!["Name", "Price"]);
         assert_eq!(r[0], vec!["João", "5 €"]);
+
+        // Cyrillic CSV saved in Windows-1251 on Russian Windows.
+        let (cp1251, _, _) =
+            encoding_rs::WINDOWS_1251.encode("Позиция;Цена\nБумага;120\nКраска;350\n");
+        let (hc, rc) = parse_csv(&decode_text(&cp1251));
+        assert_eq!(hc, vec!["Позиция", "Цена"]);
+        assert_eq!(rc[0], vec!["Бумага", "120"]);
+        assert_eq!(rc[1], vec!["Краска", "350"]);
     }
 
     /// Find and Replace searches the runs of a text as one text, finds and
