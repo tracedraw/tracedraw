@@ -241,12 +241,57 @@ fn program_turns() -> &'static Turns {
     }
 }
 
+/// A picture kept of a zoom the view has left (#3894).
+struct Level {
+    key: Key,
+    texture: TextureHandle,
+    page_rect: tracedraw_core::geometry::Rect,
+}
+
+/// At most this many pictures of earlier zooms are kept (#3894)...
+const MAX_LEVELS: usize = 6;
+/// ...and at most this many bytes of them (a 1600 x 1000 canvas is
+/// 6.4 MB a picture).
+const MAX_LEVEL_BYTES: usize = 96 << 20;
+
+/// Which of the pictures (their zoom and the part of the page they show,
+/// page mm) to show for a view at `zoom` showing `visible`: among those
+/// that cover all of it, the nearest in zoom; `None` when none does
+/// (#3894).
+fn nearest_level(
+    pictures: &[(f32, tracedraw_core::geometry::Rect)],
+    zoom: f32,
+    visible: tracedraw_core::geometry::Rect,
+) -> Option<usize> {
+    let covers = |r: &tracedraw_core::geometry::Rect| {
+        let slack = 1e-6 * (visible.width() + visible.height()).max(1.0);
+        r.x0 <= visible.x0 + slack
+            && r.y0 <= visible.y0 + slack
+            && r.x1 >= visible.x1 - slack
+            && r.y1 >= visible.y1 - slack
+    };
+    pictures
+        .iter()
+        .enumerate()
+        .filter(|(_, (z, r))| *z > 0.0 && zoom > 0.0 && covers(r))
+        .min_by(|a, b| {
+            let d = |z: f32| (z / zoom).ln().abs();
+            d(a.1 .0).total_cmp(&d(b.1 .0))
+        })
+        .map(|(i, _)| i)
+}
+
 #[derive(Default)]
 pub struct Raster {
     texture: Option<TextureHandle>,
     key: Option<Key>,
     /// The part of the page the texture shows, page mm.
     page_rect: Option<tracedraw_core::geometry::Rect>,
+    /// The pictures of the zooms the view showed last, of the drawing as
+    /// it stands (#3894): a zoom shows the nearest of them while its own
+    /// is drawn, sharper than the last picture scaled, and coming back to
+    /// one of them shows it at once.
+    levels: Vec<Level>,
     /// While the view moves: the view last asked for and when (egui
     /// time) it will be rendered if it stays.
     settle: Option<(Key, f64)>,
@@ -573,6 +618,7 @@ impl Raster {
     /// proofed colours, which the colour settings decide).
     pub fn invalidate(&mut self) {
         self.key = None;
+        self.levels.clear();
         self.proof = None;
         self.settle = None;
         self.zoom_step = None;
@@ -841,6 +887,18 @@ impl Raster {
                 return self.shown_meanwhile(view, screen);
             }
         }
+        // Back at a zoom the view showed: its kept picture at once, no
+        // render (#3894).
+        if window.is_none()
+            && !self.follows_zoom
+            && self.key.as_ref() != Some(&key)
+            && self.back_to_level(&key)
+        {
+            #[cfg(not(target_arch = "wasm32"))]
+            if let Some(job) = self.job.take() {
+                job.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+            }
+        }
         if self.key.as_ref() == Some(&key) {
             if let Some(t) = &self.texture {
                 self.settle = None;
@@ -1050,12 +1108,7 @@ impl Raster {
         let pixmap = render_page(doc, page, &opts)?;
         let image = to_image(&pixmap, lut.as_deref());
         self.last_seconds = t.elapsed().as_secs_f64();
-        match &mut self.texture {
-            Some(t) => t.set(image, filter),
-            None => self.texture = Some(ctx.load_texture("page", image, filter)),
-        }
-        self.key = Some(key);
-        self.page_rect = page_rect;
+        self.take_picture(ctx, image, filter, key, page_rect);
         self.texture.as_ref().map(|t| (t.id(), screen))
     }
 
@@ -1321,10 +1374,115 @@ impl Raster {
     #[cfg(not(target_arch = "wasm32"))]
     fn shown_meanwhile(&self, view: &View, screen: Rect) -> Option<(TextureId, Rect)> {
         let t = self.texture.as_ref()?;
+        // A kept picture of a zoom nearer the view's, covering what the
+        // window shows, is sharper than the last one scaled (#3894).
+        if let (Some(cur), Some(cur_rect)) = (self.key.as_ref(), self.page_rect) {
+            if !self.levels.is_empty() && !self.follows_zoom {
+                let a = view.to_page(screen.left_top());
+                let b = view.to_page(screen.right_bottom());
+                let visible = tracedraw_core::geometry::Rect::new(
+                    a.x.min(b.x),
+                    a.y.min(b.y),
+                    a.x.max(b.x),
+                    a.y.max(b.y),
+                );
+                let mut pictures = vec![(cur.zoom, cur_rect)];
+                pictures.extend(self.levels.iter().map(|l| (l.key.zoom, l.page_rect)));
+                if let Some(i) = nearest_level(&pictures, view.zoom, visible).filter(|i| *i > 0) {
+                    let l = &self.levels[i - 1];
+                    return Some((l.texture.id(), view.rect_to_screen(l.page_rect)));
+                }
+            }
+        }
         Some((
             t.id(),
             self.page_rect.map_or(screen, |r| view.rect_to_screen(r)),
         ))
+    }
+
+    /// Take `image`, the picture of `key`: the picture it replaces is
+    /// kept as a level when it is of another zoom of the drawing as it
+    /// stands, and levels of anything else go (#3894).
+    fn take_picture(
+        &mut self,
+        ctx: &Context,
+        image: ColorImage,
+        filter: TextureOptions,
+        key: Key,
+        page_rect: Option<tracedraw_core::geometry::Rect>,
+    ) {
+        let keep = cfg!(not(target_arch = "wasm32"))
+            && !self.follows_zoom
+            && page_rect.is_some()
+            && self
+                .key
+                .as_ref()
+                .is_some_and(|old| old.zoom != key.zoom && old.same_but_view(&key, false));
+        if keep && self.texture.is_some() {
+            let old = self.texture.take().expect("texture");
+            if let (Some(k), Some(r)) = (self.key.take(), self.page_rect) {
+                self.levels.push(Level {
+                    key: k,
+                    texture: old,
+                    page_rect: r,
+                });
+            }
+            self.texture = Some(ctx.load_texture("page", image, filter));
+        } else if let Some(t) = &mut self.texture {
+            t.set(image, filter);
+        } else {
+            self.texture = Some(ctx.load_texture("page", image, filter));
+        }
+        self.levels
+            .retain(|l| l.key.zoom != key.zoom && l.key.same_but_view(&key, false));
+        // The oldest go first, past the count or the bytes.
+        let bytes = |l: &Level| {
+            let [w, h] = l.texture.size();
+            w * h * 4
+        };
+        while self.levels.len() > MAX_LEVELS
+            || self.levels.iter().map(bytes).sum::<usize>() > MAX_LEVEL_BYTES
+        {
+            self.levels.remove(0);
+        }
+        self.key = Some(key);
+        self.page_rect = page_rect;
+    }
+
+    /// Let go of the pictures kept of other zooms, as when the view has
+    /// shown no other (tests of the wait for a new picture).
+    #[cfg(test)]
+    pub fn forget_kept_zooms(&mut self) {
+        self.levels.clear();
+    }
+
+    /// A kept picture of exactly the view asked for (the view came back
+    /// to a zoom it showed): made the picture shown, the one it replaces
+    /// kept in its place (#3894). True when there was one.
+    fn back_to_level(&mut self, key: &Key) -> bool {
+        let same = |k: &Key| {
+            k.same_but_view(key, false)
+                && (k.zoom / key.zoom - 1.0).abs() < 1e-6
+                && (k.offset - key.offset).length() < 0.01
+        };
+        let Some(i) = self.levels.iter().position(|l| same(&l.key)) else {
+            return false;
+        };
+        let level = self.levels.remove(i);
+        if let (Some(t), Some(k), Some(r)) = (self.texture.take(), self.key.take(), self.page_rect)
+        {
+            if k.same_but_view(key, false) {
+                self.levels.push(Level {
+                    key: k,
+                    texture: t,
+                    page_rect: r,
+                });
+            }
+        }
+        self.texture = Some(level.texture);
+        self.page_rect = Some(level.page_rect);
+        self.key = Some(key.clone());
+        true
     }
 
     /// A render on its thread: its picture taken when ready (`true` when
@@ -1340,12 +1498,7 @@ impl Raster {
                 let job = self.job.take().expect("job");
                 if let Some((image, seconds)) = result {
                     self.last_seconds = seconds;
-                    match &mut self.texture {
-                        Some(t) => t.set(image, job.filter),
-                        None => self.texture = Some(ctx.load_texture("page", image, job.filter)),
-                    }
-                    self.key = Some(job.key);
-                    self.page_rect = job.page_rect;
+                    self.take_picture(ctx, image, job.filter, job.key, job.page_rect);
                 }
                 false
             }
@@ -2457,6 +2610,68 @@ mod tests {
         // Dropped with the picture.
         raster.invalidate();
         assert!(!raster.has_backdrop(2));
+    }
+
+    /// The picture to show for a zoom (#3894): among the kept ones that
+    /// cover what the window shows, the nearest in zoom.
+    #[test]
+    fn the_nearest_covering_level_is_shown() {
+        use tracedraw_core::geometry::Rect as R;
+        let visible = R::new(10.0, 10.0, 50.0, 40.0);
+        let pictures = [
+            (1.0, R::new(0.0, 0.0, 100.0, 100.0)),
+            (2.0, R::new(5.0, 5.0, 60.0, 45.0)),
+            (3.9, R::new(20.0, 20.0, 30.0, 30.0)),
+        ];
+        // 3.9 is nearest to 4 but shows too little; 2 covers it all.
+        assert_eq!(nearest_level(&pictures, 4.0, visible), Some(1));
+        assert_eq!(nearest_level(&pictures, 1.2, visible), Some(0));
+        assert_eq!(nearest_level(&pictures[2..], 4.0, visible), None);
+    }
+
+    /// Zoomed out and back (#3894): the picture of the first zoom is kept
+    /// while the second is drawn, and coming back shows it at once, with
+    /// no render; a change of the drawing drops what was kept.
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn coming_back_to_a_zoom_shows_its_kept_picture_at_once() {
+        static TURNS: Turns = Turns::new();
+        let ctx = Context::default();
+        let doc = Document::new("t", Size::new(100.0, 50.0));
+        let rect = Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(320.0, 200.0));
+        let mut raster = Raster {
+            turns: Some(&TURNS),
+            ..Default::default()
+        };
+        let mut view = View::default();
+        let mut t = 0.0;
+        let mut until = |raster: &mut Raster, view: &View, zoom: f32| {
+            for _ in 0..400 {
+                t += 0.05;
+                pass(&ctx, raster, &doc, view, rect, t);
+                if raster.picture_zoom() == Some(zoom) && raster.job.is_none() {
+                    return;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            panic!("no picture at zoom {zoom}");
+        };
+        let first = view.zoom;
+        until(&mut raster, &view, first);
+        let at = egui::pos2(160.0, 100.0);
+        view.zoom_at(at, 0.5);
+        let out = view.zoom;
+        until(&mut raster, &view, out);
+        assert_eq!(raster.levels.len(), 1, "the first zoom's picture is kept");
+        let renders = raster.render_count();
+        view.zoom_at(at, 2.0);
+        let (tex, _) = pass(&ctx, &mut raster, &doc, &view, rect, 100.0);
+        assert_eq!(raster.render_count(), renders, "no render to come back");
+        assert_eq!(raster.picture_zoom(), Some(first));
+        assert_eq!(Some(tex), raster.texture.as_ref().map(|t| t.id()));
+        assert_eq!(raster.levels.len(), 1, "the zoomed-out picture kept in turn");
+        raster.invalidate();
+        assert!(raster.levels.is_empty());
     }
 
     /// A burst of zoom steps while a render runs: no render is started

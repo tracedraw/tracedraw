@@ -17336,6 +17336,8 @@ fn zooming_out_shows_the_whole_page_small_where_the_picture_does_not_reach() {
         "still zoomed in"
     );
     let renders = app.raster.borrow().render_count();
+    // No picture kept of the fitted zoom, as a first zoom out (#3894).
+    app.raster.borrow_mut().forget_kept_zooms();
     app.view.zoom_at(at, 1.0 / 8.0);
     let parts = painted(&mut app, back);
     assert!(
@@ -17431,6 +17433,8 @@ fn zooming_out_shows_what_is_drawn_beside_the_page_at_once() {
     }
     assert!(ready, "the backdrop came once the view rested");
     let back = app.raster.borrow().backdrop_texture();
+    // No picture kept of the zoom before, as a first zoom out (#3894).
+    app.raster.borrow_mut().forget_kept_zooms();
     app.view.zoom_at(at, 1.0 / 8.0);
     let parts = painted(&mut app, back);
     assert!(
