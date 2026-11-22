@@ -233,6 +233,14 @@ window shows.
   pages beside the current one in the Multipage View still wait for the
   view to rest (many of them come due at once), and the browser build,
   which draws on one thread, keeps the wait too.
+  The pictures of the last zooms are kept, of the drawing as it stands
+  (at most 6, and at most 96 MB of them, the oldest dropped first;
+  any change of the drawing, the page or the canvas drops them, #3894).
+  While a zoom's own picture is drawn, the kept picture nearest in zoom
+  that covers all the window shows, scaled, instead of the last one, so
+  a zoom out and back shows a sharp picture at once; coming back to
+  exactly a zoom and place shown before shows its picture with no
+  render at all (`raster::tests::coming_back_to_a_zoom_shows_its_kept_picture_at_once`).
   `frame_times_of_a_zoom_burst` (in `pick_drag_tests.rs`) measures the
   wait from the last step to the sharp picture.
 - The main canvas's picture drawn on a thread comes a band at a time

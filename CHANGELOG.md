@@ -12,6 +12,7 @@ full, row-by-row status.
 - The preview a saved file carries (Welcome Screen, file browser, .cdr preview) shows the whole drawing, everything on and beside the page, instead of the page with a margin round it (#3052).
 - Command line tool: it loads the fonts installed in the app's Font Manager and its added folders, so it draws text with the same fonts and automatic stand-ins as the app, and it names on stderr the installed font that draws each missing one (#3818).
 - Fill > Bitmap pattern: "Picture folder..." chooses a folder of pictures, and the pattern list then shows its pictures with thumbnails; the one clicked becomes the tile (#3323).
+- Zoom: the pictures of the last few zoom levels are kept, so zooming back to one shows it sharp at once with no new render, and while a new zoom is drawn the nearest kept picture fills in instead of a blown-up or shrunk one (#3894).
 - Print Merged Document: the merged drawing is made only to be printed, so once the Print dialog and Print Preview are closed it is gone again and the drawing you merged is back in front, instead of an extra merged drawing staying open after every print or preview. Create Merged Document is the command that keeps the merged drawing (discussion #1610).
 - Cross hair to the window edges: the lines also follow the Shape tool's pointer, crossing at its tip (discussion #3268).
 - Settings kept next to the program (portable use): pictures sent to an outside editor and the automatic backups go in a folder beside the program too, not in the system's temporary or user folders (#3908).
