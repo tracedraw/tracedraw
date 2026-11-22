@@ -57,7 +57,11 @@ pub fn clear() {
 /// The first page of the active drawing as a PNG thumbnail, with what
 /// lies beside it on the desktop (#2357).
 fn first_page_png(app: &App) -> Option<Vec<u8>> {
-    let doc = app.doc();
+    page_png(app.doc())
+}
+
+/// The first page of `doc` as a PNG thumbnail.
+fn page_png(doc: &tracedraw_core::Document) -> Option<Vec<u8>> {
     let page = doc.pages.first()?;
     let pm = tracedraw_render::render_whole_page_image(doc, page.id, SIZE)?;
     // The background is opaque white, so premultiplied data is plain RGBA.
@@ -85,11 +89,29 @@ impl App {
             return;
         }
         self.recent_thumbs.remove(path);
-        let (Some(out), Some(png)) = (thumbnail_path(path), first_page_png(self)) else {
+        let Some(out) = thumbnail_path(path) else {
             return;
         };
-        if let Err(e) = crate::files::write_creating(&out, png) {
-            log::warn!("could not keep a thumbnail for {}: {e}", path.display());
+        // Drawn on a thread of its own (#3914): a drawing with a picture
+        // of some hundred million pixels took the whole picture apart
+        // for 160 pixels before its first frame showed.
+        let doc = self.doc().clone();
+        let path = path.to_path_buf();
+        let job = move || {
+            let Some(png) = page_png(&doc) else {
+                return;
+            };
+            if let Err(e) = crate::files::write_creating(&out, png) {
+                log::warn!("could not keep a thumbnail for {}: {e}", path.display());
+            }
+        };
+        if cfg!(test) {
+            job();
+        } else if let Err(e) = std::thread::Builder::new()
+            .name("thumbnail".into())
+            .spawn(job)
+        {
+            log::warn!("no thread for a thumbnail: {e}");
         }
     }
 

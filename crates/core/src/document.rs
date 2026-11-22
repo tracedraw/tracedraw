@@ -7871,6 +7871,13 @@ impl Document {
     /// date by [`migrate`]; newer ones are read as far as this version
     /// knows them (fields it does not know are left out).
     pub fn from_json(s: &str) -> Result<Self> {
+        Self::from_json_with_version(s).map(|(doc, _)| doc)
+    }
+
+    /// [`Document::from_json`], with the `.tdraw` format version the text
+    /// says it has (0 when it says none), from the one parse (#3914: a
+    /// large drawing was parsed twice, once only for its version).
+    pub fn from_json_with_version(s: &str) -> Result<(Self, u32)> {
         // Reading nests a few large stack frames per level of the file:
         // a drawing of a couple of hundred nested groups, which the file
         // may hold (MAX_JSON_DEPTH), overflowed the stack and ended the
@@ -7881,7 +7888,7 @@ impl Document {
         Self::from_json_here(s)
     }
 
-    fn from_json_here(s: &str) -> Result<Self> {
+    fn from_json_here(s: &str) -> Result<(Self, u32)> {
         let mut v: serde_json::Value = json_value(s)?;
         let from = tdraw_version(&v);
         migrate(&mut v, from);
@@ -7909,7 +7916,7 @@ impl Document {
         doc.refresh_text_flow();
         doc.refit_text_meshes();
         doc.break_symbol_loops();
-        Ok(doc)
+        Ok((doc, from))
     }
 
     /// Stretch the mesh fill of every text whose grid lies inside the

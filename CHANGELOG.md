@@ -6,6 +6,10 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Text ruler: the first line's indent has a marker of its own above the left indent's, so a first-line or hanging indent is dragged on the ruler while the text follows; the left marker moves every line (#3911).
+- Document setup > Guidelines > User defined: bleed guidelines outside the page edges at the distances typed, and a Mirror choice for margins and bleed (top to bottom, left to right or all four sides) (#3916).
+- Large pictures: a JPEG is decoded once on import instead of twice, the recent-files thumbnail is drawn on a thread of its own instead of holding the first frame, and a .tdraw file is parsed once instead of twice (#3914).
+- New document: the Width box takes the keyboard when the dialog opens, and Tab goes from Width straight to Height with its number selected; the spin arrows of the dialogs' number boxes no longer take Tab stops (#3886).
 - Print Merged Document: the merged drawing is made only to be printed, so once the Print dialog and Print Preview are closed it is gone again and the drawing you merged is back in front, instead of an extra merged drawing staying open after every print or preview. Create Merged Document is the command that keeps the merged drawing (discussion #1610).
 - Cross hair to the window edges: the lines also follow the Shape tool's pointer, crossing at its tip (discussion #3268).
 - Settings kept next to the program (portable use): pictures sent to an outside editor and the automatic backups go in a folder beside the program too, not in the system's temporary or user folders (#3908).
