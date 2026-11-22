@@ -759,6 +759,8 @@ pub struct ExportPreset {
     /// DXF's drawing unit (#3583); presets saved before have none and
     /// stay in millimetres.
     pub dxf_units: usize,
+    /// WMF: dashes as solid lines (#3819).
+    pub wmf_solid_dashes: bool,
 }
 
 impl Default for ExportPreset {
@@ -807,6 +809,7 @@ impl ExportPreset {
             plt_resolution: st.plt_resolution,
             svg_text: st.svg_text,
             dxf_units: st.dxf_units,
+            wmf_solid_dashes: st.wmf_solid_dashes,
         }
     }
 
@@ -846,6 +849,7 @@ impl ExportPreset {
         if self.dxf_units < crate::ui::dialogs::DXF_UNIT_KEYS.len() {
             st.dxf_units = self.dxf_units;
         }
+        st.wmf_solid_dashes = self.wmf_solid_dashes;
         self.apply_plt(st);
         self.apply_size(st);
         st.preset = self.name.clone();

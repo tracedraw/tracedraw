@@ -3563,6 +3563,15 @@ mod export_tests {
 /// LOGFONT; bitmaps are 32-bit DIBs through STRETCHDIB. Live effects are
 /// expanded, clip frames are drawn unclipped (contents then frame).
 pub fn page_to_wmf(doc: &tracedraw_core::Document, page_index: usize) -> Vec<u8> {
+    page_to_wmf_with(doc, page_index, &WmfOptions::default())
+}
+
+/// [`page_to_wmf`] with the export's choices.
+pub fn page_to_wmf_with(
+    doc: &tracedraw_core::Document,
+    page_index: usize,
+    opts: &WmfOptions,
+) -> Vec<u8> {
     let doc = &*crate::for_export(doc, Some(page_index));
     let Some(page) = doc.pages.get(page_index) else {
         return Vec::new();
@@ -3575,6 +3584,7 @@ pub fn page_to_wmf(doc: &tracedraw_core::Document, page_index: usize) -> Vec<u8>
         max_record: 0,
         page_h: h,
         symbols: &doc.symbols,
+        solid_dashes: opts.solid_dashes,
     };
     // MM_ANISOTROPIC: the window below maps onto the frame of the
     // placeable header. In MM_TEXT programs such as Word took the twips
@@ -3665,6 +3675,15 @@ struct WmfWriter<'a> {
     max_record: usize,
     page_h: f64,
     symbols: &'a [tracedraw_core::document::Symbol],
+    /// Dashed outlines go out as solid lines (#3819).
+    solid_dashes: bool,
+}
+
+/// Choices of the WMF export.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct WmfOptions {
+    /// Dashed and dotted outlines are written as solid lines (#3819).
+    pub solid_dashes: bool,
 }
 
 impl WmfWriter<'_> {
@@ -3846,6 +3865,17 @@ impl WmfWriter<'_> {
             self.delete(b);
         }
         if let Some(s) = stroke {
+            // Dashes written as one solid line when the export asks so.
+            let solid;
+            let s = if self.solid_dashes && !s.dash.is_empty() {
+                solid = Stroke {
+                    dash: Vec::new(),
+                    ..s.clone()
+                };
+                &solid
+            } else {
+                s
+            };
             let dashed = wmf_dashes(path, s, scale);
             let polys = match &dashed {
                 Some(d) => Self::polylines(d),
@@ -4175,6 +4205,37 @@ mod wmf_export_tests {
         assert_eq!((first[1], first[first.len() - 2]), (tw(10.0), tw(14.0)));
         let second = lines[1];
         assert_eq!(second[1], tw(16.0));
+    }
+
+    /// With Dashes as Solid Lines, the dashed outline goes out as one
+    /// line with a solid pen (#3819).
+    #[test]
+    fn dashes_can_be_written_as_solid_lines() {
+        let mut doc = Document::new("t", Size::new(120.0, 50.0));
+        let mut ids = doc.ids().clone();
+        let mut path = tracedraw_core::geometry::BezPath::new();
+        path.move_to((10.0, 25.0));
+        path.line_to((110.0, 25.0));
+        let mut line = Shape::new(
+            ids.shape(),
+            ShapeKind::Path {
+                path,
+                closed: false,
+            },
+        );
+        let mut st = Stroke::new(Color::BLACK, 1.0);
+        st.cap = LineCap::Butt;
+        st.dash = vec![4.0, 2.0];
+        line.stroke = Some(st);
+        line.fill = Fill::None;
+        doc.pages[0].layers[0].shapes.push(line);
+        doc.set_ids(ids);
+        let opts = WmfOptions { solid_dashes: true };
+        let recs = wmf_records(&page_to_wmf_with(&doc, 0, &opts));
+        let lines = recs.iter().filter(|(f, _)| *f == 0x0325).count();
+        assert_eq!(lines, 1);
+        let pen = recs.iter().find(|(f, _)| *f == 0x02FA).map(|(_, p)| p[0]);
+        assert_eq!(pen, Some(0), "a solid pen");
     }
 
     /// A solid outline stays one line with a solid pen.

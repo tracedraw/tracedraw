@@ -845,7 +845,17 @@ fn main() -> ExitCode {
             } else if output.to_ascii_lowercase().ends_with(".emf") {
                 tracedraw_io::save_emf(&doc, page_index(), output)
             } else if output.to_ascii_lowercase().ends_with(".wmf") {
-                tracedraw_io::save_wmf(&doc, page_index(), output)
+                // TRACEDRAW_WMF_SOLID_DASHES=1 writes dashed outlines as
+                // solid lines, as the export dialog's box does (#3819).
+                let opts = tracedraw_io::emf::WmfOptions {
+                    solid_dashes: std::env::var("TRACEDRAW_WMF_SOLID_DASHES")
+                        .is_ok_and(|v| !v.is_empty() && v != "0"),
+                };
+                std::fs::write(
+                    output,
+                    tracedraw_io::emf::page_to_wmf_with(&doc, page_index(), &opts),
+                )
+                .map_err(tracedraw_io::Error::from)
             } else if output.to_ascii_lowercase().ends_with(".plt") {
                 tracedraw_io::save_plt(&doc, page_index(), output)
             } else if output.to_ascii_lowercase().ends_with(".psd") {

@@ -6320,6 +6320,10 @@ pub struct RulerSettings {
     /// or "m"), kept for the dialog; empty for millimetres.
     pub scale_page_units: String,
     pub scale_world_units: String,
+    /// The vertical ruler counts from the top of the page downwards, its
+    /// origin mirrored within the page (#3872); off: from the bottom up.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub vertical_from_top: bool,
 }
 
 impl Default for RulerSettings {
@@ -6332,11 +6336,24 @@ impl Default for RulerSettings {
             scale_world: 1.0,
             scale_page_units: String::new(),
             scale_world_units: String::new(),
+            vertical_from_top: false,
         }
     }
 }
 
 impl RulerSettings {
+    /// The page y (mm) the vertical ruler counts from on a page whose
+    /// bottom and top are `bottom` and `top`: the origin, or with the
+    /// ruler counting from the top the origin mirrored within the page,
+    /// so the default origin lies at the top edge (#3872).
+    pub fn vertical_zero(&self, bottom: f64, top: f64) -> f64 {
+        if self.vertical_from_top {
+            top + bottom - self.origin_y
+        } else {
+            self.origin_y
+        }
+    }
+
     /// World millimetres per page millimetre: 1 for a 1:1 drawing, 100 for
     /// 1:100. Never zero, negative or infinite (1 then).
     pub fn world_per_page(&self) -> f64 {

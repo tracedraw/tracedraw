@@ -5,7 +5,7 @@ use crate::app::App;
 use tracedraw_core::{
     document::{Shape, ShapeKind},
     geometry::{Affine, Point, Rect, Vec2},
-    Command,
+    Command, ShapeId,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,6 +44,13 @@ pub enum DistributeTo {
     /// From the first object on, a set distance apart (`App::distribute_gap`):
     /// the gaps between them, or their edges or centres (#2005).
     Spacing,
+    /// Across the page with the same gap at the page's edges as between
+    /// the objects (#3768).
+    PageEven,
+    /// Inside the selected object that holds all the others (the
+    /// largest), with the same gap at its edges as between the objects;
+    /// that object stays put (#3768).
+    Frame,
 }
 
 impl DistributeTo {
@@ -53,6 +60,8 @@ impl DistributeTo {
             DistributeTo::Selection => "selection",
             DistributeTo::Page => "page",
             DistributeTo::Spacing => "spacing",
+            DistributeTo::PageEven => "page_even",
+            DistributeTo::Frame => "frame",
         }
     }
 
@@ -61,9 +70,48 @@ impl DistributeTo {
         match id {
             "page" => DistributeTo::Page,
             "spacing" => DistributeTo::Spacing,
+            "page_even" => DistributeTo::PageEven,
+            "frame" => DistributeTo::Frame,
             _ => DistributeTo::Selection,
         }
     }
+}
+
+/// The moves that spread `boxes` along x (`horizontal`) or y inside
+/// `room` with equal gaps between them and at both of its edges, in the
+/// order they lie; a row wider than the room overlaps evenly.
+fn even_spread(boxes: &[(ShapeId, Rect)], room: Rect, horizontal: bool) -> Vec<Command> {
+    let lo = |b: &Rect| if horizontal { b.x0 } else { b.y0 };
+    let hi = |b: &Rect| if horizontal { b.x1 } else { b.y1 };
+    let mut order: Vec<&(ShapeId, Rect)> = boxes.iter().filter(|(_, b)| b.is_finite()).collect();
+    if order.is_empty() || !room.is_finite() {
+        return Vec::new();
+    }
+    order.sort_by(|a, b| {
+        (lo(&a.1) + hi(&a.1))
+            .partial_cmp(&(lo(&b.1) + hi(&b.1)))
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    let total: f64 = order.iter().map(|(_, b)| hi(b) - lo(b)).sum();
+    let gap = (hi(&room) - lo(&room) - total) / (order.len() + 1) as f64;
+    let mut cursor = lo(&room) + gap;
+    let mut cmds = Vec::new();
+    for (id, b) in order {
+        let d = cursor - lo(b);
+        if d.abs() > 1e-9 {
+            let v = if horizontal {
+                Vec2::new(d, 0.0)
+            } else {
+                Vec2::new(0.0, d)
+            };
+            cmds.push(Command::TransformShapes {
+                shapes: vec![*id],
+                transform: Affine::translate(v),
+            });
+        }
+        cursor += hi(b) - lo(b) + gap;
+    }
+    cmds
 }
 
 /// The nearest multiple of `step` from `origin` to `v`.
@@ -167,8 +215,9 @@ impl App {
     /// across the page or a set distance apart.
     pub fn can_distribute(&self, to: DistributeTo) -> bool {
         let need = match to {
-            DistributeTo::Selection => 3,
+            DistributeTo::Selection | DistributeTo::Frame => 3,
             DistributeTo::Page | DistributeTo::Spacing => 2,
+            DistributeTo::PageEven => 1,
         };
         self.selection.len() >= need
     }
@@ -187,6 +236,34 @@ impl App {
             how,
             Distribute::Left | Distribute::CentersH | Distribute::Right | Distribute::SpacingH
         );
+        // With even margins the objects go along the axis with the same
+        // gap between them and at the edges of the page or of the frame
+        // object (the largest one, which stays put), whichever edges or
+        // centres the button names (#3768).
+        if matches!(to, DistributeTo::PageEven | DistributeTo::Frame) {
+            let mut boxes: Vec<(ShapeId, Rect)> =
+                shapes.iter().map(|s| (s.id, self.align_box(s))).collect();
+            let room = if to == DistributeTo::Frame {
+                let big = boxes
+                    .iter()
+                    .enumerate()
+                    .max_by(|a, b| {
+                        (a.1 .1.area())
+                            .partial_cmp(&b.1 .1.area())
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                    })
+                    .map(|(i, _)| i)
+                    .unwrap_or(0);
+                boxes.remove(big).1
+            } else {
+                self.page_rect()
+            };
+            let cmds = even_spread(&boxes, room, horizontal);
+            if !cmds.is_empty() {
+                let _ = self.run_batch_keeping_lines("Distribute", &cmds);
+            }
+            return;
+        }
         // Along the axis: the low and high edge of a box.
         let lo = |b: &Rect| if horizontal { b.x0 } else { b.y0 };
         let hi = |b: &Rect| if horizontal { b.x1 } else { b.y1 };
@@ -237,7 +314,8 @@ impl App {
             let total: f64 = boxes.iter().map(|(_, b)| hi(b) - lo(b)).sum();
             let (start, end) = match to {
                 DistributeTo::Selection | DistributeTo::Spacing => (lo(&first), hi(&last)),
-                DistributeTo::Page => (e0, e1),
+                // Spread with even margins above; the page otherwise.
+                DistributeTo::Page | DistributeTo::PageEven | DistributeTo::Frame => (e0, e1),
             };
             let gap = match to {
                 DistributeTo::Spacing => self.distribute_gap,
@@ -256,7 +334,7 @@ impl App {
                     key(&first),
                     key(&first) + self.distribute_gap * (n - 1) as f64,
                 ),
-                DistributeTo::Page => match kind {
+                DistributeTo::Page | DistributeTo::PageEven | DistributeTo::Frame => match kind {
                     0 => (e0, e1 - len(&last)),
                     1 => (e0 + len(&first) / 2.0, e1 - len(&last) / 2.0),
                     _ => (e0 + len(&first), e1),
@@ -664,6 +742,45 @@ impl App {
                 Some(mut c) => cmds.append(&mut c),
                 None => cmds.push(Command::BreakApart { shape: *id }),
             }
+        }
+        if let Err(e) = self.engine.run_batch("Break Apart", &cmds) {
+            self.status = e.to_string();
+        }
+        let mut pieces: Vec<tracedraw_core::ShapeId> = self
+            .doc()
+            .pages
+            .iter()
+            .flat_map(|p| &p.layers)
+            .flat_map(|l| &l.shapes)
+            .map(|s| s.id)
+            .filter(|id| !before.contains(id) || ids.contains(id))
+            .collect();
+        pieces.sort_by_key(|id| id.0);
+        self.select(pieces);
+    }
+
+    /// Object > Break Apart Keeping Holes (#3700): each curve becomes one
+    /// object per island, the holes staying in the parts around them (the
+    /// counter of an O stays in the O). The pieces come out selected,
+    /// one undo step.
+    pub fn break_apart_keep_holes(&mut self) {
+        let ids = self.selection.clone();
+        let before: std::collections::HashSet<tracedraw_core::ShapeId> = self
+            .doc()
+            .pages
+            .iter()
+            .flat_map(|p| &p.layers)
+            .flat_map(|l| &l.shapes)
+            .map(|s| s.id)
+            .collect();
+        let mut order = ids.clone();
+        order.sort_by_key(|id| std::cmp::Reverse(self.doc().locate(*id).map_or(0, |(_, i)| i)));
+        let cmds: Vec<Command> = order
+            .iter()
+            .map(|id| Command::BreakApartKeepHoles { shape: *id })
+            .collect();
+        if cmds.is_empty() {
+            return;
         }
         if let Err(e) = self.engine.run_batch("Break Apart", &cmds) {
             self.status = e.to_string();

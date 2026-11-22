@@ -112,7 +112,7 @@ pub fn label_slides(ui: &Ui, resp: &Response) {
 
 /// The drag of the label drawn apart just left of a field at `field`,
 /// taken up so no other field takes it.
-fn take_label_drag(ui: &Ui, field: egui::Rect) -> Option<egui::Vec2> {
+pub(crate) fn take_label_drag(ui: &Ui, field: egui::Rect) -> Option<egui::Vec2> {
     let frame = ui.ctx().cumulative_frame_nr();
     let found = ui.ctx().data_mut(|d| {
         let list = d.get_temp_mut_or_default::<(u64, Vec<LabelDrag>)>(pending_id());

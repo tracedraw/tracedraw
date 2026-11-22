@@ -558,6 +558,25 @@ impl App {
             }
             tracedraw_core::shaping::Enclosed::OnOutline => return,
         };
+        // With Use Guidelines on, the guidelines close the area off too:
+        // only the part on the click's side of each line is kept (#3863).
+        let path = if self.area_fill_guides {
+            let lines = self.shown_guide_lines();
+            if lines.is_empty() {
+                path
+            } else {
+                let bounds = kurbo::Shape::bounding_box(&path).inflate(10.0, 10.0);
+                let Some(cell) = crate::shape_builder::cell_at(bounds, &lines, p) else {
+                    return;
+                };
+                match crate::shape_builder::part_in_cell(&path, &cell, p) {
+                    Some(part) => part,
+                    None => return,
+                }
+            }
+        } else {
+            path
+        };
         if path.elements().is_empty() {
             return;
         }

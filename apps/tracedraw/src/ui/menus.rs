@@ -736,6 +736,7 @@ fn menu_pic(key: &str) -> Option<crate::ui::propbar::Pic> {
         "menu.object.group_ungroup_all" => Pic::UngroupAll,
         "menu.object.combine" => Pic::Combine,
         "menu.object.break_apart"
+        | "menu.object.break_apart_keep_holes"
         | "menu.object.break_shadow_apart"
         | "menu.object.break_shadows_apart"
         | "menu.object.break_contour_apart"
@@ -4096,6 +4097,12 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
     let label = app.break_apart_label();
     if item(ui, label, "Ctrl+K", has) {
         app.break_apart();
+    }
+    // The holes stay in the parts around them (#3700).
+    if label == "menu.object.break_apart"
+        && item(ui, "menu.object.break_apart_keep_holes", "", has)
+    {
+        app.break_apart_keep_holes();
     }
     if item(ui, "menu.object.add_perspective", "", has) {
         app.add_perspective();

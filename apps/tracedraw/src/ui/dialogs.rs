@@ -118,6 +118,8 @@ pub struct ExportState {
     /// DXF: the drawing unit, an index into
     /// [`tracedraw_io::dxf::DxfUnits::ALL`] (#3583).
     pub dxf_units: usize,
+    /// WMF: dashed outlines written as solid lines (#3819).
+    pub wmf_solid_dashes: bool,
 }
 
 impl Default for ExportState {
@@ -160,6 +162,7 @@ impl Default for ExportState {
             plt_one_pen: false,
             plt_resolution: 0.02,
             dxf_units: 0,
+            wmf_solid_dashes: false,
         }
     }
 }
@@ -346,6 +349,13 @@ impl ExportState {
                 .get(self.dxf_units)
                 .copied()
                 .unwrap_or_default(),
+        }
+    }
+
+    /// The WMF export's choices (#3819).
+    pub fn wmf_options(&self) -> tracedraw_io::emf::WmfOptions {
+        tracedraw_io::emf::WmfOptions {
+            solid_dashes: self.wmf_solid_dashes,
         }
     }
 
@@ -3374,6 +3384,9 @@ pub fn show(app: &mut App, ctx: &Context) {
                 ui.checkbox(&mut c.outline_color, tr("dialog.copy_outline_color"));
                 ui.checkbox(&mut c.fill, tr("dialog.copy_fill"));
                 ui.checkbox(&mut c.text, tr("dialog.copy_text_properties"));
+                // The size of the object clicked (#3825).
+                ui.checkbox(&mut c.width, tr("dialog.copy_width"));
+                ui.checkbox(&mut c.height, tr("dialog.copy_height"));
                 ui.add_space(6.0);
                 if ok_cancel(ui, &mut close) {
                     app.start_copy_properties(*c);
@@ -5530,6 +5543,11 @@ fn export_dialog(app: &mut App, ctx: &Context, st: &mut ExportState, close: &mut
                 }
                 if !scripted && EXPORT_FORMATS[st.format.min(EXPORT_FORMATS.len() - 1)].1 == "dxf" {
                     dxf_export_fields(ui, st);
+                }
+                // WMF: dashes as solid lines (#3819).
+                if !scripted && EXPORT_FORMATS[st.format.min(EXPORT_FORMATS.len() - 1)].1 == "wmf" {
+                    ui.checkbox(&mut st.wmf_solid_dashes, tr("dialog.wmf_solid_dashes"))
+                        .rich_tip(crate::ui::tips::keyed("dialog.wmf_solid_dashes"));
                 }
                 ui.horizontal(|ui| {
                     ui.checkbox(&mut st.selection_only, tr("dialog.selected_only"))

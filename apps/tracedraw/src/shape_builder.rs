@@ -94,7 +94,12 @@ pub fn part_at_cut(
         return Some(part);
     }
     let cell = cell_at(part.bounding_box().inflate(10.0, 10.0), lines, p)?;
-    overlay_parts(&part, &cell, Op::Intersect)
+    part_in_cell(&part, &cell, p)
+}
+
+/// The piece of `part` inside `cell` that holds `p`.
+pub(crate) fn part_in_cell(part: &BezPath, cell: &BezPath, p: Point) -> Option<BezPath> {
+    overlay_parts(part, cell, Op::Intersect)
         .into_iter()
         .find(|piece| inside(piece, p))
 }
@@ -102,7 +107,7 @@ pub fn part_at_cut(
 /// The room around `p` inside `bounds` that `lines` leave it, as a
 /// closed outline: `bounds` cut by each line, the side `p` is on kept.
 /// None when `p` is on a line or nothing is left.
-fn cell_at(
+pub(crate) fn cell_at(
     bounds: tracedraw_core::geometry::Rect,
     lines: &[tracedraw_core::document::GuideLine],
     p: Point,
@@ -204,6 +209,13 @@ impl App {
         if !self.builder.use_guides {
             return Vec::new();
         }
+        self.shown_guide_lines()
+    }
+
+    /// The guidelines the page shows, hidden ones left out: what cuts
+    /// the objects for the Shape Builder and Smart Fill with Use
+    /// Guidelines on (#3558, #3863).
+    pub fn shown_guide_lines(&self) -> Vec<tracedraw_core::document::GuideLine> {
         let mut lines = Vec::new();
         if self.edited_guides_shown() {
             lines.extend(self.page_guides());
@@ -798,5 +810,29 @@ mod tests {
         app.builder_finish(false);
         assert!((page_area(&app, a) - 300.0).abs() < 1e-6, "{}", page_area(&app, a));
         assert_eq!(app.page_guides(), guides, "the guideline stays");
+    }
+
+    /// Smart Fill with Use Guidelines on: a guideline closes the area
+    /// off, so a click left of it fills only that part of a square; off,
+    /// the whole square (#3863).
+    #[test]
+    fn smart_fill_use_guidelines_stops_the_area_at_a_guideline() {
+        use tracedraw_core::document::GuideLine;
+        let mut app = App::headless();
+        let a = square(&mut app, 0.0, 0.0, 20.0, 20.0);
+        let page = app.page;
+        app.run(Command::AddGuide {
+            page,
+            guide: GuideLine::Vertical { x: 5.0 }.into(),
+        });
+        app.area_fill_at(Point::new(2.0, 10.0));
+        let whole = app.selection[0];
+        assert_ne!(whole, a);
+        assert!((page_area(&app, whole) - 400.0).abs() < 1e-3, "{}", page_area(&app, whole));
+        app.area_fill_guides = true;
+        app.area_fill_at(Point::new(2.0, 10.0));
+        let part = app.selection[0];
+        assert_ne!(part, whole);
+        assert!((page_area(&app, part) - 100.0).abs() < 1e-3, "{}", page_area(&app, part));
     }
 }

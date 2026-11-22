@@ -6,6 +6,15 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Right-click menu: Change Case is offered on a selected text and while typing one (#3826).
+- Smart Fill: Use Guidelines on its bar lets the guidelines shown close off the area too, as in the Shape Builder (#3863).
+- Colour panel "..." menu: Swap Fills exchanges the fills of two selected objects, and Outline From Fill gives each selected object's outline the colour of its own fill (#3770).
+- Align and Distribute: two more Distribute to choices, the page with even margins and inside the largest selected object, keep the same gap at the edges as between the objects (#3768).
+- Copy Properties From: Width and Height boxes stretch the selected objects to the size of the object clicked (#3825).
+- Property bar: a drag left or right on the outline width box's arrow, or on the pen picture before it, slides the width through the list as on the number fields (#3862).
+- Document Options, Rulers: the vertical ruler can count from the top of the page down (#3872).
+- Object menu: Break Apart Keeping Holes splits a curve into its parts with each hole kept in the part around it, so the inside of an O stays in the O (#3700).
+- WMF export: a Dashed lines as solid lines box writes dashed and dotted outlines as solid lines; in tracedraw-cli, TRACEDRAW_WMF_SOLID_DASHES=1 does the same (#3819).
 - Welcome screen: drawings on a network share or a USB drive show their folder as typed, without the `\\?\UNC\` or `\\?\` in front (#3812).
 - Colour Eyedropper: with Treat All Objects as Filled, an unfilled object lying over others no longer keeps the colour beneath it from being read; inside it the object beneath is read, on its outline its outline colour (#3856).
 - Text tool: over the outline of a curve inside a group (or a clip frame) the tool offers to type along it, as on a loose curve, and a click starts the text on it (#3864).

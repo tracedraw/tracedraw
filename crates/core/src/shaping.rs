@@ -3353,8 +3353,99 @@ pub fn nonzero_as_even_odd(path: &BezPath) -> BezPath {
     out
 }
 
+/// The subpaths of a curve put together as islands: each closed part
+/// that lies inside an odd number of others is a hole and joins the
+/// smallest part around it, so a letter keeps its counter; parts inside
+/// a hole are islands again. Open parts stay on their own. The order of
+/// the islands follows their outer parts (#3700).
+pub fn islands_with_holes(parts: Vec<BezPath>) -> Vec<BezPath> {
+    use kurbo::Shape as _;
+    let closed: Vec<bool> = parts
+        .iter()
+        .map(|p| p.elements().last() == Some(&PathEl::ClosePath))
+        .collect();
+    let areas: Vec<f64> = parts.iter().map(|p| p.area().abs()).collect();
+    // A point of each part: the middle of its first segment, which lies
+    // on it and away from the others when the parts do not touch.
+    let probe: Vec<Option<Point>> = parts
+        .iter()
+        .map(|p| p.segments().next().map(|seg| seg.eval(0.5)))
+        .collect();
+    let n = parts.len();
+    // The parts around each part, the smallest first.
+    let around: Vec<Vec<usize>> = (0..n)
+        .map(|i| {
+            let Some(pt) = probe[i] else {
+                return Vec::new();
+            };
+            let mut outer: Vec<usize> = (0..n)
+                .filter(|&j| j != i && closed[j] && areas[j] > areas[i] && parts[j].winding(pt) != 0)
+                .collect();
+            outer.sort_by(|a, b| areas[*a].partial_cmp(&areas[*b]).unwrap_or(std::cmp::Ordering::Equal));
+            outer
+        })
+        .collect();
+    let hole = |i: usize| closed[i] && around[i].len() % 2 == 1;
+    let mut owner: Vec<usize> = (0..n).collect();
+    for i in 0..n {
+        if hole(i) {
+            if let Some(&j) = around[i].first() {
+                owner[i] = j;
+            }
+        }
+    }
+    let mut out = Vec::new();
+    for i in 0..n {
+        if owner[i] != i {
+            continue;
+        }
+        let mut path = parts[i].clone();
+        for (k, part) in parts.iter().enumerate() {
+            if k != i && owner[k] == i {
+                path.extend(part.elements().iter().copied());
+            }
+        }
+        out.push(path);
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
+    /// Islands with holes: the O of a word keeps its counter, a dot
+    /// inside the counter is an island of its own, and a part beside
+    /// stays alone (#3700).
+    #[test]
+    fn islands_keep_their_holes() {
+        use super::{BezPath, PathEl};
+        let sq = |x0: f64, y0: f64, x1: f64, y1: f64| {
+            let mut p = BezPath::new();
+            p.move_to((x0, y0));
+            p.line_to((x1, y0));
+            p.line_to((x1, y1));
+            p.line_to((x0, y1));
+            p.close_path();
+            p
+        };
+        let parts = vec![
+            sq(0.0, 0.0, 10.0, 10.0),
+            sq(2.0, 2.0, 8.0, 8.0),
+            sq(4.0, 4.0, 6.0, 6.0),
+            sq(20.0, 0.0, 30.0, 10.0),
+        ];
+        let out = super::islands_with_holes(parts);
+        assert_eq!(out.len(), 3);
+        let subpaths = |p: &BezPath| {
+            p.elements()
+                .iter()
+                .filter(|e| matches!(e, PathEl::MoveTo(_)))
+                .count()
+        };
+        assert_eq!(subpaths(&out[0]), 2, "the O and its counter");
+        assert_eq!(subpaths(&out[1]), 1, "the dot inside the counter");
+        assert_eq!(subpaths(&out[2]), 1, "the part beside");
+    }
+
     #[test]
     fn a_gradient_along_the_line_colours_it_from_start_to_end() {
         use crate::color::Color;

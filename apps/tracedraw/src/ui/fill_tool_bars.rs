@@ -332,6 +332,9 @@ pub fn smart_fill_bar(app: &mut App, ui: &mut Ui) {
     .rich_tip(crate::ui::tips::keyed("toolbar.smart_outline_edges"));
     ui.checkbox(&mut app.area_fill_live, tr("toolbar.smart_fill_live"))
         .rich_tip(crate::ui::tips::keyed("toolbar.smart_fill_live"));
+    // The guidelines close off areas too (#3863), off by default.
+    ui.checkbox(&mut app.area_fill_guides, tr("toolbar.builder_guides"))
+        .rich_tip(crate::ui::tips::pair("toolbar.builder_guides", "toolbar.smart_fill_guides_desc"));
     crate::ui::propbar::sep(ui);
     dim(ui, tr("toolbar.smart_fill_hint"));
 }

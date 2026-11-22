@@ -250,7 +250,7 @@ fn page_file(
         "ai" if st.classic_ai() => tracedraw_io::ai::page_to_ai8(doc, k).into_bytes(),
         "dxf" => tracedraw_io::dxf::page_to_dxf_with(doc, k, &st.dxf_options()).into_bytes(),
         "emf" => tracedraw_io::emf::page_to_emf(doc, k),
-        "wmf" => tracedraw_io::emf::page_to_wmf(doc, k),
+        "wmf" => tracedraw_io::emf::page_to_wmf_with(doc, k, &st.wmf_options()),
         "plt" => tracedraw_io::plt::page_to_plt_with(doc, k, &st.plt_options()).into_bytes(),
         "psd" => tracedraw_io::psd::page_to_psd(doc, k, st.render_dpi()).ok_or("render failed")?,
         _ => {

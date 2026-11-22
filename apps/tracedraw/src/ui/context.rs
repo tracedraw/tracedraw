@@ -103,6 +103,16 @@ pub(crate) fn menu_items(app: &mut App, ui: &mut Ui, close: &mut bool) {
     }
 }
 
+/// Opens Text > Change Case for the text under the right click: a text
+/// being typed ends its editing and is selected first (#3826, #2059).
+pub(crate) fn open_change_case(app: &mut App) {
+    if let Some(shape) = app.text_edit.as_ref().map(|t| t.shape) {
+        app.finish_text();
+        app.select(vec![shape]);
+    }
+    app.dialog = crate::ui::dialogs::Dialog::ChangeCase(crate::ops2::CaseMode::Sentence);
+}
+
 /// Right-click on the tab ruler (#1852): the four kinds of stop, the one
 /// under the pointer checked (a pick changes it, or with no stop there
 /// adds one of that kind), and Remove tab on a stop.
@@ -194,6 +204,11 @@ pub(crate) fn text_edit_menu(app: &mut App, ui: &mut Ui, close: &mut bool) {
     sep(ui);
     if ci(ui, close, "menu.edit.select_all", "Ctrl+A", true) {
         app.text_select_all();
+    }
+    // Text > Change Case on the right click too (#3826): the editing
+    // ends with the text selected, as Shift+F3 does while typing.
+    if ci(ui, close, "menu.text.change_case", "Shift+F3", true) {
+        open_change_case(app);
     }
     // Cells of a table being edited: the table's commands act on them
     // (#2976).
@@ -318,6 +333,9 @@ pub(crate) fn object_menu(app: &mut App, ui: &mut Ui, close: &mut bool) {
         }
         if ci(ui, close, "menu.text.convert", "", true) {
             app.toggle_text_kind();
+        }
+        if ci(ui, close, "menu.text.change_case", "Shift+F3", true) {
+            open_change_case(app);
         }
         // Filler text for a paragraph frame, an empty one most of all.
         if app.placeholder_text_offered()

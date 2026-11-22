@@ -155,6 +155,10 @@ pub struct CopyProperties {
     pub outline_color: bool,
     pub fill: bool,
     pub text: bool,
+    /// The width and the height of the object clicked, each target
+    /// stretched about its centre to them (#3825); off at first.
+    pub width: bool,
+    pub height: bool,
 }
 
 impl Default for CopyProperties {
@@ -164,6 +168,8 @@ impl Default for CopyProperties {
             outline_color: true,
             fill: true,
             text: true,
+            width: false,
+            height: false,
         }
     }
 }
@@ -171,7 +177,7 @@ impl Default for CopyProperties {
 impl CopyProperties {
     /// Something is ticked.
     pub fn any(self) -> bool {
-        self.outline_pen || self.outline_color || self.fill || self.text
+        self.outline_pen || self.outline_color || self.fill || self.text || self.width || self.height
     }
 }
 
@@ -2227,6 +2233,43 @@ impl App {
                             }
                         }
                     }
+                }
+            }
+        }
+        // The size: each target stretched about the centre of its box to
+        // the width and/or height of the object clicked (#3825).
+        if c.width || c.height {
+            let from = self
+                .doc()
+                .find_shape(source)
+                .map(|s| s.page_path().bounding_box())
+                .filter(|b| b.is_finite());
+            if let Some(from) = from {
+                for t in &targets {
+                    let b = t.page_path().bounding_box();
+                    if !b.is_finite() {
+                        continue;
+                    }
+                    let sx = if c.width && b.width() > 1e-9 {
+                        from.width() / b.width()
+                    } else {
+                        1.0
+                    };
+                    let sy = if c.height && b.height() > 1e-9 {
+                        from.height() / b.height()
+                    } else {
+                        1.0
+                    };
+                    if (sx - 1.0).abs() < 1e-12 && (sy - 1.0).abs() < 1e-12 {
+                        continue;
+                    }
+                    let mid = b.center();
+                    cmds.push(Command::TransformShapes {
+                        shapes: vec![t.id],
+                        transform: Affine::translate(mid.to_vec2())
+                            * Affine::scale_non_uniform(sx, sy)
+                            * Affine::translate(-mid.to_vec2()),
+                    });
                 }
             }
         }

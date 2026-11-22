@@ -2377,6 +2377,9 @@ pub struct App {
     /// group close off as a live fill of the group, which follows its
     /// lines when they move ([`tracedraw_core::live_paint`]).
     pub area_fill_live: bool,
+    /// Smart Fill with Use Guidelines on: the guidelines the page shows
+    /// close off areas too, as in the Shape Builder (#3863).
+    pub area_fill_guides: bool,
     pub mesh_rows: u32,
     pub mesh_cols: u32,
     /// Mesh Fill bar: the colours Shuffle draws from (an index into
@@ -3745,6 +3748,7 @@ impl App {
             area_outline_color: Color::BLACK,
             area_fill_outline_edges: false,
             area_fill_live: false,
+            area_fill_guides: false,
             mesh_rows: 2,
             mesh_cols: 2,
             mesh_palette: 0,
@@ -8357,6 +8361,75 @@ impl App {
             return;
         }
         self.run(Command::SwapColors { shapes });
+    }
+
+    /// Swap Fills (Colour panel, #3770): two selected objects exchange
+    /// the fills they show (a colour, a gradient, a pattern; a mesh is
+    /// fitted to its new object), one undo step. Nothing with another
+    /// number of objects selected.
+    pub fn swap_fills(&mut self) {
+        let shapes = self.selected_shapes();
+        let [a, b] = shapes.as_slice() else {
+            return;
+        };
+        let (sa, sb) = (
+            crate::copy_props::properties_source(a),
+            crate::copy_props::properties_source(b),
+        );
+        let (fa, fb) = (
+            crate::copy_props::shown_fill(&sa),
+            crate::copy_props::shown_fill(&sb),
+        );
+        let mut cmds = crate::copy_props::fill_commands(&fb, &sb, std::slice::from_ref(a));
+        cmds.extend(crate::copy_props::fill_commands(&fa, &sa, std::slice::from_ref(b)));
+        if let Err(e) = self.engine.run_batch("Swap Fills", &cmds) {
+            self.status = e.to_string();
+        }
+    }
+
+    /// Outline From Fill (Colour panel, #3770): each selected object's
+    /// outline takes the colour of its own fill (the first colour of a
+    /// gradient), objects inside groups each on their own, the outline's
+    /// width and style kept; an object without an outline gets the
+    /// default outline in that colour. Objects without a fill are left
+    /// alone. One undo step.
+    pub fn outline_from_fill(&mut self) {
+        fn leaves(s: &Shape, out: &mut Vec<(ShapeId, Color)>) {
+            if let ShapeKind::Group { children } = &s.kind {
+                children.iter().for_each(|c| leaves(c, out));
+                return;
+            }
+            let src = crate::copy_props::properties_source(s);
+            if let Some(c) = crate::copy_props::shown_fill(&src).preview_color() {
+                out.push((s.id, c));
+            }
+        }
+        let mut found = Vec::new();
+        for s in self.selected_shapes() {
+            leaves(&s, &mut found);
+        }
+        let base = self
+            .default_stroke()
+            .unwrap_or_else(|| Stroke::new(Color::BLACK, 0.2));
+        let cmds: Vec<Command> = found
+            .into_iter()
+            .map(|(id, c)| {
+                let mut stroke = base.clone();
+                stroke.color = c;
+                stroke.fill = None;
+                Command::PatchStroke {
+                    shapes: vec![id],
+                    stroke,
+                    fields: vec![tracedraw_core::patch::StrokeField::Paint],
+                }
+            })
+            .collect();
+        if cmds.is_empty() {
+            return;
+        }
+        if let Err(e) = self.engine.run_batch("Outline From Fill", &cmds) {
+            self.status = e.to_string();
+        }
     }
 
     /// Object > Thicker Outline and Thinner Outline (#2905): the

@@ -425,6 +425,29 @@ pub fn rulers_page(app: &mut App, ui: &mut Ui) {
                 meta.rulers.origin_y = v;
             }
             ui.end_row();
+            // Which way the vertical ruler counts (#3872).
+            row_label(ui, "options.vertical_direction");
+            crate::ui::keynav::ComboBox::from_id_salt("vertical_ruler_direction")
+                .selected_text(tr(if meta.rulers.vertical_from_top {
+                    "options.top_to_bottom"
+                } else {
+                    "options.bottom_to_top"
+                }))
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(
+                        &mut meta.rulers.vertical_from_top,
+                        false,
+                        tr("options.bottom_to_top"),
+                    );
+                    ui.selectable_value(
+                        &mut meta.rulers.vertical_from_top,
+                        true,
+                        tr("options.top_to_bottom"),
+                    );
+                })
+                .response
+                .rich_tip(crate::ui::tips::keyed("options.vertical_direction"));
+            ui.end_row();
         });
     section(ui, "options.tick_divisions");
     ui.horizontal(|ui| {
