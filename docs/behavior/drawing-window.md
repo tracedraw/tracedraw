@@ -214,13 +214,16 @@ window shows.
   look blurry, so the main canvas renders the new zoom at once on a
   thread of its own (`raster::Raster::zooms_at_once`), the scaled
   picture showing meanwhile. The steps of a zoom the view is already
-  moving in are skipped until the view has rested 0.12 s
-  (`raster::SETTLE_SECONDS`): no render starts for a step, and the
-  running one is not given up while the wheel goes on, so a long turn
-  costs its first step's render and the settled one instead of giving
-  up and starting over at every notch. When the view has rested, the
-  render left over, for a zoom the view has left, gives up at its next
-  object (#2522), and one render draws the zoom the wheel stopped at.
+  moving in are skipped while that render is on its way: the running
+  render keeps its turn, and when it is done, for a zoom the view has
+  already left, the next render starts at once, for the zoom the view
+  is at, the turn not left idle for the wheel to rest (so a long turn
+  costs one render a landing, not a give up and a start over at every
+  notch). A render still on its way when the wheel has rested is asked
+  to give up at its next object (#2522), after a wait that follows the
+  wheel's own pace, one and a half the gap between the last two
+  notches, between 0.04 s (`raster::ZOOM_SETTLE_MIN`) and 0.12 s
+  (`raster::SETTLE_SECONDS`).
   Like every render it covers only the canvas, the part of the page on
   screen, drawn in bands on all cores at once (so the whole visible
   part comes about as fast as a tile under the pointer would). The

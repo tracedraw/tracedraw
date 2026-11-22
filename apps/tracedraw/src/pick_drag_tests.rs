@@ -15013,6 +15013,7 @@ fn a_fast_wheel_turn_glides_shorter() {
     assert!((total - 1.15f32.powi(3)).abs() < 0.01, "{total}");
 }
 
+
 /// Options > Zoom/Pan: Smooth zoom off zooms a notch at once, and the
 /// zoom step sets how much (#1648, #895).
 #[test]
@@ -16959,6 +16960,35 @@ fn alignment_keys_while_typing() {
     }
 }
 
+/// A page of `n` wavy paths spread over the page, for the burst benches.
+fn burst_page(app: &mut App, n: usize) {
+    let mut s = 7u64;
+    let mut r = || {
+        s = s
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        ((s >> 33) as f64) / (1u64 << 31) as f64
+    };
+    for _ in 0..n {
+        let (x, y) = (r() * 200.0, r() * 280.0);
+        let mut p = tracedraw_core::geometry::BezPath::new();
+        p.move_to((x, y));
+        for _ in 0..6 {
+            p.curve_to(
+                (x + r() * 20.0 - 10.0, y + r() * 20.0 - 10.0),
+                (x + r() * 20.0 - 10.0, y + r() * 20.0 - 10.0),
+                (x + r() * 20.0 - 10.0, y + r() * 20.0 - 10.0),
+            );
+        }
+        p.close_path();
+        app.new_shape(ShapeKind::Path {
+            path: p,
+            closed: true,
+        });
+    }
+    app.select(Vec::new());
+}
+
 /// Bursts of wheel zoom on a medium (1000 objects) and a heavy (5000
 /// objects) page, at 60 frames a second in real time: five notches in a
 /// row, each a glide of four frames (as the smoothed wheel zooms), about
@@ -16973,31 +17003,7 @@ fn alignment_keys_while_typing() {
 fn frame_times_of_a_zoom_burst() {
     for (label, n) in [("medium", 1000usize), ("heavy", 5000)] {
         let (ctx, mut app, _) = setup();
-        let mut s = 7u64;
-        let mut r = || {
-            s = s
-                .wrapping_mul(6364136223846793005)
-                .wrapping_add(1442695040888963407);
-            ((s >> 33) as f64) / (1u64 << 31) as f64
-        };
-        for _ in 0..n {
-            let (x, y) = (r() * 200.0, r() * 280.0);
-            let mut p = tracedraw_core::geometry::BezPath::new();
-            p.move_to((x, y));
-            for _ in 0..6 {
-                p.curve_to(
-                    (x + r() * 20.0 - 10.0, y + r() * 20.0 - 10.0),
-                    (x + r() * 20.0 - 10.0, y + r() * 20.0 - 10.0),
-                    (x + r() * 20.0 - 10.0, y + r() * 20.0 - 10.0),
-                );
-            }
-            p.close_path();
-            app.new_shape(ShapeKind::Path {
-                path: p,
-                closed: true,
-            });
-        }
-        app.select(Vec::new());
+        burst_page(&mut app, n);
         let start = std::time::Instant::now();
         let tick = std::time::Duration::from_secs_f64(1.0 / 60.0);
         let mut next = start;
