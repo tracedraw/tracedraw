@@ -13359,6 +13359,7 @@ fn the_export_dialog_starts_with_the_last_exports_choices() {
             vec![key(egui::Key::E, Modifiers::COMMAND)],
             Modifiers::COMMAND,
         );
+        crate::files::test_save::finish(app);
         match &app.dialog {
             Dialog::Export(st) => st.clone(),
             other => panic!("no Export dialog: {other:?}"),
@@ -13432,6 +13433,7 @@ fn export_asks_for_the_file_then_shows_the_options_of_its_format() {
         vec![key(egui::Key::E, Modifiers::COMMAND)],
         Modifiers::COMMAND,
     );
+    crate::files::test_save::finish(&mut app);
     // The Save dialog: every format, the one used last (SVG at first)
     // first, the drawing's name with its extension.
     let asked = test_save::asked();
@@ -13484,6 +13486,7 @@ fn export_asks_for_the_file_then_shows_the_options_of_its_format() {
     // The next export offers PDF first, in the folder exported to.
     test_save::answer(None);
     app.export();
+    crate::files::test_save::finish(&mut app);
     let asked = test_save::asked();
     assert_eq!(asked[0].filters()[0].1, vec!["pdf".to_string()]);
     assert_eq!(asked[0].directory(), Some(dir.as_path()));
@@ -13493,6 +13496,7 @@ fn export_asks_for_the_file_then_shows_the_options_of_its_format() {
     // the Save dialog, without the format's options or presets).
     test_save::answer(Some(dir.join("again.webp")));
     app.export();
+    crate::files::test_save::finish(&mut app);
     assert_eq!(test_save::asked().len(), 1, "one Save dialog");
     let Dialog::Export(st) = &app.dialog else {
         panic!("no options on the second export: {:?}", app.dialog);
@@ -13519,10 +13523,12 @@ fn cancelling_the_export_writes_nothing() {
     let dir = export_test_dir("cancel");
     test_save::answer(None);
     app.export();
+    crate::files::test_save::finish(&mut app);
     assert_eq!(test_save::asked().len(), 1);
     assert!(matches!(app.dialog, Dialog::None));
     test_save::answer(Some(dir.join("a.svg")));
     app.export();
+    crate::files::test_save::finish(&mut app);
     let Dialog::Export(st) = &mut app.dialog else {
         panic!("no options");
     };
@@ -13558,6 +13564,7 @@ fn with_the_options_set_not_to_show_export_writes_at_once() {
     let dir = export_test_dir("skip");
     test_save::answer(Some(dir.join("first.svg")));
     app.export();
+    crate::files::test_save::finish(&mut app);
     let Dialog::Export(st) = &mut app.dialog else {
         panic!("no options");
     };
@@ -13576,6 +13583,7 @@ fn with_the_options_set_not_to_show_export_writes_at_once() {
         vec![key(egui::Key::E, Modifiers::COMMAND)],
         Modifiers::COMMAND,
     );
+    crate::files::test_save::finish(&mut app);
     assert_eq!(test_save::asked().len(), 1);
     assert!(matches!(app.dialog, Dialog::None), "{:?}", app.dialog);
     assert!(dir.join("second.svg").exists(), "{}", app.status);
@@ -13592,6 +13600,7 @@ fn with_the_options_set_not_to_show_export_writes_at_once() {
         vec![key(egui::Key::E, Modifiers::COMMAND | Modifiers::SHIFT)],
         Modifiers::COMMAND | Modifiers::SHIFT,
     );
+    crate::files::test_save::finish(&mut app);
     let Dialog::Export(st) = &mut app.dialog else {
         panic!("Ctrl+Shift+E showed no options: {:?}", app.dialog);
     };
@@ -13606,6 +13615,7 @@ fn with_the_options_set_not_to_show_export_writes_at_once() {
     assert!(!app.settings.formats.skip_export_dialog);
     test_save::answer(Some(dir.join("fourth.svg")));
     app.export();
+    crate::files::test_save::finish(&mut app);
     assert!(matches!(app.dialog, Dialog::Export(_)));
     assert!(!dir.join("fourth.svg").exists());
     app.dialog = Dialog::None;
@@ -13728,6 +13738,7 @@ fn the_export_dialog_asks_before_deleting_a_preset() {
     assert!(app.settings.formats.save_preset("FB-WEB", &png));
     crate::files::test_save::answer(Some(std::env::temp_dir().join("td-presets")));
     app.export();
+    crate::files::test_save::finish(&mut app);
     let Dialog::Export(st) = &mut app.dialog else {
         panic!("no Export dialog");
     };
@@ -13801,6 +13812,7 @@ fn the_export_dialog_lists_every_preset_and_a_format_change_unchooses() {
     let all = vec!["Web PNG (PNG)", "Print JPG (JPEG)", "Big PNG (PNG)"];
     crate::files::test_save::answer(Some(std::env::temp_dir().join("td-presets")));
     app.export();
+    crate::files::test_save::finish(&mut app);
     // The dialog opens at SVG, which has no preset of its own: the list
     // still holds every preset.
     let Dialog::Export(st) = &app.dialog else {
