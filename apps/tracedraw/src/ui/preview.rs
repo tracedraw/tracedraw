@@ -12,6 +12,8 @@ pub struct PreviewSession {
     pub(crate) bounds: tracedraw_core::geometry::Rect,
     pub(crate) zoom: f64,
     was_fullscreen: bool,
+    /// When the preview opened, to wait for the window to fill the screen.
+    started: f64,
     hint_until: f64,
     texture: Option<(PreviewKey, egui::TextureHandle)>,
 }
@@ -37,6 +39,7 @@ pub fn begin(app: &mut App, ctx: &egui::Context, selected_only: bool) {
         bounds: preview_bounds(app),
         zoom: f64::from(app.view.zoom),
         was_fullscreen: ctx.input(|i| i.viewport().fullscreen.unwrap_or(false)),
+        started: ctx.input(|i| i.time),
         hint_until: ctx.input(|i| i.time) + 1.5,
         texture: None,
     });
@@ -203,6 +206,10 @@ fn frame_bounds(app: &App, size: egui::Vec2) -> tracedraw_core::geometry::Rect {
     )
 }
 
+/// How long, in seconds, the preview waits at most for the window to say
+/// it fills the screen before it draws the drawing (#3830).
+const FULL_SCREEN_WAIT: f64 = 0.5;
+
 pub fn fullscreen(app: &mut App, ui: &mut Ui) {
     let ctx = ui.ctx().clone();
     if app.preview_session.is_none() {
@@ -263,7 +270,28 @@ pub fn fullscreen(app: &mut App, ui: &mut Ui) {
                 .preview_session
                 .as_ref()
                 .is_some_and(|s| s.texture.as_ref().is_some_and(|(k, _)| *k == key));
-            if !cached {
+            // The drawing waits for the window to fill the screen (#3830):
+            // drawn first in the window as it was and again a moment later
+            // in the whole screen, it jumped and flickered as F9 opened.
+            // A system that never says the window is full screen gets the
+            // drawing after a moment anyway.
+            let now = ctx.input(|i| i.time);
+            let waited = app
+                .preview_session
+                .as_ref()
+                .map_or(f64::INFINITY, |s| now - s.started);
+            let ready = app
+                .preview_session
+                .as_ref()
+                .is_none_or(|s| s.was_fullscreen)
+                || ctx.input(|i| i.viewport().fullscreen) == Some(true)
+                || waited >= FULL_SCREEN_WAIT;
+            if !ready {
+                ctx.request_repaint_after(std::time::Duration::from_secs_f64(
+                    (FULL_SCREEN_WAIT - waited).max(0.0),
+                ));
+            }
+            if !cached && ready {
                 if let Some(pm) = tracedraw_render::render_page(app.doc(), app.page, &opts) {
                     let image = egui::ColorImage::from_rgba_premultiplied(
                         [pm.width() as usize, pm.height() as usize],
@@ -279,6 +307,7 @@ pub fn fullscreen(app: &mut App, ui: &mut Ui) {
             if let Some((_, tex)) = app
                 .preview_session
                 .as_ref()
+                .filter(|_| ready)
                 .and_then(|s| s.texture.as_ref())
             {
                 let pos = rect.center() - size / 2.0;
@@ -313,7 +342,6 @@ pub fn fullscreen(app: &mut App, ui: &mut Ui) {
                     );
                 }
             }
-            let now = ctx.input(|i| i.time);
             let hint_left = app
                 .preview_session
                 .as_ref()

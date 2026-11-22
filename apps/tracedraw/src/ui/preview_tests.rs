@@ -326,7 +326,7 @@ fn escape_still_leaves_preview_after_tapping_alt() {
 fn a_hidpi_preview_is_sharp_without_enlarging_its_logical_picture() {
     let (ctx, mut app) = setup();
     let screen = egui::vec2(1920.0, 1080.0);
-    let mut raw = input(screen, false, Vec::new());
+    let mut raw = input(screen, true, Vec::new());
     raw.max_texture_side = Some(8192);
     raw.viewports
         .get_mut(&ViewportId::ROOT)
@@ -367,10 +367,51 @@ fn a_hidpi_preview_is_sharp_without_enlarging_its_logical_picture() {
     output.textures_delta.clear();
 }
 
+/// F9 draws the drawing once, when the window fills the screen (#3830):
+/// not first in the window as it was and again in the whole screen, which
+/// jumped and flickered. A window that never says so gets it in a moment.
+#[test]
+fn the_preview_waits_for_the_full_screen_before_drawing() {
+    let has_picture = |app: &App| {
+        app.preview_session
+            .as_ref()
+            .is_some_and(|s| s.texture.is_some())
+    };
+    let (ctx, mut app) = setup();
+    timed_frame(&ctx, &mut app, 10.0, WINDOW, vec![key(Key::F9, true)]);
+    assert!(app.fullscreen_preview);
+    assert!(!has_picture(&app), "the window is not full screen yet");
+    let screen = egui::vec2(1920.0, 1080.0);
+    let mut raw = input(screen, true, vec![key(Key::F9, false)]);
+    raw.time = Some(10.1);
+    let mut output = ctx.run_ui(raw, |ui| crate::ui::root(&mut app, ui));
+    output.textures_delta.clear();
+    let session = app.preview_session.as_ref().expect("session");
+    let pixels = session.texture.as_ref().expect("picture").1.size();
+    let ppp = ctx.pixels_per_point();
+    let wide = pixels[0] as f32 - screen.x * ppp;
+    assert!(wide.abs() <= 1.0, "the whole screen: {pixels:?}");
+
+    // A window that stays as it was says nothing of full screen.
+    let windowed = |ctx: &egui::Context, app: &mut App, time: f64, events: Vec<Event>| {
+        let mut raw = input(WINDOW, false, events);
+        raw.time = Some(time);
+        let mut output = ctx.run_ui(raw, |ui| crate::ui::root(app, ui));
+        output.textures_delta.clear();
+    };
+    let (ctx, mut app) = setup();
+    windowed(&ctx, &mut app, 10.0, vec![key(Key::F9, true)]);
+    windowed(&ctx, &mut app, 10.2, vec![key(Key::F9, false)]);
+    assert!(!has_picture(&app));
+    windowed(&ctx, &mut app, 10.5, Vec::new());
+    assert!(has_picture(&app), "drawn after a moment anyway");
+}
+
 #[test]
 fn idle_preview_frames_reuse_the_picture_without_uploading_it_again() {
     let (ctx, mut app) = setup();
     frame(&ctx, &mut app, WINDOW, false, vec![key(Key::F9, true)]);
+    frame(&ctx, &mut app, WINDOW, true, vec![key(Key::F9, false)]);
     let texture = app
         .preview_session
         .as_ref()

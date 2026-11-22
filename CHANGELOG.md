@@ -38,6 +38,7 @@ full, row-by-row status.
 - Copy Properties From: Width and Height boxes stretch the selected objects to the size of the object clicked (#3825).
 - Symbols: the panel's previews frame each symbol on what it draws, nested strokes included, and a symbol is edited upright on a clean white sheet with Cancel beside Finish; editing from the Symbols panel no longer adds an instance to the page (#3899, #3900; thanks ratmanz0000).
 - Property bar: a drag left or right on the outline width box's arrow, or on the pen picture before it, slides the width through the list as on the number fields (#3862).
+- Full-screen preview (F9) draws the drawing once the window fills the screen, instead of first in the window and again a moment later, which made it jump and flicker as it opened (#3830).
 - Document Options, Rulers: the vertical ruler can count from the top of the page down (#3872).
 - Object menu: Break Apart Keeping Holes splits a curve into its parts with each hole kept in the part around it, so the inside of an O stays in the O (#3700).
 - WMF export: a Dashed lines as solid lines box writes dashed and dotted outlines as solid lines; in tracedraw-cli, TRACEDRAW_WMF_SOLID_DASHES=1 does the same (#3819).
