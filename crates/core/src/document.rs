@@ -6947,6 +6947,19 @@ fn find_in(s: &Shape, id: ShapeId) -> Option<&Shape> {
     }
 }
 
+fn wraps_along_path(s: &Shape, id: ShapeId) -> Option<bool> {
+    if s.id == id {
+        return Some(s.wrap_text);
+    }
+    let child = match &s.kind {
+        ShapeKind::Group { children } => children.iter().find_map(|c| wraps_along_path(c, id)),
+        ShapeKind::ClipFrame { frame, contents } => wraps_along_path(frame, id)
+            .or_else(|| contents.iter().find_map(|c| wraps_along_path(c, id))),
+        _ => None,
+    }?;
+    Some(s.wrap_text || child)
+}
+
 impl Default for Document {
     fn default() -> Self {
         Document::new("Untitled", paper::A4)
@@ -7288,6 +7301,18 @@ impl Document {
         let (k, i) = self.locate_top(id)?;
         let top = self.all_layers().nth(k)?.shapes.get(i)?;
         find_in(top, id)
+    }
+
+    /// True when `id` or an enclosing group or clip frame has `wrap_text` on.
+    pub fn shape_or_ancestor_wraps_text(&self, id: ShapeId) -> bool {
+        let Some((k, i)) = self.locate_top(id) else {
+            return false;
+        };
+        self.all_layers()
+            .nth(k)
+            .and_then(|l| l.shapes.get(i))
+            .and_then(|top| wraps_along_path(top, id))
+            .unwrap_or(false)
     }
 
     /// The layer number and the place on it of the object on a layer
