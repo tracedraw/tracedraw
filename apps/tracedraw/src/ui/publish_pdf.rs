@@ -810,6 +810,9 @@ fn issues_title(n: usize) -> String {
 }
 
 pub fn dialog(app: &mut App, ctx: &Context, st: &mut PublishState, close: &mut bool) {
+    if let Some(path) = crate::files::take_picked("publish-pdf-save-path") {
+        st.file = path;
+    }
     let issues = crate::ui::preflight_dialog::issues_of(app);
     let mut help = false;
     window(ctx, tr("publish.settings_title")).show(ctx, |ui| {
@@ -942,13 +945,10 @@ fn general(app: &App, ui: &mut Ui, st: &mut PublishState) {
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_else(|| "Graphic1.pdf".into());
-            if let Some(p) = crate::files::Dialog::new()
+            crate::files::Dialog::new()
                 .add_filter("PDF (*.pdf)", &["pdf"])
                 .set_file_name(name)
-                .save_path()
-            {
-                st.file = p;
-            }
+                .save_path_into("publish-pdf-save-path");
         }
     });
     ui.add_space(4.0);

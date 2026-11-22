@@ -1151,8 +1151,8 @@ impl eframe::App for Shell {
         // What the browser could not keep (#1414).
         app.tell_storage_refusals();
         app.sync_document_colors();
-        // File dialogs that finished in the background (browser build).
-        files::run_finished(app);
+        // File dialogs that finished in the background.
+        files::run_finished(app, ui.ctx());
         // Pictures, files and text a browser handed over for a paste.
         app.take_handed_pastes();
         // Files a later start handed over (one try_recv when none came).

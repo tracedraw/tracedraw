@@ -847,6 +847,11 @@ fn anchor_grid(ui: &mut Ui, anchor: &mut u8) {
 }
 
 pub fn print_merge(app: &mut App, ui: &mut Ui) {
+    if let Some(dir) = crate::files::take_picked("print-merge-folder") {
+        if let Some(st) = app.merge_state.as_mut() {
+            st.pictures = Some(dir);
+        }
+    }
     let loaded = app.merge_state.is_some();
     let full = ui.available_width();
     ui.horizontal(|ui| {
@@ -1082,11 +1087,7 @@ fn folder_label(dir: &std::path::Path) -> String {
 fn choose_pictures(app: &mut App) {
     match crate::files::FolderUse::MergePictures.action() {
         crate::files::FolderAction::PickFolder(token) => {
-            if let Some(dir) = crate::files::pick_folder(token) {
-                if let Some(st) = app.merge_state.as_mut() {
-                    st.pictures = Some(dir);
-                }
-            }
+            crate::files::pick_folder_into(token, None, "print-merge-folder");
         }
         // Android: the system's folder picker, the folder's pictures
         // (#1926); the browser: the pictures, several at once.

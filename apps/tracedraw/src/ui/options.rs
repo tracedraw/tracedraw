@@ -463,6 +463,15 @@ pub fn options_dialog(app: &mut App, ctx: &Context, close: &mut bool) {
     if app.options_snapshot.is_none() {
         app.options_snapshot = Some(OptionsSnapshot::take(app));
     }
+    if let Some(dir) = crate::files::take_picked("options-before-save-folder") {
+        app.settings.backup.before_save_dir = Some(dir);
+    }
+    if let Some(dir) = crate::files::take_picked("options-auto-backup-folder") {
+        app.settings.backup.auto_dir = Some(dir);
+    }
+    if let Some(dir) = crate::files::take_picked("options-dictionary-folder") {
+        app.settings.spelling.dictionary_folder = Some(dir);
+    }
     let set = app.options_page.set();
     let mut ok = false;
     let mut cancel = false;
@@ -2245,6 +2254,7 @@ fn path_field(
     dir: &mut Option<std::path::PathBuf>,
     fallback: String,
     place: crate::files::FolderUse,
+    key: &'static str,
 ) -> bool {
     use crate::files::FolderAction;
     let text = dir
@@ -2275,9 +2285,7 @@ fn path_field(
         if browse.clicked() {
             match action {
                 FolderAction::PickFolder(token) => {
-                    if let Some(p) = crate::files::pick_folder(token) {
-                        *dir = Some(p);
-                    }
+                    crate::files::pick_folder_into(token, None, key);
                 }
                 FolderAction::OpenFiles => files = true,
                 FolderAction::SaveZip | FolderAction::Unavailable(_) => {}
@@ -2324,6 +2332,7 @@ fn save_page(app: &mut App, ui: &mut Ui) {
                     &mut b.before_save_dir,
                     String::new(),
                     crate::files::FolderUse::BackupFolder,
+                    "options-before-save-folder",
                 );
             });
         });
@@ -2356,6 +2365,7 @@ fn save_page(app: &mut App, ui: &mut Ui) {
                     .map(|p| p.display().to_string())
                     .unwrap_or_default(),
                 crate::files::FolderUse::AutoBackupFolder,
+                "options-auto-backup-folder",
             );
         });
     });
@@ -2872,6 +2882,7 @@ fn spelling_tab(app: &mut App, ui: &mut Ui) {
                         &mut p.dictionary_folder,
                         String::new(),
                         crate::files::FolderUse::DictionaryFolder,
+                        "options-dictionary-folder",
                     );
                     if ui
                         .add_enabled(
