@@ -1970,6 +1970,19 @@ impl App {
             let up = !response.ctx.input(|i| i.pointer.primary_down());
             let boxing = matches!(self.drag, Drag::Box { .. });
             let released = (self.transforming() || boxing) && up;
+            // A finger lifted from a guideline it dragged takes the
+            // pointer with it (PointerGone), so the release seemed to be
+            // outside the window and the guideline went (#3867): where it
+            // let go stands in.
+            let guide = matches!(
+                self.drag,
+                Drag::MoveGuide { .. } | Drag::RotateGuide { .. } | Drag::GuidePivot
+            );
+            if guide && response.drag_stopped() {
+                if let Some(at) = response.interact_pointer_pos() {
+                    self.pointer_page = Some(self.view.to_page(at));
+                }
+            }
             if response.drag_stopped() || released {
                 self.end_drag();
             }
@@ -3550,6 +3563,11 @@ impl App {
                 ..Default::default()
             });
             c.nodes.push((p, None));
+            // Options > Tools > Freehand/Bézier: the second click ends
+            // the line, one straight segment (#3848).
+            if self.settings.curves.freehand_click_ends && c.nodes.len() >= 2 {
+                self.finish_curve();
+            }
             return;
         }
         if response.drag_started_by(PointerButton::Primary) {

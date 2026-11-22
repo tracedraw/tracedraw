@@ -1369,7 +1369,8 @@ impl App {
     }
 
     /// Image > Edit Bitmap: write the picture to a file next to the
-    /// system's temporary files (a CMYK TIFF for a CMYK picture, a Lab
+    /// system's temporary files, or in a portable copy's own folder (a
+    /// CMYK TIFF for a CMYK picture, a Lab
     /// TIFF for a Lab one, else a PNG), link the object to it and open the system editor (on
     /// Android, an editing app through "open with").
     pub fn edit_bitmap_externally(&mut self) {
@@ -1384,7 +1385,8 @@ impl App {
         let Some(s) = self.doc().find_shape(id).cloned() else {
             return;
         };
-        let dir = std::env::temp_dir().join("tracedraw-edit");
+        // A portable copy keeps them in its own folder (#3908).
+        let dir = crate::settings::work_dir("tracedraw-edit");
         let path = match self.write_bitmap_for_editing(id, &dir) {
             Ok(p) => p,
             Err(e) => {

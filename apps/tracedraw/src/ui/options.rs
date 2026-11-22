@@ -5481,6 +5481,13 @@ fn curves_page(app: &mut App, ui: &mut Ui) {
                 "options.straight_threshold_tip",
             ));
         ui.end_row();
+        ui.label("");
+        ui.checkbox(&mut c.freehand_click_ends, tr("options.freehand_click_ends"))
+            .rich_tip(crate::ui::tips::pair(
+                "options.freehand_click_ends",
+                "options.freehand_click_ends_tip",
+            ));
+        ui.end_row();
         row_label(ui, &tr("options.pen"));
         ui.checkbox(&mut c.pen_preview, tr("options.pen_preview"))
             .rich_tip(crate::ui::tips::pair(

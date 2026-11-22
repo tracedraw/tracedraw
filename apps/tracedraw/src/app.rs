@@ -3959,7 +3959,8 @@ impl App {
     }
 
     /// Where auto-backups go unless Options > Save names a folder: a
-    /// `TraceDraw` folder in the temporary folder (none in a browser,
+    /// `TraceDraw` folder in the temporary folder, or in a portable copy's
+    /// own folder (#3908) (none in a browser,
     /// which keeps them in the page's storage, see `auto_backup_dir`).
     pub fn auto_backup_dir_default() -> Option<PathBuf> {
         if crate::files::WEB {
@@ -3967,7 +3968,7 @@ impl App {
         }
         #[cfg(not(target_arch = "wasm32"))]
         {
-            Some(std::env::temp_dir().join("TraceDraw"))
+            Some(crate::settings::work_dir("TraceDraw"))
         }
         #[cfg(target_arch = "wasm32")]
         {

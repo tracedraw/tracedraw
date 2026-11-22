@@ -31301,3 +31301,59 @@ fn replace_pick_and_merge_guard() {
     app.merge_symbols(0, 1);
     assert_eq!(app.doc().symbols.len(), 1, "merged in one step");
 }
+
+#[test]
+fn a_guideline_dragged_with_a_finger_moves_and_stays() {
+    // #3867: a finger lifted takes the pointer with it (PointerGone), so
+    // the release of a guideline's drag seemed to be outside the window
+    // and the guideline was deleted instead of moved.
+    let (ctx, mut app, _) = setup();
+    app.select(Vec::new());
+    let y = 150.0;
+    app.add_guide(tracedraw_core::document::Guide::horizontal(y));
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let at = app.view.to_screen(Point::new(100.0, y));
+    let to = app.view.to_screen(Point::new(100.0, y + 10.0));
+    pen_drag(&ctx, &mut app, at, to, &|_| 1.0);
+    let guides = app.page_guides();
+    assert_eq!(guides.len(), 1, "the guideline stays");
+    let moved = match guides[0].line {
+        tracedraw_core::document::GuideLine::Horizontal { y } => y,
+        ref other => panic!("guideline turned into {other:?}"),
+    };
+    assert!((moved - (y + 10.0)).abs() < 0.5, "guideline at {moved}");
+}
+
+#[test]
+fn freehand_with_the_second_click_ending_draws_one_segment_and_stops() {
+    // #3848: Options > Tools > Freehand/Bézier can end a Freehand line of
+    // clicks at the second click, one straight segment, Ctrl held or not;
+    // the pointer moved on after it draws no next segment.
+    let (ctx, mut app, _id) = setup();
+    app.settings.curves.freehand_click_ends = true;
+    app.set_tool(Tool::Freehand);
+    let view = app.view.clone();
+    let at = |x: f64, y: f64| view.to_screen(Point::new(x, y));
+    let before = shape_count(&app);
+    for (x, mods) in [(100.0, Modifiers::NONE), (40.0, Modifiers::CTRL)] {
+        let n = shape_count(&app);
+        click_at(&ctx, &mut app, at(x, 100.0), mods);
+        click_at(&ctx, &mut app, at(x, 160.0), mods);
+        assert!(app.curve.is_none(), "the line ended ({mods:?})");
+        assert_eq!(shape_count(&app), n + 1);
+        let segments = last_path(&app)
+            .elements()
+            .iter()
+            .filter(|e| matches!(e, tracedraw_core::geometry::PathEl::LineTo(_)))
+            .count();
+        assert_eq!(segments, 1, "one straight segment");
+        frame(
+            &ctx,
+            &mut app,
+            vec![Event::PointerMoved(at(140.0, 180.0))],
+            Modifiers::NONE,
+        );
+        assert!(app.curve.is_none(), "nothing follows the pointer");
+    }
+    assert_eq!(shape_count(&app), before + 2);
+}

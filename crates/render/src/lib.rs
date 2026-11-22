@@ -1260,6 +1260,13 @@ impl Renderer<'_> {
         // the pixel effects (lens, non-uniform transparency).
         if !shape.effects.is_empty() {
             let ev = tracedraw_core::live::evaluate(shape);
+            // What the effects draw keeps the object's id (a symmetry's
+            // mirrored copies, a warped outline), while the shared box
+            // cache holds the object's own box under that id: a band of
+            // the picture outside that box left the copies out, and only
+            // a zoom out (one band) showed them all (#3821). They are
+            // measured on their own here.
+            let cached = self.bounds.take();
             // An object whose effects draw objects of their own (the body
             // of an extrusion, a contour's steps) casts the shadow of all
             // of it, beneath all of it. The shadow was the object's
@@ -1397,6 +1404,7 @@ impl Renderer<'_> {
                 }
                 self.draw_shape(&a, parent);
             }
+            self.bounds = cached;
             return;
         }
         // Characters with their own fill or outline: one text a look.
@@ -11926,6 +11934,49 @@ mod tests {
 mod culling_tests {
     use super::*;
     use tracedraw_core::document::{Shape, ShapeKind};
+
+    /// A symmetry's mirrored copies show in every band of a picture drawn
+    /// in bands (#3821): they keep the object's id, and the bands' shared
+    /// box cache gave them the object's own box, so a band away from the
+    /// object left them out until a zoom out drew the page in one band.
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn mirrored_copies_show_in_bands_away_from_the_object() {
+        let mut s = Shape::new(
+            tracedraw_core::ShapeId(6),
+            ShapeKind::Group {
+                children: vec![rect_shape(7, Rect::new(10.0, 70.0, 30.0, 90.0))],
+            },
+        );
+        s.effects = vec![tracedraw_core::live::Effect::Symmetry {
+            center: tracedraw_core::geometry::Point::new(50.0, 50.0),
+            angle: 0.0,
+            lines: 1,
+            rotate: false,
+        }];
+        let mut doc = Document::new("t", tracedraw_core::geometry::Size::new(100.0, 100.0));
+        let page = doc.pages[0].id;
+        doc.pages[0].layers[0].shapes = vec![s];
+        // The bottom half of the page only: the mirror of the square,
+        // below the line, and not the square itself.
+        let opts = RenderOptions {
+            width: 100,
+            height: 50,
+            view: ViewTransform {
+                zoom: 1.0,
+                origin_x: 0.0,
+                origin_y: 50.0,
+                stretch_y: 1.0,
+            },
+            ..RenderOptions::default()
+        };
+        let boxes = page_bounds_cache(&doc, page);
+        let whole = render_page_whole_in(&doc, page, &opts, None, None).expect("drawn");
+        let band = render_page_whole_in(&doc, page, &opts, None, Some(&boxes)).expect("drawn");
+        let ink = |pm: &Pixmap| pm.data().chunks(4).filter(|p| p[3] > 0).count();
+        assert!(ink(&whole) > 100, "the mirror shows in the bottom half");
+        assert_eq!(ink(&band), ink(&whole), "the band draws it too");
+    }
 
     fn rect_shape(id: u64, r: Rect) -> Shape {
         let mut s = Shape::new(

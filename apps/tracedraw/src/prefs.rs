@@ -1196,6 +1196,11 @@ pub struct CurvePrefs {
     /// segment, so higher values make more lines.
     #[serde(default)]
     pub straight_threshold: u32,
+    /// Freehand: a line of clicks ends at the second click, one straight
+    /// segment (#3848). Off at first: each click adds a node and the line
+    /// goes on until a double-click, Space or Enter (#2339).
+    #[serde(default)]
+    pub freehand_click_ends: bool,
     /// Parallel Lines on the curve tools' property bar (#3626): lines
     /// drawn alongside each new curve. Off at first.
     #[serde(default)]
@@ -1289,6 +1294,7 @@ impl Default for CurvePrefs {
             pen_ignores_hand: true,
             corner_threshold: 0,
             straight_threshold: 0,
+            freehand_click_ends: false,
             parallel: ParallelLines::default(),
         }
     }

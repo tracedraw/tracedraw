@@ -2601,6 +2601,23 @@ pub fn portable_dir(exe: &std::path::Path) -> Option<PathBuf> {
     dir.is_dir().then_some(dir)
 }
 
+/// The folder of TraceDraw's own working files called `name` (bitmaps
+/// out for editing, auto-backups): in a portable copy inside its
+/// `tracedraw-settings` folder, so it leaves nothing on the computer
+/// (#3908); else in the system's temporary folder.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn work_dir(name: &str) -> PathBuf {
+    work_dir_beside(std::env::current_exe().ok().as_deref(), name)
+}
+
+/// [`work_dir`] for the program `exe`.
+#[cfg(not(target_arch = "wasm32"))]
+fn work_dir_beside(exe: Option<&std::path::Path>, name: &str) -> PathBuf {
+    exe.and_then(portable_dir)
+        .unwrap_or_else(std::env::temp_dir)
+        .join(name)
+}
+
 pub fn config_dir() -> Option<PathBuf> {
     if let Ok(dir) = std::env::var("TRACEDRAW_CONFIG_DIR") {
         return Some(PathBuf::from(dir));
@@ -3587,6 +3604,12 @@ mod tests {
         assert_eq!(portable_dir(&exe), None);
         std::fs::create_dir_all(base.join(PORTABLE_DIR)).expect("dir");
         assert_eq!(portable_dir(&exe), Some(base.join(PORTABLE_DIR)));
+        // Its working files stay in that folder too, not in the system's
+        // temporary folder (#3908).
+        assert_eq!(
+            work_dir_beside(Some(&exe), "tracedraw-edit"),
+            base.join(PORTABLE_DIR).join("tracedraw-edit")
+        );
         let _ = std::fs::remove_dir_all(&base);
     }
 

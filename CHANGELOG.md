@@ -8,6 +8,11 @@ full, row-by-row status.
 
 - Print Merged Document: the merged drawing is made only to be printed, so once the Print dialog and Print Preview are closed it is gone again and the drawing you merged is back in front, instead of an extra merged drawing staying open after every print or preview. Create Merged Document is the command that keeps the merged drawing (discussion #1610).
 - Cross hair to the window edges: the lines also follow the Shape tool's pointer, crossing at its tip (discussion #3268).
+- Settings kept next to the program (portable use): pictures sent to an outside editor and the automatic backups go in a folder beside the program too, not in the system's temporary or user folders (#3908).
+- Dimension bar: the text size of a dimension's label shows in the text units chosen in Options, the same as in the text bar, instead of always in points (#3857).
+- Guidelines: a guideline dragged with a finger on a touch screen moves and stays where it is let go, instead of being deleted (#3867).
+- Freehand: a new option in Options > Tools > Freehand/Bézier, "Second click ends the line", draws one straight segment with two clicks and stops, instead of going on from the second click (#3848).
+- Show Full Preview: the mirrored copies of a symmetry group show at once at every zoom, instead of partly missing until a zoom out (#3821).
 
 ## 0.51.0 (2026-11-22)
 
