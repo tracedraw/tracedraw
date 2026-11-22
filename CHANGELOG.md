@@ -4,6 +4,11 @@ Versions follow the tags of this repository; every push to `main` also
 publishes a nightly build. [`docs/features.md`](docs/features.md) has the
 full, row-by-row status.
 
+## 0.50.3 (2026-11-22)
+
+- A window that stops responding for more than 10 seconds says so once it comes through and offers to send a report of what TraceDraw was doing (the version, the system, the renderer, the tool, the last command, the size of the drawing, never its name or contents, and the end of the log); a hang the program was ended in, or a crash, is offered at the next start. Send Report opens a new GitHub issue with a summary filled in and the folder holding the report; nothing is sent by itself. System file dialogs held open do not count (#3665, #3687, #3883).
+- Facing pages: in the Multipage View an object let go with its middle on another page, the facing page included, becomes that page's; since 0.50.1 it went back to its own page (#3847).
+
 ## 0.50.2 (2026-11-21)
 
 - PDF/X: the output condition follows the drawing's CMYK profile (the one loaded in Colour Management, else the one the drawing carries or was made with), shown greyed in the field while none is typed; it was "FOGRA39" whatever the drawing's profile, so a drawing for U.S. Web Coated (SWOP) v2 went out labelled for another press. A well-known profile goes by the ICC registry's name ("CGATS TR 001" for SWOP v2) as the output condition identifier (#3829).

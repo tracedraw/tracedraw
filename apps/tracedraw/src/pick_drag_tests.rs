@@ -27969,6 +27969,63 @@ fn an_object_dropped_on_another_page_of_the_multipage_view_becomes_that_page_s()
 }
 
 #[test]
+fn with_facing_pages_an_object_dropped_on_another_page_becomes_that_page_s() {
+    // #3847: with facing pages the Multipage View kept an object on its
+    // page wherever it was let go, on the facing page of its spread or
+    // on a page of another spread: since objects selected across the
+    // spine go back to their page (#3817) it could not be given to
+    // another page at all.
+    let (ctx, mut app, id) = setup();
+    app.add_page();
+    app.add_page();
+    let pages: Vec<tracedraw_core::PageId> = app.doc().pages.iter().map(|p| p.id).collect();
+    app.page = pages[0];
+    app.select(vec![id]);
+    app.set_facing_pages(true, tracedraw_core::spreads::PageSide::Right);
+    app.set_multipage(true);
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let rect_of = |app: &App, page: tracedraw_core::PageId| {
+        app.multipage_layout()
+            .into_iter()
+            .find(|(p, _)| *p == page)
+            .map(|(_, r)| r)
+            .expect("shown")
+    };
+    let page_of = |app: &App, id: ShapeId| {
+        app.doc()
+            .pages
+            .iter()
+            .find(|p| p.layers.iter().any(|l| l.shapes.iter().any(|s| s.id == id)))
+            .map(|p| p.id)
+    };
+    // To page 2, the left page of the next spread.
+    let r2 = rect_of(&app, pages[1]);
+    let from = app.view.to_screen(Point::new(35.0, 25.0));
+    let to = app.view.to_screen(Point::new(r2.x0 + 35.0, r2.y0 + 25.0));
+    drag(&ctx, &mut app, from, to, Modifiers::NONE, Vec::new());
+    assert_eq!(page_of(&app, id), Some(pages[1]));
+    assert_eq!(app.page, pages[1]);
+    // Across the spine onto page 3, the facing page: page 3's.
+    let r2 = rect_of(&app, pages[1]);
+    let r3 = rect_of(&app, pages[2]);
+    let from = app.view.to_screen(Point::new(r2.x0 + 35.0, r2.y0 + 25.0));
+    let to = app.view.to_screen(Point::new(r3.x0 + 60.0, r3.y0 + 25.0));
+    drag(&ctx, &mut app, from, to, Modifiers::NONE, Vec::new());
+    assert_eq!(page_of(&app, id), Some(pages[2]));
+    assert_eq!(app.page, pages[2]);
+    // Deselected, it stays there.
+    app.select(Vec::new());
+    for _ in 0..2 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    assert_eq!(page_of(&app, id), Some(pages[2]));
+    let b = bounds(&app, id);
+    assert!((b.center().x - 60.0).abs() < 3.0, "{b:?}");
+}
+
+#[test]
 fn objects_put_beside_the_page_go_on_the_desktop_when_it_takes_them() {
     // #3100: an object moved or pasted wholly beside the page goes onto
     // the desktop layer, shown from every page, while the desktop takes

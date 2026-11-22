@@ -114,6 +114,8 @@ mod formula;
 mod font_folder;
 #[cfg(not(target_arch = "wasm32"))]
 mod frame_stats;
+#[cfg(not(target_arch = "wasm32"))]
+mod hang_watch;
 mod frame_gen;
 mod frame_type;
 mod fx;
@@ -443,6 +445,8 @@ pub fn run() -> eframe::Result<()> {
         mcp_link::bridge();
         return Ok(());
     }
+    // A window that stops responding says so, and offers a report.
+    hang_watch::start();
     // `tracedraw --x11`: the window opens through X11 (XWayland on a
     // Wayland desktop), where a graphics tablet's pen moves the pointer
     // (#850). The patched windowing layer reads a pen on Wayland too
@@ -1050,6 +1054,9 @@ impl eframe::App for Shell {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        // A frame stuck for long is a hang, reported (hang_watch.rs).
+        #[cfg(not(target_arch = "wasm32"))]
+        let _hang_frame = hang_watch::Frame::begin();
         // The start works once a frame reached the screen, not when the
         // window was made (#1999).
         #[cfg(not(target_arch = "wasm32"))]
@@ -1197,6 +1204,10 @@ impl eframe::App for Shell {
             ui.ctx()
                 .request_repaint_after(std::time::Duration::from_millis(100));
         }
+        // What the program does, for a report of a hang, and a report of
+        // a hang or a crash offered.
+        #[cfg(not(target_arch = "wasm32"))]
+        hang_watch::poll(app);
         frame_mark("before the interface");
         ui::root(app, ui);
         frame_mark("the dialogs");

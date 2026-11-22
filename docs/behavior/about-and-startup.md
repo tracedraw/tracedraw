@@ -416,6 +416,33 @@ and `--reset-settings` starts open windows of their own.
   shown in a message box naming that file, once; the Windows build has
   no console, so a start that failed showed nothing (#570,
   `startup_log::tests::the_log_and_the_crash_report_go_in_the_settings_folder`).
+- A window that stops responding says so and offers a report
+  (`hang_watch.rs`, desktop and Android; not in the browser). The frame
+  marks when it begins and ends and the steps it passes
+  (`frame_stats::mark`); a watch thread looks every second, and a frame
+  still being built after 10 s is a hang: `hang.log` in the settings
+  folder gets the version, the system, the renderer, the last step the
+  frame got through, the tool, the last command, how many drawings are
+  open and how many pages, objects and pictures the active one holds
+  (never its name or contents), and the last 40 lines of
+  `tracedraw.log`; the log gets an error line. It is rewritten every
+  second while the hang lasts. A frame that comes through adds
+  "Responding again after N s." and, once no other dialog is up, a
+  message says how long TraceDraw did not respond and offers the
+  report. A `hang.log` without that line (the program was ended while
+  stuck) or a `crash.log` (a panic) offers it at the next start, the
+  crash first, once: the report is moved to `last-hang.log` or
+  `last-crash.log`, and reports older than 14 days are moved aside
+  without asking. The message (Help: "When TraceDraw stops
+  responding") has Send Report (a new issue on GitHub from the bug
+  report form, with the title, the summary, the system and the version
+  filled in, never the log, and the folder holding the report opened
+  for it to be attached), Show Report (the report in the system's
+  viewer) and Not Now. Nothing is sent by itself. Crash reports went
+  unseen before (#3687), and a hang left nothing at all (#3665, #3883,
+  `hang_watch::tests::a_stuck_frame_is_reported_and_its_end_told`,
+  `a_report_the_last_run_left_is_offered_once`,
+  `the_issue_is_filled_in_with_the_summary`).
 - At start the log names the processor and its threads (and on Windows
   the version and build, from `RtlGetVersion`), and wgpu's own lines on
   which backends started and which adapters it left out

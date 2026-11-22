@@ -722,7 +722,7 @@ pub fn pick_folder_from(token: FolderToken, start: Option<&Path>) -> Option<Path
         if let Some(start) = start.filter(|s| s.is_dir()) {
             d = d.set_directory(start);
         }
-        d.pick_folder()
+        crate::hang_watch::waiting_for_user(|| d.pick_folder())
     }
     #[cfg(any(target_arch = "wasm32", target_os = "android"))]
     {
@@ -1814,7 +1814,7 @@ impl Dialog {
                 let exts: Vec<&str> = exts.iter().map(|e| e.as_str()).collect();
                 d = d.add_filter(name, &exts);
             }
-            if let Some(paths) = d.pick_files() {
+            if let Some(paths) = crate::hang_watch::waiting_for_user(|| d.pick_files()) {
                 then(app, paths);
             }
         }
@@ -1936,7 +1936,7 @@ impl Dialog {
             if let Some(dir) = self.directory.as_ref().filter(|d| d.is_dir()) {
                 d = d.set_directory(dir);
             }
-            return d.save_file();
+            return crate::hang_watch::waiting_for_user(|| d.save_file());
         }
         #[allow(unreachable_code)]
         None
@@ -1967,7 +1967,7 @@ impl Dialog {
             let exts: Vec<&str> = exts.iter().map(|e| e.as_str()).collect();
             d = d.add_filter(name, &exts);
         }
-        d.pick_file()
+        crate::hang_watch::waiting_for_user(|| d.pick_file())
     }
 
     /// The browser's picker for several files: each is kept under

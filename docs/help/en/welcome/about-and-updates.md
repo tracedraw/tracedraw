@@ -129,3 +129,22 @@ and [[menu.help.user_guide]] open its learning page, and
   report a problem.
 - [[menu.help > menu.help.message_settings]] opens the options where
   TraceDraw's messages are set.
+
+## When TraceDraw stops responding {#problem-reports}
+
+When a step of TraceDraw takes longer than 10 seconds, it writes a report
+of what it was doing: the version, the system, the tool, the last command
+and how big the drawing is, with the end of its log. The report never holds
+the drawing's name or its contents.
+
+1. If TraceDraw comes back, a message says how long it stopped responding.
+   If it had to be closed, or it closed with an error, the message comes at
+   its next start.
+2. Click **[[report.show]]** to read the report first.
+3. Click **[[report.send]]**: a new issue opens on GitHub with a summary
+   filled in, and the folder that holds the report opens beside it.
+4. Drag the report from the folder into the issue, add what you were doing,
+   and send it. Nothing is sent until you do.
+
+Click **[[report.not_now]]** to close the message. Each report is offered
+once.

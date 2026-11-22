@@ -81,6 +81,8 @@ pub fn dialog_topic(d: &Dialog, options: OptionsPage) -> &'static str {
         Dialog::DocumentProperties(_) => "pages-layout/document-properties",
         Dialog::ConfirmClose => "get-started/open-and-save#closing",
         Dialog::ConfirmResetSettings => "customize/reset-settings",
+        #[cfg(not(target_arch = "wasm32"))]
+        Dialog::ProblemReport(_) => "welcome/about-and-updates#problem-reports",
         Dialog::Recover(_) => "get-started/open-and-save#recovery",
         Dialog::Updates => "welcome/about-and-updates#updates",
         Dialog::UpdatePolicy => "welcome/about-and-updates#automatic-check",

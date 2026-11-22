@@ -101,7 +101,7 @@ pub fn init() {
 
 /// The computer, for the log (#616): the processor and how many threads
 /// it runs, and on Windows the build.
-fn system() -> String {
+pub(crate) fn system() -> String {
     let threads = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(1);

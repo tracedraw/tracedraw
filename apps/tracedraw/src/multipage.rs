@@ -546,14 +546,18 @@ impl App {
     /// In the Multipage View, the page (its index and its place in the
     /// grid) that a move of the selection by `total`, let go, gives the
     /// selection to: another shown page whose paper holds the middle of
-    /// the moved selection's box (#2055). None off every paper, over the
-    /// current page, with facing pages (a spread is edited as one), and
+    /// the moved selection's box (#2055), the facing page of a spread
+    /// included (#3847). None off every paper, over the current page, and
     /// when an object selected is inside a group or on a master layer.
     pub fn multipage_drop_page(
         &self,
         total: tracedraw_core::geometry::Vec2,
     ) -> Option<(usize, Rect)> {
-        if !self.multipage || self.doc().facing().is_some() || self.selection.is_empty() {
+        // With facing pages too (#3847): the objects let go on the facing
+        // page of their spread, or on a page of another spread, are that
+        // page's. Since objects selected across the spine go back to
+        // their page (#3817), this is how one goes to another page.
+        if !self.multipage || self.selection.is_empty() {
             return None;
         }
         let middle = self.selection_bounds()?.center() + total;

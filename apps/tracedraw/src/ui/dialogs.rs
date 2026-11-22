@@ -1452,6 +1452,11 @@ pub enum Dialog {
     /// Reset every preference to the defaults? (F8 while TraceDraw
     /// starts, Options > Global.)
     ConfirmResetSettings,
+    /// TraceDraw stopped responding (this run, or the last one, which was
+    /// ended) or the last run ended with an error: send the report?
+    /// (hang_watch.rs)
+    #[cfg(not(target_arch = "wasm32"))]
+    ProblemReport(crate::hang_watch::Offer),
     /// At start-up: drawings a session that ended without closing left in
     /// the auto-backup folder (see `recovery.rs`).
     Recover(Vec<crate::recovery::Found>),
@@ -2983,6 +2988,44 @@ pub fn show(app: &mut App, ctx: &Context) {
                     app.set_update_policy(false);
                     close = true;
                 }
+                None => {}
+            }
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        Dialog::ProblemReport(offer) => {
+            use crate::hang_watch::Problem;
+            let what = match offer.problem {
+                Problem::HangNow(s) => trf("report.hang_now", &[("seconds", &s.to_string())]),
+                Problem::HangLast => tr("report.hang_last"),
+                Problem::CrashLast => tr("report.crash_last"),
+            };
+            let text = format!("{what}\n\n{}", tr("report.body"));
+            let (send, show, later) = (tr("report.send"), tr("report.show"), tr("report.not_now"));
+            match crate::ui::chrome::message_box_closing_with(
+                ctx,
+                crate::ui::chrome::MessageIcon::Info,
+                &text,
+                &[&send, &show, &later],
+                2,
+            ) {
+                Some(0) => {
+                    let url = crate::hang_watch::issue_url(offer);
+                    let folder = offer.path.parent().map(std::path::Path::to_path_buf);
+                    app.open_url(&url);
+                    if let Some(folder) = folder {
+                        if let Err(e) = crate::export::open_with_system(&folder) {
+                            app.status = e;
+                        }
+                    }
+                    close = true;
+                }
+                Some(1) => {
+                    let path = offer.path.clone();
+                    if let Err(e) = crate::export::open_with_system(&path) {
+                        app.status = e;
+                    }
+                }
+                Some(_) => close = true,
                 None => {}
             }
         }
