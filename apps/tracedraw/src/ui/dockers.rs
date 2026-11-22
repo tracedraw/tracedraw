@@ -2059,9 +2059,11 @@ fn properties(app: &mut App, ui: &mut Ui) {
                 // them (not every frame).
                 let fetch = || app.pattern_library();
                 let mut pickers = PatternPickers::new(&fetch);
+                pickers.folder = app.settings.pattern_folder.clone();
                 let mut edited =
                     fill_editor_mixed(ui, &mut fill, &mix, &mut touched, Some(&mut pickers));
                 let action = pickers.action;
+                let folder_file = pickers.file.take();
                 // Where a fountain's nodes sit, in numbers (#1200).
                 if let (Fill::Fountain(f), Some(b)) = (&mut fill, base.as_ref()) {
                     if let Some(bounds) = app.doc().shape_on_page(b.id).map(|s| s.bounds()) {
@@ -2074,6 +2076,9 @@ fn properties(app: &mut App, ui: &mut Ui) {
                 let has = !matches!(fill, Fill::None) || mix.kind;
                 if let Some(action) = action {
                     app.run_pattern_action(action);
+                }
+                if let Some(f) = folder_file {
+                    app.import_pattern_bitmap(&f);
                 }
                 if edited {
                     // Dragging in the picker: one step, and the colour
@@ -3714,6 +3719,38 @@ pub(crate) fn pattern_editor(
                             .clicked()
                     {
                         action = Some(PatternAction::ImportBitmap);
+                    }
+                    // A folder of pictures to take tiles from (#3323).
+                    if !vector {
+                        if let Some(dir) = pk.folder.clone() {
+                            ui.separator();
+                            let name = dir
+                                .file_name()
+                                .map(|n| n.to_string_lossy().into_owned())
+                                .unwrap_or_else(|| dir.display().to_string());
+                            ui.label(trf("docker.pattern_folder_n", &[("f", &name)]))
+                                .rich_tip(dir.display().to_string());
+                            if let Some(f) = crate::ui::pattern_pick::folder_rows(ui, &dir) {
+                                pk.file = Some(f);
+                            }
+                        }
+                        let can = matches!(
+                            crate::files::FolderUse::PatternFolder.action(),
+                            crate::files::FolderAction::PickFolder(_)
+                        );
+                        let tip = crate::files::FolderUse::PatternFolder
+                            .tip()
+                            .unwrap_or("docker.pattern_folder_tip");
+                        if ui
+                            .add_enabled(
+                                can,
+                                egui::Button::selectable(false, tr("docker.pattern_folder")),
+                            )
+                            .rich_tip(tr(tip))
+                            .clicked()
+                        {
+                            action = Some(PatternAction::ChooseFolder);
+                        }
                     }
                 });
         }

@@ -619,11 +619,13 @@ pub enum FolderUse {
     /// The Save Drawing dialog's Browse, the system's folder window
     /// with the places only it knows (#3416).
     SaveDrawing,
+    /// The bitmap pattern picker's folder of pictures (#3323).
+    PatternFolder,
 }
 
 impl FolderUse {
     #[cfg(test)]
-    pub const ALL: [FolderUse; 9] = [
+    pub const ALL: [FolderUse; 10] = [
         FolderUse::ExportAssets,
         FolderUse::Package,
         FolderUse::FontFolder,
@@ -633,6 +635,7 @@ impl FolderUse {
         FolderUse::BackupFolder,
         FolderUse::AutoBackupFolder,
         FolderUse::SaveDrawing,
+        FolderUse::PatternFolder,
     ];
 
     /// What the folder button does in this build.
@@ -688,6 +691,8 @@ pub fn folder_action(place: FolderUse, platform: Platform) -> FolderAction {
             Unavailable("folder.backup_android")
         }
         (_, SaveDrawing) => Unavailable("folder.save_desktop"),
+        // Import picture... reads one file there (#3323).
+        (_, PatternFolder) => Unavailable("folder.pattern_desktop"),
     }
 }
 
@@ -2424,6 +2429,7 @@ mod tests {
                 Unavailable("folder.backup_web"),
                 Unavailable("folder.backup_web"),
                 Unavailable("folder.save_desktop"),
+                Unavailable("folder.pattern_desktop"),
             ]
         );
         assert_eq!(
@@ -2438,6 +2444,7 @@ mod tests {
                 Unavailable("folder.backup_android"),
                 Unavailable("folder.backup_android"),
                 Unavailable("folder.save_desktop"),
+                Unavailable("folder.pattern_desktop"),
             ]
         );
         assert_eq!(

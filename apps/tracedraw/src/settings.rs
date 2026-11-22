@@ -189,6 +189,9 @@ pub struct Settings {
     #[serde(default)]
     pub bitmap_editor: String,
     pub last_dir: Option<PathBuf>,
+    /// The folder of pictures the bitmap pattern picker lists as tiles
+    /// (#3323).
+    pub pattern_folder: Option<PathBuf>,
     /// The folder exported to last: File > Export's dialog opens there
     /// (#1817).
     pub last_export_dir: Option<PathBuf>,
@@ -2412,6 +2415,7 @@ impl Default for Settings {
             command_icons: Vec::new(),
             bitmap_editor: String::new(),
             last_dir: None,
+            pattern_folder: None,
             last_export_dir: None,
             folder_bookmarks: Vec::new(),
             color: ColorPrefs::default(),
@@ -2656,6 +2660,7 @@ impl Settings {
         Settings {
             recent_files: self.recent_files.clone(),
             last_dir: self.last_dir.clone(),
+            pattern_folder: self.pattern_folder.clone(),
             last_export_dir: self.last_export_dir.clone(),
             folder_bookmarks: self.folder_bookmarks.clone(),
             window_maximized: self.window_maximized,

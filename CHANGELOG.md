@@ -9,6 +9,8 @@ full, row-by-row status.
 - Saving .cdr: a graded transparency on an object inside a clip frame (Place Inside Frame) now opens again as it was set, instead of stretching over the whole object; the object keeps its other live effects too (#3804).
 - A selected clip frame shows the outlines of what it holds as a thin dashed line, also where they run out past the frame, so the contents can be placed exactly (#3804).
 - The preview a saved file carries (Welcome Screen, file browser, .cdr preview) shows the whole drawing, everything on and beside the page, instead of the page with a margin round it (#3052).
+- Command line tool: it loads the fonts installed in the app's Font Manager and its added folders, so it draws text with the same fonts and automatic stand-ins as the app, and it names on stderr the installed font that draws each missing one (#3818).
+- Fill > Bitmap pattern: "Picture folder..." chooses a folder of pictures, and the pattern list then shows its pictures with thumbnails; the one clicked becomes the tile (#3323).
 - Print Merged Document: the merged drawing is made only to be printed, so once the Print dialog and Print Preview are closed it is gone again and the drawing you merged is back in front, instead of an extra merged drawing staying open after every print or preview. Create Merged Document is the command that keeps the merged drawing (discussion #1610).
 - Cross hair to the window edges: the lines also follow the Shape tool's pointer, crossing at its tip (discussion #3268).
 - Settings kept next to the program (portable use): pictures sent to an outside editor and the automatic backups go in a folder beside the program too, not in the system's temporary or user folders (#3908).

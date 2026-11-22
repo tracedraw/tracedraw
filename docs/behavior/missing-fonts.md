@@ -16,6 +16,19 @@ ask: the headless application used by tests, scripts and the MCP server
 (`App::headless`, `App::ask_missing_fonts` false) keeps the plain note
 after opening, and the command line tool has no dialogs.
 
+The command line tool (`tracedraw-cli`) draws missing families with the
+same automatic stand-ins as the application (#3818). It loads the font
+files installed in the application's Font Manager and the fonts of the
+folders added there, read from the application's `settings.json` (in its
+configuration folder, the `tracedraw-settings` folder beside the program
+for a portable copy, or `TRACEDRAW_CONFIG_DIR`), so a font given to the
+application draws in the tool too; and for each family a drawing names
+that is not installed it writes a line on stderr, `<file>: font "<name>"
+is not installed: its text is drawn with "<stand-in>"`
+(`tracedraw-cli`: `tests::the_apps_fonts_load_and_missing_ones_name_their_stand_in`).
+A stand-in chosen in the dialog for a session is not kept, so the tool
+uses the automatic one.
+
 ## The dialog
 
 - A row per missing family: its name and the installed font that draws

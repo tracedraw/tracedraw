@@ -4560,6 +4560,7 @@ dependencies = [
  "flate2",
  "image",
  "log",
+ "serde_json",
  "tracedraw-cdr",
  "tracedraw-core",
  "tracedraw-io",
