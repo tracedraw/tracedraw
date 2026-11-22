@@ -83,13 +83,26 @@
   (`raster::LIGHT_SETTLE_SECONDS`), for the zoom the wheel stopped at
   (`raster::tests::light_zoom_renders_once_when_the_zoom_stops`,
   `pick_drag_tests::light_zoom_draws_once_per_wheel_turn`).
+  A turn of one notch starts 1 render with the glide, 1 with Light
+  zoom. With the glide the picture on the way is drawn for the
+  view the glide lands at (`raster::zoom_target`, from
+  `ZoomGlide::target_view`), not for the zoom the frames are passing
+  through: the turn's render is not spent on a zoom the glide has
+  already passed, and when the glide ends the view is put at that same
+  view (`ZoomGlide::land`), the picture fitting the landing to the bit
+  (`view_motion::tests::the_glide_lands_on_the_view_it_was_aimed_at`,
+  `raster::tests::the_picture_of_a_glide_is_drawn_for_the_view_it_lands_at`).
+  A pan while the glide goes folds the glide's aim into the panned
+  view, the point the pan put under the anchor staying there
+  (`view_motion::tests::a_pan_while_the_glide_goes_folds_into_its_landing`).
   The first step of a zoom renders at once; the steps after it are
   skipped while that render is on its way, the running render keeping
   its turn
   (`raster::tests::the_latest_zoom_wins_without_restarting_renders`),
   and when it is done, for a zoom the view has already left, the next
-  render starts at once, for the zoom the view is at, the turn not
-  left idle for the wheel to rest
+  render starts at once, for the view the glide lands at then, or,
+  without the glide, the zoom the view is at, the turn not left
+  idle for the wheel to rest
   (`raster::tests::a_zoom_burst_skips_steps_until_the_view_settles`).
   A render still on its way when the wheel has rested is asked to give
   up at its next object, after a wait that follows the wheel's own

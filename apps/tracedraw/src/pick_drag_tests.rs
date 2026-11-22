@@ -15013,6 +15013,66 @@ fn a_fast_wheel_turn_glides_shorter() {
     assert!((total - 1.15f32.powi(3)).abs() < 0.01, "{total}");
 }
 
+/// The wheel's glide: the picture on the way is drawn for the view the
+/// glide lands at, and the view is put at that view when the glide ends,
+/// so the landing is sharp on the render the glide asked for, and no
+/// render starts for the landing after it.
+#[test]
+fn the_wheel_glide_lands_sharp_without_a_render_after_it() {
+    let (ctx, mut app, _) = setup();
+    assert!(app.settings.smooth_zoom);
+    let at = Pos2::new(700.0, 500.0);
+    let mut t = 10.0;
+    let mut step = |app: &mut App, events: Vec<Event>| {
+        t += 1.0 / 60.0;
+        wheel_frame(&ctx, app, t, events);
+    };
+    step(&mut app, vec![Event::PointerMoved(at)]);
+    step(&mut app, vec![Event::PointerMoved(at)]);
+    // The first picture drawn, the view at rest.
+    for _ in 0..30 {
+        step(&mut app, Vec::new());
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+    let z0 = app.view.zoom;
+    step(&mut app, vec![notch()]);
+    // The glide is aimed a step ahead of the frames, and the canvas asks
+    // for the picture of that landing.
+    let aim = app.zoom_glide.target_view().expect("the glide aims at a view");
+    assert!((aim.zoom / z0 - 1.15).abs() < 1e-3, "{}", aim.zoom / z0);
+    // The glide ends: the view lands on the aim.
+    for _ in 0..120 {
+        step(&mut app, Vec::new());
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        if !app.zoom_glide.active() {
+            break;
+        }
+    }
+    assert!(!app.zoom_glide.active(), "the glide ends");
+    // The landing is sharp on the picture drawn for it, to the bit.
+    for _ in 0..200 {
+        if app.raster.borrow().picture_zoom() == Some(app.view.zoom) {
+            break;
+        }
+        step(&mut app, Vec::new());
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+    assert_eq!(app.raster.borrow().picture_zoom(), Some(app.view.zoom));
+    assert_eq!(app.view.zoom, aim.zoom, "the landing zoom, to the bit");
+    assert_eq!(app.view.origin, aim.origin, "the landing place, to the bit");
+    // And nothing is drawn for the landing after it: the render the
+    // glide asked for is the one the landing shows.
+    let settled = app.raster.borrow().render_count();
+    for _ in 0..15 {
+        step(&mut app, Vec::new());
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+    assert_eq!(
+        app.raster.borrow().render_count(),
+        settled,
+        "a render after the landing"
+    );
+}
 
 /// Options > Zoom/Pan: Smooth zoom off zooms a notch at once, and the
 /// zoom step sets how much (#1648, #895).
@@ -15066,8 +15126,9 @@ fn smooth_zoom_off_zooms_the_fixed_step_at_once() {
 /// Light zoom (Options > Tools > Zoom/Pan, turned on by Help >
 /// Benchmark on slow computers): a notch zooms at once, without the
 /// glide, and a turn of three notches draws the drawing anew once, after
-/// the zoom stops; with the glide every frame of it starts a new render
-/// (each giving up the last one).
+/// the zoom stops; with the glide the picture is drawn for the view the
+/// glide lands at, and the steps of the turn wait for the render on its
+/// way instead of starting one each.
 #[test]
 fn light_zoom_draws_once_per_wheel_turn() {
     let renders_of_a_turn = |light: bool| {
@@ -17084,6 +17145,119 @@ fn frame_times_of_a_zoom_burst() {
             "zoom burst, {label} page ({n} objects): {:?} per frame, worst {:?}; \
              picture blown up {:.2}x on average, {:.2}x at worst; \
              last step to sharp, ms: {waits:?}",
+            sum / frames,
+            worst,
+            blur_sum / frames as f32,
+            blur_worst
+        );
+    }
+}
+
+/// The same bursts as `frame_times_of_a_zoom_burst`, zoomed by the wheel
+/// itself: five notches a beat apart, each smoothed wheel notch a glide
+/// (`ui::root`), so the picture on the way is drawn for the view the
+/// glide lands at. Reports the frame times over the whole turn (the
+/// notches and the glide to its end), the blowup, and the time from the
+/// last notch to the sharp picture. Run with
+/// `cargo test --release -p tracedraw --lib -- --ignored frame_times_of_a_wheel_turn --nocapture`.
+#[test]
+#[ignore]
+fn frame_times_of_a_wheel_turn() {
+    for (label, n) in [("medium", 1000usize), ("heavy", 5000)] {
+        let (ctx, mut app, _) = setup();
+        burst_page(&mut app, n);
+        let start = std::time::Instant::now();
+        let tick = std::time::Duration::from_secs_f64(1.0 / 60.0);
+        let mut next = start;
+        let mut timed = |app: &mut App, events: Vec<Event>| {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    Pos2::ZERO,
+                    egui::vec2(1600.0, 1000.0),
+                )),
+                events,
+                time: Some(start.elapsed().as_secs_f64()),
+                ..Default::default()
+            };
+            let t = std::time::Instant::now();
+            let mut out = ctx.run_ui(input, |ui| crate::ui::root(app, ui));
+            out.textures_delta.clear();
+            let d = t.elapsed();
+            next += tick;
+            let now = std::time::Instant::now();
+            if next > now {
+                std::thread::sleep(next - now);
+            } else {
+                next = now;
+            }
+            d
+        };
+        let sharp = |app: &App| {
+            let r = app.raster.borrow();
+            !r.drawing() && r.picture_zoom() == Some(app.view.zoom)
+        };
+        let blowup = |app: &App| {
+            let z = app.raster.borrow().picture_zoom().unwrap_or(app.view.zoom);
+            app.view.zoom / z
+        };
+        app.zoom_to_page();
+        timed(&mut app, vec![Event::PointerMoved(Pos2::new(800.0, 500.0))]);
+        for _ in 0..600 {
+            timed(&mut app, Vec::new());
+            if sharp(&app) {
+                break;
+            }
+        }
+        let at = app.canvas_rect.center();
+        let turn = vec![Event::PointerMoved(at), notch()];
+        let (mut frames, mut sum, mut worst) =
+            (0u32, std::time::Duration::ZERO, std::time::Duration::ZERO);
+        let (mut blur_sum, mut blur_worst) = (0.0f32, 1.0f32);
+        let mut waits = Vec::new();
+        for _ in 0..3 {
+            // Five notches, one every four frames: a turn of about four
+            // notches a second.
+            let mut last_notch = std::time::Instant::now();
+            for i in 0..20 {
+                let notch_frame = i % 4 == 0;
+                if notch_frame {
+                    last_notch = std::time::Instant::now();
+                }
+                let d = timed(&mut app, if notch_frame { turn.clone() } else { Vec::new() });
+                frames += 1;
+                sum += d;
+                worst = worst.max(d);
+                let b = blowup(&app);
+                blur_sum += b;
+                blur_worst = blur_worst.max(b);
+            }
+            // The glide runs out; the picture drawn for its landing comes.
+            for _ in 0..600 {
+                let d = timed(&mut app, Vec::new());
+                frames += 1;
+                sum += d;
+                worst = worst.max(d);
+                let b = blowup(&app);
+                blur_sum += b;
+                blur_worst = blur_worst.max(b);
+                if sharp(&app) {
+                    break;
+                }
+            }
+            waits.push(last_notch.elapsed().as_millis());
+            // Back out to where the turn started, drawn and at rest.
+            app.view.zoom_at(at, 1.0 / 1.15f32.powi(5));
+            for _ in 0..600 {
+                timed(&mut app, Vec::new());
+                if sharp(&app) {
+                    break;
+                }
+            }
+        }
+        eprintln!(
+            "wheel turn, {label} page ({n} objects): {:?} per frame, worst {:?}; \
+             picture blown up {:.2}x on average, {:.2}x at worst; \
+             last notch to sharp, ms: {waits:?}",
             sum / frames,
             worst,
             blur_sum / frames as f32,

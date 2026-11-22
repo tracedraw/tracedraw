@@ -1279,7 +1279,7 @@ pub(crate) fn drawing_window(app: &mut App, ui: &mut Ui, full: egui::Rect) {
                         // Light zoom: no glide, one jump a notch.
                         if app.settings.smooth_zoom && !app.settings.light_zoom {
                             let now = ui.input(|i| i.time);
-                            app.zoom_glide.add(zoom_glide_notches, step, anchor, now);
+                            app.zoom_glide.add(zoom_glide_notches, step, anchor, now, &app.view);
                         } else {
                             app.zoom_glide.stop();
                             app.view.zoom_at(anchor, step.powf(zoom_glide_notches));
@@ -1300,10 +1300,12 @@ pub(crate) fn drawing_window(app: &mut App, ui: &mut Ui, full: egui::Rect) {
     // The wheel zoom's glide goes on, the pointer on the canvas or not.
     if app.zoom_glide.active() {
         let dt = ui.input(|i| i.stable_dt);
+        app.zoom_glide.follow(&app.view);
         let f = app.zoom_glide.advance(dt);
         if f != 1.0 {
             app.view.zoom_at(app.zoom_glide.anchor(), f);
         }
+        app.zoom_glide.land(&mut app.view);
         ui.ctx().request_repaint();
     }
     // A flick's slide (Pan inertia, #831).

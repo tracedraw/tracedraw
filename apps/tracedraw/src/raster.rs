@@ -279,6 +279,11 @@ pub struct Raster {
     /// is drawn anew once, when the view has rested
     /// [`LIGHT_SETTLE_SECONDS`], instead of at every step of the zoom.
     pub light_zoom: bool,
+    /// The view the wheel's glide lands at, set by the canvas every
+    /// frame while the glide goes: the picture is drawn for it while the
+    /// view is still on its way, and the glide puts the view at it when
+    /// it ends, so the picture fits the landing exactly.
+    pub zoom_target: Option<View>,
     /// The drawing as given, shared, for a render on its own thread to
     /// take instead of a copy of its own (no threads in the browser).
     #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
@@ -567,7 +572,18 @@ impl Raster {
         pixel_dpi: Option<f64>,
     ) -> Option<(TextureId, Rect)> {
         let ppp = ctx.pixels_per_point();
-        let window = pixel_dpi.and_then(|dpi| pixel_window(view, rect, dpi, ppp));
+        // The picture is drawn for the view the wheel's glide lands at,
+        // not for the view on its way to it: one render a turn, not one
+        // for a zoom the glide has already passed. The Pixels view is
+        // drawn at one render pixel per document pixel, and where it is
+        // drawn is the view; no aim there.
+        let zoom_target = self.zoom_target.take();
+        let key_view = if pixel_dpi.is_some() {
+            *view
+        } else {
+            zoom_target.unwrap_or(*view)
+        };
+        let window = pixel_dpi.and_then(|dpi| pixel_window(&key_view, rect, dpi, ppp));
         let (w, h) = match window {
             Some(win) => (win.w, win.h),
             None => (
@@ -579,8 +595,8 @@ impl Raster {
         let key = Key {
             revision,
             page,
-            zoom: view.zoom,
-            offset: view.origin - rect.min,
+            zoom: key_view.zoom,
+            offset: key_view.origin - rect.min,
             size: (w, h),
             preview: preview
                 .as_ref()
@@ -662,7 +678,18 @@ impl Raster {
                 {
                     self.rested = rested.or_else(|| Some(ctx.input(|i| i.time)));
                 }
-                return Some((t.id(), screen));
+                // The picture of the view the glide lands at, shown while
+                // the view is still on its way to it: placed by the view
+                // the canvas shows, filling the window exactly once the
+                // view has landed on it.
+                let carried = zoom_target.is_some()
+                    && (key_view.zoom != view.zoom || key_view.origin != view.origin);
+                let at = if carried {
+                    self.page_rect.map_or(screen, |r| view.rect_to_screen(r))
+                } else {
+                    screen
+                };
+                return Some((t.id(), at));
             }
         }
         // The view moved (pan, scroll, zoom) and nothing else changed:
@@ -726,9 +753,9 @@ impl Raster {
                 stretch_y: 1.0,
             },
             _ => ViewTransform {
-                zoom: (view.zoom * ppp) as f64,
-                origin_x: ((view.origin.x - rect.min.x) * ppp) as f64,
-                origin_y: ((view.origin.y - rect.min.y) * ppp) as f64,
+                zoom: (key_view.zoom * ppp) as f64,
+                origin_x: ((key_view.origin.x - rect.min.x) * ppp) as f64,
+                origin_y: ((key_view.origin.y - rect.min.y) * ppp) as f64,
                 stretch_y: 1.0,
             },
         };
@@ -2248,6 +2275,83 @@ mod tests {
             renders + 2,
             "two renders for the two steps"
         );
+    }
+
+    /// While the wheel's glide is on its way, the canvas asks for the
+    /// picture of the view the glide lands at (Raster::zoom_target): the
+    /// picture is that zoom, drawn at once, and while it draws (and
+    /// after) it is placed by the view the canvas shows, the one still on
+    /// its way; when the view lands on the aim, the picture fits it
+    /// exactly and nothing is rendered for the bits the frames'
+    /// multiplying was off by.
+    #[test]
+    fn the_picture_of_a_glide_is_drawn_for_the_view_it_lands_at() {
+        static TURNS: Turns = Turns::new();
+        let ctx = Context::default();
+        let doc = Document::new("t", Size::new(100.0, 50.0));
+        let rect = Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(320.0, 200.0));
+        let mut raster = Raster {
+            turns: Some(&TURNS),
+            ..Default::default()
+        };
+        let view = View::default();
+        pass(&ctx, &mut raster, &doc, &view, rect, 0.0);
+        let renders = raster.render_count();
+        let at = egui::pos2(160.0, 100.0);
+        // The glide's aim, a zoom 1.15 ahead about the canvas middle, and
+        // the view a step into the glide.
+        let mut aim = view;
+        aim.zoom_at(at, 1.15);
+        let mut on_the_way = view;
+        on_the_way.zoom_at(at, 1.04);
+        raster.zoom_target = Some(aim);
+        pass(&ctx, &mut raster, &doc, &on_the_way, rect, 0.01);
+        assert_eq!(raster.render_count(), renders + 1, "rendered at once");
+        assert_eq!(
+            raster.job.as_ref().map(|j| j.key.zoom),
+            Some(aim.zoom),
+            "the render on its way is for the aim"
+        );
+        // It comes a picture of the aim, placed by the view on its way:
+        // the aim zooms in, so the part of the page it covers takes less
+        // than the canvas so far.
+        let mut landed = false;
+        for i in 0..400 {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            raster.zoom_target = Some(aim);
+            let (_, screen) = pass(
+                &ctx,
+                &mut raster,
+                &doc,
+                &on_the_way,
+                rect,
+                0.02 + 0.001 * i as f64,
+            );
+            if raster.picture_zoom() == Some(aim.zoom) {
+                assert!(
+                    screen.width() < rect.width(),
+                    "placed by the view on its way: {screen:?}"
+                );
+                landed = true;
+                break;
+            }
+        }
+        assert!(landed, "the aim was never rendered");
+        // The view lands on the aim, the aim dropped: the picture fits it
+        // exactly, and no render is started for the difference.
+        let rendered = raster.render_count();
+        raster.zoom_target = None;
+        for i in 0..400 {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            let (_, screen) =
+                pass(&ctx, &mut raster, &doc, &aim, rect, 0.3 + 0.001 * i as f64);
+            if raster.job.is_none() {
+                assert_eq!(screen, rect, "the picture of the landed view");
+                break;
+            }
+        }
+        assert_eq!(raster.picture_zoom(), Some(aim.zoom));
+        assert_eq!(raster.render_count(), rendered, "a render for the bits");
     }
 
     /// A page beside the current one in the Multipage View is rendered

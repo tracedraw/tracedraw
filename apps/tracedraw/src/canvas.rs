@@ -775,6 +775,12 @@ fn draw_page(app: &App, painter: &Painter, rect: ERect, preview: Option<Affine>)
     #[cfg(not(target_arch = "wasm32"))]
     crate::gpu_fx::set_enabled(app.settings.gpu_effects);
     app.raster.borrow_mut().light_zoom = app.settings.light_zoom;
+    // While the wheel's glide is on its way, the picture is drawn for the
+    // view it lands at: the turn's render is not spent on a zoom the
+    // glide has already passed, and when the glide ends the view is put
+    // at the same view the picture was drawn for.
+    let glide_target = app.zoom_glide.target_view();
+    app.raster.borrow_mut().zoom_target = glide_target;
     let main = app.raster.borrow_mut().texture(
         painter.ctx(),
         doc,

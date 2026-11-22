@@ -411,7 +411,7 @@ fn idle_preview_frames_reuse_the_picture_without_uploading_it_again() {
 fn entering_preview_stops_view_inertia_and_returning_does_not_resume_it() {
     let (ctx, mut app) = setup();
     app.settings.pan_inertia = true;
-    app.zoom_glide.add(2.0, 1.15, app.canvas_rect.center(), 1.0);
+    app.zoom_glide.add(2.0, 1.15, app.canvas_rect.center(), 1.0, &app.view);
     app.pan_inertia
         .track(egui::vec2(24.0, 12.0), 1.0 / 60.0, 1.0);
     app.pan_inertia.tick(1.0 / 60.0, 1.01, false, true);

@@ -223,7 +223,10 @@ window shows.
   to give up at its next object (#2522), after a wait that follows the
   wheel's own pace, one and a half the gap between the last two
   notches, between 0.04 s (`raster::ZOOM_SETTLE_MIN`) and 0.12 s
-  (`raster::SETTLE_SECONDS`).
+  (`raster::SETTLE_SECONDS`). With the wheel's glide the picture on the
+  way is drawn for the view the glide lands at (`raster::zoom_target`),
+  and the view is put at that view when the glide ends, so the landing
+  is sharp as soon as that render is.
   Like every render it covers only the canvas, the part of the page on
   screen, drawn in bands on all cores at once (so the whole visible
   part comes about as fast as a tile under the pointer would). The
