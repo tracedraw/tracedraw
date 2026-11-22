@@ -6,6 +6,11 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Typing in a large drawing: a text change made in place updates only that text instead of walking the whole document, a render for an older state of the drawing gives up as soon as a newer one is due, and the text being edited is drawn over the page picture already made (#3902, #3903, #3904; PR #3910 by ratmanz0000).
+- Pictures: a grey picture is turned into grey levels in one pass over its pixels, and placed pictures are written with the same quick setting as the others (PR #3915 by ratmanz0000).
+- Metafiles: text a metafile stores as glyph numbers comes in as text, or as the glyphs' outlines where no character matches, instead of question marks; the character set of the metafile's fonts (Cyrillic, Central European, Greek, Turkish, Hebrew, Arabic, Baltic, Vietnamese, Thai, Japanese, Korean, Chinese) is read and written, and spreadsheets in other encodings are read right (#3920, #3921; PR #3924 by ratmanz0000).
+- Symbols panel: By similarity turns every group that copies the selected one into an instance of one symbol where it stands, labels staying text; Replace merges one symbol into another with every instance following, in one undo step; a double click on a symbol's name renames it (#2343; PR #3801 by ratmanz0000).
+- Benchmark: Test Without the Graphics Card no longer turns Light zoom on for everyday use; a run with another renderer than a normal start only compares, and says so (#3664).
 - Contours, blends and extrusions: the worked-out steps of up to 32 objects are kept instead of 8, and found by the object first, so a page with several of them no longer works them out again at each move of the pointer (#3765).
 - Windows setup: it always writes a log in the Temp folder, also when an older TraceDraw starts it for an update, so an update that is undone can be looked into (#3816).
 - Break Apart (Ctrl+K) on a text frame gives one artistic text per line, where the line was; Combine (Ctrl+L) on texts makes one text that stays editable, read from the top line down, instead of curves (#3763).
