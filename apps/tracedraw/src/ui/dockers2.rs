@@ -2731,6 +2731,23 @@ fn bitmap_mask(app: &mut App, ui: &mut Ui) {
 }
 
 fn object_data(app: &mut App, ui: &mut Ui) {
+    // The fields of many objects at once, as a table (#3084).
+    let sheet_open = egui::Id::new("object_data_sheet_open");
+    let mut open = ui.data(|d| d.get_temp::<bool>(sheet_open)).unwrap_or(false);
+    if ui
+        .button(tr("docker.data_sheet"))
+        .rich_tip(crate::ui::tips::pair(
+            "docker.data_sheet",
+            "docker.data_sheet_tip",
+        ))
+        .clicked()
+    {
+        open = !open;
+    }
+    if open {
+        data_sheet_window(app, ui.ctx(), &mut open);
+    }
+    ui.data_mut(|d| d.insert_temp(sheet_open, open));
     let Some(s) = app.selected_shapes().into_iter().next() else {
         dim(ui, tr("docker.select_one_object"));
         return;
@@ -2831,6 +2848,192 @@ fn object_data(app: &mut App, ui: &mut Ui) {
         .sum();
     if total > 0.0 {
         ui.label(trf("docker.total_cost", &[("v", &format!("{total:.2}"))]));
+    }
+}
+
+/// One row of the object data sheet: an object, how deep in groups it
+/// lies under the objects listed, and its fields.
+#[derive(Debug, Clone, PartialEq)]
+struct SheetRow {
+    id: ShapeId,
+    depth: usize,
+    data: Vec<(String, String)>,
+}
+
+/// The rows of the data sheet for `roots` (the objects selected, else
+/// those of the page): each object, then the objects of its groups down
+/// to `levels` levels deeper.
+fn sheet_rows(roots: &[tracedraw_core::Shape], levels: usize) -> Vec<SheetRow> {
+    fn walk(s: &tracedraw_core::Shape, depth: usize, levels: usize, out: &mut Vec<SheetRow>) {
+        out.push(SheetRow {
+            id: s.id,
+            depth,
+            data: s.data.clone(),
+        });
+        if depth < levels {
+            if let ShapeKind::Group { children } = &s.kind {
+                for c in children {
+                    walk(c, depth + 1, levels, out);
+                }
+            }
+        }
+    }
+    let mut out = Vec::new();
+    for s in roots {
+        walk(s, 0, levels, &mut out);
+    }
+    out
+}
+
+/// A field a person keeps on an object (not one TraceDraw keeps for
+/// itself, named with a dot, such as `fill.rule`).
+fn user_field(name: &str) -> bool {
+    !name.contains('.')
+}
+
+/// The columns of the sheet: every field the rows hold, the usual ones
+/// first, then the others in the order they first come.
+fn sheet_columns(rows: &[SheetRow]) -> Vec<String> {
+    let mut cols: Vec<String> = Vec::new();
+    for k in ["Name", "Cost", "Comments"] {
+        if rows.iter().any(|r| r.data.iter().any(|(f, _)| f == k)) {
+            cols.push(k.to_string());
+        }
+    }
+    for r in rows {
+        for (k, _) in &r.data {
+            if user_field(k) && !cols.contains(k) {
+                cols.push(k.clone());
+            }
+        }
+    }
+    cols
+}
+
+/// A value as a number, with a currency sign, spaces or thousands
+/// commas around it allowed ("$1,250.50").
+fn sheet_number(v: &str) -> Option<f64> {
+    let t: String = v
+        .trim()
+        .chars()
+        .filter(|c| !matches!(c, '$' | '€' | '£' | '¥' | ',' | ' '))
+        .collect();
+    if t.is_empty() {
+        return None;
+    }
+    t.parse::<f64>().ok().filter(|n| n.is_finite())
+}
+
+/// The total of column `col` over the top rows (depth 0, so a group and
+/// its objects are not counted twice): `None` unless some value is a
+/// number and every filled one is.
+fn sheet_total(rows: &[SheetRow], col: &str) -> Option<f64> {
+    let mut sum = 0.0;
+    let mut any = false;
+    for r in rows.iter().filter(|r| r.depth == 0) {
+        let Some((_, v)) = r.data.iter().find(|(k, _)| k == col) else {
+            continue;
+        };
+        if v.trim().is_empty() {
+            continue;
+        }
+        sum += sheet_number(v)?;
+        any = true;
+    }
+    any.then_some(sum)
+}
+
+/// The object data sheet: the fields of the selected objects (or of the
+/// page's objects) as a table to read and edit, with the objects of
+/// their groups to the levels asked and a total under the number columns.
+fn data_sheet_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
+    let levels_id = egui::Id::new("object_data_sheet_levels");
+    let mut levels = ctx.data(|d| d.get_temp::<usize>(levels_id)).unwrap_or(0);
+    let roots: Vec<tracedraw_core::Shape> = {
+        let sel = app.selected_shapes();
+        if sel.is_empty() {
+            app.page_layers()
+                .iter()
+                .flat_map(|l| l.shapes.iter().cloned())
+                .collect()
+        } else {
+            sel
+        }
+    };
+    let rows = sheet_rows(&roots, levels);
+    let cols = sheet_columns(&rows);
+    let mut edit: Option<(ShapeId, String, String)> = None;
+    egui::Window::new(tr("docker.data_sheet"))
+        .id(egui::Id::new("object_data_sheet"))
+        .open(open)
+        .default_size([640.0, 280.0])
+        .resizable(true)
+        .show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(tr("docker.data_sheet_levels"));
+                ui.add(egui::DragValue::new(&mut levels).range(0..=9));
+            });
+            ui.separator();
+            egui::ScrollArea::both().show(ui, |ui| {
+                egui::Grid::new("object_data_sheet_grid")
+                    .striped(true)
+                    .num_columns(cols.len() + 1)
+                    .show(ui, |ui| {
+                        ui.label("");
+                        for c in &cols {
+                            ui.strong(c);
+                        }
+                        ui.end_row();
+                        let mut n = 0;
+                        for r in &rows {
+                            if r.depth == 0 {
+                                n += 1;
+                            }
+                            let num = if r.depth == 0 {
+                                n.to_string()
+                            } else {
+                                format!("{}-", "  ".repeat(r.depth))
+                            };
+                            ui.label(num);
+                            for (ci, c) in cols.iter().enumerate() {
+                                let stored = r
+                                    .data
+                                    .iter()
+                                    .find(|(k, _)| k == c)
+                                    .map(|(_, v)| v.clone())
+                                    .unwrap_or_default();
+                                let field = egui::Id::new(("object_data_sheet_cell", ci));
+                                let (_, typed) =
+                                    kept_text(ui, field, (r.id, ci), &stored, |ui, text| {
+                                        ui.add(egui::TextEdit::singleline(text).desired_width(80.0))
+                                    });
+                                if let Some(v) = typed {
+                                    edit = Some((r.id, c.clone(), v));
+                                }
+                            }
+                            ui.end_row();
+                        }
+                        ui.strong(tr("docker.data_sheet_total"));
+                        for c in &cols {
+                            match sheet_total(&rows, c) {
+                                Some(t) => ui.strong(format!("{t:.2}")),
+                                None => ui.label(""),
+                            };
+                        }
+                        ui.end_row();
+                    });
+            });
+        });
+    ctx.data_mut(|d| d.insert_temp(levels_id, levels));
+    if let Some((id, field, value)) = edit {
+        if let Some(s) = app.doc().find_shape(id) {
+            let mut data = s.data.clone();
+            match data.iter_mut().find(|(k, _)| *k == field) {
+                Some((_, v)) => *v = value,
+                None => data.push((field, value)),
+            }
+            app.run(Command::SetObjectData { shape: id, data });
+        }
     }
 }
 
@@ -4084,6 +4287,76 @@ fn origin_grid(ui: &mut Ui, origin: &mut u8, enabled: bool) {
         if resp.rich_tip(tip.clone()).clicked() && enabled {
             *origin = i;
         }
+    }
+}
+
+#[cfg(test)]
+mod data_sheet_tests {
+    use super::*;
+
+    fn obj(
+        id: u64,
+        data: &[(&str, &str)],
+        children: Vec<tracedraw_core::Shape>,
+    ) -> tracedraw_core::Shape {
+        let kind = if children.is_empty() {
+            ShapeKind::Rect {
+                rect: tracedraw_core::geometry::Rect::new(0.0, 0.0, 1.0, 1.0),
+                radius: 0.0,
+                corners: None,
+            }
+        } else {
+            ShapeKind::Group { children }
+        };
+        let mut s = tracedraw_core::Shape::new(ShapeId(id), kind);
+        s.data = data
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        s
+    }
+
+    /// The sheet lists the objects with every field as a column, the
+    /// objects of a group only to the levels asked, and totals the cost
+    /// of the listed objects once (#3084).
+    #[test]
+    fn the_data_sheet_lists_fields_and_totals_costs() {
+        let roots = vec![
+            obj(
+                1,
+                &[
+                    ("Name", "ART"),
+                    ("Cost", "$15.00"),
+                    ("Comments", "2020-PRES"),
+                ],
+                vec![],
+            ),
+            obj(
+                2,
+                &[("Name", "SIGN"), ("Cost", "68"), ("Size", ".75\"x7.25\"")],
+                vec![obj(
+                    3,
+                    &[
+                        ("Name", "TEXT"),
+                        ("Cost", "1,000"),
+                        ("fill.rule", "evenodd"),
+                    ],
+                    vec![],
+                )],
+            ),
+        ];
+        let rows = sheet_rows(&roots, 0);
+        assert_eq!(rows.iter().map(|r| r.id.0).collect::<Vec<_>>(), [1, 2]);
+        let rows = sheet_rows(&roots, 1);
+        assert_eq!(
+            rows.iter().map(|r| (r.id.0, r.depth)).collect::<Vec<_>>(),
+            [(1, 0), (2, 0), (3, 1)]
+        );
+        assert_eq!(sheet_columns(&rows), ["Name", "Cost", "Comments", "Size"]);
+        assert_eq!(sheet_total(&rows, "Cost"), Some(83.0));
+        assert_eq!(sheet_total(&rows, "Name"), None);
+        assert_eq!(sheet_total(&rows, "Size"), None);
+        assert_eq!(sheet_number("$1,250.50"), Some(1250.5));
     }
 }
 

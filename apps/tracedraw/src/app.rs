@@ -7170,7 +7170,9 @@ impl App {
 
     /// Property bar defaults follow the text object being edited.
     pub fn sync_text_defaults_from(&mut self, id: ShapeId) {
-        let kind = self.doc().shape(id).map(|(_, s)| s.kind.clone());
+        // Found inside groups too: a text in a group chosen on its own
+        // showed the font of the text read before it (#3896).
+        let kind = self.doc().find_shape(id).map(|s| s.kind.clone()).ok_or(());
         if let Ok(ShapeKind::Text { spans, align, .. }) = &kind {
             // While editing, the style at the caret (of the character
             // before it); with the Shape tool, of the first chosen
@@ -13000,6 +13002,41 @@ mod tests {
         });
         assert_eq!(third.open_dockers, [DockerTab::Objects]);
         assert!(third.show_dockers && third.inner_dockers.tabs.is_empty());
+    }
+
+    /// Two texts in other fonts grouped, each chosen on its own inside
+    /// the group: the bar shows the font of the one chosen, not of the
+    /// one read before it (#3896).
+    #[test]
+    fn a_text_chosen_inside_a_group_shows_its_own_font() {
+        use tracedraw_core::Command;
+        let mut app = App::headless();
+        let mut ids = Vec::new();
+        for (n, family) in ["Selawik", "Quicksand"].into_iter().enumerate() {
+            ids.push(
+                app.new_shape(ShapeKind::Text {
+                    spans: vec![TextSpan::new("Hello", family, 24.0)],
+                    origin: Point::new(10.0, 20.0 + 30.0 * n as f64),
+                    frame: None,
+                    align: tracedraw_core::TextAlign::Left,
+                    para: Default::default(),
+                    on_path: None,
+                })
+                .expect("text"),
+            );
+        }
+        app.run(Command::Group {
+            shapes: ids.clone(),
+        });
+        for (id, family) in [
+            (ids[0], "Selawik"),
+            (ids[1], "Quicksand"),
+            (ids[0], "Selawik"),
+        ] {
+            app.select(vec![id]);
+            app.sync_text_defaults_from(id);
+            assert_eq!(app.text_settings_shown().0, family);
+        }
     }
 
     /// Many selected objects (Select All) are gathered in one pass and
