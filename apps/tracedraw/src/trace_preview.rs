@@ -824,11 +824,11 @@ mod tests {
         live.want(&ctx, req(), false);
         live.poll(&ctx);
         assert_eq!(live.started, 1);
-        let t0 = Instant::now();
-        while live.busy() && t0.elapsed() < Duration::from_secs(20) {
-            std::thread::sleep(Duration::from_millis(2));
-            live.poll(&ctx);
-        }
+        // This checks the state after completion, not tracing speed on a
+        // busy runner. Consume the result after its worker has finished.
+        #[cfg(not(target_arch = "wasm32"))]
+        live.join_workers();
+        live.poll(&ctx);
         let shown = live.shown.as_ref().expect("the quick look");
         assert_eq!(shown.stage, Stage::Quick);
         assert!(shown.done);

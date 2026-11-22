@@ -20371,19 +20371,23 @@ fn the_trace_dialog_rests_once_the_trace_is_in() {
         // The dialog opened with the whole picture traced: start over
         // the browser's way.
         app.trace_live.clear();
+        app.trace_live.join_workers();
         app.trace_live.defer_full = defer_full;
-        let t = std::time::Instant::now();
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+        let expected = app.trace_live.started;
+        // Keep the UI clock moving while the worker runs. Completion,
+        // rather than a busy runner's tracing speed, ends this wait.
         while app.trace_live.shown.is_none() || app.trace_live.busy() {
             frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
             std::thread::sleep(std::time::Duration::from_millis(3));
+            assert_eq!(app.trace_live.started, expected, "nothing traced again");
             assert!(
-                t.elapsed() < std::time::Duration::from_secs(60),
-                "the trace never came"
+                app.trace_live.busy() || app.trace_live.shown.is_some(),
+                "the trace ended without a result"
             );
         }
-        // The threads of the traces ended (the one stopped above too):
-        // none asks for a frame later, however slow the machine.
         app.trace_live.join_workers();
+        assert!(!app.trace_live.busy(), "defer {defer_full}");
         let shown = app.trace_live.shown.as_ref().expect("the trace");
         assert!(shown.done);
         assert_eq!(
@@ -20423,13 +20427,17 @@ fn the_trace_dialog_rests_once_the_trace_is_in() {
             egui::pos2(detail.left() + detail.width() * 0.8, detail.center().y),
             Modifiers::NONE,
         );
-        let t = std::time::Instant::now();
-        while app.trace_live.busy() && t.elapsed() < std::time::Duration::from_secs(60) {
+        while app.trace_live.busy() {
             frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
             std::thread::sleep(std::time::Duration::from_millis(3));
+            assert!(
+                app.trace_live.started <= started + 1,
+                "traced more than once"
+            );
         }
-        assert_eq!(app.trace_live.started, started + 1, "defer {defer_full}");
         app.trace_live.join_workers();
+        assert!(!app.trace_live.busy(), "defer {defer_full}");
+        assert_eq!(app.trace_live.started, started + 1, "defer {defer_full}");
         for _ in 0..20 {
             trace_frame_asks_for_another(&ctx, &mut app);
         }
