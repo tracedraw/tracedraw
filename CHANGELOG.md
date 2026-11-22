@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Contours, blends and extrusions: the worked-out steps of up to 32 objects are kept instead of 8, and found by the object first, so a page with several of them no longer works them out again at each move of the pointer (#3765).
+- Windows setup: it always writes a log in the Temp folder, also when an older TraceDraw starts it for an update, so an update that is undone can be looked into (#3816).
 - Canvas: a picture drawn in bands is put together as each band finishes, without a second whole picture of finished bands beside it, so large views take less memory for a moment (#3883; PR #3884 by Anton Karpov).
 - Typing in a large text: the shaping and outline caches let go of one entry at a time instead of emptying, and a paragraph frame keeps whether it overflows until its own text changes, so a keystroke no longer lays every frame out again (#3876; PR #3828 by ratmanz0000).
 - Zoom with the wheel on a large drawing: the render under way keeps going while the wheel turns, and the picture is drawn for the view the glide lands at, so the drawing comes back sharp sooner after a turn (#3878; PR #3882 by ratmanz0000).

@@ -1665,8 +1665,10 @@ pub struct Evaluated {
     pub above: Vec<Shape>,
 }
 
-/// How many evaluations [`evaluate`] remembers.
-const EVALUATION_MEMORY: usize = 8;
+/// How many evaluations [`evaluate`] remembers: enough for a page with
+/// several contoured or blended objects to keep each one's across the
+/// pointer's moves; with 8 they pushed each other out (#3765).
+const EVALUATION_MEMORY: usize = 32;
 
 /// The latest evaluations of shapes that draw objects from their outline,
 /// newest last, each with the shape it was made from. Shared by all
@@ -1684,7 +1686,13 @@ pub fn evaluate(shape: &Shape) -> Evaluated {
         return evaluate_now(shape);
     }
     if let Ok(mut kept) = EVALUATED.lock() {
-        if let Some(i) = kept.iter().position(|(from, _)| from == shape) {
+        // The id first: a shape of another id never pays the comparison of
+        // whole paths and children. The full comparison still guards the
+        // hit, so a changed shape of the same id is worked out again (#3765).
+        if let Some(i) = kept
+            .iter()
+            .position(|(from, _)| from.id == shape.id && from == shape)
+        {
             let hit = kept.remove(i);
             let ev = hit.1.clone();
             kept.push(hit);
@@ -5890,6 +5898,43 @@ mod tests {
         moved.transform = Affine::translate((10.0, 0.0)) * moved.transform;
         let dx = evaluate(&moved).below[0].bounds().x0 - evaluate(&s).below[0].bounds().x0;
         assert!((dx - 10.0).abs() < 1e-6, "{dx}");
+    }
+
+    /// The kept evaluations are found by id first and hold more than 8
+    /// shapes: another id with the same content is worked out to the same
+    /// steps, and the first of 20 contoured shapes is still answered right
+    /// after the others (#3765).
+    #[test]
+    fn the_evaluation_cache_keys_by_id_and_content() {
+        let mut first = rect_shape();
+        first.effects.push(Effect::Contour {
+            steps: 1,
+            offset: 2.0,
+            outside: true,
+            to_center: false,
+            both: false,
+            fill_to: Color::WHITE,
+            outline_to: None,
+            fill_end_to: None,
+            color_blend: 0,
+            corners: Some(crate::shaping::Join::Miter),
+            accel_objects: 0.0,
+            accel_colors: 0.0,
+        });
+        let made = evaluate(&first);
+        let mut other = first.clone();
+        other.id = crate::ShapeId(first.id.0 + 1000);
+        assert_eq!(
+            evaluate(&other).below[0].bounds(),
+            made.below[0].bounds()
+        );
+        for k in 0..20u64 {
+            let mut s = first.clone();
+            s.id = crate::ShapeId(first.id.0 + 2000 + k);
+            s.transform = Affine::translate((k as f64, 0.0));
+            evaluate(&s);
+        }
+        assert_eq!(evaluate(&first).below[0].bounds(), made.below[0].bounds());
     }
 
     /// #2577: the contour of an open curve is a closed band round both

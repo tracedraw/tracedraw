@@ -44,6 +44,10 @@ PrivilegesRequiredOverridesAllowed=dialog
 ; Explorer, which loads the thumbnail handler (that file is moved aside
 ; instead, see MoveAsideInUse below, #3816).
 CloseApplicationsFilter=*.exe
+; The setup always writes a log (Setup Log <date> #<n>.txt in the user's
+; Temp folder), also when an older TraceDraw starts it without /LOG: a
+; quiet update that rolled back left nothing to say why (#3816).
+SetupLogging=yes
 ChangesAssociations=yes
 ChangesEnvironment=yes
 ; The wizard runs in the system's language when Inno Setup has it, else
