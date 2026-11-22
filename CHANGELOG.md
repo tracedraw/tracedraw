@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- .cdr import: a TraceDraw drawing embedded in a .cdr file as a packaged file comes in as its own objects, editable and at their real size, centred where the embedded object stands, instead of a grey box (#3600).
 - Typing in a large drawing: a text change made in place updates only that text instead of walking the whole document, a render for an older state of the drawing gives up as soon as a newer one is due, and the text being edited is drawn over the page picture already made (#3902, #3903, #3904; PR #3910 by ratmanz0000).
 - Pictures: a grey picture is turned into grey levels in one pass over its pixels, and placed pictures are written with the same quick setting as the others (PR #3915 by ratmanz0000).
 - Metafiles: text a metafile stores as glyph numbers comes in as text, or as the glyphs' outlines where no character matches, instead of question marks; the character set of the metafile's fonts (Cyrillic, Central European, Greek, Turkish, Hebrew, Arabic, Baltic, Vietnamese, Thai, Japanese, Korean, Chinese) is read and written, and spreadsheets in other encodings are read right (#3920, #3921; PR #3924 by ratmanz0000).

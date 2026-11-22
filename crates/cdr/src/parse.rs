@@ -497,6 +497,8 @@ struct Ctx<'a> {
     /// Labels of embedded packages (wrapped files with no picture), by
     /// storage name.
     embedded_packages: HashMap<String, String>,
+    /// The `.tdraw` drawings packages wrap whole, by storage name.
+    embedded_package_files: HashMap<String, Vec<u8>>,
     /// The object just read drew a metafile: its objects need ids from
     /// the document's source.
     pending_renumber: bool,
@@ -628,6 +630,7 @@ impl<'a> Ctx<'a> {
             embedded: HashMap::new(),
             embedded_metafiles: HashMap::new(),
             embedded_packages: HashMap::new(),
+            embedded_package_files: HashMap::new(),
             pending_renumber: false,
             pattern_tiles: HashMap::new(),
             vector_patterns: HashMap::new(),
@@ -789,6 +792,10 @@ pub(crate) fn parse_document_kept_data(
             ctx.embedded_metafiles.extend(metafiles);
             let packages = crate::ole::embedded_packages(ctx.data(c));
             ctx.embedded_packages.extend(packages);
+            let drawings = crate::ole::embedded_package_files(ctx.data(c), |label| {
+                label.to_ascii_lowercase().ends_with(".tdraw")
+            });
+            ctx.embedded_package_files.extend(drawings);
         }
     });
     ctx.read_bitmaps(&bitmaps);
@@ -3408,6 +3415,67 @@ impl<'a> Ctx<'a> {
         Some(shape)
     }
 
+    /// The objects of the `.tdraw` drawing the package `name` wraps: those
+    /// of its first page, at their own size on the page, centred on the
+    /// object's rectangle `place` (in the object's own space, which
+    /// `on_page` takes to the page) (#3600). Style references are the
+    /// drawing's own, so they are let go and each object keeps the look
+    /// it has.
+    fn embedded_drawing(
+        &self,
+        name: &str,
+        place: Option<Rect>,
+        on_page: Affine,
+    ) -> Option<Vec<Shape>> {
+        let bytes = self.embedded_package_files.get(name)?;
+        let label = self
+            .embedded_packages
+            .get(name)
+            .cloned()
+            .unwrap_or_default();
+        let doc = match tracedraw_core::Document::from_tdraw_bytes(bytes) {
+            Ok(doc) => doc,
+            Err(e) => {
+                // It is then shown as a box like any other package.
+                log::warn!("embedded drawing \"{label}\" could not be read: {e}");
+                return None;
+            }
+        };
+        let mut shapes: Vec<Shape> = doc
+            .pages
+            .into_iter()
+            .next()?
+            .layers
+            .into_iter()
+            .filter(|l| l.visible)
+            .flat_map(|l| l.shapes)
+            .collect();
+        let bounds = shapes
+            .iter()
+            .map(Shape::bounds)
+            .filter(|b| b.width().is_finite() && b.height().is_finite())
+            .reduce(|a, b| a.union(b))?;
+        let place = place?;
+        if on_page.determinant().abs() < 1e-12 {
+            return None;
+        }
+        // Placed on the page, then brought into the object's own space,
+        // which the object's transform takes back to the page.
+        let shift =
+            on_page.inverse() * Affine::translate(on_page * place.center() - bounds.center());
+        fn let_style_go(s: &mut Shape) {
+            s.style = None;
+            if let ShapeKind::Group { children } = &mut s.kind {
+                children.iter_mut().for_each(let_style_go);
+            }
+        }
+        for s in &mut shapes {
+            let_style_go(s);
+            s.absorb(shift);
+        }
+        Some(shapes)
+    }
+
     /// An embedded object drawn as its picture: coordinates are the size
     /// (two coordinates) and two opposite corners.
     fn read_embedded(
@@ -3415,6 +3483,7 @@ impl<'a> Ctx<'a> {
         d: &[u8],
         coords: Option<Arg>,
         name: Option<&str>,
+        on_page: Affine,
     ) -> Option<ShapeKind> {
         let Some(name) = name else {
             // Version 21 files keep such objects in `embed/` members that
@@ -3437,6 +3506,12 @@ impl<'a> Ctx<'a> {
                 tracedraw_core::document::metafile::play(m, &mut ids)
             });
             let Some((mut shapes, size)) = drawn else {
+                // A TraceDraw drawing wrapped whole (#3600): its objects,
+                // at their own size, centred on the object's place.
+                if let Some(children) = self.embedded_drawing(name, rect(), on_page) {
+                    self.pending_renumber = true;
+                    return Some(ShapeKind::Group { children });
+                }
                 // A package (a wrapped file, #3083) has no picture: keep
                 // its place as a grey box named after the file.
                 if let Some(label) = self.embedded_packages.get(name).cloned() {
@@ -4440,7 +4515,10 @@ impl<'a> Ctx<'a> {
             OBJ_CONNECTOR => self.read_connector(oc),
             OBJ_EMBEDDED => {
                 let storage = name.clone().or_else(|| ole_link_storage(self, oc));
-                self.read_embedded(d, coords, storage.as_deref())
+                // Where the object's own space lands on the page.
+                let on_page =
+                    Affine::translate((page_size.width / 2.0, page_size.height / 2.0)) * transform;
+                self.read_embedded(d, coords, storage.as_deref(), on_page)
             }
             // A mesh fill object's outline is a curve.
             OBJ_MESH => coords.and_then(|a| self.read_geometry(OBJ_CURVE, d, a, polygon)),
@@ -16326,6 +16404,64 @@ pub(crate) mod tests {
         assert!((rect.width() - 20.0).abs() < 1e-9 && (rect.height() - 10.0).abs() < 1e-9);
         assert_eq!(children[0].name.as_deref(), Some("New.crv3d"));
         assert!(rep.warnings.iter().any(|w| w.contains("New.crv3d")));
+    }
+
+    #[test]
+    fn an_embedded_drawing_shows_its_objects_at_their_own_size() {
+        // #3600: a .tdraw wrapped as a package, in a 20 by 10 mm object
+        // around the page centre.
+        let mut inner = tracedraw_core::Document::new("inner", Size::new(100.0, 50.0));
+        let id = inner.ids_mut().shape();
+        inner.pages[0].layers[0].shapes.push(Shape::new(
+            id,
+            ShapeKind::Rect {
+                rect: Rect::new(10.0, 10.0, 40.0, 30.0),
+                radius: 0.0,
+                corners: None,
+            },
+        ));
+        let file = inner.to_json().expect("json");
+        let mut coords = i32s(&[200_000, 100_000]);
+        coords.extend_from_slice(&i32s(&[-100_000, 50_000, 100_000, -50_000]));
+        let name: Vec<u8> = "Embedding 3"
+            .encode_utf16()
+            .chain([0])
+            .flat_map(|u| u.to_le_bytes())
+            .collect();
+        let obj = list(
+            b"obj ",
+            &chunk(
+                b"loda",
+                &loda(OBJ_EMBEDDED, &[(ARG_NAME, name), (ARG_COORDS, coords)]),
+            ),
+        );
+        let ole = crate::ole::tests::compound_named(
+            "\u{1}Ole10Native",
+            &crate::ole::tests::package_with("Inner.tdraw", file.as_bytes()),
+        );
+        let body = [
+            chunk(b"mcfg", &mcfg(12, 2_540_000, 2_540_000)),
+            chunk(b"ole2", &ole),
+            list(b"page", &list(b"layr", &obj)),
+        ]
+        .concat();
+        let (doc, rep) = parse(&riff(b"CDRC", &body), 12);
+        assert_eq!(rep.shapes, 1, "{:?}", rep.warnings);
+        let group = first_shape(&doc);
+        let ShapeKind::Group { children } = &group.kind else {
+            panic!("{:?}", group.kind);
+        };
+        assert!(matches!(children[0].kind, ShapeKind::Rect { .. }));
+        let b = group.bounds();
+        assert!(
+            (b.width() - 30.0).abs() < 1e-6 && (b.height() - 20.0).abs() < 1e-6,
+            "{b:?}"
+        );
+        assert!(
+            (b.center().x - 127.0).abs() < 1e-6 && (b.center().y - 127.0).abs() < 1e-6,
+            "{b:?}"
+        );
+        assert!(!rep.warnings.iter().any(|w| w.contains("Inner.tdraw")));
     }
 
     #[test]

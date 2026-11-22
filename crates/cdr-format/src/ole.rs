@@ -249,6 +249,40 @@ pub fn embedded_packages(buf: &[u8]) -> HashMap<String, String> {
         .collect()
 }
 
+/// The files wrapped whole in the compound file `buf`'s packages, by
+/// storage name, for the labels `keep` accepts (#3600).
+pub fn embedded_package_files(buf: &[u8], keep: impl Fn(&str) -> bool) -> HashMap<String, Vec<u8>> {
+    let Some(c) = Compound::parse(buf) else {
+        return HashMap::new();
+    };
+    c.streams_named("\u{1}Ole10Native")
+        .into_iter()
+        .filter(|(_, data)| package_label(data).is_some_and(|l| keep(&l)))
+        .filter_map(|(name, data)| package_file(&data).map(|f| (name, f.to_vec())))
+        .collect()
+}
+
+/// The file an `\x01Ole10Native` package stream wraps. Seen (#3600):
+/// after the label and the path, two u16 (0, 3), a u32 length and that
+/// many bytes of a temporary path (NUL included), then the file's u32
+/// size and the file itself.
+pub fn package_file(data: &[u8]) -> Option<&[u8]> {
+    package_label(data)?;
+    let mut at = 6;
+    for _ in 0..2 {
+        at += data.get(at..)?.iter().position(|&b| b == 0)? + 1;
+    }
+    let u32_at = |i: usize| -> Option<usize> {
+        Some(u32::from_le_bytes(data.get(i..i + 4)?.try_into().ok()?) as usize)
+    };
+    at += 4;
+    let temp = u32_at(at)?;
+    at = at.checked_add(4)?.checked_add(temp)?;
+    let size = u32_at(at)?;
+    data.get(at + 4..at.checked_add(4)?.checked_add(size)?)
+        .filter(|f| !f.is_empty())
+}
+
 /// The label of an `\x01Ole10Native` stream holding a package.
 pub fn package_label(data: &[u8]) -> Option<String> {
     if data.get(4..6)? != [2, 0] {
@@ -517,6 +551,34 @@ pub mod tests {
         s[..4].copy_from_slice(&(4092u32).to_le_bytes());
         s[4..4 + body.len()].copy_from_slice(&body);
         s
+    }
+
+    /// A package stream laid out as a real one is, wrapping `file`.
+    pub fn package_with(label: &str, file: &[u8]) -> Vec<u8> {
+        let mut body = vec![2u8, 0];
+        body.extend_from_slice(label.as_bytes());
+        body.push(0);
+        body.extend_from_slice(b"C:\\x\\");
+        body.extend_from_slice(label.as_bytes());
+        body.push(0);
+        body.extend_from_slice(&[0, 0, 3, 0]);
+        let temp = format!("C:\\Temp\\{label}\0");
+        body.extend_from_slice(&(temp.len() as u32).to_le_bytes());
+        body.extend_from_slice(temp.as_bytes());
+        body.extend_from_slice(&(file.len() as u32).to_le_bytes());
+        body.extend_from_slice(file);
+        body.extend_from_slice(&[0; 8]);
+        let mut s = (body.len() as u32).to_le_bytes().to_vec();
+        s.extend_from_slice(&body);
+        s.resize(s.len().max(4096), 0);
+        s
+    }
+
+    #[test]
+    fn a_package_gives_back_the_file_it_wraps() {
+        let data = package_with("Drawing.tdraw", b"the file");
+        assert_eq!(package_file(&data), Some(&b"the file"[..]));
+        assert_eq!(package_file(&package("Old.crv3d")), None);
     }
 
     #[test]
