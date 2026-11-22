@@ -502,6 +502,16 @@ pub(crate) fn object_menu(app: &mut App, ui: &mut Ui, close: &mut bool) {
     ) {
         app.convert_to_curves();
     }
+    // Under Convert to Curves, as on the Object menu (#3895).
+    if ci(
+        ui,
+        close,
+        "menu.object.convert_outline_to_object",
+        "Ctrl+Shift+Q",
+        !shapes.is_empty(),
+    ) {
+        app.convert_outline_to_object();
+    }
     // Break Apart, or the drop shadow's or effect group's version of it.
     let label = app.break_apart_label();
     // Also a warped object (its warp is baked into curves) and artistic

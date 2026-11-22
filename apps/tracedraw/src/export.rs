@@ -259,8 +259,8 @@ fn page_file(
                 // The inks of the page, as its separations print them
                 // (#1763).
                 ExportColorMode::Cmyk => {
-                    let (w, h, ink) =
-                        cmyk_pixels(doc, pid, st.render_dpi()).ok_or("render failed")?;
+                    let (w, h, ink) = cmyk_pixels(doc, pid, st.render_dpi(), st.anti_alias)
+                        .ok_or("render failed")?;
                     let bytes = if ext == "jpg" {
                         tracedraw_io::cmyk_bitmap::cmyk_jpeg(w, h, &ink, st.quality, st.dpi, icc)
                     } else {
@@ -269,8 +269,13 @@ fn page_file(
                     return bytes.ok_or_else(|| "CMYK encoding failed".to_string());
                 }
                 ExportColorMode::Gray => {
-                    let pm = tracedraw_render::render_page_export_image(doc, pid, st.render_dpi())
-                        .ok_or("render failed")?;
+                    let pm = tracedraw_render::render_page_export_image_aa(
+                        doc,
+                        pid,
+                        st.render_dpi(),
+                        st.anti_alias,
+                    )
+                    .ok_or("render failed")?;
                     let bytes =
                         encode_gray(&on_white(&pm).ok_or("render failed")?, ext, st.quality)?;
                     return Ok(record_dpi(bytes, ext, st.dpi));
@@ -288,7 +293,15 @@ fn page_file(
             // it is never whole in memory (#3039).
             if matches!(ext, "png" | "tif") && pixels > STREAMED_PIXELS {
                 let transparent = st.transparent && ext == "png";
-                return streamed_picture(doc, pid, fit, ext, transparent, st.dpi, STRIP_PIXELS);
+                return streamed_picture(
+                    doc,
+                    pid,
+                    fit,
+                    ext,
+                    transparent,
+                    (st.dpi, st.anti_alias),
+                    STRIP_PIXELS,
+                );
             }
             // A format with a cap on its sides says so before the page is
             // drawn: a 180 ft banner at 50 dpi took gigabytes of memory
@@ -297,8 +310,13 @@ fn page_file(
             if fit.0.max(fit.1) > max_side(ext) || pixels > tracedraw_render::MAX_PIXELS {
                 return Err(too_large(fit.0, fit.1));
             }
-            let mut pm = tracedraw_render::render_page_export_image(doc, pid, st.render_dpi())
-                .ok_or("render failed")?;
+            let mut pm = tracedraw_render::render_page_export_image_aa(
+                doc,
+                pid,
+                st.render_dpi(),
+                st.anti_alias,
+            )
+            .ok_or("render failed")?;
             if st.transparent && matches!(ext, "png" | "webp" | "gif" | "jxl") {
                 // Re-render on a transparent background.
                 let p = doc.page(pid).map_err(|e| e.to_string())?;
@@ -316,6 +334,7 @@ fn page_file(
                         view,
                         preview: None,
                         wireframe: false,
+                        anti_alias: st.anti_alias,
                         ..tracedraw_render::RenderOptions::default()
                     },
                 )
@@ -368,13 +387,14 @@ fn streamed_picture(
     (w, h, view): (u32, u32, tracedraw_render::ViewTransform),
     ext: &str,
     transparent: bool,
-    dpi: f64,
+    (dpi, anti_alias): (f64, bool),
     strip_pixels: u64,
 ) -> Result<Vec<u8>, String> {
     let opts = tracedraw_render::RenderOptions {
         width: w,
         height: h,
         view,
+        anti_alias,
         ..Default::default()
     };
     // Whole multiples of 16 rows, as the coarse grid of procedural fills.
@@ -569,6 +589,7 @@ pub(crate) fn cmyk_pixels(
     doc: &Document,
     pid: tracedraw_core::PageId,
     dpi: f64,
+    anti_alias: bool,
 ) -> Option<(u32, u32, Vec<u8>)> {
     let mut page = doc.page(pid).ok()?.clone();
     for layer in page.layers.iter_mut() {
@@ -581,7 +602,9 @@ pub(crate) fn cmyk_pixels(
     let mut out: Option<(u32, u32, Vec<u8>)> = None;
     for ink in 0..4 {
         *one.pages.first_mut()? = plate_page(&page, Plate::Process(ink));
-        let pm = on_white(&tracedraw_render::render_page_export_image(&one, pid, dpi)?)?;
+        let pm = on_white(&tracedraw_render::render_page_export_image_aa(
+            &one, pid, dpi, anti_alias,
+        )?)?;
         let (w, h) = (pm.width(), pm.height());
         let (ow, oh, buf) =
             out.get_or_insert_with(|| (w, h, vec![0u8; w as usize * h as usize * 4]));
@@ -4769,7 +4792,8 @@ mod tests {
             );
             // Strips of 16 rows: many of them, each blurred shadow drawn
             // across several.
-            let strips = streamed_picture(&doc, pid, fit, ext, transparent, st.dpi, 16).expect(ext);
+            let strips =
+                streamed_picture(&doc, pid, fit, ext, transparent, (st.dpi, true), 16).expect(ext);
             let a = image::load_from_memory(&whole).expect(ext).to_rgba8();
             let b = image::load_from_memory(&strips).expect(ext).to_rgba8();
             assert_eq!(a.dimensions(), (fit.0, fit.1), "{ext}");

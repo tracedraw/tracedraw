@@ -4,7 +4,7 @@ Versions follow the tags of this repository; every push to `main` also
 publishes a nightly build. [`docs/features.md`](docs/features.md) has the
 full, row-by-row status.
 
-## Unreleased
+## 0.51.0 (2026-11-22)
 
 - Typing in a large drawing: a text change made in place updates only that text instead of walking the whole document, a render for an older state of the drawing gives up as soon as a newer one is due, and the text being edited is drawn over the page picture already made (#3902, #3903, #3904; PR #3910 by ratmanz0000).
 - Pictures: a grey picture is turned into grey levels in one pass over its pixels, and placed pictures are written with the same quick setting as the others (PR #3915 by ratmanz0000).
@@ -16,11 +16,17 @@ full, row-by-row status.
 - .cdr import: a radial fountain fill or transparency from version 16 files on runs from its centre out to the object's own edges, as the file sets it, instead of reaching past them to the corners of the box; a radial transparency on an ellipse now fades out at the ellipse's edge (#3805).
 - Object Data docker: a Data Sheet button opens a small spreadsheet of the selected objects (or every object on the page) with their data fields as columns, nested group members under a Show levels setting, cells you can edit in place, and a total of the Cost column (#3084).
 - PDF import: text in an embedded Type 1 font shows its accented letters (ě, ř, š and the like) as the file does, read through the font's own encoding instead of the Windows code page, and comes in as curves from the font's outlines when text is imported as curves (#3810).
+- Right-click menu: Convert Outline To Object sits under Convert to Curves (#3895).
+- Object menu, Transformations: Object Size... types the width and height of the selection in a small box, with the lock for proportions; a shortcut can be given to it in Customization (#3799, #3890).
+- Export: bitmap formats have an Anti-aliasing box; off, the picture has hard edges with no blended colours (#3807).
+- Text boxes: a right click on any text box (font name, size, dialog fields) offers Cut, Copy, Paste, Select All and Delete (#3798).
+- Page Number Settings: Last pages without a number and Pages without a number ("5, 9-10") leave those pages out, the numbering going on after them without counting them (#3789).
+- Print: on Linux, when the printer settings tool fails or closes at once, the printer's page of CUPS opens in the browser instead (#3849).
 - Contours, blends and extrusions: the worked-out steps of up to 32 objects are kept instead of 8, and found by the object first, so a page with several of them no longer works them out again at each move of the pointer (#3765).
 - Windows setup: it always writes a log in the Temp folder, also when an older TraceDraw starts it for an update, so an update that is undone can be looked into (#3816).
 - Break Apart (Ctrl+K) on a text frame gives one artistic text per line, where the line was; Combine (Ctrl+L) on texts makes one text that stays editable, read from the top line down, instead of curves (#3763).
 - Connector: the anchors of the object under the pointer show before the drag, and an end of a connector dragged with the Shape tool onto another anchor joins it there instead of letting the connector go (#3860).
-- Objects docker: while a PowerClip's contents are edited they stay listed inside it, and a content's row dragged onto the layer or beside an object outside takes it out of the PowerClip (#3846).
+- Objects docker: while a clip frame's contents are edited they stay listed inside it, and a content's row dragged onto the layer or beside an object outside takes it out of the clip frame (#3846).
 - Canvas: a picture drawn in bands is put together as each band finishes, without a second whole picture of finished bands beside it, so large views take less memory for a moment (#3883; PR #3884 by Anton Karpov).
 - Typing in a large text: the shaping and outline caches let go of one entry at a time instead of emptying, and a paragraph frame keeps whether it overflows until its own text changes, so a keystroke no longer lays every frame out again (#3876; PR #3828 by ratmanz0000).
 - Zoom with the wheel on a large drawing: the render under way keeps going while the wheel turns, and the picture is drawn for the view the glide lands at, so the drawing comes back sharp sooner after a turn (#3878; PR #3882 by ratmanz0000).
@@ -32,7 +38,7 @@ full, row-by-row status.
 - Edit Inside: the Layers panel keeps its size when Edit Inside is entered again after Finish or Cancel; it came back a few pixels high (#3852).
 - Multipage View: Zoom to Page (Shift+F4) and Zoom to Fit (F4) take the page in use instead of every page shown, and a double click on "1 of N" in the page bar opens Go to Page (#3780).
 - Right-click menu: Change Case is offered on a selected text and while typing one (#3826).
-- Smart Fill: Use Guidelines on its bar lets the guidelines shown close off the area too, as in the Shape Builder (#3863).
+- Smart Fill: Use Guidelines on its bar lets the guidelines shown close off the area too, as when merging overlapping parts with a drag (#3863).
 - Colour panel "..." menu: Swap Fills exchanges the fills of two selected objects, and Outline From Fill gives each selected object's outline the colour of its own fill (#3770).
 - Align and Distribute: two more Distribute to choices, the page with even margins and inside the largest selected object, keep the same gap at the edges as between the objects (#3768).
 - Copy Properties From: Width and Height boxes stretch the selected objects to the size of the object clicked (#3825).
@@ -54,7 +60,7 @@ full, row-by-row status.
 - Shape tool: with Alt held, dragging a node's handle drags the node, the handle keeping its place about it (#3719).
 - Tables: the text of a cell aligns from top to bottom (top, centre, bottom) with Align within Frame in the Text docker or the text bar; it did nothing in a cell (#3859).
 - Save Drawing: a click on a column title of the folder list sorts it, and a second click sorts it the other way round (#3858).
-- Shape Builder: selected open curves cut objects into parts, and the cells a grid of lines closes in become parts of their own (#3814).
+- Merging overlapping parts with a drag: selected open curves cut objects into parts, and the cells a grid of lines closes in become parts of their own (#3814).
 - Options > Display: Outline over the objects while transforming; turned off, with Show objects while transforming on, only the objects are drawn while they are moved, scaled or turned (#3704).
 - Insert Formula: a formula fills as text does, so overlapping letter contours no longer leave holes, and a space typed between words (`\text{...}`) and the formula is kept (#3793).
 
