@@ -720,15 +720,32 @@ fn draw_page(app: &App, painter: &Painter, rect: ERect, preview: Option<Affine>)
     let without_picture = app.pixel_edit_doc();
     // View > Separations: the page as one ink prints it.
     let one_ink = app.separation_view_doc();
-    let doc: &Document = without_picture
-        .as_deref()
+    // Text being typed in place (#3904): the page beneath it stays at its
+    // clean revision while the edited text shape draws as a small overlay.
+    let text_bg = if without_picture.is_none()
+        && without_copies.is_none()
+        && one_ink.is_none()
+        && preview.is_none()
+        && app.node_drag_revision().is_none()
+    {
+        app.prepare_edited_text_bg(painter.ctx(), rect)
+    } else {
+        app.text_edit_overlay.borrow_mut().suspend();
+        None
+    };
+    let doc: &Document = text_bg
+        .as_ref()
+        .and_then(|(d, _)| d.as_deref())
+        .or(without_picture.as_deref())
         .or(without_copies.as_deref())
         .or(one_ink.as_deref())
         .unwrap_or(app.doc());
     // Nodes being dragged: the drawing as it was before the drag, its
     // picture already made, until the button is released (#1259).
-    let revision = app
-        .node_drag_revision()
+    let revision = text_bg
+        .as_ref()
+        .map(|(_, r)| *r)
+        .or_else(|| app.node_drag_revision())
         .unwrap_or_else(|| app.engine.revision())
         ^ if without_copies.is_some() {
             1u64 << 62
@@ -776,7 +793,9 @@ fn draw_page(app: &App, painter: &Painter, rect: ERect, preview: Option<Affine>)
     // The drawing as it stands is shared with the render for nothing:
     // no copy of it on the window's thread at each change (#3440).
     #[cfg(not(target_arch = "wasm32"))]
-    if revision == app.engine.revision() && std::ptr::eq(doc, app.engine.document()) {
+    if let Some((Some(hidden), _)) = &text_bg {
+        app.raster.borrow_mut().snapshot = Some(hidden.clone());
+    } else if revision == app.engine.revision() && std::ptr::eq(doc, app.engine.document()) {
         app.raster.borrow_mut().snapshot = Some(app.engine.shared_document());
     }
     // Shadows blurred on the graphics card when Options asks (the same
@@ -976,6 +995,7 @@ fn draw_page(app: &App, painter: &Painter, rect: ERect, preview: Option<Affine>)
         if let Some((bands, bands_at, _)) = incoming {
             painter.image(bands, bands_at, full, Color32::WHITE);
         }
+        app.paint_edited_text_overlay(painter, rect);
     }
 
     if !clean_sheet {

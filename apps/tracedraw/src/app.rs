@@ -1831,6 +1831,10 @@ pub struct App {
     /// The drawing at a revision, shared by the other pages' renders on
     /// their threads (one copy a change, not one a page) (#903).
     pub page_snapshot: std::cell::RefCell<Option<(u64, std::sync::Arc<tracedraw_core::Document>)>>,
+    /// Small transparent overlay texture of the text shape currently being
+    /// typed into, so the page beneath stays cached without re-rendering
+    /// on each keystroke (#3904).
+    pub text_edit_overlay: std::cell::RefCell<crate::text_editing::TextEditOverlay>,
     /// What the backdrop covers (see [`Self::backdrop_area`]), with the
     /// revision, page and page box it was worked out for.
     backdrop_area: std::cell::Cell<Option<(u64, PageId, Rect, Rect)>>,
@@ -3508,6 +3512,7 @@ impl App {
             vo: Default::default(),
             page_rasters: Default::default(),
             page_snapshot: Default::default(),
+            text_edit_overlay: Default::default(),
             backdrop_area: Default::default(),
             view_mode: ViewMode::Enhanced,
             proof_colors: false,
@@ -7102,6 +7107,7 @@ impl App {
         };
         let mut para = tracedraw_core::ParagraphStyle::default();
         para.hyphenate = self.text_hyphenation;
+        let clean_rev = self.engine.revision();
         let before = self.engine.last_step_id();
         if let Some(id) = self.new_shape(ShapeKind::Text {
             spans: vec![span],
@@ -7121,6 +7127,7 @@ impl App {
                 ..TextEdit::at_end(id, 0)
             });
             self.select(vec![id]);
+            self.note_fresh_text_edit(id, clean_rev);
         }
     }
 
