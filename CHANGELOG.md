@@ -16,6 +16,12 @@ full, row-by-row status.
 - .cdr import: a radial fountain fill or transparency from version 16 files on runs from its centre out to the object's own edges, as the file sets it, instead of reaching past them to the corners of the box; a radial transparency on an ellipse now fades out at the ellipse's edge (#3805).
 - Object Data docker: a Data Sheet button opens a small spreadsheet of the selected objects (or every object on the page) with their data fields as columns, nested group members under a Show levels setting, cells you can edit in place, and a total of the Cost column (#3084).
 - PDF import: text in an embedded Type 1 font shows its accented letters (ě, ř, š and the like) as the file does, read through the font's own encoding instead of the Windows code page, and comes in as curves from the font's outlines when text is imported as curves (#3810).
+- Right-click menu: Convert Outline To Object sits under Convert to Curves (#3895).
+- Object menu, Transformations: Object Size... types the width and height of the selection in a small box, with the lock for proportions; a shortcut can be given to it in Customization (#3799, #3890).
+- Export: bitmap formats have an Anti-aliasing box; off, the picture has hard edges with no blended colours (#3807).
+- Text boxes: a right click on any text box (font name, size, dialog fields) offers Cut, Copy, Paste, Select All and Delete (#3798).
+- Page Number Settings: Last pages without a number and Pages without a number ("5, 9-10") leave those pages out, the numbering going on after them without counting them (#3789).
+- Print: on Linux, when the printer settings tool fails or closes at once, the printer's page of CUPS opens in the browser instead (#3849).
 - Contours, blends and extrusions: the worked-out steps of up to 32 objects are kept instead of 8, and found by the object first, so a page with several of them no longer works them out again at each move of the pointer (#3765).
 - Windows setup: it always writes a log in the Temp folder, also when an older TraceDraw starts it for an update, so an update that is undone can be looked into (#3816).
 - Break Apart (Ctrl+K) on a text frame gives one artistic text per line, where the line was; Combine (Ctrl+L) on texts makes one text that stays editable, read from the top line down, instead of curves (#3763).

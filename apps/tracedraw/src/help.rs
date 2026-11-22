@@ -64,6 +64,7 @@ pub fn dialog_topic(d: &Dialog, options: OptionsPage) -> &'static str {
         Dialog::DeletePage { .. } => "pages-layout/pages#delete-page",
         Dialog::DuplicatePage { .. } => "pages-layout/pages#duplicate-page",
         Dialog::PageSize { .. } => "pages-layout/pages#page-size",
+        Dialog::ObjectSize { .. } => "objects/transforming#transformations-docker",
         Dialog::Options => options_topic(options),
         Dialog::PageNumberSettings => "pages-layout/pages#page-numbers",
         Dialog::LineStyle(_) | Dialog::OutlinePen(_) | Dialog::ArrowheadEditor(_) => {

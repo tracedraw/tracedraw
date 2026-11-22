@@ -57,6 +57,9 @@ pub struct ExportState {
     pub spreads: bool,
     pub selection_only: bool,
     pub transparent: bool,
+    /// Bitmaps: edges smoothed (on), or hard pixels all in or all out of
+    /// a shape (#3807).
+    pub anti_alias: bool,
     pub quality: u8,
     pub web: bool,
     /// PDF: every text as curves, so the file needs no fonts (#1382).
@@ -134,6 +137,7 @@ impl Default for ExportState {
             spreads: false,
             selection_only: false,
             transparent: true,
+            anti_alias: true,
             quality: 90,
             web: false,
             text_as_curves: false,
@@ -1399,6 +1403,14 @@ pub enum Dialog {
         height: f64,
         all_pages: bool,
     },
+    /// Object > Transformations > Object Size: the selection's width and
+    /// height typed in a small box, the lock keeping them in proportion
+    /// (#3799).
+    ObjectSize {
+        width: f64,
+        height: f64,
+        locked: bool,
+    },
     Options,
     PageNumberSettings,
     RenameLayer {
@@ -2586,6 +2598,32 @@ pub fn show(app: &mut App, ctx: &Context) {
                     .rich_tip(crate::ui::tips::keyed("dialog.apply_all_pages"));
                 if ok_cancel(ui, &mut close) {
                     apply_page_size(app, Size::new(*width, *height), *all_pages);
+                }
+            });
+        }
+        Dialog::ObjectSize {
+            width,
+            height,
+            locked,
+        } => {
+            window(ctx, tr("dialog.object_size")).show(ctx, |ui| {
+                let u = app.units;
+                let (w0, h0) = (*width, *height);
+                let tip = crate::ui::tips::pair("dialog.width", "toolbar.object_width_desc");
+                if unit_value(ui, &tr("dialog.width"), &tip, width, u) && *locked && w0 > 1e-9 {
+                    *height = h0 * *width / w0;
+                }
+                let tip = crate::ui::tips::pair("dialog.height", "toolbar.object_height_desc");
+                if unit_value(ui, &tr("dialog.height"), &tip, height, u) && *locked && h0 > 1e-9 {
+                    *width = w0 * *height / h0;
+                }
+                ui.checkbox(locked, tr("toolbar.lock_ratio"))
+                    .rich_tip(crate::ui::tips::pair(
+                        "toolbar.lock_ratio",
+                        "toolbar.lock_ratio_desc",
+                    ));
+                if ok_cancel(ui, &mut close) {
+                    apply_object_size(app, *width, *height, *locked);
                 }
             });
         }
@@ -3777,6 +3815,19 @@ pub fn show(app: &mut App, ctx: &Context) {
                                 "dialog.pn_first_page_desc",
                             ));
                         ui.end_row();
+                        // Pages left without a number, the numbering going
+                        // on after them (#3789).
+                        ui.label(tr("dialog.pn_skip_last"));
+                        ui.add(crate::ui::field::NumField::new(&mut pn.skip_last).range(0..=9999))
+                            .rich_tip(crate::ui::tips::pair(
+                                "dialog.pn_skip_last",
+                                "dialog.pn_skip_last_desc",
+                            ));
+                        ui.end_row();
+                        ui.label(tr("dialog.pn_skip"));
+                        ui.text_edit_singleline(&mut pn.skip)
+                            .rich_tip(crate::ui::tips::pair("dialog.pn_skip", "dialog.pn_skip_desc"));
+                        ui.end_row();
                         ui.label(tr("dialog.prefix"));
                         ui.text_edit_singleline(&mut pn.prefix)
                             .rich_tip(crate::ui::tips::pair(
@@ -4114,6 +4165,36 @@ pub fn page_size_dialog(app: &App) -> Dialog {
         width: s.width,
         height: s.height,
         all_pages: app.settings.page_size_all,
+    }
+}
+
+/// The Object Size dialog as it opens: the size of the selection, and
+/// the lock as the property bar has it (#3799).
+pub fn object_size_dialog(app: &App) -> Option<Dialog> {
+    let b = app.selection_bounds()?;
+    Some(Dialog::ObjectSize {
+        width: b.width(),
+        height: b.height(),
+        locked: app.scale_locked,
+    })
+}
+
+/// The Object Size dialog's OK: the selection stretched to `width` x
+/// `height` about the property bar's reference point, as typing the size
+/// on the bar does; the lock is kept for the bar too.
+pub fn apply_object_size(app: &mut App, width: f64, height: f64, locked: bool) {
+    app.scale_locked = locked;
+    let Some(b) = app.selection_bounds() else {
+        return;
+    };
+    let refp = crate::ui::propbar::origin_point(b, app.object_origin);
+    let to = (width.max(0.001), height.max(0.001));
+    if let Some((sx, sy)) = crate::ui::propbar::size_scale((b.width(), b.height()), to) {
+        app.transform_selection(
+            tracedraw_core::geometry::Affine::translate(refp.to_vec2())
+                * tracedraw_core::geometry::Affine::scale_non_uniform(sx, sy)
+                * tracedraw_core::geometry::Affine::translate(-refp.to_vec2()),
+        );
     }
 }
 
@@ -4711,6 +4792,7 @@ fn export_preview_key(app: &App, st: &ExportState) -> u64 {
     app.page.raw().hash(&mut h);
     st.format.hash(&mut h);
     st.transparent.hash(&mut h);
+    st.anti_alias.hash(&mut h);
     st.selection_only.hash(&mut h);
     st.all_pages.hash(&mut h);
     st.page_list.hash(&mut h);
@@ -5323,6 +5405,13 @@ fn export_dialog(app: &mut App, ctx: &Context, st: &mut ExportState, close: &mut
                             }
                         }
                     });
+                    if st.format != 15 {
+                        ui.checkbox(&mut st.anti_alias, tr("dialog.anti_aliasing"))
+                            .rich_tip(crate::ui::tips::pair(
+                                "dialog.anti_aliasing",
+                                "dialog.export_anti_alias_desc",
+                            ));
+                    }
                     if st.format == 2 || st.format == 6 || st.format == 7 {
                         ui.checkbox(&mut st.transparent, tr("dialog.transparent_background"))
                             .rich_tip(crate::ui::tips::pair(
@@ -9215,6 +9304,29 @@ pub(crate) mod tests {
         for (key, _) in paper_preset_groups() {
             assert_ne!(crate::i18n::tr(key), key.rsplit('.').next().unwrap_or(key));
         }
+    }
+
+    #[test]
+    fn object_size_dialog_stretches_the_selection_to_the_size_typed() {
+        let mut app = App::headless();
+        let id = app
+            .new_shape(tracedraw_core::ShapeKind::Rect {
+                rect: tracedraw_core::geometry::Rect::new(10.0, 10.0, 50.0, 30.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rectangle");
+        app.select(vec![id]);
+        let Some(Dialog::ObjectSize { width, height, .. }) = object_size_dialog(&app) else {
+            panic!("not the Object Size dialog");
+        };
+        assert!((width - 40.0).abs() < 0.5 && (height - 20.0).abs() < 0.5);
+        apply_object_size(&mut app, 80.0, 10.0, false);
+        let b = app.selection_bounds().expect("bounds");
+        assert!((b.width() - 80.0).abs() < 0.5, "{b:?}");
+        assert!((b.height() - 10.0).abs() < 0.5, "{b:?}");
+        app.select(vec![]);
+        assert!(object_size_dialog(&app).is_none());
     }
 
     /// The Page Size dialog opens with Apply to all pages off, so a new

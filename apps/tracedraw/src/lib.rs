@@ -1027,6 +1027,8 @@ impl eframe::App for Shell {
         // What Android's on-screen keyboard typed (#1309).
         soft_keyboard::take_into(raw_input);
         pen::filter_raw_input(ctx, raw_input);
+        // A text box's right-click menu picked last frame (#3798).
+        ui::text_field_menu::raw_input(raw_input);
         interaction::release_chorded_left(ctx, raw_input);
         // The screen's safe area on Android (#1917).
         if let Some(app) = self.app.as_ref() {
@@ -1212,6 +1214,7 @@ impl eframe::App for Shell {
         hang_watch::poll(app);
         frame_mark("before the interface");
         ui::root(app, ui);
+        ui::text_field_menu::show(ui.ctx());
         frame_mark("the dialogs");
         // The frame around the safe area (#1917).
         ui::screen_margins::paint(ui.ctx(), &app.settings);

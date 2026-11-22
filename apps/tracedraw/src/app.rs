@@ -56,6 +56,10 @@ pub struct PageNumberSettings {
     /// 0 bottom centre, 1 bottom outer corner, 2 top centre, 3 top outer corner.
     pub position: u8,
     pub size_pt: f64,
+    /// The last pages, this many, get no number (#3789).
+    pub skip_last: usize,
+    /// Pages ("5, 9-10") that get no number, not counted (#3789).
+    pub skip: String,
 }
 
 impl Default for PageNumberSettings {
@@ -68,6 +72,8 @@ impl Default for PageNumberSettings {
             style: 0,
             position: 0,
             size_pt: 12.0,
+            skip_last: 0,
+            skip: String::new(),
         }
     }
 }
@@ -81,6 +87,8 @@ impl PageNumberSettings {
             style: self.style,
             prefix: self.prefix.clone(),
             suffix: self.suffix.clone(),
+            skip_last: self.skip_last,
+            skip: self.skip.clone(),
         }
     }
 

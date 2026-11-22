@@ -769,7 +769,7 @@ fn menu_pic(key: &str) -> Option<crate::ui::propbar::Pic> {
         "menu.object.tf_position" => Pic::Position,
         "menu.object.tf_rotate" | "menu.object.rotate_by_lines" => Pic::Rotate,
         "menu.object.tf_scale" => Pic::ScaleMirror,
-        "menu.object.tf_size" => Pic::SizeBox,
+        "menu.object.tf_size" | "menu.object.object_size" => Pic::SizeBox,
         "menu.object.tf_skew" => Pic::SkewBox,
         "menu.object.mirror_h" => Pic::MirrorH,
         "menu.object.mirror_v" => Pic::MirrorV,
@@ -3821,6 +3821,13 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
         // Each object by the same (or random) amounts about its own centre.
         if item(ui, "menu.object.transform_each", "", has) {
             app.open_transform_each();
+        }
+        // The width and height typed in a small box; a shortcut can be
+        // given to it in Customization (#3799).
+        if item(ui, "menu.object.object_size", "", has) {
+            if let Some(d) = crate::ui::dialogs::object_size_dialog(app) {
+                app.dialog = d;
+            }
         }
     });
     if item(ui, "menu.object.clear_transformations", "", has) {

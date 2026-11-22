@@ -6055,26 +6055,83 @@ pub struct PageNumberField {
     pub prefix: String,
     #[serde(default)]
     pub suffix: String,
+    /// The last pages, this many of them, show no number, such as a back
+    /// cover (#3789).
+    #[serde(default, skip_serializing_if = "is_zero_usize")]
+    pub skip_last: usize,
+    /// Pages left without a number ("5, 9-10", from 1); the numbering
+    /// goes on after them without counting them (#3789).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub skip: String,
 }
 
 fn first_numbered_page() -> usize {
     1
 }
 
+fn is_zero_usize(n: &usize) -> bool {
+    *n == 0
+}
+
+impl Default for PageNumberField {
+    fn default() -> Self {
+        PageNumberField {
+            start_at: 1,
+            first_page: 1,
+            style: 0,
+            prefix: String::new(),
+            suffix: String::new(),
+            skip_last: 0,
+            skip: String::new(),
+        }
+    }
+}
+
 impl PageNumberField {
     /// The page at `index` (0-based) shows a number: it is not one of
     /// the pages before the first numbered page (#2127).
     pub fn numbers(&self, index: usize) -> bool {
+        self.numbers_in(index, usize::MAX)
+    }
+
+    /// The page at `index` (0-based) of a drawing of `pages` pages shows
+    /// a number: it is not before the first numbered page (#2127), nor
+    /// one of the last pages left out or one of the pages listed to skip
+    /// (#3789).
+    pub fn numbers_in(&self, index: usize, pages: usize) -> bool {
         index + 1 >= self.first_page.max(1)
+            && index < pages.saturating_sub(self.skip_last)
+            && !self.skips(index)
+    }
+
+    /// The page at `index` is one of the pages listed to skip.
+    fn skips(&self, index: usize) -> bool {
+        !self.skip.trim().is_empty() && parse_page_range(&self.skip, index + 1).contains(&index)
     }
 
     /// The text for the page at `index` (0-based): empty on the pages
     /// before the first numbered page (#2127).
     pub fn label(&self, index: usize) -> String {
-        if !self.numbers(index) {
+        self.label_in(index, usize::MAX)
+    }
+
+    /// The text for the page at `index` (0-based) of a drawing of `pages`
+    /// pages: empty on a page that shows no number; the pages skipped
+    /// before it are not counted (#3789).
+    pub fn label_in(&self, index: usize, pages: usize) -> String {
+        if !self.numbers_in(index, pages) {
             return String::new();
         }
-        let n = self.start_at + index as i64 - (self.first_page.max(1) as i64 - 1);
+        let first = self.first_page.max(1) - 1;
+        let skipped = if self.skip.trim().is_empty() {
+            0
+        } else {
+            parse_page_range(&self.skip, index + 1)
+                .into_iter()
+                .filter(|i| *i >= first && *i < index)
+                .count()
+        };
+        let n = self.start_at + index as i64 - first as i64 - skipped as i64;
         let body = match self.style {
             1 => roman(n),
             2 => roman(n).to_lowercase(),
@@ -6146,8 +6203,14 @@ impl Shape {
     /// Page number fields in this object show the number of the page at
     /// `index` (0-based).
     pub fn show_page_number(&mut self, index: usize) {
+        self.show_page_number_of(index, usize::MAX);
+    }
+
+    /// Page number fields in this object show the number of the page at
+    /// `index` (0-based) of a drawing of `pages` pages (#3789).
+    pub fn show_page_number_of(&mut self, index: usize, pages: usize) {
         if let (Some(f), ShapeKind::Text { spans, .. }) = (&self.page_number, &mut self.kind) {
-            let label = f.label(index);
+            let label = f.label_in(index, pages);
             spans.truncate(1);
             if let Some(first) = spans.first_mut() {
                 first.text = label;
@@ -6155,7 +6218,7 @@ impl Shape {
         }
         if let ShapeKind::Group { children } = &mut self.kind {
             for c in children {
-                c.show_page_number(index);
+                c.show_page_number_of(index, pages);
             }
         }
     }
@@ -7195,6 +7258,7 @@ impl Document {
     pub fn layers_drawn_for_page(&self, page: PageId) -> Result<Vec<std::borrow::Cow<'_, Layer>>> {
         use std::borrow::Cow;
         let idx = self.page_index(page)?;
+        let count = self.pages.len();
         // The headings, found once for the tables of contents (#1660).
         let entries = std::cell::OnceCell::new();
         Ok(self
@@ -7207,11 +7271,11 @@ impl Document {
                     let mut l = l.clone();
                     if master {
                         l.shapes
-                            .retain(|s| s.page_number.as_ref().is_none_or(|f| f.numbers(idx)));
+                            .retain(|s| s.page_number.as_ref().is_none_or(|f| f.numbers_in(idx, count)));
                     }
                     for s in &mut l.shapes {
                         if master {
-                            s.show_page_number(idx);
+                            s.show_page_number_of(idx, count);
                         }
                         s.show_toc(entries);
                     }
@@ -7221,9 +7285,9 @@ impl Document {
                     // A field on a page before the first numbered page
                     // is left out (#2127).
                     l.shapes
-                        .retain(|s| s.page_number.as_ref().is_none_or(|f| f.numbers(idx)));
+                        .retain(|s| s.page_number.as_ref().is_none_or(|f| f.numbers_in(idx, count)));
                     for s in &mut l.shapes {
-                        s.show_page_number(idx);
+                        s.show_page_number_of(idx, count);
                     }
                     Cow::Owned(l)
                 } else {
@@ -8824,6 +8888,24 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn page_numbers_skip_the_last_pages_and_listed_pages_without_counting_them() {
+        let f = PageNumberField {
+            first_page: 2,
+            skip_last: 1,
+            skip: "4-5".into(),
+            ..Default::default()
+        };
+        let labels: Vec<String> = (0..8).map(|i| f.label_in(i, 8)).collect();
+        assert_eq!(labels, ["", "1", "2", "", "", "3", "4", ""]);
+        assert!(!f.numbers_in(7, 8) && f.numbers_in(6, 8));
+        // Saved before: no pages skipped.
+        let old: PageNumberField =
+            serde_json::from_str(r#"{"start_at":1,"first_page":1,"style":0}"#).unwrap();
+        assert_eq!(old, PageNumberField::default());
+        assert_eq!(old.label_in(4, 5), "5");
     }
 
     /// Round numbers map exactly: the quick box is bit-for-bit the
