@@ -3490,12 +3490,13 @@ mod tests {
         );
     }
 
-    /// #2507: the node bar of Interactive Fill is compact, and its
-    /// transparency is the object's uniform transparency (the value of
-    /// the Properties docker): dragging it makes the object see-through.
-    /// It was as wide as the window allowed and changed the node only.
+    /// The node bar of Interactive Fill is compact (#2507: it was as
+    /// wide as the window allowed) and its transparency is the selected
+    /// node's own: that colour of the fill fades, the other node and
+    /// the object as a whole stay opaque (#2827: it set the object's
+    /// uniform transparency, so everything faded).
     #[test]
-    fn the_node_bar_is_compact_and_sets_the_objects_transparency() {
+    fn the_node_bar_is_compact_and_sets_the_nodes_transparency() {
         let ctx = crate::theme::ui_context();
         let mut app = App::headless();
         app.show_welcome = false;
@@ -3530,12 +3531,16 @@ mod tests {
         );
         let s = app.doc().find_shape(id).expect("rect");
         let t = crate::mixed::ShapeTransparency::of(s);
-        assert_eq!(t.kind, 1, "uniform transparency: {t:?}");
-        assert!(t.amount > 30.0, "{}", t.amount);
-        // The node itself and the fill stay as they were.
+        assert_eq!(t.amount, 0.0, "the object stays opaque: {t:?}");
+        assert_eq!(s.opacity, 1.0);
+        // The node alone is see-through; the other one is not.
         let (_, f, _) = app.selected_fountain().expect("fountain");
-        assert_eq!(f.stops[0].opacity, 1.0);
-        assert_eq!(app.engine.undo_label(), Some("Transparency"));
+        assert!(f.stops[0].opacity < 0.7, "{}", f.stops[0].opacity);
+        assert_eq!(f.stops[1].opacity, 1.0);
+        assert_eq!(app.engine.undo_label(), Some("Fill"));
+        // The bar shows the node's value again on the next frame.
+        frame(&ctx, &mut app);
+        assert!(ctx.memory(|m| m.area_rect(bar)).is_some());
     }
 
     /// #2508: with Interactive Fill a click on an object picks it and

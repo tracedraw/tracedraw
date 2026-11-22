@@ -843,7 +843,7 @@ pub fn node_bar(app: &mut App, ui: &mut egui::Ui) {
     if !(app.tool == Tool::InteractiveFill || mask) || !matches!(app.drag, crate::app::Drag::None) {
         return;
     }
-    let Some((shape, f, b)) = app.selected_fountain() else {
+    let Some((_, f, b)) = app.selected_fountain() else {
         return;
     };
     let Some(i) = app.fill_node.filter(|i| *i < f.stops.len()) else {
@@ -858,19 +858,16 @@ pub fn node_bar(app: &mut App, ui: &mut egui::Ui) {
     let down = ui.input(|inp| inp.pointer.any_down());
     let begun = down && ui.data(|d| d.get_temp::<bool>(id).unwrap_or(false));
     let mut color = f.stops[i].color;
-    // The object's uniform transparency, as the Properties docker shows
-    // it (#2507); a mask transparency reads 0 here.
+    // The selected node's own transparency: only that colour of the
+    // fill fades, the other nodes and the object stay as they are
+    // (#2827; the object's uniform transparency is in the Properties
+    // docker and the Transparency tool).
     // With the Transparency tool the node's own transparency, its grey
     // in the mask (#2737: the gradient's nodes had no such bar there).
     let mut transparency = if mask {
         crate::ui::transparency_docker::gray_transparency(color).round()
     } else {
-        app.doc()
-            .find_shape(shape)
-            .map(crate::mixed::ShapeTransparency::of)
-            .filter(|t| t.kind <= 1)
-            .map(|t| t.amount.round())
-            .unwrap_or(0.0)
+        ((1.0 - f64::from(f.stops[i].opacity)) * 100.0).round()
     };
     let mut changed_color = false;
     let mut changed_opacity = false;
@@ -914,7 +911,7 @@ pub fn node_bar(app: &mut App, ui: &mut egui::Ui) {
         app.set_mask_node_transparency(i, transparency, begun);
         ui.data_mut(|d| d.insert_temp(id, down));
     } else if changed_opacity {
-        app.set_object_transparency(transparency);
+        app.set_fountain_node(i, None, Some((1.0 - transparency / 100.0) as f32), None, begun);
         ui.data_mut(|d| d.insert_temp(id, down));
     } else if !down {
         ui.data_mut(|d| d.insert_temp(id, false));

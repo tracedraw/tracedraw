@@ -22,6 +22,7 @@ full, row-by-row status.
 
 - Object menu: Fill With Copies... lays the smaller of two selected objects in a grid over every place inside the larger one where a whole copy fits, with the gaps typed, and says how many fit (#3834).
 - Edit Text (Ctrl+Shift+T): the size, colour and font set in the box's row change only the characters selected in the box; they changed every character, because the box gave its selection up as soon as the size box or the colour picker was used. The colour opens in the program's own picker and keeps its model, so a CMYK colour stays CMYK, and a font list changes the font of the selected characters (#2366).
+- Interactive Fill: the Transparency slider on a colour node's bar makes only that node's colour see-through, so a fill can fade out at one end while the other end and the rest of the object stay solid. It set the uniform transparency of the whole object, whichever node was selected; that one is still in the Properties docker and the Transparency tool (#2827).
 - Text > Paragraph Text Frame > Put Text Inside Shape: with a text and a closed shape selected, the text becomes a frame the size of the shape and its lines stay inside the shape's outline (a circle, a triangle, a star, a shape with a hole), a little away from the edge. Move or edit the shape and the lines follow it; delete the shape and the text is a plain frame again. Selecting a text and a shape did nothing before, since a frame was always a rectangle (discussion #3238).
 
 ## 0.51.0 (2026-11-22)
