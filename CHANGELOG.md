@@ -6,6 +6,9 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Saving .cdr: a graded transparency on an object inside a clip frame (Place Inside Frame) now opens again as it was set, instead of stretching over the whole object; the object keeps its other live effects too (#3804).
+- A selected clip frame shows the outlines of what it holds as a thin dashed line, also where they run out past the frame, so the contents can be placed exactly (#3804).
+- The preview a saved file carries (Welcome Screen, file browser, .cdr preview) shows the whole drawing, everything on and beside the page, instead of the page with a margin round it (#3052).
 - Print Merged Document: the merged drawing is made only to be printed, so once the Print dialog and Print Preview are closed it is gone again and the drawing you merged is back in front, instead of an extra merged drawing staying open after every print or preview. Create Merged Document is the command that keeps the merged drawing (discussion #1610).
 - Cross hair to the window edges: the lines also follow the Shape tool's pointer, crossing at its tip (discussion #3268).
 - Settings kept next to the program (portable use): pictures sent to an outside editor and the automatic backups go in a folder beside the program too, not in the system's temporary or user folders (#3908).
@@ -18,6 +21,7 @@ full, row-by-row status.
 - Print Preview: turning on Bleed, or widening it, no longer makes the pages smaller on the paper; the pages keep their size and the bleed runs out past their edges, with the crop marks starting beyond it (#3919).
 
 - Object menu: Fill With Copies... lays the smaller of two selected objects in a grid over every place inside the larger one where a whole copy fits, with the gaps typed, and says how many fit (#3834).
+
 ## 0.51.0 (2026-11-22)
 
 - .cdr import: a TraceDraw drawing embedded in a .cdr file as a packaged file comes in as its own objects, editable and at their real size, centred where the embedded object stands, instead of a grey box (#3600).

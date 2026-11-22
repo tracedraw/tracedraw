@@ -5220,10 +5220,29 @@ impl<'a> Writer<'a> {
         body.extend(inner.nodes);
         self.clip_groups.push(list(b"grp ", body));
         self.clip_container = Some(number);
+        let usdn_before = self.next_usdn;
+        let kept_before = self.effects.len();
         let placed = self.object(&f, centre, depth);
         if self.clip_container.take().is_some() {
             // The frame became no object: the group would name nothing.
             self.clip_groups.pop();
+        } else if self.v.zip()
+            && self.drawing_effects == 0
+            && self.clip_depth == 0
+            && placed.nodes.len() == 1
+            && self.next_usdn > usdn_before
+            && crate::kept_effects::clip_contents_kept(contents)
+        {
+            // The contents carry no static id, so the package's member
+            // keeps the clip frame whole by the frame's (#3804); it holds
+            // what the frame itself kept.
+            self.effects.truncate(kept_before);
+            self.effects.push(crate::kept_effects::Written {
+                objects: vec![self.next_usdn - 1],
+                main: 0,
+                bounds: s.bounds(),
+                source: s.clone(),
+            });
         }
         placed
     }

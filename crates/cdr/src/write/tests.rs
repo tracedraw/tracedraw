@@ -10557,3 +10557,70 @@ fn a_cmyk_picture_is_written_as_a_cmyk_image() {
     let b = bitmap_coords(&document_to_cdr_version(&doc_with(vec![rgb]), 27));
     assert_eq!(&b[32..36], &(24u32 << 16 | 2).to_le_bytes());
 }
+
+/// #3804: a graded transparency on an object inside a clip frame, placed
+/// by its nodes over half of it, opens as it was saved; the objects in a
+/// clip container carry no static id, so the package keeps the frame.
+#[test]
+fn a_clipped_object_s_graded_transparency_opens_as_saved() {
+    use tracedraw_core::live::{Effect, MergeMode};
+    use tracedraw_core::style::FountainHandles;
+    let mut doc = doc_with(Vec::new());
+    let mut ids = doc.ids().clone();
+    let rect = |ids: &mut tracedraw_core::id::IdSource, x0: f64, x1: f64| {
+        Shape::new(
+            ids.shape(),
+            ShapeKind::Rect {
+                rect: Rect::new(x0, 10.0, x1, 50.0),
+                radius: 0.0,
+                corners: None,
+            },
+        )
+    };
+    let mut inside = rect(&mut ids, 10.0, 90.0);
+    inside.fill = Fill::Solid(Color::rgb8(255, 0, 0));
+    let mut f = tracedraw_core::Fountain::two(
+        tracedraw_core::FountainKind::Linear,
+        Color::WHITE,
+        Color::BLACK,
+        90.0,
+    );
+    // From the middle to the top: the lower half stays opaque.
+    let handles = FountainHandles {
+        start: Point::new(0.0, 0.0),
+        end: Point::new(0.0, 1.0),
+        skew: Point::new(1.0, 0.0),
+    };
+    f.handles = Some(handles);
+    inside.effects.push(Effect::Transparency {
+        mask: Fill::Fountain(f),
+        merge: MergeMode::Normal,
+        target: 2,
+    });
+    let mut frame = rect(&mut ids, 20.0, 80.0);
+    frame.fill = Fill::None;
+    let pc = Shape::new(
+        ids.shape(),
+        ShapeKind::ClipFrame {
+            frame: Box::new(frame),
+            contents: vec![inside],
+        },
+    );
+    doc.pages[0].layers[0].shapes = vec![pc];
+    doc.set_ids(ids);
+    for v in [16u16, 21, 25] {
+        let bytes = document_to_cdr_version(&doc, v);
+        let (back, _) = crate::open_bytes(&bytes, "back").expect("reads back");
+        let ShapeKind::ClipFrame { contents, .. } = &back.pages[0].layers[0].shapes[0].kind else {
+            panic!("{v}: no clip frame");
+        };
+        let kept = contents[0].effects.iter().find_map(|e| match e {
+            Effect::Transparency {
+                mask: Fill::Fountain(f),
+                ..
+            } => f.handles,
+            _ => None,
+        });
+        assert_eq!(kept, Some(handles), "{v}");
+    }
+}

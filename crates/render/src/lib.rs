@@ -6452,10 +6452,12 @@ pub fn render_area_image(doc: &Document, page: PageId, area: Rect, dpi: f64) -> 
 /// an object left far out on the desktop does not shrink the rest to dots.
 pub const WHOLE_PAGE_REACH: f64 = 3.0;
 
-/// The page with everything drawn on it, also what lies beside it on the
-/// desktop (page coordinates, mm), up to [`WHOLE_PAGE_REACH`] page sizes
-/// away: what a file's thumbnail shows (#2357). `None` without the page
-/// or with a page of no size.
+/// Everything drawn on the page and beside it on the desktop (page
+/// coordinates, mm), up to [`WHOLE_PAGE_REACH`] page sizes away: what a
+/// file's thumbnail shows (#2357). The drawing's own extent, not the
+/// page's, as zooming to all objects shows it (#3052: the page with a
+/// margin round it); the page when nothing is drawn. `None` without the
+/// page or with a page of no size.
 pub fn whole_page_area(doc: &Document, page: PageId) -> Option<Rect> {
     let p = doc.page(page).ok()?;
     let (w, h) = (p.size.width, p.size.height);
@@ -6471,7 +6473,7 @@ pub fn whole_page_area(doc: &Document, page: PageId) -> Option<Rect> {
         .filter(|b| [b.x0, b.y0, b.x1, b.y1].iter().all(|v| v.is_finite()))
         .map(|b| b.intersect(reach))
         .filter(|b| b.width() > 0.0 || b.height() > 0.0);
-    Some(content.map_or(sheet, |b| b.union(sheet)))
+    Some(content.unwrap_or(sheet))
 }
 
 /// The page with whatever lies beside it on the desktop

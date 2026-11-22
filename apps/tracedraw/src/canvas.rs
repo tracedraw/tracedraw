@@ -2528,6 +2528,33 @@ fn draw_text_path_preview(app: &App, painter: &Painter, p: Point) {
     );
 }
 
+/// One clip frame selected: the outlines of what it holds, a thin dashed
+/// line out past the frame too, so where the contents sit inside it can
+/// be seen while the frame is placed or its contents edited (#3804).
+fn draw_clip_contents_outline(app: &App, painter: &Painter, preview: Option<Affine>) {
+    let shapes = app.selected_rc();
+    let [s] = shapes.as_slice() else {
+        return;
+    };
+    let ShapeKind::ClipFrame { contents, .. } = &s.kind else {
+        return;
+    };
+    let t = preview.unwrap_or(Affine::IDENTITY) * s.transform;
+    let line = EStroke::new(1.0, Tokens::DRAG_OUTLINE.gamma_multiply(0.8));
+    for c in contents {
+        let mut c = c.clone();
+        c.transform_by(t);
+        for (mut pts, closed) in flatten(&c.page_path(), &app.view) {
+            if closed {
+                if let Some(first) = pts.first().copied() {
+                    pts.push(first);
+                }
+            }
+            painter.extend(egui::Shape::dashed_line(&pts, line, 4.0, 3.0));
+        }
+    }
+}
+
 fn draw_selection(app: &App, painter: &Painter, preview: Option<Affine>) {
     let shapes = app.selected_rc();
     if shapes.is_empty() {
@@ -2604,6 +2631,9 @@ fn draw_selection(app: &App, painter: &Painter, preview: Option<Affine>) {
             epaint::StrokeKind::Middle,
         );
         return;
+    }
+    if pick {
+        draw_clip_contents_outline(app, painter, preview);
     }
     if app.rotate_mode && pick {
         // Rotation arrows at corners, skew arrows at edges, the centre of
