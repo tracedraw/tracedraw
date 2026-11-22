@@ -524,10 +524,11 @@ pub fn bspline_path_fixed(points: &[Point], fixed: &[bool], closed: bool) -> Bez
 
 /// A smooth curve through every point of `points` (the Curvature Pen):
 /// cubic segments whose handles at a point lie along the chord from the
-/// point before to the point after, each as long as a third of its own
-/// segment times that direction's length per millimetre of the two
-/// chords (a chord-length cardinal spline), so the curve passes each
-/// point without a kink and bends least where the points are even. At a
+/// point before to the point after, each as long as a circular arc
+/// leaving its own segment's chord at that angle needs (a third of the
+/// chord over cos² of half the angle, #3948), so the curve passes each
+/// point without a kink and three points on a circle make that circle,
+/// however wide. At a
 /// point flagged in `fixed` (and at the ends of an open curve) the curve
 /// has a corner: the run of points up to it ends there, its last handle
 /// pointing so the end bends as a parabola would. Two points of a run
@@ -603,7 +604,23 @@ pub fn curvature_path(points: &[Point], fixed: &[bool], closed: bool) -> BezPath
         if ca && cb {
             return (a, b);
         }
-        (a + out * (d / 3.0), b - inn * (d / 3.0))
+        // Each handle along its direction, as long as a circular arc
+        // leaving the chord at that angle needs: a third of the chord
+        // over cos² of half the angle. A nearly straight piece keeps a
+        // third of its chord, and a wide arc of three points comes out
+        // as round as a short one (#3948; the handles shrank with the
+        // turn instead, which flattened wide arcs). At most two thirds
+        // of the chord, at a right angle.
+        let handle = |m: Vec2| -> Vec2 {
+            let len = m.hypot();
+            if len < 1e-12 {
+                return chord * (d / 3.0);
+            }
+            let unit = m / len;
+            let cos = unit.dot(chord).clamp(0.0, 1.0);
+            unit * (d / 3.0 * 2.0 / (1.0 + cos))
+        };
+        (a + handle(out), b - handle(inn))
     };
     for i in 0..segs {
         let (c1, c2) = handles(i);
@@ -907,6 +924,51 @@ mod tests {
         assert_eq!(c.elements().len(), 6);
         assert!(matches!(c.elements()[5], PathEl::ClosePath));
         assert_eq!(c.elements()[4].end_point(), Some(pts[0]));
+    }
+
+    /// Three points on a wide arc make a round arc, as round as three on
+    /// a short one: a half circle of radius 100 through its ends and
+    /// top stays within 0.1 mm of the circle (#3948; it came out about
+    /// 3 mm flat with handles a third of the chord). Five points on a
+    /// three-quarter circle stay round too.
+    #[test]
+    fn a_wide_curvature_arc_stays_round() {
+        let off = |p: &BezPath| -> f64 {
+            let mut worst: f64 = 0.0;
+            for seg in p.segments() {
+                for k in 0..=20 {
+                    let q = seg.eval(k as f64 / 20.0);
+                    worst = worst.max((q.to_vec2().hypot() - 100.0).abs());
+                }
+            }
+            worst
+        };
+        let half = [
+            Point::new(-100.0, 0.0),
+            Point::new(0.0, 100.0),
+            Point::new(100.0, 0.0),
+        ];
+        let p = curvature_path(&half, &[], false);
+        assert!(off(&p) < 0.1, "half circle {}", off(&p));
+        let arc: Vec<Point> = (0..5)
+            .map(|k| {
+                let a = std::f64::consts::PI * (1.5 * k as f64 / 4.0);
+                Point::new(100.0 * a.cos(), 100.0 * a.sin())
+            })
+            .collect();
+        let p = curvature_path(&arc, &[], false);
+        assert!(off(&p) < 0.1, "three quarters {}", off(&p));
+        // A short, nearly straight run is as before: handles a third of
+        // the chord.
+        let flat = [
+            Point::new(0.0, 0.0),
+            Point::new(10.0, 0.1),
+            Point::new(20.0, 0.0),
+        ];
+        let PathEl::CurveTo(c1, _, _) = curvature_path(&flat, &[], false).elements()[1] else {
+            panic!("a curve");
+        };
+        assert!(((c1 - flat[0]).hypot() - 10.0 / 3.0).abs() < 0.01);
     }
 
     /// A fixed control point is on the curve, a floating one is not; an

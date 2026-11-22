@@ -2032,6 +2032,16 @@ fn evaluate_now(shape: &Shape) -> Evaluated {
                 end_id,
                 options,
             } => {
+                // An end copy that keeps its envelope or perspective
+                // (#3969) is blended to as it is drawn.
+                let own_end = end;
+                let bent;
+                let end: &Shape = if end.effects.is_empty() || end_id.is_none() {
+                    end
+                } else {
+                    bent = evaluate(end).main;
+                    &bent
+                };
                 let by_parts = options
                     .by_parts
                     .then(|| {
@@ -2063,14 +2073,14 @@ fn evaluate_now(shape: &Shape) -> Evaluated {
                     // Bottom to top: the end (when the effect draws it),
                     // then the steps from the end's side to the start.
                     if end_id.is_none() {
-                        below.push((**end).clone());
+                        below.push((**own_end).clone());
                     }
                     below.extend(shapes.into_iter().rev());
                 } else {
                     above.extend(shapes);
                     // An end object of the drawing draws itself.
                     if end_id.is_none() {
-                        above.push((**end).clone());
+                        above.push((**own_end).clone());
                     }
                 }
             }

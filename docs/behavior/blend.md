@@ -112,8 +112,12 @@ group or placed inside a frame
 
 Both objects stay objects of the drawing. The start object holds the
 Blend effect, which names the end object and keeps a copy of it in page
-space (its own effects left out) for drawing the steps; the end object
-draws itself (`blend_link.rs`). After every change of the drawing, in
+space (its own effects left out, but for envelopes and perspectives,
+so the steps run to the end as it is drawn, #3969) for drawing the
+steps; the end object draws itself (`blend_link.rs`). A blend grouped
+and bent by the group's envelope keeps every step where it was when the
+group is ungrouped: each object takes the envelope (#3714) and the copy
+of the end keeps it. After every change of the drawing, in
 the same undo step:
 
 - the end object moved, resized, turned or recoloured: the copy is
@@ -290,6 +294,7 @@ of its own) stays a drawn group.
 
 - `ui::effect_bars::tests::the_blend_bar_edits_the_selected_blend`
 - `blend_link::tests::the_end_object_stays_and_the_steps_follow_it`
+- `blend_link::tests::an_ungrouped_bent_blend_keeps_its_steps`
 - `write::tests::a_blend_goes_out_live_from_version_9`,
   `a_blend_whose_end_is_its_own_goes_out_live_with_the_end_as_an_object`,
   `a_text_blend_opens_live_again`,

@@ -153,6 +153,11 @@ pub fn draw_canvas(app: &App, painter: &Painter, rect: ERect) {
     let doc: &Document = app.doc();
     draw_text_frames(app, painter, preview);
 
+    // The objects drawn where the drag takes them: a dashed frame stays
+    // at the selection's box as it was, to judge the change by (#3949).
+    if live.is_some() {
+        draw_start_frame(app, painter);
+    }
     // Selection.
     match preview {
         Some(_) if !shows_transform_outline(app, live.is_some()) => {}
@@ -2345,6 +2350,26 @@ fn symmetry_copy_paths(
             symmetry_copy_paths(&c, edited, out);
         }
     }
+}
+
+/// The selection's box where the transform started (the objects stay
+/// there until the release), in dashes: with Show objects while
+/// transforming the objects move and the frame stays (#3949).
+fn draw_start_frame(app: &App, painter: &Painter) {
+    let Some(r) = start_frame(app) else {
+        return;
+    };
+    let r = ERect::from_two_pos(
+        app.view.to_screen(r.origin()),
+        app.view.to_screen(Point::new(r.x1, r.y1)),
+    );
+    dashed_rect(painter, r.expand(0.5), Tokens::DRAG_OUTLINE);
+}
+
+/// The box [`draw_start_frame`] draws, in page space.
+pub(crate) fn start_frame(app: &App) -> Option<Rect> {
+    app.selection_bounds()
+        .filter(|r| r.width().is_finite() && r.height().is_finite())
 }
 
 /// Whether the drag outline shows while the selection is transformed:
@@ -5015,6 +5040,44 @@ mod tests {
         assert!(shows_transform_outline(&app, false));
         let old: crate::settings::Settings = serde_json::from_str("{}").expect("old settings");
         assert!(old.transform_outline_over_objects, "on for settings saved before");
+    }
+
+    /// With Show objects while transforming, a scale drag draws the
+    /// objects at their new size while a dashed frame stays at the box
+    /// they started from (#3949): the frame is the selection's box before
+    /// the drag, which the objects keep until the release.
+    #[test]
+    fn a_frame_stays_where_a_live_transform_started() {
+        let mut app = App::headless();
+        app.settings.live_transform_preview = true;
+        let id = app
+            .new_shape(ShapeKind::Rect {
+                rect: Rect::new(10.0, 10.0, 30.0, 20.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("a rectangle");
+        app.select(vec![id]);
+        let before = app.selection_bounds().expect("a box");
+        app.drag = Drag::Scale {
+            handle: Handle::SE,
+            anchor: Point::new(before.x0, before.y0),
+            start_bounds: before,
+            current: Point::new(before.x1 + 40.0, before.y1 + 30.0),
+            grab: tracedraw_core::geometry::Vec2::ZERO,
+            mods: Default::default(),
+            snapped: (false, false),
+            start_geometry: None,
+        };
+        let t = app.preview_transform_of(&app.drag).expect("a preview");
+        // The objects go to the new size...
+        let corner = t * Point::new(before.x1, before.y1);
+        assert!(
+            (corner - Point::new(before.x1, before.y1)).hypot() > 10.0,
+            "{corner:?}"
+        );
+        // ...and the frame stays.
+        assert_eq!(start_frame(&app), Some(before));
     }
 
     /// Show objects while transforming is off by default (#3569).

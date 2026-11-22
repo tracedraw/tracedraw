@@ -187,7 +187,11 @@ The handles return on release.
 With Options > Display > Show objects while transforming (off by
 default, #3569) the objects themselves are also drawn where they would
 go while the drag lasts, fills, effects and blends included, and drawn
-where they were no longer; slower on large drawings.
+where they were no longer; slower on large drawings. A dashed frame
+stays at the selection's box as it was when the drag began, so the
+change can be judged against it; the handles and the box take the new
+size on release (#3949,
+`canvas::tests::a_frame_stays_where_a_live_transform_started`).
 
 A move grabbed on a mark (see below) carries that point: a node,
 midpoint, centre or the point of an edge lands on other objects' points
