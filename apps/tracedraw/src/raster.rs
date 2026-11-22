@@ -588,18 +588,39 @@ impl Raster {
         // last picture shows, moved into place.
         #[cfg(not(target_arch = "wasm32"))]
         if self.poll_job(ctx) {
-            // A render for a zoom the view has already left: nobody will
-            // see its picture, and the one for this zoom would wait for
-            // all of it, so a large drawing stayed blurry for two whole
-            // renders after each zoom step (#2522). It gives up at its
-            // next object; the scaled picture shows meanwhile.
-            if let Some(job) = &self.job {
-                if job.key != key
+            let now = ctx.input(|i| i.time);
+            // The view keeps zooming, a step every few frames: the running
+            // render keeps its turn and is not given up, or every render
+            // would give up before any of them is done, and the one for
+            // the zoom the wheel stopped at would start over from nothing.
+            // Each step re-arms the wait, so a wheel that goes on never
+            // rests it.
+            let stale_zoom = self.job.as_ref().is_some_and(|job| {
+                job.key != key
                     && job.key.same_but_view(&key, self.follows_zoom)
                     && self.zooms_at_once(&job.key, &key)
-                {
-                    job.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+            });
+            if stale_zoom {
+                let due = match &self.settle {
+                    Some((k, due)) if *k == key => *due,
+                    _ => now + SETTLE_SECONDS,
+                };
+                if now < due {
+                    self.settle = Some((key, due));
+                    ctx.request_repaint_after(std::time::Duration::from_secs_f64(due - now));
+                } else {
+                    // The view has settled: a render for a zoom it has
+                    // already left. Nobody will see its picture, and the
+                    // one for this zoom would wait for all of it, so a
+                    // large drawing stayed blurry for two whole renders
+                    // after each zoom step (#2522). It gives up at its
+                    // next object; the scaled picture shows meanwhile, and
+                    // the settled zoom's render starts when it has.
+                    if let Some(job) = &self.job {
+                        job.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+                    }
                 }
+                return self.shown_meanwhile(view, screen);
             }
             let running_for_this = self.job.as_ref().is_some_and(|j| j.key == key);
             if running_for_this || window.is_none() {
@@ -621,7 +642,8 @@ impl Raster {
         // pan shows the old picture as sharp as it was; a zoom scales it,
         // blurry, so the main canvas renders the new zoom at once on a
         // thread (one render at a time: one still running for an earlier
-        // step is waited for above, then the latest zoom goes next).
+        // step is waited for above, then, once the view has rested, the
+        // latest zoom goes next).
         let mut zoom_now = false;
         if window.is_none() {
             if let (Some(old), Some(t), Some(page_rect)) =
@@ -646,6 +668,22 @@ impl Raster {
                         ctx.request_repaint_after(std::time::Duration::from_secs_f64(due - now));
                         return Some((t.id(), view.rect_to_screen(page_rect)));
                     }
+                } else if moved && zoom_now && self.settle.is_some() {
+                    // A step of a zoom the view is already moving in,
+                    // before it settled: one render a step would never be
+                    // done. The step is skipped, the last picture shows
+                    // scaled, and the settled zoom is rendered once, below.
+                    let now = ctx.input(|i| i.time);
+                    let due = match &self.settle {
+                        Some((k, due)) if *k == key => *due,
+                        _ => now + SETTLE_SECONDS,
+                    };
+                    if now < due {
+                        self.settle = Some((key, due));
+                        ctx.request_repaint_after(std::time::Duration::from_secs_f64(due - now));
+                        return Some((t.id(), view.rect_to_screen(page_rect)));
+                    }
+                    // Settled: the render below draws the zoom it stopped at.
                 }
             }
         }
@@ -1991,11 +2029,14 @@ mod tests {
     }
 
     /// A burst of zoom steps while a render runs: no render is started
-    /// for each step. The running one, for a zoom the view has left, gives
-    /// up (its picture would only be shown scaled again, and the latest
-    /// zoom's render waited for all of it, #2522), and the next render
-    /// starts as soon as it has for the latest zoom only, covering only
-    /// the canvas, the part of the page on screen.
+    /// for a step, and the running one is not given up while the wheel
+    /// goes on: it keeps its turn, the last picture shows scaled, and the
+    /// steps wait for the view to settle. Once it has, the render, for a
+    /// zoom the view has left, gives up (its picture would only be shown
+    /// scaled again, and the latest zoom's render waited for all of it,
+    /// #2522), and the next render starts as soon as it has, for the
+    /// latest zoom only, covering only the canvas, the part of the page
+    /// on screen.
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn the_latest_zoom_wins_without_restarting_renders() {
@@ -2035,13 +2076,29 @@ mod tests {
             assert_eq!(raster.render_count(), renders + 1, "restarted");
             assert_eq!(raster.job.as_ref().map(|j| j.key.zoom), Some(first_step));
             assert!(
-                raster
+                !raster
                     .job
                     .as_ref()
                     .is_some_and(|j| j.cancel.load(std::sync::atomic::Ordering::Relaxed)),
-                "the first step's render told to give up"
+                "the running render is not given up while the wheel goes on"
             );
+            assert!(raster.settle.is_some(), "the steps wait to settle");
         }
+        // The wheel stops: once the view has settled, the render, for a
+        // zoom the view has left, is told to give up.
+        let mut told = false;
+        for i in 0..400 {
+            pass(&ctx, &mut raster, &doc, &view, rect, 0.4 + 0.001 * i as f64);
+            told = raster
+                .job
+                .as_ref()
+                .is_some_and(|j| j.cancel.load(std::sync::atomic::Ordering::Relaxed));
+            if told {
+                break;
+            }
+        }
+        assert!(told, "never told to give up");
+        assert_eq!(raster.render_count(), renders + 1);
         let before = raster.picture_zoom();
         drop(held);
         // It gave up, and the latest zoom's render started at once.
@@ -2091,6 +2148,92 @@ mod tests {
         ] {
             assert!((a - b).abs() < 1e-3, "{shown:?} {want:?}");
         }
+    }
+
+    /// A render slower than the wheel: while the wheel goes on, the steps
+    /// are skipped (the last picture shows scaled) and the running render
+    /// is not given up; one that finishes for a zoom the view has already
+    /// left shows scaled instead of starting the next render, and when
+    /// the view has settled, one render draws the zoom the wheel stopped
+    /// at.
+    #[test]
+    fn a_zoom_burst_skips_steps_until_the_view_settles() {
+        static TURNS: Turns = Turns::new();
+        let ctx = Context::default();
+        let doc = Document::new("t", Size::new(100.0, 50.0));
+        let rect = Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(320.0, 200.0));
+        let hold = std::sync::Arc::new(std::sync::Mutex::new(()));
+        let mut raster = Raster {
+            turns: Some(&TURNS),
+            hold: Some(hold.clone()),
+            ..Default::default()
+        };
+        let mut view = View::default();
+        let at = egui::pos2(160.0, 100.0);
+        pass(&ctx, &mut raster, &doc, &view, rect, 0.0);
+        let renders = raster.render_count();
+        // The first step starts a render, held on its thread.
+        let held = hold.lock().expect("lock");
+        view.zoom_at(at, 1.15);
+        let first_step = view.zoom;
+        let (first_tex, _) = pass(&ctx, &mut raster, &doc, &view, rect, 0.01);
+        assert_eq!(raster.render_count(), renders + 1);
+        // The next step: skipped, the running render keeps its turn.
+        view.zoom_at(at, 1.15);
+        let (tex, screen) = pass(&ctx, &mut raster, &doc, &view, rect, 0.03);
+        assert_eq!(tex, first_tex, "the last picture, scaled");
+        assert!(screen.width() > rect.width());
+        assert_eq!(raster.render_count(), renders + 1, "no render for the step");
+        assert_eq!(raster.job.as_ref().map(|j| j.key.zoom), Some(first_step));
+        assert!(
+            !raster
+                .job
+                .as_ref()
+                .is_some_and(|j| j.cancel.load(std::sync::atomic::Ordering::Relaxed)),
+            "not given up while the wheel goes on"
+        );
+        assert!(raster.settle.is_some(), "the steps wait to settle");
+        // It finishes, for a zoom the view has already left: its picture
+        // shows scaled, and no render starts for the step the view is at.
+        drop(held);
+        let mut base = raster.picture_zoom();
+        for i in 0..400 {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            pass(&ctx, &mut raster, &doc, &view, rect, 0.04 + 0.001 * i as f64);
+            if raster.job.is_none() {
+                base = raster.picture_zoom();
+                break;
+            }
+        }
+        assert_eq!(base, Some(first_step), "the finished render never showed");
+        assert_eq!(raster.render_count(), renders + 1, "restarted for it");
+        assert!(raster.settle.is_some(), "the step the view is at waits");
+        // One more step within the wait: skipped all the same.
+        view.zoom_at(at, 1.15);
+        let (tex, _) = pass(&ctx, &mut raster, &doc, &view, rect, 0.1);
+        assert_eq!(tex, first_tex);
+        assert_eq!(raster.render_count(), renders + 1);
+        // The wheel stops: one render, for the zoom it stopped at.
+        let mut started = false;
+        for i in 0..400 {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            pass(&ctx, &mut raster, &doc, &view, rect, 0.12 + 0.001 * i as f64);
+            if raster.render_count() > renders + 1 {
+                started = true;
+                break;
+            }
+        }
+        assert!(started, "the settled zoom was never rendered");
+        assert_eq!(raster.render_count(), renders + 2);
+        assert_eq!(raster.job.as_ref().map(|j| j.key.zoom), Some(view.zoom));
+        for i in 0..400 {
+            if raster.picture_zoom() == Some(view.zoom) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            pass(&ctx, &mut raster, &doc, &view, rect, 1.0 + 0.001 * i as f64);
+        }
+        assert_eq!(raster.picture_zoom(), Some(view.zoom));
     }
 
     /// A page beside the current one in the Multipage View is rendered

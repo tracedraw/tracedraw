@@ -80,10 +80,17 @@
   for slow computers. A notch zooms its whole step at once, without the
   glide, and the canvas keeps the last picture scaled while the zoom
   goes on, drawing the drawing anew once the view has rested 0.3 s
-  (`raster::LIGHT_SETTLE_SECONDS`) instead of starting a render at every
-  step. A three-notch wheel turn with the glide starts 6 renders (each
-  frame of the glide gives up the last one); with Light zoom, 1
-  (`raster::tests::light_zoom_renders_once_when_the_zoom_stops`,
+  (`raster::LIGHT_SETTLE_SECONDS`), for the zoom the wheel stopped at.
+  A three-notch wheel turn starts 2 renders with the glide, 1 with
+  Light zoom. With the glide the first step renders at once, and the
+  steps after it are skipped until the view has rested 0.12 s
+  (`raster::SETTLE_SECONDS`): the running render is not given up while
+  the wheel goes on, and when the view settles the render left over,
+  for a zoom the view has left, gives up at its next object, and one
+  render draws the zoom the wheel stopped at
+  (`raster::tests::the_latest_zoom_wins_without_restarting_renders`,
+  `raster::tests::a_zoom_burst_skips_steps_until_the_view_settles`,
+  `raster::tests::light_zoom_renders_once_when_the_zoom_stops`,
   `pick_drag_tests::light_zoom_draws_once_per_wheel_turn`).
 - With the Scroll setting: the wheel scrolls vertically; Shift+wheel
   scrolls horizontally; Ctrl+wheel zooms.

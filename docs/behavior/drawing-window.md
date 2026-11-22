@@ -213,18 +213,20 @@ window shows.
   wait for the view to rest: the last render, scaled into place, would
   look blurry, so the main canvas renders the new zoom at once on a
   thread of its own (`raster::Raster::zooms_at_once`), the scaled
-  picture showing meanwhile. A zoom step that comes while that render
-  runs does not restart it (nothing is thrown away): when it ends its
-  picture is shown, nearer the zoom on screen than the one before, and
-  the next render starts in the same frame for the latest zoom. A burst
-  of wheel notches so shows a sharper picture after every render, and
-  the sharp one about one render after the last step instead of 0.12 s
-  plus a render. Like every render it covers only the canvas, the part
-  of the page on screen, drawn in bands on all cores at once (so the
-  whole visible part comes about as fast as a tile under the pointer
-  would). The pages beside the current one in the Multipage View still
-  wait for the view to rest (many of them come due at once), and the
-  browser build, which draws on one thread, keeps the wait too.
+  picture showing meanwhile. The steps of a zoom the view is already
+  moving in are skipped until the view has rested 0.12 s
+  (`raster::SETTLE_SECONDS`): no render starts for a step, and the
+  running one is not given up while the wheel goes on, so a long turn
+  costs its first step's render and the settled one instead of giving
+  up and starting over at every notch. When the view has rested, the
+  render left over, for a zoom the view has left, gives up at its next
+  object (#2522), and one render draws the zoom the wheel stopped at.
+  Like every render it covers only the canvas, the part of the page on
+  screen, drawn in bands on all cores at once (so the whole visible
+  part comes about as fast as a tile under the pointer would). The
+  pages beside the current one in the Multipage View still wait for the
+  view to rest (many of them come due at once), and the browser build,
+  which draws on one thread, keeps the wait too.
   `frame_times_of_a_zoom_burst` (in `pick_drag_tests.rs`) measures the
   wait from the last step to the sharp picture.
 - The main canvas's picture drawn on a thread comes a band at a time
