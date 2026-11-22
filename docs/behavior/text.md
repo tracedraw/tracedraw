@@ -1195,7 +1195,15 @@ alternates (`salt`), Swash (`swsh`); then Superscript and Subscript.
   spacing change (in percent) is added to each paragraph's, and each
   paragraph's line spacing is multiplied by the same factor. One undo
   step per drag.
-- Text fitted to a path shows no character nodes.
+- Text fitted to a path has a node at each letter too, where it stands
+  along the path (#3252): chosen as above, and dragging one moves the
+  chosen letters along the path and away from it as the path runs at
+  the first of them (the move becomes their offsets: the horizontal
+  offset carries a letter that far along the path, turned with it,
+  instead of off to the side). It keeps the horizontal spacing arrow
+  only (#193)
+  (`text_nodes::tests::text_on_a_path_has_character_nodes_that_move_along_it`,
+  `tracedraw_text`: `tests::a_character_moved_sideways_on_a_path_moves_along_it`).
 
 ## Placeholder text
 

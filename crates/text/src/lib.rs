@@ -1774,6 +1774,10 @@ struct Glyph {
     advance: f64,
     x_offset: f64,
     y_offset: f64,
+    /// How far the character is moved sideways from its place (its
+    /// horizontal offset, mm), already in `path`: text fitted to a path
+    /// moves it along the path instead (#3252).
+    shift_x: f64,
     /// The character this glyph (cluster) starts; used for spaces and tabs.
     ch: char,
     /// Index of that character in the concatenated span text.
@@ -4481,6 +4485,7 @@ impl FontSystem {
                 advance: adv + tracking + spacing,
                 x_offset: pos.x_offset as f64 * scale * width,
                 y_offset: pos.y_offset as f64 * scale,
+                shift_x,
                 ch,
                 char_idx: char_base + cluster.unwrap_or(0),
                 char_end: char_base + chars.partition_point(|(i, _)| *i < cluster_end),
@@ -4963,6 +4968,7 @@ impl FontSystem {
                                 advance: 0.0,
                                 x_offset: 0.0,
                                 y_offset: 0.0,
+                                shift_x: 0.0,
                                 ch: marker,
                                 char_idx,
                                 char_end: char_idx + 1,
@@ -6809,7 +6815,9 @@ fn place_on_path(
         let Some(g) = line.glyphs.get(order.as_ref().map_or(k, |o| o[k])) else {
             continue;
         };
-        let mid = pen + g.advance / 2.0;
+        // A character moved sideways goes that far along the path, turned
+        // as the path is there (#3252).
+        let mid = pen + g.advance / 2.0 + g.shift_x;
         pen += g.advance;
         let Some((p, dir)) = baseline.at(mid) else {
             continue;
@@ -6818,7 +6826,7 @@ fn place_on_path(
         let place = Affine::translate(p.to_vec2())
             * along
             * flip
-            * Affine::translate((-g.advance / 2.0 + g.x_offset, g.y_offset + lift));
+            * Affine::translate((-g.advance / 2.0 + g.x_offset - g.shift_x, g.y_offset + lift));
         if spans.get(g.span).is_some_and(|s| s.layout_only) {
             continue;
         }
@@ -7119,6 +7127,7 @@ mod tests {
                 advance: 1.0,
                 x_offset: 0.0,
                 y_offset: 0.0,
+                shift_x: 0.0,
                 ch,
                 char_idx: i,
                 char_end: i + 1,
@@ -7575,6 +7584,7 @@ mod tests {
             advance: 1.0,
             x_offset: 0.0,
             y_offset: 0.0,
+            shift_x: 0.0,
             ch,
             char_idx: 0,
             char_end: 1,
@@ -8668,6 +8678,7 @@ mod tests {
                 advance: 1.0,
                 x_offset: 0.0,
                 y_offset: 0.0,
+                shift_x: 0.0,
                 ch,
                 char_idx: i,
                 char_end: i + 1,
@@ -9538,6 +9549,47 @@ mod tests {
             b.height() > b.width(),
             "vertical path should give tall text: {b:?}"
         );
+    }
+
+    /// A character moved sideways on text fitted to a path goes that far
+    /// along the path, turned with it: on a vertical path it goes up, not
+    /// off to the side (#3252).
+    #[test]
+    fn a_character_moved_sideways_on_a_path_moves_along_it() {
+        if !has_fonts() {
+            return;
+        }
+        let f = fonts();
+        let mut p = BezPath::new();
+        p.move_to((0.0, 0.0));
+        p.line_to((0.0, 100.0));
+        let tp = TextOnPath {
+            path: p,
+            ..Default::default()
+        };
+        let para = ParagraphStyle::default();
+        let box_of = |shift: f64| {
+            let mut a = span("I");
+            a.offset_x_pct = shift;
+            f.layout(&TextRequest {
+                spans: &[a],
+                frame: None,
+                align: TextAlign::Left,
+                para: &para,
+                on_path: Some(&tp),
+            })
+            .path
+            .bounding_box()
+        };
+        let still = box_of(0.0);
+        // Half the font size along the path.
+        let moved = box_of(50.0);
+        let size = span("I").size_pt * PT_MM;
+        assert!(
+            (moved.y0 - still.y0 - size / 2.0).abs() < 0.05,
+            "{still:?} {moved:?}"
+        );
+        assert!((moved.x0 - still.x0).abs() < 0.05, "{still:?} {moved:?}");
     }
 
     fn on_path(f: &FontSystem, text: &str, tp: &TextOnPath, align: TextAlign) -> BezPath {

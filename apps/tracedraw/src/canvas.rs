@@ -3663,7 +3663,11 @@ fn draw_nodes(app: &App, painter: &Painter) {
                 }
                 let (h, v) = app.spacing_arrow_spots(&s);
                 draw_spacing_arrow(painter, h, true, main);
-                draw_spacing_arrow(painter, v, false, main);
+                // Text fitted to a path: the horizontal arrow only, which
+                // opens up or closes the letters along the path (#193).
+                if !crate::text_nodes::on_path(&s) {
+                    draw_spacing_arrow(painter, v, false, main);
+                }
                 continue;
             }
             // Text fitted to a path: the horizontal arrow only, which
