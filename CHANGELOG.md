@@ -4,6 +4,16 @@ Versions follow the tags of this repository; every push to `main` also
 publishes a nightly build. [`docs/features.md`](docs/features.md) has the
 full, row-by-row status.
 
+## Unreleased
+
+- Welcome screen: drawings on a network share or a USB drive show their folder as typed, without the `\\?\UNC\` or `\\?\` in front (#3812).
+- Colour Eyedropper: with Treat All Objects as Filled, an unfilled object lying over others no longer keeps the colour beneath it from being read; inside it the object beneath is read, on its outline its outline colour (#3856).
+- Text tool: over the outline of a curve inside a group (or a clip frame) the tool offers to type along it, as on a loose curve, and a click starts the text on it (#3864).
+- Edit Inside: the middle button pans the view while a picture is edited, as everywhere else (#3855).
+- Objects panel: a Ctrl+click (or Shift+click) on a row keeps the list where it is scrolled; it jumped back to the first selected object (#3822).
+- A drawing sent zipped (`name.cdr.zip`, as messaging apps save it) opens when the .zip is dropped on the window: the drawings inside open, its other files are left (#3853).
+- Shape tool: dragging a handle of one curve no longer undoes the handle drag just made on another curve (#3689).
+
 ## 0.50.3 (2026-11-22)
 
 - A window that stops responding for more than 10 seconds says so once it comes through and offers to send a report of what TraceDraw was doing (the version, the system, the renderer, the tool, the last command, the size of the drawing, never its name or contents, and the end of the log); a hang the program was ended in, or a crash, is offered at the next start. Send Report opens a new GitHub issue with a summary filled in and the folder holding the report; nothing is sent by itself. System file dialogs held open do not count (#3665, #3687, #3883).

@@ -589,12 +589,15 @@ fn zoom_thumbs(app: &mut App, steps: i32) {
     );
 }
 
+/// The selection the list last showed (see [`scroll_target`]).
+const SEEN_SELECTION: &str = "objects_seen_selection";
+
 /// The object whose row the list scrolls to this frame: the first
 /// selected one, when the selection is not the one the list last showed
 /// (a pick on the page, a Select All, an undo), so a selection far down a
 /// long list comes into view (#1044).
 fn scroll_target(app: &App, ui: &Ui) -> Option<ShapeId> {
-    let seen = egui::Id::new("objects_seen_selection");
+    let seen = egui::Id::new(SEEN_SELECTION);
     let changed = ui.data_mut(|d| {
         let last = d.get_temp::<Vec<ShapeId>>(seen);
         d.insert_temp(seen, app.selection.clone());
@@ -3104,6 +3107,10 @@ fn apply(app: &mut App, ui: &Ui, mut act: Actions) {
         let anchor: Option<ShapeId> = ui.data(|d| d.get_temp(key));
         let anchor = select_row(app, id, &act.row_order, anchor, shift, ctrl);
         ui.data_mut(|d| d.insert_temp(key, anchor));
+        // A selection made in the list itself is in view already: the list
+        // stays where it is scrolled, not jumping back to the first
+        // selected row on a Ctrl+click (#3822).
+        ui.data_mut(|d| d.insert_temp(egui::Id::new(SEEN_SELECTION), app.selection.clone()));
         if let Some(layer) = layer_holding(app, id) {
             app.picked_layer = Some(layer);
         }
@@ -4143,6 +4150,86 @@ pub(crate) mod tests {
             run(&mut app, 2000.0);
         }
         assert!(!shown(row_of(far)), "{:?}", row_of(far));
+    }
+
+    /// #3822: with an object far down the list selected, the list
+    /// scrolled up by hand and a row there Ctrl+clicked, the list jumped
+    /// back down to the first selected object; it stays where it is.
+    #[test]
+    fn a_ctrl_click_in_the_list_keeps_its_scroll() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        let ids: Vec<ShapeId> = (0..80)
+            .map(|_| app.new_shape(rect_kind()).expect("shape"))
+            .collect();
+        ctx.all_styles_mut(|s| s.scroll_animation = egui::style::ScrollAnimation::none());
+        let run = |app: &mut App, events: Vec<egui::Event>, ctrl: bool| {
+            let mut all = vec![egui::Event::ModifiersChanged(if ctrl {
+                egui::Modifiers::COMMAND
+            } else {
+                egui::Modifiers::NONE
+            })];
+            all.extend(events);
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(300.0, 300.0),
+                )),
+                events: all,
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(input, |ui| objects_docker(app, ui));
+            out.textures_delta.clear();
+        };
+        let row_of = |id: ShapeId| {
+            ctx.read_response(egui::Id::new(("objects_object", id.raw())).with("eye"))
+                .map(|r| r.rect)
+        };
+        let shown =
+            |r: Option<egui::Rect>| r.is_some_and(|r| r.top() >= 0.0 && r.bottom() <= 300.0);
+        let far = ids[0];
+        app.select(vec![far]);
+        for _ in 0..4 {
+            run(&mut app, Vec::new(), false);
+        }
+        assert!(shown(row_of(far)), "{:?}", row_of(far));
+        // Back up to the top of the list by hand.
+        for _ in 0..4 {
+            run(
+                &mut app,
+                vec![
+                    egui::Event::PointerMoved(Pos2::new(150.0, 150.0)),
+                    egui::Event::MouseWheel {
+                        unit: egui::MouseWheelUnit::Point,
+                        delta: Vec2::new(0.0, 5000.0),
+                        phase: egui::TouchPhase::Move,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+                false,
+            );
+        }
+        let top = *ids.last().expect("ids");
+        let r = row_of(top)
+            .filter(|r| shown(Some(*r)))
+            .expect("top row in view");
+        // Ctrl+click on its name, left of its eye.
+        let at = Pos2::new(r.left() - 100.0, r.center().y);
+        let press = |pressed| egui::Event::PointerButton {
+            pos: at,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::COMMAND,
+        };
+        run(&mut app, vec![egui::Event::PointerMoved(at)], true);
+        run(&mut app, vec![press(true)], true);
+        run(&mut app, vec![press(false)], true);
+        for _ in 0..3 {
+            run(&mut app, Vec::new(), false);
+        }
+        assert!(app.selection.contains(&top), "{:?}", app.selection);
+        assert!(app.selection.contains(&far), "{:?}", app.selection);
+        assert!(shown(row_of(top)), "jumped away: {:?}", row_of(top));
     }
 
     #[test]

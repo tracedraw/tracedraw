@@ -4109,7 +4109,8 @@ impl App {
     /// closed path begins at `at` instead of being centred there (the
     /// Text tool clicked on the path).
     fn text_onto_path(&mut self, path_id: ShapeId, at: Option<Point>, begin: bool) {
-        let Ok(curve) = self.doc().shape(path_id).map(|(_, s)| s.clone()) else {
+        // Nested paths too (#3864), in page space.
+        let Some(curve) = self.doc().shape_on_page(path_id) else {
             return;
         };
         if matches!(curve.kind, ShapeKind::Text { .. }) {
@@ -4225,10 +4226,23 @@ impl App {
     pub fn text_tool_path_at(&self, p: Point) -> Option<ShapeId> {
         let tolerance = 4.0 / f64::from(self.view.zoom).max(1e-6);
         let id = self.hit_test(p)?;
-        let (_, s) = self.doc().shape(id).ok()?;
+        let (_, top) = self.doc().shape(id).ok()?;
+        // A path inside a group or a clip frame is reached as it is drawn
+        // (#3864): the group itself is not a path.
+        let s = if matches!(
+            top.kind,
+            ShapeKind::Group { .. } | ShapeKind::ClipFrame { .. }
+        ) {
+            self.leaf_of(id, p)?
+        } else {
+            top.clone()
+        };
         if matches!(
             s.kind,
-            ShapeKind::Text { .. } | ShapeKind::Bitmap { .. } | ShapeKind::Group { .. }
+            ShapeKind::Text { .. }
+                | ShapeKind::Bitmap { .. }
+                | ShapeKind::Group { .. }
+                | ShapeKind::ClipFrame { .. }
         ) {
             return None;
         }
@@ -4236,7 +4250,7 @@ impl App {
         let near = path.segments().any(|seg| {
             kurbo::ParamCurveNearest::nearest(&seg, p, 1e-3).distance_sq <= tolerance * tolerance
         });
-        near.then_some(id)
+        near.then_some(s.id)
     }
 
     /// The Text tool clicked on the outline of a path (not a text): a new
@@ -7764,6 +7778,39 @@ mod tests {
         assert!((b.x0 - 10.0).abs() < 1.5, "{b:?}");
         assert!(b.y0 > 49.0 && b.y0 < 51.0, "{b:?}");
         assert!(b.height() < 8.0 && b.width() > b.height(), "{b:?}");
+    }
+
+    /// #3864: the Text tool over the outline of a path inside a group
+    /// offered nothing; it starts a text on that path as on a loose one.
+    #[test]
+    fn the_text_tool_starts_text_on_a_path_inside_a_group() {
+        let mut app = App::headless();
+        let e = app
+            .new_shape(ShapeKind::Ellipse {
+                rect: tracedraw_core::geometry::Rect::new(40.0, 100.0, 140.0, 160.0),
+                arc: None,
+            })
+            .expect("ellipse");
+        let r = app
+            .new_shape(ShapeKind::Rect {
+                rect: tracedraw_core::geometry::Rect::new(200.0, 100.0, 260.0, 160.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        app.select(vec![e, r]);
+        app.group_selection();
+        assert!(app.doc().shape(e).is_err(), "grouped");
+        app.selection.clear();
+        app.set_tool(crate::tools::Tool::Text);
+        assert_eq!(app.text_tool_path_at(Point::new(90.0, 160.0)), Some(e));
+        assert_eq!(app.text_tool_path_at(Point::new(90.0, 130.0)), None);
+        assert!(app.start_text_on_path_at(Point::new(90.0, 160.0)));
+        let t = app.selection[0];
+        assert!(app.text_edit.is_some());
+        let tp = fitted(&app, t);
+        let start = tp.path.segments().next().expect("segment").start();
+        assert!((start.y - 160.0).abs() < 0.05, "{start:?}");
     }
 
     #[test]

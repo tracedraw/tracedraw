@@ -339,17 +339,28 @@ impl App {
         }
     }
 
-    fn set_path(&mut self, id: ShapeId, path: BezPath, closed: bool, label: &'static str) {
-        if self.engine.undo_label() == Some(label) {
-            let _ = self.engine.undo();
-        }
-        let _ = self.engine.run_with_label(
-            &Command::SetShapeKind {
-                shape: id,
-                kind: ShapeKind::Path { path, closed },
-            },
-            label,
-        );
+    /// Give curve `id` the path `path`: the first step of a drag is a new
+    /// undo step named `label`, later steps of the same drag join it.
+    /// Only the drag's own step is joined: an earlier step of the same
+    /// name, another curve's handle drag among them, stays as it was
+    /// (#3689).
+    fn set_path(
+        &mut self,
+        id: ShapeId,
+        path: BezPath,
+        closed: bool,
+        label: &'static str,
+        begun: bool,
+    ) {
+        let cmd = Command::SetShapeKind {
+            shape: id,
+            kind: ShapeKind::Path { path, closed },
+        };
+        let _ = if begun {
+            self.engine.amend(&cmd)
+        } else {
+            self.engine.run_with_label(&cmd, label)
+        };
     }
 
     fn set_path_new_step(&mut self, id: ShapeId, path: BezPath, closed: bool) {
@@ -938,8 +949,11 @@ impl App {
                         let lp = t.inverse() * q;
                         let ty = self.node_type_of(shape, index);
                         let np = nodes::move_handle(&path, index, which, lp, ty);
-                        self.note_node_drag_step(self.node_drag_shown.is_some());
-                        self.set_path(shape, np, closed, "Edit Handle");
+                        // The press cleared the page's kept picture: it is
+                        // there from the drag's first step on.
+                        let begun = self.node_drag_shown.is_some();
+                        self.note_node_drag_step(begun);
+                        self.set_path(shape, np, closed, "Edit Handle", begun);
                     }
                 }
                 Drag::NodeMarquee { start, .. } => {

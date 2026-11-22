@@ -505,10 +505,11 @@ fn recent_row(app: &mut App, ui: &mut Ui, path: &std::path::Path, look: &RowLook
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_default();
     // A document the Android picker returned has a URI, not a folder.
+    // Without the `\\?\` prefix of a canonical Windows path (#3812).
     let folder = path
         .parent()
         .filter(|_| !crate::files::is_document_path(path))
-        .map(|d| d.display().to_string())
+        .map(|d| crate::files::plain_path(d).display().to_string())
         .unwrap_or_default();
     let text_x = frame.right() + 10.0;
     let color = if exists {
@@ -614,7 +615,7 @@ fn recent_row(app: &mut App, ui: &mut Ui, path: &std::path::Path, look: &RowLook
             ui.close();
         }
     });
-    let resp = resp.rich_tip(path.display().to_string());
+    let resp = resp.rich_tip(crate::files::plain_path(path).display().to_string());
     if action == RecentAction::None && exists && resp.clicked() {
         action = RecentAction::Open;
     }

@@ -30606,3 +30606,121 @@ fn shift_scales_while_rotating() {
     let c = t * Point::new(10.0, 10.0);
     assert!((c.x - 10.0).abs() < 1e-9 && (c.y - 10.0).abs() < 1e-9, "{c:?}");
 }
+
+#[test]
+fn the_middle_button_pans_while_a_picture_is_edited_inside() {
+    // #3855: with a picture open in Edit Inside, a middle-button drag did
+    // not pan the view; it pans as everywhere else.
+    let (ctx, mut app, _) = setup();
+    let img = image::RgbaImage::from_pixel(20, 10, image::Rgba([255, 255, 255, 255]));
+    let png = crate::bitmap_fx::encode(&img).expect("png");
+    let id = app
+        .new_shape(ShapeKind::Bitmap {
+            rect: Rect::new(10.0, 10.0, 90.0, 50.0),
+            width_px: 20,
+            height_px: 10,
+            png: png.into(),
+            fx: None,
+        })
+        .expect("picture");
+    assert!(app.edit_bitmap_inside(id));
+    let none = Modifiers::NONE;
+    for _ in 0..2 {
+        frame(&ctx, &mut app, Vec::new(), none);
+    }
+    let mid = app.view.to_screen(Point::new(50.0, 30.0));
+    let before = app.view.to_screen(Point::new(0.0, 0.0));
+    frame(&ctx, &mut app, vec![Event::PointerMoved(mid)], none);
+    frame(
+        &ctx,
+        &mut app,
+        vec![button(mid, true, PointerButton::Middle, none)],
+        none,
+    );
+    let panned = mid + egui::vec2(-60.0, -40.0);
+    for i in 1..=3 {
+        let p = mid + (panned - mid) * (i as f32 / 3.0);
+        frame(&ctx, &mut app, vec![Event::PointerMoved(p)], none);
+    }
+    frame(
+        &ctx,
+        &mut app,
+        vec![button(panned, false, PointerButton::Middle, none)],
+        none,
+    );
+    let after = app.view.to_screen(Point::new(0.0, 0.0));
+    assert!(app.pixel_edit.is_some(), "still editing");
+    assert!(
+        (after - before).length() > 30.0,
+        "the middle drag pans: {before:?} {after:?}"
+    );
+}
+
+/// #3689: a handle of one curve dragged with the Shape tool, then a
+/// handle of another curve, then the first curve's handle again: the
+/// other curve keeps its edit. The third drag undid the second, being
+/// of the same name ("Edit Handle"), as if it were its own earlier step.
+#[test]
+fn a_handle_drag_on_one_curve_keeps_the_handle_drag_on_another() {
+    let (ctx, mut app, id) = setup();
+    app.select(vec![id]);
+    app.delete_selection();
+    let curve = |app: &mut App, y: f64| {
+        let mut path = tracedraw_core::BezPath::new();
+        path.move_to((20.0, y));
+        path.curve_to((40.0, y - 20.0), (80.0, y - 20.0), (100.0, y));
+        app.new_shape(ShapeKind::Path {
+            path,
+            closed: false,
+        })
+        .expect("curve")
+    };
+    let a = curve(&mut app, 60.0);
+    let c = curve(&mut app, 140.0);
+    app.set_tool(Tool::Shape);
+    let view = app.view.clone();
+    let at = |p: Point| view.to_screen(p);
+    let path_of = |app: &App, s: ShapeId| app.doc().find_shape(s).expect("curve").page_path();
+    // The handle into the end node, dragged by (dx, dy).
+    let drag_handle = |app: &mut App, s: ShapeId, y: f64, d: (f64, f64)| {
+        app.select(vec![s]);
+        app.node_selection = vec![(s, 1)];
+        for _ in 0..2 {
+            frame(&ctx, app, Vec::new(), Modifiers::NONE);
+        }
+        let tip = path_of(app, s)
+            .elements()
+            .iter()
+            .find_map(|e| match e {
+                tracedraw_core::geometry::PathEl::CurveTo(_, c2, _) => Some(*c2),
+                _ => None,
+            })
+            .expect("handle");
+        assert!((tip.y - (y - 20.0)).abs() < 30.0);
+        let to = Point::new(tip.x + d.0, tip.y + d.1);
+        drag(&ctx, app, at(tip), at(to), Modifiers::NONE, Vec::new());
+    };
+    drag_handle(&mut app, c, 140.0, (0.0, -15.0));
+    let c_once = path_of(&app, c);
+    drag_handle(&mut app, a, 60.0, (10.0, 30.0));
+    let a_edited = path_of(&app, a);
+    assert_ne!(a_edited.elements(), handled_curve(60.0).elements(), "the drag took");
+    drag_handle(&mut app, c, 140.0, (-10.0, -10.0));
+    assert_ne!(path_of(&app, c).elements(), c_once.elements(), "the drag took");
+    assert_eq!(
+        path_of(&app, a).elements(),
+        a_edited.elements(),
+        "the other curve keeps its edit"
+    );
+    // Each drag is a step of its own: Undo takes back the last one only.
+    app.undo();
+    assert_eq!(path_of(&app, c).elements(), c_once.elements());
+    assert_eq!(path_of(&app, a).elements(), a_edited.elements());
+}
+
+fn handled_curve(y: f64) -> tracedraw_core::BezPath {
+    let mut path = tracedraw_core::BezPath::new();
+    path.move_to((20.0, y));
+    path.curve_to((40.0, y - 20.0), (80.0, y - 20.0), (100.0, y));
+    path
+}

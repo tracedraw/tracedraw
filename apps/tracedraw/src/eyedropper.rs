@@ -369,7 +369,11 @@ impl App {
         outline: bool,
         decode: &mut dyn FnMut(&tracedraw_core::SharedBytes) -> Option<Picture>,
     ) -> Option<Color> {
-        let s = self.leaf_to_read(p)?;
+        let s = if outline {
+            self.leaf_to_read(p)?
+        } else {
+            self.leaf_to_read_color(p)?
+        };
         let s = &s;
         if outline {
             if let Some(st) = &s.stroke {
@@ -897,6 +901,30 @@ mod tests {
             Some(green)
         );
         assert_eq!(app.sample_color_at(inside, true), Some(green));
+    }
+
+    /// #3856: with Treat All Objects as Filled, an unfilled rectangle
+    /// lying over a filled one kept the eyedropper from reading the
+    /// colour through it; inside, the object beneath is read.
+    #[test]
+    fn an_unfilled_object_lets_the_colour_beneath_be_read() {
+        let mut app = App::headless();
+        app.settings.treat_all_filled = true;
+        let below = rect(&mut app, Rect::new(10.0, 10.0, 30.0, 30.0));
+        app.run(Command::SetFill {
+            shapes: vec![below],
+            fill: Fill::Solid(Color::rgb8(200, 30, 40)),
+        });
+        let above = rect(&mut app, Rect::new(0.0, 0.0, 40.0, 40.0));
+        app.run(Command::SetFill {
+            shapes: vec![above],
+            fill: Fill::None,
+        });
+        assert_eq!(app.hit_test(Point::new(20.0, 20.0)), Some(above));
+        assert_eq!(
+            app.sample_color_at(Point::new(20.0, 20.0), false),
+            Some(Color::rgb8(200, 30, 40))
+        );
     }
 
     /// #3784: pointing at the outline of a filled object reads the
