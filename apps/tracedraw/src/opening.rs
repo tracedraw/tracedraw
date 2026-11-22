@@ -181,10 +181,11 @@ fn read_tdraw(
         return Err("cancelled".into());
     }
     building.store(true, Ordering::Relaxed);
-    let version = tracedraw_core::document::tdraw_text_version(&text)
-        .min(tracedraw_core::document::TDRAW_FORMAT_VERSION);
-    let doc = tracedraw_core::Document::from_json(&text).map_err(|e| e.to_string())?;
-    Ok((doc, version))
+    // One parse gives the drawing and its version (#3914).
+    let (doc, version) =
+        tracedraw_core::Document::from_json_with_version(&text).map_err(|e| e.to_string())?;
+    drop(text);
+    Ok((doc, version.min(tracedraw_core::document::TDRAW_FORMAT_VERSION)))
 }
 
 /// The JSON text of a `.tdraw` file (decompressed when packed).
