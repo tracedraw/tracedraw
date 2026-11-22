@@ -36,10 +36,12 @@ pub enum PixelTool {
     Move,
     /// Paints light (see `pixel_light.rs`).
     Light,
+    /// Bends the layer in use with a grid of points.
+    Warp,
 }
 
 impl PixelTool {
-    pub const ALL: [PixelTool; 20] = [
+    pub const ALL: [PixelTool; 21] = [
         PixelTool::RectSelect,
         PixelTool::EllipseSelect,
         PixelTool::Lasso,
@@ -60,6 +62,7 @@ impl PixelTool {
         PixelTool::Eyedropper,
         PixelTool::Move,
         PixelTool::Light,
+        PixelTool::Warp,
     ];
 
     /// The tool's i18n key (`pixel.tool.<name>`).
@@ -85,6 +88,7 @@ impl PixelTool {
             PixelTool::Eyedropper => "pixel.tool.eyedropper",
             PixelTool::Move => "pixel.tool.move",
             PixelTool::Light => "pixel.tool.light",
+            PixelTool::Warp => "pixel.tool.warp",
         }
     }
 

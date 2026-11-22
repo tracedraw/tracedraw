@@ -136,6 +136,22 @@ the picture's pixels, as they were seen; the drawing keeps no layers.
 - Save Selection keeps it for the editing session; Load puts it back
   (only while the picture keeps its size).
 
+## Stretch and warp
+
+- Stretch (arrows up, down, left, right): the selection box's edge row
+  (or column) on that side, each pixel weighted by the selection, is
+  repeated from the box out to the picture's edge, on a new layer
+  "Stretched pixels" above the layer in use. With no selection the box is
+  the whole picture and nothing changes.
+- Warp tool: Start puts a grid (2 to 8 cells a side, 4 by default) over
+  the selection box, else over the box of the layer's pixels that are not
+  clear, else over the whole picture. Dragging a point (picked within 12
+  screen pixels) bends the layer through a smooth (Catmull-Rom) surface
+  through the points, previewed live; pixels outside the box stay. Enter
+  or Apply keeps it as one undo step, Reset puts the points back, Esc or
+  Cancel drops it, and changing tool applies it. A mask on the layer
+  keeps its shape.
+
 ## Undo
 
 Ctrl+Z, Ctrl+Shift+Z and Ctrl+Y undo and redo inside the editing; the
@@ -233,6 +249,9 @@ settings with nothing painted.
   `a_mask_stroke_moves_towards_its_value_up_to_the_opacity`,
   `tone_channel_border_and_smooth_selections`,
   `quick_mask_turns_painting_into_a_selection`.
+- Stretch and warp: `stretch_repeats_the_selections_edge_to_the_picture_edge`,
+  `an_untouched_warp_leaves_the_layer_as_it_was`,
+  `dragging_a_point_moves_the_pixels_with_it` in `pixel_warp::tests`.
 - Clone, heal, dodge, burn, sponge, blur, sharpen, smudge, red eye,
   bucket, gradient, content fill, feather, grow and history each have a
   test in `pixel_edit::tests`; the light effects in `fx::light::tests`.

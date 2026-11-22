@@ -77,6 +77,11 @@ pub struct PixelEdit {
     pub mask_stroke: Option<MaskStroke>,
     /// Selections kept to be loaded again while editing.
     pub saved_sels: Vec<image::GrayImage>,
+    /// Warp: the grid being dragged, the box it covers and its points
+    /// across and down.
+    pub warp: Option<crate::pixel_warp::Warp>,
+    pub warp_box: Dirty,
+    pub warp_grid: usize,
     /// Clone and heal: the source set with Alt+click, and the offset
     /// fixed by the first stroke after it (the source follows the brush).
     pub clone_src: Option<(f32, f32)>,
@@ -285,6 +290,67 @@ impl PixelEdit {
         }
     }
 
+    /// A warp grid over the layer in use: over the selection's box, else
+    /// over the layer's pixels that are not clear, else the picture.
+    pub fn start_warp(&mut self) {
+        let (w, h) = self.pi.img.dimensions();
+        if w == 0 || h == 0 {
+            return;
+        }
+        let b = if self.pi.sel.is_some() {
+            self.pi.sel_bounds()
+        } else {
+            let mut b: Option<Dirty> = None;
+            for (x, y, q) in self.pi.img.enumerate_pixels() {
+                if q[3] > 0 {
+                    b = Some(pixel_edit::union(b, [x, y, x + 1, y + 1]));
+                }
+            }
+            b
+        }
+        .unwrap_or([0, 0, w, h]);
+        self.warp_box = b;
+        self.warp = Some(crate::pixel_warp::Warp::new(
+            self.pi.img.clone(),
+            b,
+            self.warp_grid,
+            self.warp_grid,
+        ));
+        self.effect = None;
+        self.preview = None;
+    }
+
+    /// The warp as it is now shown in place of the layer in use.
+    pub fn refresh_warp(&mut self) {
+        if let Some(w) = &self.warp {
+            self.preview = Some(w.render(self.warp_box));
+            self.view.borrow_mut().full = true;
+        }
+    }
+
+    /// The warp put into the layer's pixels, one undo step.
+    pub fn apply_warp(&mut self) {
+        let Some(w) = self.warp.take() else {
+            return;
+        };
+        let out = w.render(self.warp_box);
+        let b = self.warp_box;
+        self.preview = None;
+        self.apply(true, |pi| {
+            pi.img = out;
+            Some(b)
+        });
+        self.view.borrow_mut().full = true;
+    }
+
+    /// The warp left off; the layer as it was.
+    pub fn cancel_warp(&mut self) {
+        if self.warp.take().is_some() {
+            self.preview = None;
+            self.view.borrow_mut().full = true;
+        }
+    }
+
     /// The effect being set up, run on the picture inside the selection,
     /// for the preview.
     pub fn refresh_preview(&mut self) {
@@ -369,6 +435,9 @@ impl App {
             target: MaskTarget::Pixels,
             mask_stroke: None,
             saved_sels: Vec::new(),
+            warp: None,
+            warp_box: [0, 0, 0, 0],
+            warp_grid: 4,
             clone_src: None,
             clone_offset: None,
             changed: false,
@@ -584,11 +653,49 @@ impl App {
             || tool == PixelTool::Light
             || matches!(
                 tool,
-                PixelTool::Fill | PixelTool::Gradient | PixelTool::Move
+                PixelTool::Fill | PixelTool::Gradient | PixelTool::Move | PixelTool::Warp
             );
         if paints && pe.pi.active_locked() {
             if started || clicked {
                 self.status = tr("pixel.status.layer_locked");
+            }
+            return;
+        }
+        if tool == PixelTool::Warp {
+            if pe.warp.is_none() && (started || clicked) {
+                pe.start_warp();
+            }
+            // Points within 12 screen pixels of the press are taken.
+            let s0 = self.view.to_screen(pe.to_page(0.0, 0.0));
+            let s1 = self.view.to_screen(pe.to_page(1.0, 0.0));
+            let grab = 12.0 / (s1 - s0).length().max(1e-6);
+            if started {
+                let pick = pe.warp.as_ref().and_then(|w| {
+                    let near = w
+                        .pts
+                        .iter()
+                        .enumerate()
+                        .map(|(k, p)| (k, (p.0 - x).hypot(p.1 - y)))
+                        .min_by(|a, b| a.1.total_cmp(&b.1))?;
+                    (near.1 <= grab).then_some(near.0)
+                });
+                if let Some(w) = pe.warp.as_mut() {
+                    w.drag = pick;
+                }
+            } else if dragged {
+                if let Some(w) = pe.warp.as_mut() {
+                    if let Some(k) = w.drag {
+                        if let Some(p) = w.pts.get_mut(k) {
+                            *p = (x, y);
+                        }
+                    }
+                }
+            }
+            if stopped {
+                if let Some(w) = pe.warp.as_mut() {
+                    w.drag = None;
+                }
+                pe.refresh_warp();
             }
             return;
         }
@@ -740,15 +847,22 @@ impl App {
         let cmd = Modifiers::COMMAND;
         let pressed = |k: Key, m: Modifiers| ctx.input_mut(|i| i.consume_key(m, k));
         if pressed(Key::Enter, Modifiers::NONE) {
-            self.finish_pixel_edit();
+            // Enter puts a warp under way in the layer first.
+            match self.pixel_edit.as_mut() {
+                Some(pe) if pe.warp.is_some() => pe.apply_warp(),
+                _ => self.finish_pixel_edit(),
+            }
             return;
         }
         let Some(pe) = self.pixel_edit.as_mut() else {
             return;
         };
         if pressed(Key::Escape, Modifiers::NONE) {
-            // Esc drops the selection first, then ends the editing.
-            if pe.pi.sel.is_some() {
+            // Esc leaves a warp off first, then drops the selection, then
+            // ends the editing.
+            if pe.warp.is_some() {
+                pe.cancel_warp();
+            } else if pe.pi.sel.is_some() {
                 pe.set_selection(None);
             } else {
                 self.finish_pixel_edit();
@@ -1027,6 +1141,27 @@ pub fn draw(app: &App, painter: &egui::Painter) {
             _ => {}
         }
     }
+    // The warp grid: its lines through the smooth surface and its points.
+    if let Some(wp) = &pe.warp {
+        let line = egui::Stroke::new(1.0, egui::Color32::from_rgb(0x1E, 0x7C, 0xE8));
+        let steps = 16;
+        for r in 0..wp.rows {
+            let pts: Vec<_> = (0..=steps * (wp.cols - 1))
+                .map(|i| to_screen(wp.eval(i as f32 / steps as f32, r as f32)))
+                .collect();
+            painter.add(egui::Shape::line(pts, line));
+        }
+        for c in 0..wp.cols {
+            let pts: Vec<_> = (0..=steps * (wp.rows - 1))
+                .map(|j| to_screen(wp.eval(c as f32, j as f32 / steps as f32)))
+                .collect();
+            painter.add(egui::Shape::line(pts, line));
+        }
+        for p in &wp.pts {
+            let c = to_screen(*p);
+            painter.circle(c, 4.0, egui::Color32::WHITE, line);
+        }
+    }
     if pe.lasso.len() > 1 {
         let pts: Vec<_> = pe.lasso.iter().map(|p| to_screen(*p)).collect();
         painter.add(egui::Shape::line(pts, ink));
@@ -1292,5 +1427,40 @@ mod tests {
         pe.apply(true, |pi| pixel_edit::apply_effect(pi, &e));
         assert_eq!(pe.pi.img.get_pixel(0, 0)[0], 0);
         assert!(pe.preview.is_none());
+    }
+
+    #[test]
+    fn a_warp_previews_then_applies_as_one_undo_step() {
+        let (mut app, id) = app_with_picture();
+        app.edit_bitmap_inside(id);
+        let pe = app.pixel_edit.as_mut().unwrap();
+        pe.apply(false, |pi| {
+            for y in 0..10 {
+                pi.img.put_pixel(4, y, Rgba([0, 0, 0, 255]));
+            }
+            Some([4, 0, 5, 10])
+        });
+        let before = pe.pi.img.clone();
+        pe.warp_grid = 2;
+        pe.start_warp();
+        let w = pe.warp.as_mut().unwrap();
+        assert_eq!(pe.warp_box, [0, 0, 20, 10]);
+        // Every point of the grid moved 3 pixels right.
+        for p in w.pts.iter_mut() {
+            p.0 += 3.0;
+        }
+        pe.refresh_warp();
+        assert_eq!(pe.preview.as_ref().unwrap().get_pixel(7, 5)[0], 0);
+        assert_eq!(pe.pi.img, before, "only previewed");
+        pe.cancel_warp();
+        assert!(pe.preview.is_none() && pe.warp.is_none());
+        pe.start_warp();
+        for p in pe.warp.as_mut().unwrap().pts.iter_mut() {
+            p.0 += 3.0;
+        }
+        pe.apply_warp();
+        assert_eq!(pe.pi.img.get_pixel(7, 5)[0], 0);
+        pe.undo();
+        assert_eq!(pe.pi.img, before);
     }
 }

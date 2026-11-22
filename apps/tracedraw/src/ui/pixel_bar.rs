@@ -124,6 +124,11 @@ fn bar(app: &mut App, ctx: &Context) {
                             .rich_tip(tr(&format!("{key}_tip")))
                             .clicked()
                         {
+                            // Another tool puts a warp under way in the
+                            // layer.
+                            if t != PixelTool::Warp && pe.warp.is_some() {
+                                pe.apply_warp();
+                            }
                             pe.tool = t;
                             pe.drag_from = None;
                             pe.drag_to = None;
@@ -235,6 +240,7 @@ fn panel(app: &mut App, ctx: &Context) {
                         layers_section(ui, pe);
                         selection_section(ui, pe);
                         retouch_section(ui, pe);
+                        distort_section(ui, pe);
                         effects_section(ui, pe);
                         picture_section(ui, pe);
                     });
@@ -813,6 +819,64 @@ fn effects_section(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app::PixelEdit)
             if changed {
                 pe.refresh_preview();
             }
+        });
+}
+
+/// Stretch Pixels and Warp.
+fn distort_section(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app::PixelEdit) {
+    use crate::pixel_warp::StretchDir;
+    egui::CollapsingHeader::new(tr("pixel.section.distort"))
+        .default_open(true)
+        .show(ui, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.label(tr("pixel.stretch"))
+                    .rich_tip(tr("pixel.stretch_tip"));
+                for (d, label) in [
+                    (StretchDir::Up, "\u{23f6}"),
+                    (StretchDir::Down, "\u{23f7}"),
+                    (StretchDir::Left, "\u{25c0}"),
+                    (StretchDir::Right, "\u{25b6}"),
+                ] {
+                    if ui.button(label).clicked() {
+                        if let Some(img) = crate::pixel_warp::stretch_pixels(&pe.pi, d) {
+                            let name = tr("pixel.stretch_layer");
+                            pe.apply_all(true, |pi| {
+                                pi.insert_layer(name, img);
+                                Some([0, 0, pi.img.width(), pi.img.height()])
+                            });
+                        }
+                    }
+                }
+            });
+            ui.horizontal_wrapped(|ui| {
+                let busy = pe.warp.is_some();
+                ui.add_enabled(
+                    !busy,
+                    egui::Slider::new(&mut pe.warp_grid, 2..=8).text(tr("pixel.warp.grid")),
+                );
+                if !busy {
+                    if ui
+                        .button(tr("pixel.warp.start"))
+                        .rich_tip(tr("pixel.warp.start_tip"))
+                        .clicked()
+                        && !pe.pi.active_locked()
+                    {
+                        pe.start_warp();
+                        pe.tool = PixelTool::Warp;
+                    }
+                } else {
+                    if ui.button(tr("pixel.apply")).clicked() {
+                        pe.apply_warp();
+                    }
+                    if ui.button(tr("pixel.warp.reset")).clicked() {
+                        pe.start_warp();
+                        pe.tool = PixelTool::Warp;
+                    }
+                    if ui.button(tr("pixel.cancel")).clicked() {
+                        pe.cancel_warp();
+                    }
+                }
+            });
         });
 }
 
