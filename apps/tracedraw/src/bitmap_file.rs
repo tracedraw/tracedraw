@@ -374,12 +374,16 @@ fn jpeg_components(b: &[u8]) -> Option<u8> {
 /// than black and white is indexed), else RGB.
 pub fn encode_as(img: &image::RgbaImage, mode: FileMode) -> Option<Vec<u8>> {
     use crate::bitmap_fx as fx;
-    let grey = || img.pixels().all(|p| p[0] == p[1] && p[1] == p[2]);
+    let grey = || {
+        img.as_raw()
+            .chunks_exact(4)
+            .all(|p| p[0] == p[1] && p[1] == p[2])
+    };
     match mode {
         FileMode::Rgb => fx::encode(img),
         FileMode::Gray if grey() => fx::encode_gray(img),
         FileMode::BlackWhite
-            if img.pixels().all(|p| {
+            if img.as_raw().chunks_exact(4).all(|p| {
                 p[3] == 0 || (p[0] == p[1] && p[1] == p[2] && matches!(p[0], 0 | 255))
             }) =>
         {

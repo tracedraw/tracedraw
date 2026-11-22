@@ -1369,14 +1369,11 @@ impl App {
         dpi: Option<(f64, f64)>,
     ) -> Option<tracedraw_core::ShapeId> {
         let (w, h) = img.dimensions();
-        let mut png = Vec::new();
-        if let Err(e) = image::DynamicImage::ImageRgba8(img)
-            .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
-        {
+        let Some(png) = crate::bitmap_fx::encode(&img) else {
             self.status =
-                crate::i18n::trf("status.could_not_encode_image", &[("e", &e.to_string())]);
+                crate::i18n::trf("status.could_not_encode_image", &[("e", "PNG encode failed")]);
             return None;
-        }
+        };
         self.place_png_at(png, w, h, name, dpi)
     }
 
