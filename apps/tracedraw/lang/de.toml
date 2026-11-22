@@ -10961,3 +10961,6 @@ docker.pattern_folder_tip = "Einen Bilderordner wählen: seine Bilder stehen hie
 docker.pattern_folder_n = "Bilder in {f}" # mt
 docker.pattern_folder_empty = "Keine Bilder in diesem Ordner" # mt
 folder.pattern_desktop = "Ein Bilderordner kann im Desktop-Programm gewählt werden; hier liest Bild importieren... eine Bilddatei." # mt
+options.preview_background = "Hintergrund:" # mt
+options.preview_background_tip = "Die Farbe um die Seite in der Vollbildvorschau (F9). Eine dunklere Farbe schont die Augen mehr als Weiß; die Seite selbst bleibt weiß." # mt
+preview.keys_hint = "+ und - oder das Mausrad zoomen; Bild auf und Bild ab wechseln die Seite" # mt

@@ -10961,3 +10961,6 @@ docker.pattern_folder_tip = "Scegli una cartella di immagini: le sue immagini so
 docker.pattern_folder_n = "Immagini in {f}" # mt
 docker.pattern_folder_empty = "Nessuna immagine in questa cartella" # mt
 folder.pattern_desktop = "Una cartella di immagini si può scegliere nel programma desktop; qui, Importa immagine... legge un file di immagine." # mt
+options.preview_background = "Sfondo:" # mt
+options.preview_background_tip = "Il colore intorno alla pagina nell'anteprima a schermo intero (F9). Un colore più scuro stanca meno la vista del bianco; la pagina resta bianca." # mt
+preview.keys_hint = "+ e - o la rotellina fanno lo zoom; Pag su e Pag giù cambiano pagina" # mt

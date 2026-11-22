@@ -429,6 +429,10 @@ pub struct Settings {
     pub selection_bar_mouse: bool,
     #[serde(default = "default_true")]
     pub preview_page_border: bool,
+    /// Options > Display > Full-screen preview: the colour round the page
+    /// in the full-screen preview (F9), white at first (#3930).
+    #[serde(default = "default_preview_background")]
+    pub preview_background: [u8; 3],
     /// Options > Document > Page size: how the page's shadow and border
     /// look on screen (#3078).
     #[serde(default, skip_serializing_if = "PageLook::is_default")]
@@ -975,6 +979,10 @@ fn default_system_save_dialog() -> bool {
 /// Translucent menus start at 85 % opacity.
 fn default_menu_opacity() -> f32 {
     0.85
+}
+
+fn default_preview_background() -> [u8; 3] {
+    [255, 255, 255]
 }
 
 fn default_true() -> bool {
@@ -2446,6 +2454,7 @@ impl Default for Settings {
             touch_selection_bar: true,
             selection_bar_mouse: false,
             preview_page_border: true,
+            preview_background: default_preview_background(),
             page_look: PageLook::default(),
             constrain_angle: default_constrain_angle(),
             symmetry_show_lines: true,

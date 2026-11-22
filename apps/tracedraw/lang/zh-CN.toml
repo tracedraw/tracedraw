@@ -10961,3 +10961,6 @@ docker.pattern_folder_tip = "选择一个图片文件夹：其中的图片会带
 docker.pattern_folder_n = "{f} 中的图片" # mt
 docker.pattern_folder_empty = "此文件夹中没有图片" # mt
 folder.pattern_desktop = "图片文件夹可在桌面程序中选择；此处“导入图片...”读取一个图片文件。" # mt
+options.preview_background = "背景：" # mt
+options.preview_background_tip = "全屏预览 (F9) 中页面周围的颜色。较暗的颜色比白色更护眼；页面本身仍为白色。" # mt
+preview.keys_hint = "+ 和 - 或滚轮缩放；Page Up 和 Page Down 切换页面" # mt

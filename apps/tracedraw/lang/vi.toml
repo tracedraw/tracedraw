@@ -10957,3 +10957,6 @@ docker.pattern_folder_tip = "Choose a folder of pictures: its pictures are liste
 docker.pattern_folder_n = "Pictures in {f}"
 docker.pattern_folder_empty = "No pictures in this folder"
 folder.pattern_desktop = "A folder of pictures can be chosen in the desktop program; here, Import picture... reads one picture file."
+options.preview_background = "Background:"
+options.preview_background_tip = "The colour round the page in the full-screen preview (F9). A darker colour is easier on the eyes than white; the page itself stays white."
+preview.keys_hint = "+ and - or the wheel zoom; Page Up and Page Down change the page"

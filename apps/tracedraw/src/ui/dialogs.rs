@@ -1416,6 +1416,10 @@ pub enum Dialog {
         width: f64,
         height: f64,
         locked: bool,
+        /// The box just opened: the Width box takes the keyboard, its
+        /// number selected to be typed over, so a shortcut, the numbers
+        /// and Enter resize without the mouse (#3890).
+        fresh: bool,
     },
     Options,
     PageNumberSettings,
@@ -2084,6 +2088,18 @@ pub(crate) fn enter_pressed(ui: &Ui) -> bool {
 }
 
 fn unit_value(ui: &mut Ui, label: &str, tip: &str, mm: &mut f64, units: Units) -> bool {
+    unit_value_focus(ui, label, tip, mm, units, false)
+}
+
+/// [`unit_value`] whose box takes the keyboard focus now when `focus`.
+fn unit_value_focus(
+    ui: &mut Ui,
+    label: &str,
+    tip: &str,
+    mm: &mut f64,
+    units: Units,
+    focus: bool,
+) -> bool {
     let mut v = units.from_mm(*mm);
     let r = crate::ui::tips::tip_over(ui, tip, |ui| {
         ui.horizontal(|ui| {
@@ -2091,6 +2107,7 @@ fn unit_value(ui: &mut Ui, label: &str, tip: &str, mm: &mut f64, units: Units) -
             ui.add(
                 crate::ui::field::NumField::new(&mut v)
                     .speed(0.5)
+                    .focus(focus)
                     .suffix(format!(" {}", units.short())),
             )
             .changed()
@@ -2642,12 +2659,17 @@ pub fn show(app: &mut App, ctx: &Context) {
             width,
             height,
             locked,
+            fresh,
         } => {
             window(ctx, tr("dialog.object_size")).show(ctx, |ui| {
                 let u = app.units;
                 let (w0, h0) = (*width, *height);
                 let tip = crate::ui::tips::pair("dialog.width", "toolbar.object_width_desc");
-                if unit_value(ui, &tr("dialog.width"), &tip, width, u) && *locked && w0 > 1e-9 {
+                let focus = std::mem::take(fresh);
+                if unit_value_focus(ui, &tr("dialog.width"), &tip, width, u, focus)
+                    && *locked
+                    && w0 > 1e-9
+                {
                     *height = h0 * *width / w0;
                 }
                 let tip = crate::ui::tips::pair("dialog.height", "toolbar.object_height_desc");
@@ -4213,6 +4235,7 @@ pub fn object_size_dialog(app: &App) -> Option<Dialog> {
         width: b.width(),
         height: b.height(),
         locked: app.scale_locked,
+        fresh: true,
     })
 }
 
@@ -9364,6 +9387,45 @@ pub(crate) mod tests {
         assert!((b.height() - 10.0).abs() < 0.5, "{b:?}");
         app.select(vec![]);
         assert!(object_size_dialog(&app).is_none());
+    }
+
+    /// The Object Size box opens with the Width box taking the keyboard,
+    /// its number selected: the numbers typed and Enter resize without
+    /// the mouse (#3890).
+    #[test]
+    fn object_size_box_takes_the_width_typed_and_enter() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        let id = app
+            .new_shape(tracedraw_core::ShapeKind::Rect {
+                rect: tracedraw_core::geometry::Rect::new(10.0, 10.0, 50.0, 30.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rectangle");
+        app.select(vec![id]);
+        app.units = Units::Millimeters;
+        app.scale_locked = true;
+        app.dialog = object_size_dialog(&app).expect("the Object Size dialog");
+        frame(&ctx, &mut app, false);
+        assert!(ctx.memory(|m| m.focused()).is_some(), "the Width box has the keyboard");
+        assert!(matches!(app.dialog, Dialog::ObjectSize { fresh: false, .. }));
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1400.0, 900.0),
+            )),
+            events: vec![egui::Event::Text("70".into())],
+            ..Default::default()
+        };
+        let mut out = ctx.run_ui(input, |ui| show(&mut app, &ui.ctx().clone()));
+        out.textures_delta.clear();
+        frame(&ctx, &mut app, true);
+        frame(&ctx, &mut app, false);
+        assert!(matches!(app.dialog, Dialog::None), "Enter applies and closes");
+        let b = app.selection_bounds().expect("bounds");
+        assert!((b.width() - 70.0).abs() < 0.5, "{b:?}");
+        assert!((b.height() - 35.0).abs() < 0.5, "kept in proportion: {b:?}");
     }
 
     /// The Page Size dialog opens with Apply to all pages off, so a new
