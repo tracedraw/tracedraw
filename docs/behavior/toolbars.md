@@ -174,12 +174,17 @@ a click lower on the tab brings the panel to the front
   are kept with the floating panels (`FloatingSetup::own_window`,
   `desktop`; preferences without them read as before). Dragging the
   panel's title there does not start a dock drag; the system's title bar
-  moves the window. Closing the window closes the panel; unticking Own
-  Window brings it back to float in the main window, and choosing a
-  column in its menu docks it. Where the system cannot open more windows
+  moves the window. Closing the window closes the panel, and opening the
+  panel again (Window menu) brings it back in that window where it was
+  (`App::closed_own_windows`, #3950); unticking Own Window brings it back
+  to float in the main window, choosing a column in its menu docks it,
+  and Dock Back (in the menu while the panel has a window of its own)
+  docks it in the column it was last docked in, the right one when it
+  never was (`App::dock_back`, `App::docked_before`). Where the system cannot open more windows
   (the web, Android) the item is grey and such a panel floats in the main
   window
-  (`dockers::tests::a_panel_goes_to_a_window_of_its_own_and_back`).
+  (`dockers::tests::a_panel_goes_to_a_window_of_its_own_and_back`,
+  `dockers::tests::a_panel_in_its_own_window_docks_back_and_reopens_there`).
 - A panel brought to the front from a menu, a shortcut or a tool while it
   lies in the other column or floats is put in front where it is, and
   the default column stays as it was; a panel open nowhere joins the

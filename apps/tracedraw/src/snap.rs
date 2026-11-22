@@ -1143,10 +1143,10 @@ impl App {
                 return t.point - src;
             }
         }
-        let mut snapped = if enabled {
-            self.snap_move(bounds, d)
+        let (mut snapped, mut caught) = if enabled {
+            self.snap_move_caught(bounds, d)
         } else {
-            d
+            (d, false)
         };
         // The grabbed point (a node under the pointer) lands on a
         // guideline, a baseline or a grid line it comes near, on each
@@ -1166,16 +1166,24 @@ impl App {
             }
             if hit {
                 self.mark_axis_snap(q, src + snapped);
+                caught = true;
             }
         }
-        self.live_guide_move(source, bounds, d, snapped)
+        self.live_guide_move(source, bounds, d, snapped, caught)
     }
 
     /// Alignment guides on a move (edges, centres, margins and equal
     /// gaps, which win over the grid and guidelines on their axis), else
     /// a dynamic guide for the grabbed point (the selection's snap point,
     /// else its centre); the guides to draw at the place reached.
-    fn live_guide_move(&self, source: Option<Point>, bounds: Rect, d: Vec2, snapped: Vec2) -> Vec2 {
+    fn live_guide_move(
+        &self,
+        source: Option<Point>,
+        bounds: Rect,
+        d: Vec2,
+        snapped: Vec2,
+        caught: bool,
+    ) -> Vec2 {
         let o = &self.settings.snap.align;
         let tol = self.snap_tolerance();
         let mut out = snapped;
@@ -1200,7 +1208,10 @@ impl App {
                 aligned = true;
             }
         }
-        if !aligned && self.dynamic_guides_on() {
+        // A move already caught by a guideline, the grid or an edge on
+        // either axis stays there: a dynamic guide would pull it off a
+        // guideline crossing onto a slanted line (#3952).
+        if !aligned && !caught && self.dynamic_guides_on() {
             let grab = source.unwrap_or_else(|| bounds.center());
             let mut anchors = self.dynamic_anchors();
             live_guides::acquire(&mut anchors, grab, MAX_ANCHORS + 1);
@@ -1510,6 +1521,13 @@ impl App {
         if !self.snap_enabled() {
             return d;
         }
+        self.snap_move_caught(bounds, d).0
+    }
+
+    /// [`App::snap_move`], and whether an edge or the centre lies on a
+    /// candidate on either axis (also when the pointer put it exactly
+    /// there).
+    fn snap_move_caught(&self, bounds: Rect, d: Vec2) -> (Vec2, bool) {
         let moved = bounds + d;
         let (xs, ys) = self.snap_candidates_near(&self.selection, true, true, Some(moved));
         let mut best_dx: Option<f64> = None;
@@ -1530,7 +1548,10 @@ impl App {
                 }
             }
         }
-        Vec2::new(d.x + best_dx.unwrap_or(0.0), d.y + best_dy.unwrap_or(0.0))
+        (
+            Vec2::new(d.x + best_dx.unwrap_or(0.0), d.y + best_dy.unwrap_or(0.0)),
+            best_dx.is_some() || best_dy.is_some(),
+        )
     }
 
     /// All snapping off: Alt+Q, or Q held down on its own for the
@@ -1860,6 +1881,43 @@ mod tests {
         // The right edge dragged to x = 51 lands on the guideline.
         let d = app.snap_move_from(None, b, Vec2::new(11.0, 0.0), None);
         assert!((b.x1 + d.x - 50.0).abs() < 1e-9, "{d:?}");
+    }
+
+    /// A box moved into the corner of a vertical and a horizontal
+    /// guideline lands on both, also with dynamic guides on: a slanted
+    /// dynamic guide through an earlier snap point no longer pulls it
+    /// off the crossing onto one line, or onto none (#3952).
+    #[test]
+    fn a_box_lands_on_two_crossing_guidelines_at_once() {
+        let mut app = app();
+        let page = app.page;
+        app.snap.dynamic_guides = true;
+        app.run(Command::AddGuide {
+            page,
+            guide: Guide::vertical(175.0),
+        });
+        app.run(Command::AddGuide {
+            page,
+            guide: Guide::horizontal(130.0),
+        });
+        let id = rect(&mut app, 20.0, 20.0, 120.0, 80.0);
+        app.select(vec![id]);
+        // Points snapped to before, which dynamic guides start from.
+        app.guide_anchors
+            .borrow_mut()
+            .extend([Point::new(50.0, 200.0), Point::new(178.0, 20.0)]);
+        let b = app.selection_bounds().unwrap();
+        let corner = Point::new(b.x1, b.y1);
+        for grab in [None, Some(corner), Some(b.center())] {
+            for (ox, oy) in [(0.0, 0.0), (-5.0, 3.0), (6.0, -4.0), (-2.0, -7.0)] {
+                let d = Vec2::new(175.0 - b.x1 + ox, 130.0 - b.y1 + oy);
+                let m = b + app.snap_move_from(grab, b, d, None);
+                assert!(
+                    (m.x1 - 175.0).abs() < 1e-9 && (m.y1 - 130.0).abs() < 1e-9,
+                    "{grab:?} {ox} {oy}: {m:?}"
+                );
+            }
+        }
     }
 
     /// At first objects snap as the page does, within 10 px: a node

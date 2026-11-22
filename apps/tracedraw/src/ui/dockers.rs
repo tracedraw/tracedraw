@@ -368,6 +368,10 @@ fn place_menu(app: &mut App, ui: &mut Ui, tab: DockerTab) {
     if crate::ui::menus::check_if(ui, "docker.own_window", own, can || own) {
         app.set_docker_own_window(tab, !own);
     }
+    // Back to the column it was last docked in (#3950).
+    if own && crate::ui::menus::item(ui, "docker.dock_back", "", true) {
+        app.dock_back(tab);
+    }
 }
 
 /// Show Below in a docker's menus: ticked while `tab` is shown under the
@@ -5637,6 +5641,42 @@ pub(crate) mod tests {
         for (a, b) in right.iter().flatten().zip(left.iter().flatten()) {
             assert!((a.x - 50.0 + (b.x - 50.0)).abs() < 1e-4 && a.y == b.y);
         }
+    }
+
+    /// A panel in a window of its own docks back in the column it came
+    /// from with Dock Back, and closing its window keeps the window for
+    /// when the panel is opened again (#3950).
+    #[test]
+    fn a_panel_in_its_own_window_docks_back_and_reopens_there() {
+        let mut app = App::headless();
+        app.show_welcome = false;
+        app.move_docker(DockerTab::Objects, DockerPlace::Left, None);
+        app.set_docker_own_window(DockerTab::Objects, true);
+        assert!(app.docker_in_own_window(DockerTab::Objects));
+        app.dock_back(DockerTab::Objects);
+        assert_eq!(app.docker_place(DockerTab::Objects), Some(DockerPlace::Left));
+        assert!(!app.docker_in_own_window(DockerTab::Objects));
+        // Closed in its window, opened again from the Window menu.
+        app.set_docker_own_window(DockerTab::Objects, true);
+        app.floating_dockers[0].desktop = Some(egui::pos2(2100.0, 80.0));
+        app.close_docker(DockerTab::Objects);
+        assert_eq!(app.docker_place(DockerTab::Objects), None);
+        app.toggle_docker(DockerTab::Objects);
+        assert!(app.docker_in_own_window(DockerTab::Objects));
+        assert_eq!(
+            app.floating_dockers[0].desktop,
+            Some(egui::pos2(2100.0, 80.0))
+        );
+        // Never docked before: Dock Back puts it in the right column.
+        app.close_docker(DockerTab::Hints);
+        app.set_docker_own_window(DockerTab::Hints, true);
+        app.docked_before.retain(|(t, _)| *t != DockerTab::Hints);
+        app.dock_back(DockerTab::Hints);
+        assert_eq!(app.docker_place(DockerTab::Hints), Some(DockerPlace::Right));
+        // A panel closed while docked opens docked as before.
+        app.close_docker(DockerTab::Hints);
+        app.open_docker(DockerTab::Hints);
+        assert_eq!(app.docker_place(DockerTab::Hints), Some(DockerPlace::Right));
     }
 
     /// A panel given a window of its own (#2884) floats there, keeps it

@@ -2272,6 +2272,12 @@ pub struct App {
     pub left_inner_dockers: DockerColumn,
     /// Dockers floating over the window, each in a window of its own.
     pub floating_dockers: Vec<FloatingDocker>,
+    /// Panels whose window of their own was closed: opened again, each
+    /// comes back in that window, where it was (#3950).
+    pub closed_own_windows: Vec<FloatingDocker>,
+    /// The column each panel was last docked in, where Dock Back puts a
+    /// panel in a window of its own (#3950).
+    pub docked_before: Vec<(DockerTab, DockerPlace)>,
     /// A second docker shown under the one in front in each column (by
     /// [`DockerPlace::column_index`]), the two stacked in the column's
     /// height (#2312).
@@ -3727,6 +3733,8 @@ impl App {
             inner_dockers: DockerColumn::default(),
             left_inner_dockers: DockerColumn::default(),
             floating_dockers: Vec::new(),
+            closed_own_windows: Vec::new(),
+            docked_before: Vec::new(),
             docker_stacks: Default::default(),
             docker_drag: None,
             docker_last: (DockerTab::Hints, true),
@@ -5124,6 +5132,14 @@ impl App {
                 self.set_docker_column(p, true, Some(tab));
             }
             Some(DockerPlace::Floating) => {}
+            None if self.closed_own_windows.iter().any(|f| f.tab == tab) => {
+                // Its window was closed: it opens there again.
+                if let Some(i) = self.closed_own_windows.iter().position(|f| f.tab == tab) {
+                    let mut f = self.closed_own_windows.remove(i);
+                    f.place = true;
+                    self.floating_dockers.push(f);
+                }
+            }
             Some(DockerPlace::Right) | None => {
                 if !self.open_dockers.contains(&tab) {
                     self.open_dockers.push(tab);
@@ -5150,6 +5166,11 @@ impl App {
             .find(|f| f.tab == tab)
             .map(|f| (f.own_window, f.desktop))
             .unwrap_or_default();
+        if let Some(p) = self.docker_place(tab).filter(|p| *p != DockerPlace::Floating) {
+            self.docked_before.retain(|(t, _)| *t != tab);
+            self.docked_before.push((tab, p));
+        }
+        self.closed_own_windows.retain(|f| f.tab != tab);
         self.take_docker(tab);
         match place {
             DockerPlace::Right => {
@@ -5278,7 +5299,30 @@ impl App {
     /// next one comes to the front (with none left the column closes), or
     /// its window closes.
     pub fn close_docker(&mut self, tab: DockerTab) {
+        // A panel in a window of its own is opened there again (#3950).
+        self.closed_own_windows.retain(|f| f.tab != tab);
+        if let Some(f) = self
+            .floating_dockers
+            .iter()
+            .find(|f| f.tab == tab && f.own_window)
+        {
+            self.closed_own_windows.push(*f);
+        }
         self.take_docker(tab);
+    }
+
+    /// Dock the panel `tab` back in the column it was last docked in (the
+    /// right one when it never was), out of its window of its own or from
+    /// floating (#3950).
+    pub fn dock_back(&mut self, tab: DockerTab) {
+        let place = self
+            .docked_before
+            .iter()
+            .find(|(t, _)| *t == tab)
+            .map(|(_, p)| *p)
+            .filter(|p| !p.is_inner() || self.docker_column(*p).0.iter().any(|t| *t != tab))
+            .unwrap_or(DockerPlace::Right);
+        self.move_docker(tab, place, None);
     }
 
     /// Once a frame, before the dockers draw: a docker brought to the
