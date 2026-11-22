@@ -178,6 +178,12 @@ pub struct PixelLayer {
     pub visible: bool,
     /// No tool changes a locked layer's pixels.
     pub locked: bool,
+    /// How much of each pixel shows (255 all, 0 none): hides pixels
+    /// without wiping them. The picture's size.
+    pub mask: Option<GrayImage>,
+    /// Shows only where the layer beneath it (the nearest one not
+    /// clipped) has pixels.
+    pub clip: bool,
 }
 
 impl PixelLayer {
@@ -189,6 +195,8 @@ impl PixelLayer {
             merge: MergeMode::Normal,
             visible: true,
             locked: false,
+            mask: None,
+            clip: false,
         }
     }
 }
@@ -673,6 +681,13 @@ pub fn flip(pi: &mut PixelImage, horizontal: bool) {
     f(&mut pi.img);
     for l in &mut pi.layers {
         f(&mut l.img);
+        if let Some(m) = &mut l.mask {
+            if horizontal {
+                image::imageops::flip_horizontal_in_place(m);
+            } else {
+                image::imageops::flip_vertical_in_place(m);
+            }
+        }
     }
     if let Some(m) = &mut pi.sel {
         if horizontal {
@@ -711,6 +726,9 @@ pub fn crop_to_selection(pi: &mut PixelImage) -> Option<Dirty> {
         if l.img.width() > 0 {
             l.img = cut(&l.img);
         }
+        if let Some(m) = &l.mask {
+            l.mask = Some(image::imageops::crop_imm(m, b[0], b[1], w, h).to_image());
+        }
     }
     pi.origin = (pi.origin.0 + b[0] as i64, pi.origin.1 + b[1] as i64);
     Some(b)
@@ -725,10 +743,9 @@ impl PixelImage {
     /// are: what is seen must be put together from the layers.
     pub fn is_layered(&self) -> bool {
         self.layers.len() > 1
-            || self
-                .layers
-                .first()
-                .is_some_and(|l| !l.visible || l.opacity < 1.0 || l.merge != MergeMode::Normal)
+            || self.layers.first().is_some_and(|l| {
+                !l.visible || l.opacity < 1.0 || l.merge != MergeMode::Normal || l.mask.is_some()
+            })
     }
 
     /// The layer in use is locked.
@@ -783,6 +800,8 @@ impl PixelImage {
             n.opacity = f.opacity;
             n.merge = f.merge;
             n.visible = f.visible;
+            n.mask = f.mask;
+            n.clip = f.clip;
         }
     }
 
@@ -832,7 +851,17 @@ impl PixelImage {
         let Some(top) = top else {
             return false;
         };
-        let top_pixels = self.img.clone();
+        let mut top_pixels = self.img.clone();
+        if let Some(m) = &top.mask {
+            apply_mask_to(&mut top_pixels, m);
+        }
+        if top.clip {
+            if let Some(below) = self.layers.get(i - 1) {
+                for (q, b) in top_pixels.pixels_mut().zip(below.img.pixels()) {
+                    q[3] = ((q[3] as u16 * b[3] as u16 + 127) / 255) as u8;
+                }
+            }
+        }
         self.set_active(i - 1);
         if top.visible {
             let (w, h) = self.img.dimensions();
@@ -917,19 +946,37 @@ impl PixelImage {
         }
         let (bw, bh) = (x1 - x0, y1 - y0);
         let mut target = tiny_skia::Pixmap::new(bw, bh)?;
+        // The coverage of the last layer not clipped, for the clipped
+        // ones above it.
+        let n = (bw * bh) as usize;
+        let mut base: Option<Vec<u8>> = None;
         for (i, l) in self.layers.iter().enumerate() {
-            if !l.visible || l.opacity <= 0.0 {
-                continue;
-            }
+            let clipped = l.clip && base.is_some();
             let px = if i == self.active {
                 active.unwrap_or(&self.img)
             } else {
                 &l.img
             };
-            if px.dimensions() != (w, h) {
+            if !l.visible || l.opacity <= 0.0 || px.dimensions() != (w, h) {
+                if !clipped {
+                    base = Some(vec![0; n]);
+                }
                 continue;
             }
-            let part = image::imageops::crop_imm(px, x0, y0, bw, bh).to_image();
+            let mut part = image::imageops::crop_imm(px, x0, y0, bw, bh).to_image();
+            if let Some(m) = &l.mask {
+                let mp = image::imageops::crop_imm(m, x0, y0, bw, bh).to_image();
+                apply_mask_to(&mut part, &mp);
+            }
+            if clipped {
+                if let Some(b) = &base {
+                    for (q, a) in part.pixels_mut().zip(b.iter()) {
+                        q[3] = ((q[3] as u16 * *a as u16 + 127) / 255) as u8;
+                    }
+                }
+            } else {
+                base = Some(part.pixels().map(|q| q[3]).collect());
+            }
             if let Some(layer) = rgba_to_pixmap(&part, l.opacity) {
                 tracedraw_render::composite_layer(&mut target, &layer, (0, 0), l.merge);
             }
@@ -952,7 +999,9 @@ impl PixelImage {
             + self
                 .layers
                 .iter()
-                .map(|l| l.img.as_raw().len())
+                .map(|l| {
+                    l.img.as_raw().len() + l.mask.as_ref().map(|m| m.as_raw().len()).unwrap_or(0)
+                })
                 .sum::<usize>()
             + self.sel.as_ref().map(|m| m.as_raw().len()).unwrap_or(0)
     }
@@ -971,6 +1020,248 @@ pub fn paste_as_layer(pi: &mut PixelImage, name: String, img: &RgbaImage) -> Opt
     image::imageops::replace(&mut layer, img, at.0 as i64, at.1 as i64);
     pi.insert_layer(name, layer);
     Some([0, 0, w, h])
+}
+
+/// The alpha of `img` multiplied by `mask` (same size).
+pub fn apply_mask_to(img: &mut RgbaImage, mask: &GrayImage) {
+    for (q, m) in img.pixels_mut().zip(mask.pixels()) {
+        q[3] = ((q[3] as u16 * m[0] as u16 + 127) / 255) as u8;
+    }
+}
+
+impl PixelImage {
+    /// A mask on the layer in use: the selection's shape (all shown with
+    /// no selection).
+    pub fn add_layer_mask(&mut self) -> bool {
+        let (w, h) = self.img.dimensions();
+        let Some(l) = self.layers.get_mut(self.active) else {
+            return false;
+        };
+        if l.mask.is_some() {
+            return false;
+        }
+        l.mask = Some(match &self.sel {
+            Some(m) => m.clone(),
+            None => GrayImage::from_pixel(w, h, Luma([255])),
+        });
+        true
+    }
+
+    /// The mask of the layer in use baked into its pixels' alpha.
+    pub fn apply_layer_mask(&mut self) -> bool {
+        let Some(m) = self.layers.get_mut(self.active).and_then(|l| l.mask.take()) else {
+            return false;
+        };
+        apply_mask_to(&mut self.img, &m);
+        true
+    }
+
+    /// The mask of the layer in use taken away (its pixels all show).
+    pub fn delete_layer_mask(&mut self) -> bool {
+        self.layers
+            .get_mut(self.active)
+            .and_then(|l| l.mask.take())
+            .is_some()
+    }
+
+    /// The mask of the layer in use turned inside out.
+    pub fn invert_layer_mask(&mut self) -> bool {
+        match self
+            .layers
+            .get_mut(self.active)
+            .and_then(|l| l.mask.as_mut())
+        {
+            Some(m) => {
+                image::imageops::invert(m);
+                true
+            }
+            None => false,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------
+// More selections
+// ---------------------------------------------------------------------
+
+/// The tones a selection by lightness takes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Tones {
+    Shadows,
+    Midtones,
+    Highlights,
+}
+
+/// The pixels by lightness: full in the middle of the range, fading out
+/// over its edges so the selection blends in.
+pub fn tone_mask(img: &RgbaImage, tones: Tones) -> GrayImage {
+    let (w, h) = img.dimensions();
+    GrayImage::from_fn(w, h, |x, y| {
+        let l = crate::fx::util::luma(img.get_pixel(x, y)) / 255.0;
+        let v = match tones {
+            Tones::Shadows => 1.0 - smooth01((l - 0.25) / 0.25),
+            Tones::Highlights => smooth01((l - 0.5) / 0.25),
+            Tones::Midtones => 1.0 - smooth01(((l - 0.5).abs() - 0.15) / 0.2),
+        };
+        Luma([(v.clamp(0.0, 1.0) * 255.0).round() as u8])
+    })
+}
+
+fn smooth01(t: f32) -> f32 {
+    let t = t.clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
+/// One channel of the picture (0 red, 1 green, 2 blue, 3 alpha) as a
+/// selection: brighter in that channel is more selected.
+pub fn channel_mask(img: &RgbaImage, ch: usize) -> GrayImage {
+    let (w, h) = img.dimensions();
+    let ch = ch.min(3);
+    GrayImage::from_fn(w, h, |x, y| Luma([img.get_pixel(x, y)[ch]]))
+}
+
+/// A band `r` pixels wide each side of the selection's edge.
+pub fn border(m: &GrayImage, r: u32) -> GrayImage {
+    let r = r.max(1) as i32;
+    let out = grow(m, r);
+    let inner = grow(m, -r);
+    let (w, h) = m.dimensions();
+    GrayImage::from_fn(w, h, |x, y| {
+        Luma([out.get_pixel(x, y)[0].saturating_sub(inner.get_pixel(x, y)[0])])
+    })
+}
+
+/// The selection's edge smoothed: corners rounded and specks gone, a
+/// hard edge kept.
+pub fn smooth_selection(m: &GrayImage, r: u32) -> GrayImage {
+    let f = feather(m, r.max(1));
+    let (w, h) = m.dimensions();
+    GrayImage::from_fn(w, h, |x, y| {
+        Luma([if f.get_pixel(x, y)[0] >= 128 { 255 } else { 0 }])
+    })
+}
+
+// ---------------------------------------------------------------------
+// Painting a mask
+// ---------------------------------------------------------------------
+
+/// One stroke painted on a mask (the selection in quick mask, or a
+/// layer's mask) with a round brush: every pixel goes towards `value` as
+/// much as the stroke covers it, never past the brush's opacity.
+pub struct MaskStroke {
+    pub opts: BrushOpts,
+    value: u8,
+    base: GrayImage,
+    cover: Vec<f32>,
+    last: Option<(f32, f32)>,
+    pub dirty: Option<Dirty>,
+}
+
+impl MaskStroke {
+    pub fn new(opts: BrushOpts, mask: &GrayImage, value: u8) -> Self {
+        let n = (mask.width() as usize) * (mask.height() as usize);
+        MaskStroke {
+            opts,
+            value,
+            base: mask.clone(),
+            cover: vec![0.0; n],
+            last: None,
+            dirty: None,
+        }
+    }
+
+    /// The brush taken to (x, y); `limit` (the selection, when a layer's
+    /// mask is painted) keeps the paint inside it.
+    pub fn to(
+        &mut self,
+        mask: &mut GrayImage,
+        limit: Option<&GrayImage>,
+        x: f32,
+        y: f32,
+    ) -> Option<Dirty> {
+        let step = (self.opts.size * 0.25).max(1.0);
+        let pts: Vec<(f32, f32)> = match self.last {
+            None => vec![(x, y)],
+            Some((lx, ly)) => {
+                let d = ((x - lx).powi(2) + (y - ly).powi(2)).sqrt();
+                if d < step {
+                    return None;
+                }
+                let n = (d / step).floor() as usize;
+                (1..=n)
+                    .map(|i| {
+                        let t = i as f32 * step / d;
+                        (lx + (x - lx) * t, ly + (y - ly) * t)
+                    })
+                    .collect()
+            }
+        };
+        let mut changed: Option<Dirty> = None;
+        for &(px, py) in &pts {
+            if let Some(b) = self.dab(mask, limit, px, py) {
+                changed = Some(union(changed, b));
+            }
+        }
+        self.last = pts.last().copied();
+        if let Some(b) = changed {
+            self.dirty = Some(union(self.dirty, b));
+        }
+        changed
+    }
+
+    fn dab(
+        &mut self,
+        mask: &mut GrayImage,
+        limit: Option<&GrayImage>,
+        cx: f32,
+        cy: f32,
+    ) -> Option<Dirty> {
+        let (w, h) = mask.dimensions();
+        let r = (self.opts.size / 2.0).max(0.5);
+        let x0 = (cx - r).floor().max(0.0) as u32;
+        let y0 = (cy - r).floor().max(0.0) as u32;
+        let x1 = ((cx + r).ceil().max(0.0) as u32).min(w);
+        let y1 = ((cy + r).ceil().max(0.0) as u32).min(h);
+        if x0 >= x1 || y0 >= y1 {
+            return None;
+        }
+        let flow = self.opts.flow.clamp(0.01, 1.0);
+        let opacity = self.opts.opacity.clamp(0.0, 1.0);
+        for y in y0..y1 {
+            for x in x0..x1 {
+                let d = ((x as f32 + 0.5 - cx).powi(2) + (y as f32 + 0.5 - cy).powi(2)).sqrt();
+                let lim = limit
+                    .map(|m| {
+                        m.get_pixel_checked(x, y)
+                            .map(|v| v[0] as f32 / 255.0)
+                            .unwrap_or(0.0)
+                    })
+                    .unwrap_or(1.0);
+                let wgt = dab_weight(d, self.opts.size, self.opts.hardness) * lim;
+                if wgt <= 0.0 {
+                    continue;
+                }
+                let Some(c) = self.cover.get_mut((y * w + x) as usize) else {
+                    continue;
+                };
+                *c = (*c + (opacity - *c).max(0.0) * wgt * flow).min(opacity);
+                let b = self.base.get_pixel(x, y)[0] as f32;
+                let v = b + (self.value as f32 - b) * *c;
+                mask.put_pixel(x, y, Luma([v.round().clamp(0.0, 255.0) as u8]));
+            }
+        }
+        Some([x0, y0, x1, y1])
+    }
+}
+
+/// A mask shown over the picture: red where it hides (or leaves out),
+/// clear where it shows.
+pub fn mask_overlay(m: &GrayImage) -> RgbaImage {
+    let (w, h) = m.dimensions();
+    RgbaImage::from_fn(w, h, |x, y| {
+        let v = m.get_pixel(x, y)[0];
+        Rgba([255, 0, 0, ((255 - v) as u16 * 128 / 255) as u8])
+    })
 }
 
 /// `img` moved by (dx, dy), the same size.
@@ -2081,6 +2372,104 @@ mod tests {
         assert_eq!(pi.img.dimensions(), (4, 6));
         assert_eq!(pi.layer_pixels(0).unwrap().dimensions(), (4, 6));
         assert_eq!(pi.composite().dimensions(), (4, 6));
+    }
+
+    #[test]
+    fn a_layer_mask_hides_without_erasing_and_applies() {
+        let mut pi = solid(10, 10, [255, 255, 255, 255]);
+        pi.add_layer("top");
+        fill_selection(&mut pi, [0, 0, 0, 255], 1.0).unwrap();
+        pi.sel = rect_mask(10, 10, (0.0, 0.0), (5.0, 10.0));
+        assert!(pi.add_layer_mask());
+        pi.sel = None;
+        let seen = pi.composite();
+        assert_eq!(seen.get_pixel(1, 1)[0], 0, "inside the mask shows");
+        assert_eq!(seen.get_pixel(8, 1)[0], 255, "outside the mask hidden");
+        assert_eq!(pi.img.get_pixel(8, 1)[3], 255, "pixels kept");
+        assert!(pi.invert_layer_mask());
+        assert_eq!(pi.composite().get_pixel(1, 1)[0], 255);
+        assert!(pi.apply_layer_mask());
+        assert_eq!(pi.img.get_pixel(1, 1)[3], 0);
+        assert!(pi.layers[1].mask.is_none());
+        assert!(!pi.delete_layer_mask());
+    }
+
+    #[test]
+    fn a_clipped_layer_shows_only_over_the_layer_beneath() {
+        let mut pi = PixelImage::new(RgbaImage::new(10, 10));
+        pi.sel = rect_mask(10, 10, (0.0, 0.0), (5.0, 10.0));
+        fill_selection(&mut pi, [255, 255, 255, 255], 1.0).unwrap();
+        pi.sel = None;
+        pi.add_layer("red");
+        fill_selection(&mut pi, [255, 0, 0, 255], 1.0).unwrap();
+        pi.layers[1].clip = true;
+        let seen = pi.composite();
+        assert_eq!(*seen.get_pixel(1, 1), Rgba([255, 0, 0, 255]));
+        assert_eq!(seen.get_pixel(8, 1)[3], 0, "nothing beneath, nothing shows");
+        assert!(pi.merge_down());
+        assert_eq!(pi.img.get_pixel(8, 1)[3], 0);
+        assert_eq!(*pi.img.get_pixel(1, 1), Rgba([255, 0, 0, 255]));
+    }
+
+    #[test]
+    fn a_mask_stroke_moves_towards_its_value_up_to_the_opacity() {
+        let mut m = GrayImage::new(20, 20);
+        let opts = BrushOpts {
+            size: 8.0,
+            hardness: 1.0,
+            opacity: 0.5,
+            flow: 1.0,
+            ..BrushOpts::default()
+        };
+        let mut s = MaskStroke::new(opts, &m, 255);
+        for i in 0..10 {
+            s.to(&mut m, None, 10.0 + (i % 2) as f32 * 3.0, 10.0);
+        }
+        let v = m.get_pixel(10, 10)[0];
+        assert!((120..=135).contains(&v), "{v}");
+        assert_eq!(m.get_pixel(0, 0)[0], 0);
+        let limit = rect_mask(20, 20, (0.0, 0.0), (10.0, 20.0)).unwrap();
+        let mut m2 = GrayImage::new(20, 20);
+        let mut s2 = MaskStroke::new(
+            BrushOpts {
+                opacity: 1.0,
+                ..opts
+            },
+            &m2,
+            255,
+        );
+        s2.to(&mut m2, Some(&limit), 10.0, 10.0);
+        assert_eq!(m2.get_pixel(12, 10)[0], 0, "outside the selection");
+        assert_eq!(m2.get_pixel(8, 10)[0], 255);
+    }
+
+    #[test]
+    fn tone_channel_border_and_smooth_selections() {
+        let grey = RgbaImage::from_fn(30, 1, |x, _| {
+            let v = (x * 255 / 29) as u8;
+            Rgba([v, v, v, 255])
+        });
+        let sh = tone_mask(&grey, Tones::Shadows);
+        let hi = tone_mask(&grey, Tones::Highlights);
+        let mid = tone_mask(&grey, Tones::Midtones);
+        assert!(sh.get_pixel(0, 0)[0] > 200 && sh.get_pixel(29, 0)[0] < 20);
+        assert!(hi.get_pixel(29, 0)[0] > 200 && hi.get_pixel(0, 0)[0] < 20);
+        assert!(mid.get_pixel(15, 0)[0] > 200 && mid.get_pixel(0, 0)[0] < 20);
+        let img = RgbaImage::from_fn(30, 1, |x, _| {
+            let v = (x * 255 / 29) as u8;
+            Rgba([v, 0, 255 - v, 255])
+        });
+        let red = channel_mask(&img, 0);
+        assert_eq!(red.get_pixel(29, 0)[0], 255);
+        let m = rect_mask(30, 30, (10.0, 10.0), (20.0, 20.0)).unwrap();
+        let b = border(&m, 2);
+        assert_eq!(b.get_pixel(15, 15)[0], 0);
+        assert_eq!(b.get_pixel(10, 15)[0], 255);
+        let mut specks = m.clone();
+        specks.put_pixel(2, 2, Luma([255]));
+        let sm = smooth_selection(&specks, 2);
+        assert_eq!(sm.get_pixel(2, 2)[0], 0, "speck gone");
+        assert_eq!(sm.get_pixel(15, 15)[0], 255);
     }
 
     #[test]

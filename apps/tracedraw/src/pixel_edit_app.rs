@@ -8,8 +8,21 @@
 use crate::app::App;
 use crate::i18n::tr;
 use crate::pixel_edit::{
-    self, BrushOpts, Dirty, History, PixelImage, PixelTool, SelectMode, Stroke,
+    self, BrushOpts, Dirty, History, MaskStroke, PixelImage, PixelTool, SelectMode, Stroke,
 };
+
+/// What the brush and the eraser paint.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MaskTarget {
+    /// The pixels of the layer in use.
+    #[default]
+    Pixels,
+    /// The mask of the layer in use: the brush hides, the eraser shows.
+    LayerMask,
+    /// The selection, shown in red where it leaves out (quick mask): the
+    /// brush selects, the eraser takes out.
+    QuickMask,
+}
 use egui::{Modifiers, PointerButton, Response};
 use std::cell::RefCell;
 use tracedraw_core::geometry::{Affine, Point, Rect};
@@ -29,6 +42,8 @@ pub struct PixelView {
     pub full: bool,
     /// The selection outline is made again.
     pub sel_changed: bool,
+    /// The red view of the mask being painted (quick mask, layer mask).
+    pub overlay: Option<egui::TextureHandle>,
     /// The effect preview was shown last frame.
     pub showed_preview: bool,
 }
@@ -57,6 +72,11 @@ pub struct PixelEdit {
     /// The opacity slider of the layer in use is being dragged (its
     /// undo step is already remembered).
     pub layer_drag: bool,
+    /// What the brush and the eraser paint, and the stroke on a mask.
+    pub target: MaskTarget,
+    pub mask_stroke: Option<MaskStroke>,
+    /// Selections kept to be loaded again while editing.
+    pub saved_sels: Vec<image::GrayImage>,
     /// Clone and heal: the source set with Alt+click, and the offset
     /// fixed by the first stroke after it (the source follows the brush).
     pub clone_src: Option<(f32, f32)>,
@@ -190,6 +210,81 @@ impl PixelEdit {
         }
     }
 
+    /// Quick mask on or off: the selection painted with the brush (red
+    /// where it leaves out). Turned on with no selection, nothing is
+    /// selected to start with; turned off with nothing painted, there is
+    /// no selection.
+    pub fn set_quick_mask(&mut self, on: bool) {
+        if on == (self.target == MaskTarget::QuickMask) {
+            return;
+        }
+        if on {
+            if self.pi.sel.is_none() {
+                let (w, h) = self.pi.img.dimensions();
+                self.set_selection(Some(image::GrayImage::new(w, h)));
+            }
+            self.target = MaskTarget::QuickMask;
+        } else {
+            self.target = MaskTarget::Pixels;
+            if self
+                .pi
+                .sel
+                .as_ref()
+                .is_some_and(|m| m.pixels().all(|v| v[0] == 0))
+            {
+                self.pi.sel = None;
+            }
+        }
+        self.mask_stroke = None;
+        self.view.borrow_mut().sel_changed = true;
+    }
+
+    /// Painting the mask of the layer in use on or off.
+    pub fn set_edit_layer_mask(&mut self, on: bool) {
+        let has = self
+            .pi
+            .layers
+            .get(self.pi.active)
+            .is_some_and(|l| l.mask.is_some());
+        self.target = if on && has {
+            MaskTarget::LayerMask
+        } else if self.target == MaskTarget::QuickMask {
+            MaskTarget::QuickMask
+        } else {
+            MaskTarget::Pixels
+        };
+        self.mask_stroke = None;
+        self.view.borrow_mut().sel_changed = true;
+    }
+
+    /// The mask being painted, as it is.
+    pub fn target_mask(&self) -> Option<&image::GrayImage> {
+        match self.target {
+            MaskTarget::Pixels => None,
+            MaskTarget::QuickMask => self.pi.sel.as_ref(),
+            MaskTarget::LayerMask => self.pi.layers.get(self.pi.active)?.mask.as_ref(),
+        }
+    }
+
+    /// The mask stroke taken to (x, y).
+    fn mask_to(&mut self, x: f32, y: f32) -> Option<Dirty> {
+        let ms = self.mask_stroke.as_mut()?;
+        match self.target {
+            MaskTarget::Pixels => None,
+            MaskTarget::QuickMask => ms.to(self.pi.sel.as_mut()?, None, x, y),
+            MaskTarget::LayerMask => {
+                let PixelImage {
+                    layers,
+                    sel,
+                    active,
+                    ..
+                } = &mut self.pi;
+                let m = layers.get_mut(*active)?.mask.as_mut()?;
+                ms.to(m, sel.as_ref(), x, y)
+            }
+        }
+    }
+
     /// The effect being set up, run on the picture inside the selection,
     /// for the preview.
     pub fn refresh_preview(&mut self) {
@@ -271,6 +366,9 @@ impl App {
             move_base: None,
             move_by: (0, 0),
             layer_drag: false,
+            target: MaskTarget::Pixels,
+            mask_stroke: None,
+            saved_sels: Vec::new(),
             clone_src: None,
             clone_offset: None,
             changed: false,
@@ -430,6 +528,53 @@ impl App {
                 pe.clone_src = Some((x, y));
                 pe.clone_offset = None;
                 self.status = tr("pixel.status.source_set");
+            }
+            return;
+        }
+        // Painting a mask: the brush and the eraser only.
+        if pe.target != MaskTarget::Pixels
+            && (tool.is_brush()
+                || matches!(
+                    tool,
+                    PixelTool::Fill | PixelTool::Gradient | PixelTool::Move
+                ))
+        {
+            if !matches!(tool, PixelTool::Brush | PixelTool::Eraser) {
+                if started || clicked {
+                    self.status = tr("pixel.status.mask_tools");
+                }
+                return;
+            }
+            if pe.target == MaskTarget::LayerMask && pe.pi.active_locked() {
+                if started || clicked {
+                    self.status = tr("pixel.status.layer_locked");
+                }
+                return;
+            }
+            if started || (clicked && pe.mask_stroke.is_none()) {
+                let value = match (pe.target, tool) {
+                    (MaskTarget::QuickMask, PixelTool::Brush) => 255,
+                    (MaskTarget::QuickMask, _) => 0,
+                    (_, PixelTool::Brush) => 0,
+                    _ => 255,
+                };
+                pe.step();
+                let Some(m) = pe.target_mask() else {
+                    return;
+                };
+                pe.mask_stroke = Some(MaskStroke::new(pe.opts, m, value));
+                let b = pe.mask_to(x, y);
+                pe.mark(b);
+                if clicked {
+                    pe.mask_stroke = None;
+                }
+            } else if dragged {
+                let b = pe.mask_to(x, y);
+                pe.mark(b);
+            }
+            if stopped {
+                pe.mask_stroke = None;
+                pe.view.borrow_mut().sel_changed = true;
             }
             return;
         }
@@ -627,6 +772,9 @@ impl App {
         } else if pressed(Key::Delete, Modifiers::NONE) || pressed(Key::Backspace, Modifiers::NONE)
         {
             pe.apply(false, pixel_edit::clear_selection);
+        } else if pressed(Key::Q, Modifiers::NONE) {
+            let on = pe.target != MaskTarget::QuickMask;
+            pe.set_quick_mask(on);
         } else if pressed(Key::OpenBracket, Modifiers::NONE) {
             pe.opts.size = (pe.opts.size / 1.2).max(1.0);
         } else if pressed(Key::CloseBracket, Modifiers::NONE) {
@@ -727,6 +875,8 @@ pub fn draw(app: &App, painter: &egui::Painter) {
     // Layers: what is seen is put together from them (only the changed
     // box while painting).
     let layered = pe.pi.is_layered();
+    // For the mask view, before the picture's upload takes them.
+    let (dirty_now, full_now, sel_now) = (v.dirty, v.full, v.sel_changed);
     if v.tex.is_none() || v.full || size_changed || preview || v.showed_preview {
         let composed = layered
             .then(|| pe.pi.composite_region([0, 0, w, h], pe.preview.as_ref()))
@@ -808,8 +958,43 @@ pub fn draw(app: &App, painter: &egui::Painter) {
     if let Some(t) = &v.tex {
         painter.add(quad(t.id()));
     }
-    if let Some(t) = &v.outline {
+    // The mask being painted, in red where it hides or leaves out.
+    match pe.target_mask() {
+        Some(m) if pe.target != MaskTarget::Pixels => {
+            let size = [m.width() as usize, m.height() as usize];
+            let whole = full_now || sel_now || v.overlay.as_ref().is_none_or(|t| t.size() != size);
+            if whole {
+                let o = pixel_edit::mask_overlay(m);
+                let img = egui::ColorImage::from_rgba_unmultiplied(size, o.as_raw());
+                match v.overlay.as_mut() {
+                    Some(t) if t.size() == size => t.set(img, opts),
+                    _ => v.overlay = Some(ctx.load_texture("pixel_edit_mask", img, opts)),
+                }
+            } else if let Some(b) = dirty_now {
+                let (x0, y0) = (b[0].min(m.width()), b[1].min(m.height()));
+                let (x1, y1) = (b[2].min(m.width()), b[3].min(m.height()));
+                if x1 > x0 && y1 > y0 {
+                    let part = image::imageops::crop_imm(m, x0, y0, x1 - x0, y1 - y0).to_image();
+                    let o = pixel_edit::mask_overlay(&part);
+                    let img = egui::ColorImage::from_rgba_unmultiplied(
+                        [(x1 - x0) as usize, (y1 - y0) as usize],
+                        o.as_raw(),
+                    );
+                    if let Some(t) = v.overlay.as_mut() {
+                        t.set_partial([x0 as usize, y0 as usize], img, opts);
+                    }
+                }
+            }
+        }
+        _ => v.overlay = None,
+    }
+    if let Some(t) = &v.overlay {
         painter.add(quad(t.id()));
+    }
+    if pe.target != MaskTarget::QuickMask {
+        if let Some(t) = &v.outline {
+            painter.add(quad(t.id()));
+        }
     }
     // The picture's edge.
     let edge = egui::Stroke::new(1.0, egui::Color32::from_rgb(0x1E, 0x7C, 0xE8));
@@ -1066,6 +1251,32 @@ mod tests {
             *pixels(&app, id).get_pixel(3, 3),
             Rgba([255, 255, 255, 255])
         );
+    }
+
+    #[test]
+    fn quick_mask_turns_painting_into_a_selection() {
+        let (mut app, id) = app_with_picture();
+        app.edit_bitmap_inside(id);
+        let pe = app.pixel_edit.as_mut().unwrap();
+        pe.set_quick_mask(true);
+        assert_eq!(pe.target, MaskTarget::QuickMask);
+        assert!(pe.pi.sel.as_ref().unwrap().pixels().all(|v| v[0] == 0));
+        pe.opts.hardness = 1.0;
+        pe.opts.opacity = 1.0;
+        pe.opts.flow = 1.0;
+        pe.opts.size = 6.0;
+        let m = pe.target_mask().unwrap().clone();
+        pe.mask_stroke = Some(MaskStroke::new(pe.opts, &m, 255));
+        pe.mask_to(5.0, 5.0);
+        assert_eq!(pe.pi.sel.as_ref().unwrap().get_pixel(5, 5)[0], 255);
+        assert_eq!(pe.pi.img.get_pixel(5, 5)[0], 255, "pixels untouched");
+        pe.set_quick_mask(false);
+        assert_eq!(pe.target, MaskTarget::Pixels);
+        assert!(pe.pi.sel.is_some());
+        pe.set_quick_mask(true);
+        pe.set_selection(Some(image::GrayImage::new(20, 10)));
+        pe.set_quick_mask(false);
+        assert!(pe.pi.sel.is_none(), "nothing painted, no selection");
     }
 
     #[test]

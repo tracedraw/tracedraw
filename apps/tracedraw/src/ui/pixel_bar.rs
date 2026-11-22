@@ -357,6 +357,7 @@ fn layers_section(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app::PixelEdit) 
                     pe.view.borrow_mut().full = true;
                 }
                 pe.layer_drag = slider.dragged();
+                layer_mask_row(ui, pe, i, l.clip, l.mask.is_some());
             }
             ui.horizontal_wrapped(|ui| {
                 let name = new_layer_name(pe);
@@ -533,7 +534,185 @@ fn selection_section(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app::PixelEdi
                     pe.apply_all(true, pixel_edit::crop_to_selection);
                 }
             });
+            more_selection(ui, pe);
         });
+}
+
+/// Clip to the layer below, and the mask of the layer in use.
+fn layer_mask_row(
+    ui: &mut egui::Ui,
+    pe: &mut crate::pixel_edit_app::PixelEdit,
+    i: usize,
+    clip: bool,
+    has_mask: bool,
+) {
+    use crate::pixel_edit_app::MaskTarget;
+    let mut c = clip;
+    if i > 0
+        && ui
+            .checkbox(&mut c, tr("pixel.layer.clip"))
+            .rich_tip(tr("pixel.layer.clip_tip"))
+            .changed()
+    {
+        pe.apply_all(true, |pi| {
+            pi.layers.get_mut(i)?.clip = c;
+            Some([0, 0, pi.img.width(), pi.img.height()])
+        });
+    }
+    ui.horizontal_wrapped(|ui| {
+        if !has_mask {
+            if ui
+                .button(tr("pixel.mask.add"))
+                .rich_tip(tr("pixel.mask.add_tip"))
+                .clicked()
+                && pe.apply_all(true, |pi| {
+                    pi.add_layer_mask()
+                        .then(|| [0, 0, pi.img.width(), pi.img.height()])
+                })
+            {
+                pe.set_edit_layer_mask(true);
+            }
+            return;
+        }
+        let mut editing = pe.target == MaskTarget::LayerMask;
+        if ui
+            .toggle_value(&mut editing, tr("pixel.mask.edit"))
+            .rich_tip(tr("pixel.mask.edit_tip"))
+            .changed()
+        {
+            pe.set_edit_layer_mask(editing);
+        }
+        if ui.button(tr("pixel.mask.invert")).clicked() {
+            pe.apply_all(true, |pi| {
+                pi.invert_layer_mask()
+                    .then(|| [0, 0, pi.img.width(), pi.img.height()])
+            });
+        }
+        if ui
+            .button(tr("pixel.mask.apply"))
+            .rich_tip(tr("pixel.mask.apply_tip"))
+            .clicked()
+        {
+            pe.apply(true, |pi| {
+                pi.apply_layer_mask()
+                    .then(|| [0, 0, pi.img.width(), pi.img.height()])
+            });
+            pe.set_edit_layer_mask(false);
+        }
+        if ui.button(tr("pixel.mask.delete")).clicked() {
+            pe.apply_all(true, |pi| {
+                pi.delete_layer_mask()
+                    .then(|| [0, 0, pi.img.width(), pi.img.height()])
+            });
+            pe.set_edit_layer_mask(false);
+        }
+    });
+}
+
+/// Quick mask, selections by tone and by channel, border, smooth, and
+/// the selections kept while editing.
+fn more_selection(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app::PixelEdit) {
+    use crate::pixel_edit_app::MaskTarget;
+    use pixel_edit::Tones;
+    let mut quick = pe.target == MaskTarget::QuickMask;
+    if ui
+        .toggle_value(&mut quick, tr("pixel.sel.quick_mask"))
+        .rich_tip(tr("pixel.sel.quick_mask_tip"))
+        .changed()
+    {
+        pe.set_quick_mask(quick);
+    }
+    ui.horizontal_wrapped(|ui| {
+        ui.label(tr("pixel.sel.by_tone"));
+        for (t, key) in [
+            (Tones::Shadows, "pixel.sel.shadows"),
+            (Tones::Midtones, "pixel.sel.midtones"),
+            (Tones::Highlights, "pixel.sel.highlights"),
+        ] {
+            if ui.button(tr(key)).clicked() {
+                let m = pixel_edit::tone_mask(&pe.pi.img, t);
+                pe.set_selection(Some(m));
+            }
+        }
+    });
+    ui.horizontal_wrapped(|ui| {
+        ui.label(tr("pixel.sel.by_channel"));
+        for (ch, key) in [
+            (0, "pixel.sel.red"),
+            (1, "pixel.sel.green"),
+            (2, "pixel.sel.blue"),
+            (3, "pixel.sel.alpha"),
+        ] {
+            if ui.button(tr(key)).clicked() {
+                let m = pixel_edit::channel_mask(&pe.pi.img, ch);
+                pe.set_selection(Some(m));
+            }
+        }
+    });
+    let has = pe.pi.sel.is_some();
+    ui.horizontal_wrapped(|ui| {
+        if ui
+            .add_enabled(has, egui::Button::new(tr("pixel.sel.border")))
+            .rich_tip(tr("pixel.sel.border_tip"))
+            .clicked()
+        {
+            if let Some(m) = pe
+                .pi
+                .sel
+                .as_ref()
+                .map(|m| pixel_edit::border(m, pe.feather_px))
+            {
+                pe.set_selection(Some(m));
+            }
+        }
+        if ui
+            .add_enabled(has, egui::Button::new(tr("pixel.sel.smooth")))
+            .rich_tip(tr("pixel.sel.smooth_tip"))
+            .clicked()
+        {
+            if let Some(m) = pe
+                .pi
+                .sel
+                .as_ref()
+                .map(|m| pixel_edit::smooth_selection(m, pe.feather_px))
+            {
+                pe.set_selection(Some(m));
+            }
+        }
+        if ui
+            .add_enabled(has, egui::Button::new(tr("pixel.sel.save")))
+            .rich_tip(tr("pixel.sel.save_tip"))
+            .clicked()
+        {
+            if let Some(m) = pe.pi.sel.clone() {
+                pe.saved_sels.push(m);
+            }
+        }
+    });
+    let mut load: Option<usize> = None;
+    let mut drop: Option<usize> = None;
+    for (k, _) in pe.saved_sels.iter().enumerate() {
+        ui.horizontal(|ui| {
+            ui.label(format!("{} {}", tr("pixel.sel.saved"), k + 1));
+            if ui.small_button(tr("pixel.sel.load")).clicked() {
+                load = Some(k);
+            }
+            if ui.small_button("x").clicked() {
+                drop = Some(k);
+            }
+        });
+    }
+    if let Some(k) = load {
+        let m = pe.saved_sels.get(k).cloned();
+        if m.as_ref().map(|m| m.dimensions()) == Some(pe.pi.img.dimensions()) {
+            pe.set_selection(m);
+        }
+    }
+    if let Some(k) = drop {
+        if k < pe.saved_sels.len() {
+            pe.saved_sels.remove(k);
+        }
+    }
 }
 
 fn retouch_section(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app::PixelEdit) {
