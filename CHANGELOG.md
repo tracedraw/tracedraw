@@ -10,6 +10,7 @@ full, row-by-row status.
 - Blends: a blend grouped and bent with an envelope or a perspective keeps every step in place when the group is ungrouped; the steps ran to the end object as it was before the bend and came apart from both objects (#3969).
 - Show objects while transforming: a dashed frame stays at the selection's box as it was when the move, stretch or turn began, so the change can be judged against it (#3949).
 - Curvature Pen: wide arcs come out round: three points on a circle make that circle however wide, so long curves no longer bulge or flatten between the clicks (#3948).
+- Pen and Bézier: a click whose pointer trembles by a pixel or two leaves a sharp corner instead of a tiny curve that cut the mitre off; the dimension tools snap to the edges of objects, inside groups and clip frames too, and light the edge they take (#3907; PR #3932 by ratmanz0000).
 - Saving .cdr: a graded transparency on an object inside a clip frame (Place Inside Frame) now opens again as it was set, instead of stretching over the whole object; the object keeps its other live effects too (#3804).
 - A selected clip frame shows the outlines of what it holds as a thin dashed line, also where they run out past the frame, so the contents can be placed exactly (#3804).
 - The preview a saved file carries (Welcome Screen, file browser, .cdr preview) shows the whole drawing, everything on and beside the page, instead of the page with a margin round it (#3052).
