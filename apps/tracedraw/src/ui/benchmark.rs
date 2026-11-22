@@ -75,6 +75,10 @@ pub struct Bench {
     pub done: Option<Measured>,
     /// Light zoom was turned on because the score is low.
     pub light_zoom_turned_on: bool,
+    /// The score is low, but the run used another renderer than a normal
+    /// start does (Test Without / With the Graphics Card): Light zoom was
+    /// left as it is (#3664).
+    pub light_zoom_left_alone: bool,
 }
 
 impl Bench {
@@ -161,6 +165,7 @@ fn measure(level: Level, card: bool, tell: &mut dyn FnMut(&'static str, usize, u
 pub fn start(app: &mut App, level: Level) {
     app.benchmark.done = None;
     app.benchmark.light_zoom_turned_on = false;
+    app.benchmark.light_zoom_left_alone = false;
     let card = level == Level::Advanced && card_blurs();
     #[cfg(not(target_arch = "wasm32"))]
     {
@@ -315,15 +320,28 @@ fn step(app: &mut App, ui: &mut Ui) {
 }
 
 /// A run measured: kept, and Light zoom turned on when the computer is
-/// slow for large drawings.
+/// slow for large drawings. A run made with another renderer than a
+/// normal start uses (Test Without the Graphics Card) only compares: it
+/// changes no option, or the software renderer's low score turned Light
+/// zoom on for everyday use with the card (#3664).
 pub fn finish(app: &mut App, m: Measured) {
+    let usual = usual_renderer(&app.settings);
+    finish_with(app, m, usual);
+}
+
+/// [`finish`] for a run made with the usual renderer or not.
+fn finish_with(app: &mut App, m: Measured, usual: bool) {
     log::info!(
         "benchmark: {}",
         bench::report(&m, env!("CARGO_PKG_VERSION")).replace('\n', "; ")
     );
     if m.slow() && !app.settings.light_zoom {
-        app.settings.light_zoom = true;
-        app.benchmark.light_zoom_turned_on = true;
+        if usual {
+            app.settings.light_zoom = true;
+            app.benchmark.light_zoom_turned_on = true;
+        } else {
+            app.benchmark.light_zoom_left_alone = true;
+        }
     }
     bench::remember(&mut app.settings.benchmarks, m.clone());
     app.settings.save();
@@ -502,6 +520,9 @@ fn results(app: &App, ui: &mut Ui, m: &Measured) {
     }
     if app.benchmark.light_zoom_turned_on {
         ui.label(RichText::new(tr("benchmark.light_zoom_turned_on")).strong());
+    }
+    if app.benchmark.light_zoom_left_alone {
+        ui.label(tr("benchmark.light_zoom_left_alone"));
     }
     tasks(ui, m);
 }
@@ -726,6 +747,26 @@ fn gpu_in_use() -> Option<&'static str> {
     }
 }
 
+/// Whether this run draws with the renderer a normal start uses (what
+/// Options asks for, or the one that last opened the window when that
+/// could not): false for a run started by Test Without / With the
+/// Graphics Card. Always true in the browser and in tests, which have no
+/// renderer of their own to compare.
+fn usual_renderer(s: &crate::settings::Settings) -> bool {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        match crate::gpu::mode_in_use() {
+            Some(m) => m == crate::gpu::Mode::for_start(&[], s, None),
+            None => true,
+        }
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = s;
+        true
+    }
+}
+
 /// Whether the window is drawn by a software adapter (never known in the
 /// browser).
 fn gpu_software() -> bool {
@@ -778,6 +819,20 @@ mod tests {
         finish(&mut app, fast);
         assert!(!app.settings.light_zoom);
         assert!(!app.benchmark.light_zoom_turned_on);
+    }
+
+    /// #3664: a slow run made with another renderer than a normal start
+    /// (Test Without the Graphics Card) is kept but turns no option on,
+    /// and the window says so.
+    #[test]
+    fn a_comparison_run_leaves_light_zoom_alone() {
+        let mut app = App::headless();
+        app.settings.light_zoom = false;
+        finish_with(&mut app, slow_run(), false);
+        assert!(!app.settings.light_zoom);
+        assert!(!app.benchmark.light_zoom_turned_on);
+        assert!(app.benchmark.light_zoom_left_alone);
+        assert_eq!(app.settings.benchmarks.len(), 1);
     }
 
     fn run(app: &mut App, ctx: &Context, frames: usize) {
