@@ -21,6 +21,7 @@ full, row-by-row status.
 - Print Preview: turning on Bleed, or widening it, no longer makes the pages smaller on the paper; the pages keep their size and the bleed runs out past their edges, with the crop marks starting beyond it (#3919).
 
 - Object menu: Fill With Copies... lays the smaller of two selected objects in a grid over every place inside the larger one where a whole copy fits, with the gaps typed, and says how many fit (#3834).
+- Edit Text (Ctrl+Shift+T): the size, colour and font set in the box's row change only the characters selected in the box; they changed every character, because the box gave its selection up as soon as the size box or the colour picker was used. The colour opens in the program's own picker and keeps its model, so a CMYK colour stays CMYK, and a font list changes the font of the selected characters (#2366).
 
 ## 0.51.0 (2026-11-22)
 

@@ -2751,7 +2751,7 @@ pub fn show(app: &mut App, ctx: &Context) {
             window(ctx, title)
                 .resizable(egui::vec2(640.0, 440.0), egui::vec2(460.0, 300.0))
                 .show(ctx, |ui| {
-                asked = edit_text_box(ui, text, spans, *ink, align);
+                asked = edit_text_box(app, ui, text, spans, *ink, align);
                 if ok_cancel(ui, &mut close) || alt_ok {
                     close = true;
                     app.set_edit_text(*shape, spans.clone(), *align);
@@ -11053,6 +11053,7 @@ mod layout_preset_tests {
 /// that sets those for the selected characters (all of them when none
 /// are selected).
 fn edit_text_box(
+    app: &mut App,
     ui: &mut Ui,
     text: &mut String,
     spans: &mut Vec<tracedraw_core::TextSpan>,
@@ -11064,14 +11065,15 @@ fn edit_text_box(
     let id = egui::Id::new("edit_text_dialog_box");
     crate::ops2::retext_keeping_styles(spans, text);
     let total = spans_char_count(spans);
-    let (from, to) = egui::TextEdit::load_state(ui.ctx(), id)
+    let live = egui::TextEdit::load_state(ui.ctx(), id)
         .and_then(|s| s.cursor.char_range())
         .map(|r| {
             let (a, b) = (r.primary.index.0, r.secondary.index.0);
             (a.min(b).min(total), a.max(b).min(total))
         })
-        .filter(|(a, b)| a < b)
-        .unwrap_or((0, total));
+        .filter(|(a, b)| a < b);
+    let focused = ui.memory(|m| m.has_focus(id));
+    let (from, to) = edit_text_range(ui.ctx(), id, live, focused, total);
     if let Some(first) = span_at(spans, from).cloned() {
         ui.horizontal(|ui| {
             let b = egui::RichText::new("B").font(crate::theme::bold(15.0));
@@ -11135,15 +11137,32 @@ fn edit_text_box(
             {
                 spans_apply(spans, from, to, |s| s.size_pt = size);
             }
-            let mut c = span_color(&first, ink);
-            if ui.color_edit_button_srgba(&mut c).changed() {
-                let color = tracedraw_core::Color::rgb8(c.r(), c.g(), c.b());
+            // The colour as it is defined (a CMYK or spot colour stays
+            // one), in the program's own picker.
+            let mut color = span_ink(&first, ink);
+            if crate::ui::color_picker::color_button(ui, &mut color) {
                 spans_apply(spans, from, to, |s| {
                     s.fill = Some(tracedraw_core::Fill::Solid(color))
                 });
             }
             ui.separator();
-            ui.weak(&first.font_family);
+            // The font of the selected characters, changed from the list.
+            let (pick, _) = crate::ui::font_list::font_list_live(
+                app,
+                ui,
+                "edit_text_font",
+                &first.font_family,
+                180.0,
+            );
+            if let Some(pick) = pick {
+                spans_apply(spans, from, to, |s| {
+                    s.font_family = pick.family.clone();
+                    if let Some((bold, italic)) = pick.style {
+                        s.bold = bold;
+                        s.italic = italic;
+                    }
+                });
+            }
         });
     }
     // The second row (#3270): the text's alignment, the case of the
@@ -11266,6 +11285,38 @@ fn edit_text_box(
     asked
 }
 
+/// The characters the Edit Text box's row acts on. The selection in the
+/// box (`live`) while there is one; it is also remembered, because the
+/// box drops its selection as soon as another control takes the keys
+/// (the size box, the colour picker, the font list), and the row then
+/// changed every character instead of the selected ones (#2366). A click
+/// in the box that selects nothing forgets it; with no selection at all,
+/// every character.
+fn edit_text_range(
+    ctx: &Context,
+    id: egui::Id,
+    live: Option<(usize, usize)>,
+    focused: bool,
+    total: usize,
+) -> (usize, usize) {
+    let kept_id = id.with("kept_selection");
+    let kept = ctx.data(|d| d.get_temp::<(usize, usize)>(kept_id));
+    let range = match live {
+        Some(r) => Some(r),
+        None if focused => None,
+        None => kept.filter(|(a, b)| a < b && *b <= total),
+    };
+    ctx.data_mut(|d| match range {
+        Some(r) => {
+            d.insert_temp(kept_id, r);
+        }
+        None => {
+            d.remove::<(usize, usize)>(kept_id);
+        }
+    });
+    range.unwrap_or((0, total))
+}
+
 /// What the Edit Text box asks of the program (#3270).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum EditTextAsk {
@@ -11359,6 +11410,19 @@ fn span_at(spans: &[tracedraw_core::TextSpan], at: usize) -> Option<&tracedraw_c
         seen += n;
     }
     spans.last()
+}
+
+/// The colour of a span's characters as it is defined: their own solid
+/// fill, else the object's (`ink`), else black.
+fn span_ink(
+    span: &tracedraw_core::TextSpan,
+    ink: Option<tracedraw_core::Color>,
+) -> tracedraw_core::Color {
+    match &span.fill {
+        Some(tracedraw_core::Fill::Solid(c)) => *c,
+        Some(_) => tracedraw_core::Color::BLACK,
+        None => ink.unwrap_or(tracedraw_core::Color::BLACK),
+    }
 }
 
 /// The colour a span's characters show in the Edit Text box.
@@ -11647,6 +11711,43 @@ mod edit_text_tests {
             panic!("text");
         };
         assert_eq!((tracedraw_core::spans_text(&spans), align), ("Hello".to_string(), TextAlign::Left));
+    }
+
+    /// The row of the Edit Text box acts on the characters selected in
+    /// the box also after the box gave its selection up to the size box,
+    /// the colour picker or the font list: every character took the new
+    /// colour (#2366). A click in the box that selects nothing forgets
+    /// them.
+    #[test]
+    fn the_edit_text_row_keeps_the_selection_the_box_dropped() {
+        let ctx = egui::Context::default();
+        let id = egui::Id::new("edit_text_range_test");
+        // Nothing selected yet: every character.
+        assert_eq!(edit_text_range(&ctx, id, None, false, 10), (0, 10));
+        // Characters 2 to 5 selected in the box.
+        assert_eq!(edit_text_range(&ctx, id, Some((2, 5)), true, 10), (2, 5));
+        // Another control has the keys: the box shows no selection.
+        assert_eq!(edit_text_range(&ctx, id, None, false, 10), (2, 5));
+        assert_eq!(edit_text_range(&ctx, id, None, false, 10), (2, 5));
+        // Characters deleted meanwhile: a range past the end is dropped.
+        assert_eq!(edit_text_range(&ctx, id, None, false, 4), (0, 4));
+        // Back in the box with only a caret: every character again.
+        assert_eq!(edit_text_range(&ctx, id, Some((1, 3)), true, 10), (1, 3));
+        assert_eq!(edit_text_range(&ctx, id, None, true, 10), (0, 10));
+        assert_eq!(edit_text_range(&ctx, id, None, false, 10), (0, 10));
+    }
+
+    /// The colour the Edit Text box's picker starts from is the one the
+    /// characters have, in its own model: a CMYK colour came up as RGB
+    /// (#2366).
+    #[test]
+    fn the_edit_text_colour_keeps_its_model() {
+        let cmyk = tracedraw_core::Color::cmyk_pct(0.0, 100.0, 100.0, 0.0);
+        let mut span = TextSpan::new("a", "Sans", 12.0);
+        assert_eq!(span_ink(&span, None), tracedraw_core::Color::BLACK);
+        assert_eq!(span_ink(&span, Some(cmyk)), cmyk);
+        span.fill = Some(tracedraw_core::Fill::Solid(cmyk));
+        assert_eq!(span_ink(&span, None), cmyk);
     }
 
     /// Change Case in the box changes only the selected characters, each
