@@ -6,6 +6,16 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Canvas: a picture drawn in bands is put together as each band finishes, without a second whole picture of finished bands beside it, so large views take less memory for a moment (#3883; PR #3884 by Anton Karpov).
+- Typing in a large text: the shaping and outline caches let go of one entry at a time instead of emptying, and a paragraph frame keeps whether it overflows until its own text changes, so a keystroke no longer lays every frame out again (#3876; PR #3828 by ratmanz0000).
+- Zoom with the wheel on a large drawing: the render under way keeps going while the wheel turns, and the picture is drawn for the view the glide lands at, so the drawing comes back sharp sooner after a turn (#3878; PR #3882 by ratmanz0000).
+- Pictures: a decoded picture stays in the cache while it fits the whole budget (it was dropped past half of it and decoded again at every draw), and the budget follows the free memory of the machine, read at most once a second (#3874; PR #3838 by ratmanz0000).
+- Large drawings: dragging a fill or an outline colour in a picker repaints only the part of the page the selection covers, and paint commands skip the text passes they cannot change (#3875; PR #3836 by ratmanz0000).
+- Pick tool: an object with only effects the renderer draws (transparency, lens, shadows, glow, blur, halftone, Blend If) is picked without working its effects out at every move of the pointer (#3756).
+- A uniform transparency reads its one mask value once instead of once a pixel (#3761).
+- Export: a picture wider than JPEG, GIF or WebP can hold says so at once and points to PNG or TIFF, which are written a strip at a time at any size, instead of first drawing the whole page in memory (#3803).
+- Edit Inside: the Layers panel keeps its size when Edit Inside is entered again after Finish or Cancel; it came back a few pixels high (#3852).
+- Multipage View: Zoom to Page (Shift+F4) and Zoom to Fit (F4) take the page in use instead of every page shown, and a double click on "1 of N" in the page bar opens Go to Page (#3780).
 - Right-click menu: Change Case is offered on a selected text and while typing one (#3826).
 - Smart Fill: Use Guidelines on its bar lets the guidelines shown close off the area too, as in the Shape Builder (#3863).
 - Colour panel "..." menu: Swap Fills exchanges the fills of two selected objects, and Outline From Fill gives each selected object's outline the colour of its own fill (#3770).
