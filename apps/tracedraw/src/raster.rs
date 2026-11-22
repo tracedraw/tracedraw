@@ -624,6 +624,50 @@ impl Raster {
         self.key.as_ref().map(|k| k.zoom)
     }
 
+    /// The drawing revision of the picture currently held in `texture`.
+    pub fn shown_revision(&self) -> Option<u64> {
+        self.texture.as_ref()?;
+        self.key.as_ref().map(|k| k.revision)
+    }
+
+    /// True when `texture` already holds an up-to-date plain render of `page`
+    /// at `revision` for `(view, rect, ppp, complex_effects)` with no job in
+    /// flight, so [`Raster::texture`] will return it without reading `doc`.
+    pub fn has_exact_plain_picture(
+        &self,
+        revision: u64,
+        page: PageId,
+        view: &View,
+        rect: Rect,
+        ppp: f32,
+        complex_effects: bool,
+    ) -> bool {
+        if self.texture.is_none() {
+            return false;
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        if self.job.is_some() {
+            return false;
+        }
+        let w = (rect.width() * ppp).round().max(1.0) as u32;
+        let h = (rect.height() * ppp).round().max(1.0) as u32;
+        let want = Key {
+            revision,
+            page,
+            zoom: view.zoom,
+            offset: view.origin - rect.min,
+            size: (w, h),
+            preview: None,
+            wireframe: false,
+            simulate_overprints: false,
+            complex_effects,
+            proof: false,
+            focus: None,
+            pixels: None,
+        };
+        self.key.as_ref() == Some(&want)
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn texture(
         &mut self,
@@ -750,6 +794,15 @@ impl Raster {
                     && job.key.same_but_view(&key, self.follows_zoom)
                     && self.zooms_at_once(&job.key, &key)
             });
+            // A render for an earlier revision of the main canvas is
+            // obsolete too (#3903): letting it run to completion wastes
+            // CPU while holding both the render turn and the old document
+            // snapshot.
+            if let Some(job) = &self.job {
+                if !self.follows_zoom && job.key.revision != key.revision {
+                    job.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+                }
+            }
             if stale_zoom {
                 let due = match &self.settle {
                     Some((k, due)) if *k == key => *due,
@@ -2925,5 +2978,103 @@ mod tests {
             &mut found,
         );
         assert!(found.is_empty(), "use web_time: {found:?}");
+    }
+
+    /// #3903: when the drawing's revision moves on while a render job for an
+    /// earlier revision is still running on its thread, the obsolete job is
+    /// told to give up instead of running to completion and uploading an
+    /// outdated picture, and the latest revision renders right after.
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn a_newer_revision_cancels_a_stale_render_in_flight() {
+        use tracedraw_core::document::ShapeKind;
+        use tracedraw_core::{Color, Fill, Shape};
+        static TURNS: Turns = Turns::new();
+        let ctx = Context::default();
+        let mut doc = Document::new("t", Size::new(100.0, 50.0));
+        let page = doc.pages[0].id;
+        let layer = doc.pages[0].layers[0].id;
+        let mut box_shape = Shape::new(
+            ShapeId(1),
+            ShapeKind::Rect {
+                rect: tracedraw_core::geometry::Rect::new(10.0, 10.0, 40.0, 30.0),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        box_shape.fill = Fill::Solid(Color::rgb8(200, 40, 40));
+        doc.layer_mut(layer).unwrap().shapes.push(box_shape);
+        let rect = Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(320.0, 200.0));
+        let view = View::default();
+        let hold = std::sync::Arc::new(std::sync::Mutex::new(()));
+        let mut raster = Raster {
+            turns: Some(&TURNS),
+            threaded: true,
+            hold: Some(hold.clone()),
+            ..Default::default()
+        };
+        let mut frame = |raster: &mut Raster, revision: u64| {
+            let mut full = ctx.run_ui(egui::RawInput::default(), |ui| {
+                raster.texture(
+                    ui.ctx(),
+                    &doc,
+                    page,
+                    &view,
+                    rect,
+                    None,
+                    revision,
+                    false,
+                    false,
+                    false,
+                    false,
+                    None,
+                    None,
+                );
+            });
+            full.textures_delta.clear();
+        };
+        frame(&mut raster, 1);
+        assert_eq!(raster.shown_revision(), Some(1));
+        let renders = raster.render_count();
+
+        let held = hold.lock().expect("lock");
+        frame(&mut raster, 2);
+        assert_eq!(raster.render_count(), renders + 1);
+        assert!(!raster
+            .job
+            .as_ref()
+            .expect("job 2")
+            .cancel
+            .load(std::sync::atomic::Ordering::Relaxed));
+        for rev in 3..=5 {
+            frame(&mut raster, rev);
+            assert_eq!(raster.render_count(), renders + 1);
+            assert!(
+                raster
+                    .job
+                    .as_ref()
+                    .expect("still job 2")
+                    .cancel
+                    .load(std::sync::atomic::Ordering::Relaxed),
+                "revision {rev} should cancel stale job 2"
+            );
+        }
+        drop(held);
+        let mut settled = false;
+        for _ in 0..400 {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            frame(&mut raster, 5);
+            assert_ne!(
+                raster.shown_revision(),
+                Some(2),
+                "cancelled revision 2 must not overwrite the shown picture"
+            );
+            if raster.shown_revision() == Some(5) && raster.job.is_none() {
+                settled = true;
+                break;
+            }
+        }
+        assert!(settled, "revision 5 rendered once job 2 aborted");
+        assert_eq!(raster.render_count(), renders + 2);
     }
 }
