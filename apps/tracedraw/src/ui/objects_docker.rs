@@ -856,11 +856,11 @@ fn layer_rows(
         let aimed = target_layers(app, layer.id);
         let has = aimed
             .iter()
-            .any(|id| app.doc().layer(*id).is_some_and(|l| !l.shapes.is_empty()));
+            .any(|id| app.doc().layer(*id).is_ok_and(|l| !l.shapes.is_empty()));
         let cuttable = aimed.iter().any(|id| {
             app.doc()
                 .layer(*id)
-                .is_some_and(|l| !l.shapes.is_empty() && !l.locked)
+                .is_ok_and(|l| !l.shapes.is_empty() && !l.locked)
         });
         let new_key = if at.master {
             "docker.new_master_layer_short"
@@ -5102,7 +5102,12 @@ pub(crate) mod tests {
         let master = app.picked_layer.expect("master");
         let on_master = app.new_shape(rect_kind()).expect("shape");
         let run = |app: &mut App, act: Actions| {
-            with_ui(|ui| apply(app, ui, act));
+            let mut once = Some(act);
+            with_ui(|ui| {
+                if let Some(act) = once.take() {
+                    apply(app, ui, act);
+                }
+            });
         };
         // The eye of one of them hides or shows them all.
         app.selected_layers = vec![first, second, master];
