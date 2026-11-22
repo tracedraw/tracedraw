@@ -15,6 +15,7 @@ full, row-by-row status.
 - Show Full Preview: the mirrored copies of a symmetry group show at once at every zoom, instead of partly missing until a zoom out (#3821).
 - PDF import: a PDF drawn in RGB colours opens as an RGB document, so a .cdr saved from it stays one and other programs no longer show the contents of its clip frames in CMYK (#3917).
 - PDF/X-1a export: a see-through object is flattened into the CMYK inks the drawing's colours blend to, so it no longer comes out duller and a rich black under it no longer turns into black ink alone; a group with a see-through object in it is flattened only where that object is, and its other objects stay vector objects (#3942, #3929).
+- Print Preview: turning on Bleed, or widening it, no longer makes the pages smaller on the paper; the pages keep their size and the bleed runs out past their edges, with the crop marks starting beyond it (#3919).
 
 - Object menu: Fill With Copies... lays the smaller of two selected objects in a grid over every place inside the larger one where a whole copy fits, with the gaps typed, and says how many fit (#3834).
 ## 0.51.0 (2026-11-22)
