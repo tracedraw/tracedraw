@@ -1401,6 +1401,16 @@ impl Shape {
             .unwrap_or_else(|| self.bounds())
     }
 
+    /// [`Shape::visual_bounds`] with `symbols` resolving any symbol
+    /// instances the object is or holds. Without `symbols`, a bare
+    /// instance only knows its 10 x 10 placeholder at the origin.
+    pub fn visual_bounds_with(&self, symbols: &[crate::document::Symbol]) -> Rect {
+        match self.with_symbols_drawn(symbols) {
+            Some(drawn) => drawn.visual_bounds(),
+            None => self.visual_bounds(),
+        }
+    }
+
     /// The object starts a blend whose end is an object of the drawing
     /// (see [`Shape::own_visual_bounds`]).
     pub fn starts_linked_blend(&self) -> bool {

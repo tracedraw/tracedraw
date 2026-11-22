@@ -29,9 +29,23 @@ pub enum CaseMode {
     Toggle,
 }
 
+/// State of a symbol definition edited on its own clean sheet: the
+/// symbol's index, the page instance it was opened from (when opened
+/// from one), the sheet placement applied to the definition's objects,
+/// and the view and selection to come back to on Finish or Cancel.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SymbolEdit {
+    pub index: usize,
+    pub instance: Option<ShapeId>,
+    pub placement: Affine,
+    pub return_zoom: f32,
+    pub return_origin: egui::Pos2,
+    pub return_selection: Vec<ShapeId>,
+}
+
 /// An undo step that began (`begins`) or finished editing the contents
-/// of the clip frame `frame`, with the objects that were on the page
-/// besides the frame (see [`App::clip_edit_contents`]).
+/// of the clip frame `frame` (or of `symbol`), with the objects that
+/// were on the page besides it (see [`App::clip_edit_contents`]).
 #[derive(Debug, Clone, PartialEq)]
 pub struct ClipEditMark {
     /// The drawing's engine (step ids are its own).
@@ -40,6 +54,7 @@ pub struct ClipEditMark {
     pub frame: ShapeId,
     pub outside: std::collections::HashSet<ShapeId>,
     pub begins: bool,
+    pub symbol: Option<SymbolEdit>,
 }
 
 /// Repeat Copies docker state.
@@ -1587,6 +1602,28 @@ impl App {
         outside: &std::collections::HashSet<ShapeId>,
         begins: bool,
     ) {
+        self.record_edit_step(before, frame, outside, begins, None);
+    }
+
+    fn mark_symbol_edit_step(
+        &mut self,
+        before: Option<u64>,
+        frame: ShapeId,
+        outside: &std::collections::HashSet<ShapeId>,
+        begins: bool,
+        symbol: SymbolEdit,
+    ) {
+        self.record_edit_step(before, frame, outside, begins, Some(symbol));
+    }
+
+    fn record_edit_step(
+        &mut self,
+        before: Option<u64>,
+        frame: ShapeId,
+        outside: &std::collections::HashSet<ShapeId>,
+        begins: bool,
+        symbol: Option<SymbolEdit>,
+    ) {
         let Some(step) = self.engine.last_step_id().filter(|s| Some(*s) != before) else {
             return;
         };
@@ -1601,6 +1638,7 @@ impl App {
             frame,
             outside: outside.clone(),
             begins,
+            symbol,
         });
     }
 
@@ -1623,21 +1661,28 @@ impl App {
         else {
             return;
         };
-        if self.doc().find_shape(mark.frame).is_none() {
+        if mark.symbol.is_none() && self.doc().find_shape(mark.frame).is_none() {
             return;
         }
         if mark.begins != undone {
             self.clip_frame_edit = Some((mark.frame, mark.outside));
+            self.symbol_edit = mark.symbol;
             let contents = self.clip_edit_contents();
             self.select(contents);
-            self.status = if self.symbol_edit_index().is_some() {
-                tr("status.editing_symbol")
+            if self.symbol_edit_index().is_some() {
+                self.fit_symbol_edit_view();
+                self.status = tr("status.editing_symbol");
             } else {
-                tr("status.editing_clip_frame")
-            };
+                self.status = tr("status.editing_clip_frame");
+            }
         } else {
+            let prev = self.symbol_edit.take();
             self.clip_frame_edit = None;
-            self.select(vec![mark.frame]);
+            if let Some(se) = mark.symbol.or(prev) {
+                self.restore_symbol_edit_view(&se);
+            } else {
+                self.select(vec![mark.frame]);
+            }
         }
     }
 
@@ -1721,14 +1766,29 @@ impl App {
         let Some((frame, outside)) = self.clip_frame_edit.take() else {
             return;
         };
+        if let Some(se) = self.symbol_edit.take() {
+            self.finish_symbol_edit(frame, se, contents, outside);
+            return;
+        }
         if self.doc().find_shape(frame).is_none() {
             return;
         }
         if let Some(ShapeKind::SymbolInstance { index }) =
             self.doc().find_shape(frame).map(|s| &s.kind)
         {
-            let index = *index;
-            self.finish_symbol_edit(frame, index, contents, outside);
+            let se = SymbolEdit {
+                index: *index,
+                instance: Some(frame),
+                placement: self
+                    .doc()
+                    .shape_on_page(frame)
+                    .map(|s| s.transform)
+                    .unwrap_or(Affine::IDENTITY),
+                return_zoom: self.view.zoom,
+                return_origin: self.view.origin,
+                return_selection: vec![frame],
+            };
+            self.finish_symbol_edit(frame, se, contents, outside);
             return;
         }
         if contents.is_empty() {
@@ -1823,17 +1883,15 @@ impl App {
     }
 
     /// What the renderer draws in full while the rest fades: the object
-    /// in focus (focus mode), or the frame and the contents being edited
-    /// (Edit Contents).
+    /// in focus (focus mode), the frame and contents of a clip frame
+    /// edit, or a symbol's objects alone on a clean sheet (visibility 0
+    /// skips the page background and every other object, #981).
     pub fn render_focus(&self) -> Option<(Vec<ShapeId>, f32)> {
         if let Some((frame, _)) = &self.clip_frame_edit {
-            // The instance of a symbol being edited fades with the rest:
-            // its objects on the page stand in for it until Finish.
-            let mut all = if self.symbol_edit_index().is_some() {
-                Vec::new()
-            } else {
-                vec![*frame]
-            };
+            if self.symbol_edit_index().is_some() {
+                return Some((self.clip_edit_contents(), 0.0));
+            }
+            let mut all = vec![*frame];
             all.extend(self.clip_edit_contents());
             return Some((all, self.focus_visibility()));
         }
@@ -6100,9 +6158,16 @@ impl App {
             return;
         };
         let c = self.page_rect().center();
+        let dc = self
+            .doc()
+            .symbols
+            .get(index)
+            .map(|s| s.shape.visual_bounds_with(&self.doc().symbols).center())
+            .filter(|p| p.x.is_finite() && p.y.is_finite())
+            .unwrap_or(Point::ZERO);
         let id = self.engine.new_shape_id();
         let mut inst = Shape::new(id, ShapeKind::SymbolInstance { index });
-        inst.transform = Affine::translate(c.to_vec2());
+        inst.transform = Affine::translate(c - dc);
         inst.fill = Fill::None;
         inst.stroke = None;
         self.run(Command::AddShape { layer, shape: inst });
@@ -6143,11 +6208,51 @@ impl App {
     /// The symbol whose objects are being edited (Edit Symbol), when the
     /// edit going on is one.
     pub fn symbol_edit_index(&self) -> Option<usize> {
+        if let Some(se) = &self.symbol_edit {
+            return (se.index < self.doc().symbols.len()).then_some(se.index);
+        }
         let (frame, _) = self.clip_frame_edit.as_ref()?;
         match self.doc().find_shape(*frame)?.kind {
             ShapeKind::SymbolInstance { index } => Some(index),
             _ => None,
         }
+    }
+
+    /// Where the origin of the symbol being edited sits on the clean
+    /// sheet, so the canvas can mark it lightly.
+    pub fn symbol_edit_origin(&self) -> Option<Point> {
+        self.symbol_edit
+            .as_ref()
+            .map(|se| se.placement * Point::ZERO)
+    }
+
+    fn fit_symbol_edit_view(&mut self) {
+        if self.canvas_rect.min.x.is_finite()
+            && self.canvas_rect.min.y.is_finite()
+            && self.canvas_rect.width() > 1.0
+            && self.canvas_rect.height() > 1.0
+        {
+            if let Some(b) = self.selection_bounds() {
+                let pad_x = (b.width() * 0.25).max(2.0);
+                let pad_y = (b.height() * 0.25).max(2.0);
+                self.view.fit(b.inflate(pad_x, pad_y), self.canvas_rect);
+            }
+        }
+    }
+
+    fn restore_symbol_edit_view(&mut self, se: &SymbolEdit) {
+        self.view.zoom = se.return_zoom;
+        self.view.origin = se.return_origin;
+        let sel: Vec<ShapeId> = match se.instance {
+            Some(id) if self.doc().find_shape(id).is_some() => vec![id],
+            _ => se
+                .return_selection
+                .iter()
+                .copied()
+                .filter(|id| self.doc().find_shape(*id).is_some())
+                .collect(),
+        };
+        self.select(sel);
     }
 
     /// The one symbol instance selected, for Edit Symbol.
@@ -6158,45 +6263,77 @@ impl App {
         }
     }
 
-    /// Edit Symbol from the Symbols docker: the first instance of symbol
-    /// `index` on the page is edited, a new one placed at the page centre
-    /// when the page has none.
+    /// Edit Symbol from the Symbols docker: open symbol `index`'s
+    /// definition upright at 1:1 on a clean sheet without placing a new
+    /// instance on the page. Finish writes the edited objects back into
+    /// the definition so every instance follows; Cancel discards them.
     pub fn edit_symbol(&mut self, index: usize) {
-        if index >= self.doc().symbols.len() {
+        if self.clip_frame_edit.is_some() {
             return;
         }
-        fn find(shapes: &[Shape], index: usize) -> Option<ShapeId> {
-            shapes.iter().find_map(|s| match &s.kind {
-                ShapeKind::SymbolInstance { index: i } if *i == index => Some(s.id),
-                ShapeKind::Group { children } => find(children, index),
-                ShapeKind::ClipFrame { contents, .. } => find(contents, index),
-                _ => None,
-            })
-        }
-        let on_page = self
+        self.finish_text();
+        let Some(def) = self.doc().symbols.get(index).map(|s| s.shape.clone()) else {
+            return;
+        };
+        let layer = self.active_layer().or_else(|| {
+            self.doc()
+                .page(self.page)
+                .ok()
+                .and_then(|p| p.layers.iter().rev().find(|l| !l.locked).map(|l| l.id))
+        });
+        let Some(layer) = layer else {
+            return;
+        };
+        let dc = def.visual_bounds_with(&self.doc().symbols).center();
+        let c = self.page_rect().center();
+        let shift = if dc.x.is_finite() && dc.y.is_finite() {
+            c - dc
+        } else {
+            tracedraw_core::geometry::Vec2::ZERO
+        };
+        let placement = Affine::translate(shift);
+        let outside: std::collections::HashSet<ShapeId> = self
             .page_layers()
             .iter()
-            .find_map(|l| find(&l.shapes, index));
-        let instance = match on_page {
-            Some(id) => id,
-            None => {
-                self.insert_symbol_instance(index);
-                match self.selected_symbol_instance() {
-                    Some(id) => id,
-                    None => return,
-                }
-            }
+            .flat_map(|l| &l.shapes)
+            .map(|s| s.id)
+            .collect();
+        let return_zoom = self.view.zoom;
+        let return_origin = self.view.origin;
+        let return_selection = self.selection.clone();
+        let engine = &mut self.engine;
+        let mut copy = def.with_fresh_ids(&mut || engine.new_shape_id());
+        copy.transform_by(placement);
+        let first = copy.id;
+        let before = self.engine.last_step_id();
+        if let Err(e) = self
+            .engine
+            .run_batch("Edit Symbol", &[Command::AddShape { layer, shape: copy }])
+        {
+            self.status = e.to_string();
+            return;
+        }
+        let se = SymbolEdit {
+            index,
+            instance: None,
+            placement,
+            return_zoom,
+            return_origin,
+            return_selection,
         };
-        self.edit_symbol_instance(instance);
+        self.mark_symbol_edit_step(before, ShapeId(0), &outside, true, se.clone());
+        self.clip_frame_edit = Some((ShapeId(0), outside));
+        self.symbol_edit = Some(se);
+        self.select(vec![first]);
+        self.fit_symbol_edit_view();
+        self.status = tr("status.editing_symbol");
     }
 
     /// Edit Symbol (#1980): the objects of the symbol shown by `instance`
-    /// come onto the page over it, as the instance places them, to be
-    /// edited like any object while the rest of the page fades. Finish
-    /// (the bar, the menu, Esc with nothing selected, a Ctrl+click off
-    /// them) makes them the symbol's objects again, so every instance
-    /// shows the change. The edit uses the clip frame contents edit
-    /// with the instance as its frame, so undo inside it keeps to it.
+    /// open on a clean sheet where the instance places them, while the
+    /// rest of the drawing is hidden. Finish (the bar, the menu, Esc with
+    /// nothing selected, a Ctrl+click off them) makes them the symbol's
+    /// objects again, so every instance shows the change.
     pub fn edit_symbol_instance(&mut self, instance: ShapeId) {
         if self.clip_frame_edit.is_some() {
             return;
@@ -6217,10 +6354,15 @@ impl App {
             return;
         };
         let layer = layer.id;
-        // An instance squeezed flat cannot give its objects back.
+        // An instance squeezed flat cannot give its objects back through
+        // its matrix: edit the definition upright instead.
         if !invertible(inst.transform) {
+            self.edit_symbol(index);
             return;
         }
+        let placement = inst.transform;
+        let return_zoom = self.view.zoom;
+        let return_origin = self.view.origin;
         let outside: std::collections::HashSet<ShapeId> = self
             .page_layers()
             .iter()
@@ -6230,7 +6372,7 @@ impl App {
             .collect();
         let engine = &mut self.engine;
         let mut copy = def.with_fresh_ids(&mut || engine.new_shape_id());
-        copy.transform_by(inst.transform);
+        copy.transform_by(placement);
         let first = copy.id;
         let before = self.engine.last_step_id();
         if let Err(e) = self
@@ -6240,34 +6382,53 @@ impl App {
             self.status = e.to_string();
             return;
         }
-        self.mark_clip_edit_step(before, instance, &outside, true);
+        let se = SymbolEdit {
+            index,
+            instance: Some(instance),
+            placement,
+            return_zoom,
+            return_origin,
+            return_selection: vec![instance],
+        };
+        self.mark_symbol_edit_step(before, instance, &outside, true, se.clone());
         self.clip_frame_edit = Some((instance, outside));
+        self.symbol_edit = Some(se);
         self.select(vec![first]);
+        self.fit_symbol_edit_view();
         self.status = tr("status.editing_symbol");
     }
 
     /// The end of Edit Symbol: `contents` (page objects, in their order)
-    /// become the objects of symbol `index`, placed back by the inverse
-    /// of `instance`'s transform, and leave the page; one undo step. A
-    /// symbol left with no objects keeps the ones it had. Contents that
+    /// become the objects of symbol `se.index`, placed back by the
+    /// inverse of the edit placement, and leave the page; one undo step.
+    /// A symbol left with no objects keeps the ones it had. Contents that
     /// hold an instance of the symbol itself keep the edit going, with
     /// a message.
     fn finish_symbol_edit(
         &mut self,
-        instance: ShapeId,
-        index: usize,
+        frame: ShapeId,
+        se: SymbolEdit,
         contents: Vec<ShapeId>,
         outside: std::collections::HashSet<ShapeId>,
     ) {
-        let Some(t) = self.doc().shape_on_page(instance).map(|s| s.transform) else {
-            return;
+        let t = match se.instance {
+            Some(inst) => match self.doc().shape_on_page(inst).map(|s| s.transform) {
+                Some(t) => t,
+                None => {
+                    self.restore_symbol_edit_view(&se);
+                    self.status = String::new();
+                    return;
+                }
+            },
+            None => se.placement,
         };
         let mut parts: Vec<Shape> = contents
             .iter()
             .filter_map(|id| self.doc().find_shape(*id).cloned())
             .collect();
-        if parts.is_empty() || !invertible(t) {
-            self.select(vec![instance]);
+        if parts.is_empty() || !invertible(t) || se.index >= self.doc().symbols.len() {
+            self.restore_symbol_edit_view(&se);
+            self.status = String::new();
             return;
         }
         let mut def = if parts.len() == 1 {
@@ -6280,7 +6441,10 @@ impl App {
         def.transform_by(t.inverse());
         def.id = ShapeId(0);
         let cmds = [
-            Command::SetSymbolShape { index, shape: def },
+            Command::SetSymbolShape {
+                index: se.index,
+                shape: def,
+            },
             Command::DeleteShapes { shapes: contents },
         ];
         let before = self.engine.last_step_id();
@@ -6290,28 +6454,40 @@ impl App {
                 e => e.to_string(),
             };
             // Still editing: the objects are all there to be put right.
-            self.clip_frame_edit = Some((instance, outside));
+            self.clip_frame_edit = Some((frame, outside));
+            self.symbol_edit = Some(se);
             return;
         }
-        self.mark_clip_edit_step(before, instance, &outside, false);
-        self.select(vec![instance]);
+        self.mark_symbol_edit_step(before, frame, &outside, false, se.clone());
+        self.restore_symbol_edit_view(&se);
         self.status = String::new();
     }
 }
 
 impl App {
-    /// The Symbols docker's Cancel beside Finish (#3437): the objects put
-    /// on the page to edit symbol `index` go away and the symbol keeps
-    /// the objects it had; one undo step, after which undo goes back into
-    /// the edit as it was.
+    /// Cancel beside Finish (#3437): the objects put on the clean sheet
+    /// to edit the symbol go away and the symbol keeps the objects it
+    /// had; one undo step, after which undo goes back into the edit.
     pub fn cancel_symbol_edit(&mut self) {
         if self.symbol_edit_index().is_none() {
             return;
         }
         let contents = self.clip_edit_contents();
-        let Some((instance, outside)) = self.clip_frame_edit.take() else {
+        let Some((frame, outside)) = self.clip_frame_edit.take() else {
             return;
         };
+        let se = self.symbol_edit.take().unwrap_or(SymbolEdit {
+            index: 0,
+            instance: (frame != ShapeId(0)).then_some(frame),
+            placement: Affine::IDENTITY,
+            return_zoom: self.view.zoom,
+            return_origin: self.view.origin,
+            return_selection: if frame != ShapeId(0) {
+                vec![frame]
+            } else {
+                Vec::new()
+            },
+        });
         let before = self.engine.last_step_id();
         if !contents.is_empty() {
             if let Err(e) = self.engine.run_batch(
@@ -6319,12 +6495,13 @@ impl App {
                 &[Command::DeleteShapes { shapes: contents }],
             ) {
                 self.status = e.to_string();
-                self.clip_frame_edit = Some((instance, outside));
+                self.clip_frame_edit = Some((frame, outside));
+                self.symbol_edit = Some(se);
                 return;
             }
         }
-        self.mark_clip_edit_step(before, instance, &outside, false);
-        self.select(vec![instance]);
+        self.mark_symbol_edit_step(before, frame, &outside, false, se.clone());
+        self.restore_symbol_edit_view(&se);
         self.status = String::new();
     }
 
@@ -7214,6 +7391,95 @@ mod tests {
         assert_eq!(app.symbol_thumbs.renders, 2);
         app.undo();
         assert_eq!(app.doc().symbols.len(), 1);
+    }
+
+    /// Editing a symbol from the Symbols panel opens it upright on a
+    /// clean sheet (focus visibility 0) without adding a permanent
+    /// instance to a page that has none, restores the view and selection
+    /// on Finish and Cancel, and centres inserted off-origin (.cdr)
+    /// definitions on the page.
+    #[test]
+    fn editing_a_symbol_from_the_panel_uses_a_clean_sheet_without_adding_an_instance() {
+        let mut app = App::headless();
+        app.canvas_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800.0, 600.0));
+        // A symbol whose definition sits away from the origin, as .cdr
+        // definitions do, with no instance on the page.
+        let mut def = Shape::new(
+            ShapeId(0),
+            ShapeKind::Rect {
+                rect: kurbo::Rect::new(105.0, 148.5, 135.0, 168.5),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        def.fill = Fill::Solid(Color::rgb8(200, 30, 30));
+        def.stroke = None;
+        app.run(Command::AddSymbol {
+            symbol: tracedraw_core::Symbol {
+                name: "Badge".into(),
+                shape: def,
+            },
+        });
+        let bystander = app
+            .new_shape(ShapeKind::Rect {
+                rect: kurbo::Rect::new(10.0, 10.0, 20.0, 20.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("bystander");
+        app.select(vec![bystander]);
+        let start_zoom = app.view.zoom;
+        let start_origin = app.view.origin;
+        let count_shapes =
+            |app: &App| -> usize { app.doc().all_layers().map(|l| l.shapes.len()).sum() };
+        assert_eq!(count_shapes(&app), 1);
+
+        app.edit_symbol(0);
+        assert_eq!(app.symbol_edit_index(), Some(0));
+        // Visibility 0 hides the bystander and the page background.
+        let (focused, vis) = app.render_focus().expect("clean sheet focus");
+        assert_eq!(vis, 0.0);
+        assert_eq!(focused.len(), 1);
+        assert!(app.outside_clip_edit(bystander));
+        let edited = focused[0];
+        // Widened from 30 mm to 60 mm on the clean sheet.
+        let eb = app.doc().find_shape(edited).expect("edited").bounds();
+        app.run(Command::TransformShapes {
+            shapes: vec![edited],
+            transform: Affine::translate((eb.x0, 0.0))
+                * Affine::scale_non_uniform(2.0, 1.0)
+                * Affine::translate((-eb.x0, 0.0)),
+        });
+        app.finish_clip_frame_edit();
+        assert!(app.clip_frame_edit.is_none());
+        assert_eq!(app.symbol_edit_index(), None);
+        // No stray symbol instance was added to the page.
+        assert_eq!(count_shapes(&app), 1);
+        assert_eq!(app.selection, vec![bystander]);
+        assert!((app.view.zoom - start_zoom).abs() < 1e-5);
+        assert!((app.view.origin - start_origin).length() < 1e-4);
+        assert!((app.doc().symbols[0].shape.bounds().width() - 60.0).abs() < 1e-6);
+
+        // Undo steps back into the clean-sheet edit, then out to the
+        // untouched symbol.
+        app.undo();
+        assert_eq!(app.symbol_edit_index(), Some(0));
+        app.undo();
+        app.undo();
+        assert_eq!(app.symbol_edit_index(), None);
+        assert_eq!(count_shapes(&app), 1);
+        assert!((app.doc().symbols[0].shape.bounds().width() - 30.0).abs() < 1e-6);
+
+        // Insert places the off-origin symbol at the page centre.
+        app.insert_symbol_instance(0);
+        let placed = app.selection[0];
+        let inst_shape = app.doc().find_shape(placed).cloned().expect("placed");
+        let ib = app.visual_bounds(&inst_shape);
+        let pc = app.page_rect().center();
+        assert!(
+            (ib.center().x - pc.x).abs() < 1e-6 && (ib.center().y - pc.y).abs() < 1e-6,
+            "{ib:?} vs {pc:?}"
+        );
     }
 
     /// New Symbol is one step to undo: the symbol goes with its instance.

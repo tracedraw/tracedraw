@@ -1706,6 +1706,8 @@ pub struct App {
     /// Clip frame being edited in place: (frame id, the page's other
     /// objects when editing began; see `clip_edit_contents`).
     pub clip_frame_edit: Option<(ShapeId, std::collections::HashSet<ShapeId>)>,
+    /// Symbol definition being edited on its own clean sheet.
+    pub symbol_edit: Option<crate::ops2::SymbolEdit>,
     /// Draw Behind on the drawing tools' property bar: what they draw
     /// goes behind the selected objects of its layer, or to the back of
     /// the layer with nothing selected there. Off at first.
@@ -3456,6 +3458,7 @@ impl App {
             marquee_moved_from: None,
             tab_ruler_menu: None,
             clip_frame_edit: None,
+            symbol_edit: None,
             draw_behind: false,
             clip_edit_marks: Vec::new(),
             symmetry_edit: None,
@@ -5775,7 +5778,7 @@ impl App {
                     .iter()
                     .filter(|l| l.visible && !l.locked)
                     .flat_map(|l| &l.shapes)
-                    .filter(|s| !s.locked && s.visible && pred(s))
+                    .filter(|s| !s.locked && s.visible && !self.outside_clip_edit(s.id) && pred(s))
                     .map(|s| s.id)
                     .collect()
             })
@@ -6195,19 +6198,7 @@ impl App {
     /// what [`App::with_symbols_drawn`] answers for, without building
     /// the drawn shape. Deepest eight levels, as there.
     pub(crate) fn holds_symbol_instance(s: &Shape) -> bool {
-        const DEEPEST: usize = 8;
-        fn holds(s: &Shape, depth: usize) -> bool {
-            depth <= DEEPEST
-                && match &s.kind {
-                    ShapeKind::SymbolInstance { .. } => true,
-                    ShapeKind::Group { children } => children.iter().any(|c| holds(c, depth + 1)),
-                    ShapeKind::ClipFrame { contents, .. } => {
-                        contents.iter().any(|c| holds(c, depth + 1))
-                    }
-                    _ => false,
-                }
-        }
-        holds(s, 0)
+        s.holds_symbol_instance()
     }
 
     /// `s` with every symbol instance it is or holds (in groups and clip
@@ -6217,46 +6208,7 @@ impl App {
     /// selection outline and the Shape tool's frame showed instead of
     /// the symbol (#3437). `None` when `s` holds no instance.
     pub fn with_symbols_drawn(&self, s: &Shape) -> Option<Shape> {
-        fn drawn(s: &Shape, symbols: &[tracedraw_core::document::Symbol], depth: usize) -> Shape {
-            const DEEPEST: usize = 8;
-            if depth > DEEPEST {
-                return s.clone();
-            }
-            match &s.kind {
-                ShapeKind::SymbolInstance { index } => match symbols.get(*index) {
-                    Some(def) => {
-                        let mut d = drawn(&def.shape, symbols, depth + 1);
-                        d.absorb(s.transform);
-                        d.id = s.id;
-                        d
-                    }
-                    None => s.clone(),
-                },
-                ShapeKind::Group { children } => {
-                    let mut g = s.clone();
-                    g.kind = ShapeKind::Group {
-                        children: children
-                            .iter()
-                            .map(|c| drawn(c, symbols, depth + 1))
-                            .collect(),
-                    };
-                    g
-                }
-                ShapeKind::ClipFrame { frame, contents } => {
-                    let mut c = s.clone();
-                    c.kind = ShapeKind::ClipFrame {
-                        frame: frame.clone(),
-                        contents: contents
-                            .iter()
-                            .map(|k| drawn(k, symbols, depth + 1))
-                            .collect(),
-                    };
-                    c
-                }
-                _ => s.clone(),
-            }
-        }
-        Self::holds_symbol_instance(s).then(|| drawn(s, &self.doc().symbols, 0))
+        s.with_symbols_drawn(&self.doc().symbols)
     }
 
     /// The geometric bounds of `s`, a top-level object of the current
@@ -6284,24 +6236,10 @@ impl App {
     /// The bounds of what `s` (in page space) draws, its live effects
     /// included; measured once per change of the drawing.
     pub fn visual_bounds(&self, s: &Shape) -> Rect {
-        // A symbol instance's box is its symbol's, placed by the instance's
-        // transform; the shape alone only knows a unit box, which put the
-        // handles of a new symbol in its corner at 10 x 10 mm (#1939).
-        if let ShapeKind::SymbolInstance { index } = &s.kind {
-            if let Some(def) = self.doc().symbols.get(*index) {
-                return tracedraw_core::geometry::transformed_bounds(
-                    &def.shape.page_path(),
-                    s.transform,
-                );
-            }
-        }
-        // A group or clip frame holding one: the box of what it draws, so
-        // a click or a marquee over the symbol's objects picks the group
-        // (#3437).
-        if !matches!(s.kind, ShapeKind::SymbolInstance { .. }) {
-            if let Some(drawn) = self.with_symbols_drawn(s) {
-                return drawn.bounds();
-            }
+        // A symbol instance, or a group or clip frame holding one: the box
+        // of what it draws, placed by the transforms above it (#1939, #3437).
+        if let Some(drawn) = self.with_symbols_drawn(s) {
+            return drawn.visual_bounds();
         }
         if !s.has_live_effects() {
             return s.bounds();

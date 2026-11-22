@@ -695,7 +695,16 @@ fn draw_page_margins(app: &App, painter: &Painter) {
 /// moves the selection while it is dragged).
 fn draw_page(app: &App, painter: &Painter, rect: ERect, preview: Option<Affine>) {
     let view = &app.view;
-    painter.rect_filled(rect, 0.0, app.desktop_color());
+    let clean_sheet = app.symbol_edit_index().is_some();
+    painter.rect_filled(
+        rect,
+        0.0,
+        if clean_sheet {
+            Tokens::PAGE
+        } else {
+            app.desktop_color()
+        },
+    );
     // Objects, rasterized with tiny-skia into a texture; the live drag preview
     // is applied to the selection during the render. Rendered before the
     // other pages of the Multipage View so their renders know the time
@@ -853,12 +862,14 @@ fn draw_page(app: &App, painter: &Painter, rect: ERect, preview: Option<Affine>)
     // facing pages): their shadows and paper now, their objects over
     // the current page's paper below, so what they hold across the
     // spine shows on it (#1972).
-    let others = app.shows_other_pages();
+    let others = !clean_sheet && app.shows_other_pages();
 
     // Page: a flat grey shadow offset right and down, the white page, a
     // one-pixel grey border (pixel-aligned so it stays crisp). While
     // Autofit Page's popup is open the page shows at the size it would
-    // take, around the drawing (#594, #604).
+    // take, around the drawing (#594, #604). While a symbol is edited on
+    // its clean sheet, the whole window is paper with a light mark at
+    // the symbol's origin.
     let shown = app
         .autofit_preview_rect(painter.ctx().cumulative_frame_nr())
         .unwrap_or_else(|| app.page_rect());
@@ -866,53 +877,60 @@ fn draw_page(app: &App, painter: &Painter, rect: ERect, preview: Option<Affine>)
         let r = view.rect_to_screen(shown);
         ERect::from_min_max(r.min.round(), r.max.round())
     };
-    if app.show_page_shadow {
-        paint_page_shadow(app, painter, paper);
-    }
-    if others {
-        crate::multipage::draw_other_papers(app, painter, rect);
-    }
-    painter.rect_filled(paper, 0.0, Tokens::PAGE);
-    if app.show_page_border {
-        painter.rect_stroke(
-            paper,
-            0.0,
-            page_border_stroke(app),
-            epaint::StrokeKind::Outside,
-        );
-    }
-    if app.show_bleed {
-        let b = app.doc().metadata.bleed.max(0.0);
-        if b > 0.0 {
-            // Around the whole spread with facing pages, not at the
-            // spine (#1660).
-            let around = if app.doc().facing().is_some() {
-                app.shown_spread_rect(app.page)
-                    .map(|r| r.union(shown))
-                    .unwrap_or(shown)
-            } else {
-                shown
-            };
-            let r = view.rect_to_screen(around.inflate(b, b));
+    if !clean_sheet {
+        if app.show_page_shadow {
+            paint_page_shadow(app, painter, paper);
+        }
+        if others {
+            crate::multipage::draw_other_papers(app, painter, rect);
+        }
+        painter.rect_filled(paper, 0.0, Tokens::PAGE);
+        if app.show_page_border {
             painter.rect_stroke(
-                r,
+                paper,
                 0.0,
-                EStroke::new(1.0, Tokens::page_border()),
+                page_border_stroke(app),
                 epaint::StrokeKind::Outside,
             );
         }
-    }
-    if app.show_printable_area {
-        // Printable area: the page minus the printer's hard margins, as
-        // the system reports them, else a typical 5 mm (#1924).
-        let r = view.rect_to_screen(printable_rect(app, shown));
-        dashed_rect(painter, r, Tokens::text_dim());
+        if app.show_bleed {
+            let b = app.doc().metadata.bleed.max(0.0);
+            if b > 0.0 {
+                // Around the whole spread with facing pages, not at the
+                // spine (#1660).
+                let around = if app.doc().facing().is_some() {
+                    app.shown_spread_rect(app.page)
+                        .map(|r| r.union(shown))
+                        .unwrap_or(shown)
+                } else {
+                    shown
+                };
+                let r = view.rect_to_screen(around.inflate(b, b));
+                painter.rect_stroke(
+                    r,
+                    0.0,
+                    EStroke::new(1.0, Tokens::page_border()),
+                    epaint::StrokeKind::Outside,
+                );
+            }
+        }
+        if app.show_printable_area {
+            // Printable area: the page minus the printer's hard margins, as
+            // the system reports them, else a typical 5 mm (#1924).
+            let r = view.rect_to_screen(printable_rect(app, shown));
+            dashed_rect(painter, r, Tokens::text_dim());
+        }
+    } else if let Some(origin) = app.symbol_edit_origin() {
+        let o = view.to_screen(origin).round();
+        let mark = EStroke::new(1.0, Tokens::page_border());
+        painter.line_segment([o + egui::vec2(-6.0, 0.0), o + egui::vec2(6.0, 0.0)], mark);
+        painter.line_segment([o + egui::vec2(0.0, -6.0), o + egui::vec2(0.0, 6.0)], mark);
     }
 
     if app.show_grid {
         draw_grid(app, painter, rect);
     }
-    if app.show_baseline_grid {
+    if !clean_sheet && app.show_baseline_grid {
         draw_baseline_grid(app, painter, rect, paper);
     }
     if others {
@@ -960,9 +978,11 @@ fn draw_page(app: &App, painter: &Painter, rect: ERect, preview: Option<Affine>)
         }
     }
 
-    draw_page_margins(app, painter);
-    if app.mask_outside_page {
-        mask_outside_pages(app, painter, rect, paper);
+    if !clean_sheet {
+        draw_page_margins(app, painter);
+        if app.mask_outside_page {
+            mask_outside_pages(app, painter, rect, paper);
+        }
     }
     draw_pixel_grid(app, painter, rect);
     draw_empty_clip_frames(app, painter);
@@ -2924,6 +2944,9 @@ fn draw_empty_clip_frames(app: &App, painter: &Painter) {
         .filter(|l| l.visible)
         .flat_map(|l| &l.shapes)
     {
+        if app.symbol_edit_index().is_some() && app.outside_clip_edit(s.id) {
+            continue;
+        }
         if let ShapeKind::ClipFrame { contents, .. } = &s.kind {
             if contents.is_empty() && s.visible {
                 for (a, b) in
@@ -3983,7 +4006,7 @@ fn draw_guide_line(
 /// selected ones red, one being dragged where it would go, the rotation
 /// handles of a guideline in rotate mode.
 pub fn draw_guides(app: &App, painter: &Painter, rect: ERect) {
-    if !app.show_guides {
+    if !app.show_guides || app.symbol_edit_index().is_some() {
         return;
     }
     if app.doc().page(app.page).is_err() {

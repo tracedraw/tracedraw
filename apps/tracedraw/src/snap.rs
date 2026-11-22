@@ -284,15 +284,16 @@ impl App {
         let mut xs = Vec::new();
         let mut ys = Vec::new();
         let s = self.snap;
+        let clean_sheet = self.symbol_edit_index().is_some();
         let page = self.page_rect();
-        if s.page && bounds {
+        if !clean_sheet && s.page && bounds {
             xs.extend([page.x0, page.x1, page.center().x]);
             ys.extend([page.y0, page.y1, page.center().y]);
         }
-        if s.baseline_grid {
+        if !clean_sheet && s.baseline_grid {
             ys.extend(self.baseline_ys());
         }
-        if s.guides && guides {
+        if !clean_sheet && s.guides && guides {
             // The page's own guidelines and the master page's (#1928).
             if let Ok(guides) = self.doc().guides_on_page(self.page) {
                 for g in &guides {
@@ -317,7 +318,7 @@ impl App {
                 .filter(|l| l.visible)
                 .flat_map(|l| &l.shapes)
             {
-                if excluded(&sh.id) {
+                if excluded(&sh.id) || (clean_sheet && self.outside_clip_edit(sh.id)) {
                     continue;
                 }
                 let b = self.snap_bounds(sh);
@@ -461,13 +462,17 @@ impl App {
         // Each object's stops and how far the pointer is from the object
         // along the line (0 over it or within the snapping radius).
         let mut stops: Vec<(f64, (f64, Point, snap_points::SnapMode))> = Vec::new();
+        let clean_sheet = self.symbol_edit_index().is_some();
         for sh in self
             .page_layers()
             .into_iter()
             .filter(|l| l.visible)
             .flat_map(|l| &l.shapes)
         {
-            if !sh.visible || exclude.contains(&sh.id) {
+            if !sh.visible
+                || exclude.contains(&sh.id)
+                || (clean_sheet && self.outside_clip_edit(sh.id))
+            {
                 continue;
             }
             // Only the objects whose box comes near the line (and, for a
@@ -566,13 +571,15 @@ impl App {
                 Some(s) => s.contains(id),
                 None => exclude.contains(id),
             };
+            let clean_sheet = self.symbol_edit_index().is_some();
             for sh in self
                 .page_layers()
                 .into_iter()
                 .filter(|l| l.visible)
                 .flat_map(|l| &l.shapes)
             {
-                if excluded(&sh.id) || !sh.visible {
+                if excluded(&sh.id) || !sh.visible || (clean_sheet && self.outside_clip_edit(sh.id))
+                {
                     continue;
                 }
                 if !self.snap_bounds(sh).inflate(tol, tol).contains(p) {
@@ -967,13 +974,17 @@ impl App {
                 g.push(Geo::Center(b.center()));
             }
         }
+        let clean_sheet = self.symbol_edit_index().is_some();
         for sh in self
             .page_layers()
             .into_iter()
             .filter(|l| l.visible)
             .flat_map(|l| &l.shapes)
         {
-            if !sh.visible || !self.snap_bounds(sh).inflate(tol, tol).contains(p) {
+            if !sh.visible
+                || (clean_sheet && self.outside_clip_edit(sh.id))
+                || !self.snap_bounds(sh).inflate(tol, tol).contains(p)
+            {
                 continue;
             }
             snap_points::object_geometry(&self.snap_shape(sh), &text_baselines, &mut g);

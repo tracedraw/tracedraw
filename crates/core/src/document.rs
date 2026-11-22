@@ -4926,6 +4926,79 @@ impl Shape {
         }
     }
 
+    /// `self` is or holds (in groups and clip frames, up to eight levels
+    /// deep) a symbol instance.
+    pub fn holds_symbol_instance(&self) -> bool {
+        const DEEPEST: usize = 8;
+        fn holds(s: &Shape, depth: usize) -> bool {
+            depth <= DEEPEST
+                && match &s.kind {
+                    ShapeKind::SymbolInstance { .. } => true,
+                    ShapeKind::Group { children } => children.iter().any(|c| holds(c, depth + 1)),
+                    ShapeKind::ClipFrame { frame, contents } => {
+                        holds(frame, depth + 1) || contents.iter().any(|c| holds(c, depth + 1))
+                    }
+                    _ => false,
+                }
+        }
+        holds(self, 0)
+    }
+
+    /// `self` with every symbol instance it is or holds (in groups, clip
+    /// frames and nested symbol definitions, up to eight levels deep)
+    /// replaced by its symbol's objects placed as the instance places
+    /// them. `None` when `self` holds no instance.
+    pub fn with_symbols_drawn(&self, symbols: &[Symbol]) -> Option<Shape> {
+        fn drawn(s: &Shape, symbols: &[Symbol], depth: usize) -> Shape {
+            const DEEPEST: usize = 8;
+            if depth > DEEPEST {
+                return s.clone();
+            }
+            match &s.kind {
+                ShapeKind::SymbolInstance { .. } => match s.expand(symbols).into_iter().next() {
+                    Some(exp) => {
+                        let mut d = drawn(&exp, symbols, depth + 1);
+                        d.absorb(s.transform);
+                        if !s.effects.is_empty() {
+                            let mut g = s.clone();
+                            g.kind = ShapeKind::Group { children: vec![d] };
+                            g.transform = Affine::IDENTITY;
+                            g
+                        } else {
+                            d.id = s.id;
+                            d
+                        }
+                    }
+                    None => s.clone(),
+                },
+                ShapeKind::Group { children } => {
+                    let mut g = s.clone();
+                    g.kind = ShapeKind::Group {
+                        children: children
+                            .iter()
+                            .map(|c| drawn(c, symbols, depth + 1))
+                            .collect(),
+                    };
+                    g
+                }
+                ShapeKind::ClipFrame { frame, contents } => {
+                    let mut c = s.clone();
+                    c.kind = ShapeKind::ClipFrame {
+                        frame: Box::new(drawn(frame, symbols, depth + 1)),
+                        contents: contents
+                            .iter()
+                            .map(|k| drawn(k, symbols, depth + 1))
+                            .collect(),
+                    };
+                    c
+                }
+                _ => s.clone(),
+            }
+        }
+        self.holds_symbol_instance()
+            .then(|| drawn(self, symbols, 0))
+    }
+
     /// Apply `t` to the object (in the space its transform maps to): its
     /// transform, and the places its live effects hold (those switched
     /// off too), such as a symmetry's mirror lines, which go with it (see
@@ -11036,6 +11109,57 @@ mod tests {
         assert!(bomb.symbols[..19].iter().all(kept));
         assert!(!kept(&bomb.symbols[19]));
         assert!(kept(&bomb.symbols[20]));
+    }
+
+    #[test]
+    fn symbol_visual_bounds_cover_off_origin_and_nested_definitions() {
+        // A definition far from the origin (as .cdr definitions sit around
+        // the page centre), and a second symbol that places two copies of it.
+        let leaf = Shape::new(
+            ShapeId(0),
+            ShapeKind::Rect {
+                rect: Rect::new(120.0, 160.0, 150.0, 180.0),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        let mut a = Shape::new(ShapeId(1), ShapeKind::SymbolInstance { index: 0 });
+        a.transform = Affine::IDENTITY;
+        let mut b = Shape::new(ShapeId(2), ShapeKind::SymbolInstance { index: 0 });
+        b.transform = Affine::translate((40.0, -10.0));
+        let outer = Shape::new(
+            ShapeId(0),
+            ShapeKind::Group {
+                children: vec![a.clone(), b],
+            },
+        );
+        let symbols = vec![
+            Symbol {
+                name: "Leaf".into(),
+                shape: leaf,
+            },
+            Symbol {
+                name: "Pair".into(),
+                shape: outer,
+            },
+        ];
+        let r0 = a.visual_bounds_with(&symbols);
+        assert!(
+            (r0.x0 - 120.0).abs() < 1e-6
+                && (r0.y0 - 160.0).abs() < 1e-6
+                && (r0.x1 - 150.0).abs() < 1e-6
+                && (r0.y1 - 180.0).abs() < 1e-6,
+            "{r0:?}"
+        );
+        let inst_outer = Shape::new(ShapeId(3), ShapeKind::SymbolInstance { index: 1 });
+        let r1 = inst_outer.visual_bounds_with(&symbols);
+        assert!(
+            (r1.x0 - 120.0).abs() < 1e-6
+                && (r1.y0 - 150.0).abs() < 1e-6
+                && (r1.x1 - 190.0).abs() < 1e-6
+                && (r1.y1 - 180.0).abs() < 1e-6,
+            "{r1:?}"
+        );
     }
 
     #[test]

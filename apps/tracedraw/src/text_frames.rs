@@ -651,6 +651,9 @@ impl App {
             .flat_map(|l| &l.shapes)
             .filter(|s| s.visible)
         {
+            if self.symbol_edit_index().is_some() && self.outside_clip_edit(s.id) {
+                continue;
+            }
             // Only text frames: asking every object whether it is selected
             // cost a search of the selection each (#367).
             let Some(mut c) = s.text_frame_corners() else {
