@@ -3252,11 +3252,23 @@ impl Renderer<'_> {
                 None => mask_px.get(i).map_or(255, lum),
             }
         };
+        // A uniform transparency (a solid mask) is one value over the whole
+        // box: read once, not once a pixel, and a wholly opaque one leaves
+        // the layer as it is (#3761).
+        let constant = match (mask_fill, inside) {
+            (Fill::Solid(_), Some(((x0, _), (y0, _)))) => {
+                Some(mask_px.get(y0 * w as usize + x0).map_or(255, lum))
+            }
+            _ => None,
+        };
         for (i, px) in layer.pixels_mut().iter_mut().enumerate() {
+            if constant == Some(255) {
+                break;
+            }
             if px.alpha() == 0 {
                 continue;
             }
-            let m = mask_at(i);
+            let m = constant.unwrap_or_else(|| mask_at(i));
             let d = px.demultiply();
             let a = (d.alpha() as u32 * m as u32 / 255) as u8;
             if let Some(np) = tiny_skia::ColorU8::from_rgba(d.red(), d.green(), d.blue(), a)

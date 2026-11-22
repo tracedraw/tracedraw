@@ -35,7 +35,12 @@ pub fn show(app: &mut App, ctx: &Context) {
         }
     }
     bar(app, ctx);
-    panel(app, ctx);
+    // Finish or Cancel in the bar ends the edit: no panel this frame. Shown
+    // empty, it was remembered a few pixels high and the next Edit Inside
+    // opened with its Layers squeezed out of sight (#3852).
+    if app.pixel_edit.is_some() {
+        panel(app, ctx);
+    }
 }
 
 fn frame() -> egui::Frame {
@@ -214,7 +219,8 @@ fn panel(app: &mut App, ctx: &Context) {
         app.canvas_rect.min.y + 14.0,
     );
     let max_h = (app.canvas_rect.height() - 40.0).max(200.0);
-    egui::Area::new(egui::Id::new("pixel_panel"))
+    let session = app.pixel_edit.as_ref().map_or(0, |pe| pe.session);
+    egui::Area::new(egui::Id::new(("pixel_panel", session)))
         .fixed_pos(at)
         .order(egui::Order::Foreground)
         .show(ctx, |ui| {

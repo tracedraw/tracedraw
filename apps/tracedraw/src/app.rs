@@ -11214,6 +11214,13 @@ impl App {
     // ----- view --------------------------------------------------------------
 
     pub fn zoom_to_page(&mut self) {
+        // In the Multipage View the page in use fills the window, not
+        // every page shown (#3780); a new view still fits them all.
+        if self.multipage && self.canvas_rect.is_positive() {
+            let page = self.page_rect();
+            self.view.fit(page, self.canvas_rect);
+            return;
+        }
         self.fit_pending = true;
     }
 
@@ -11331,8 +11338,9 @@ impl App {
     }
 
     pub fn zoom_to_fit(&mut self) {
-        if self.multipage {
-            self.fit_pending = true;
+        // In the Multipage View, the objects of the page in use (#3780).
+        if self.multipage && self.drawn_bounds().is_none() {
+            self.zoom_to_page();
             return;
         }
         let Some(b) = self.drawn_bounds() else {

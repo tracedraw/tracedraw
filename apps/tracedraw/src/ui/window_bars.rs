@@ -340,14 +340,22 @@ pub fn page_navigator(app: &mut App, ui: &mut Ui) {
         if nav_button(ui, Glyph::Previous, &tr("status.previous_page")) && idx > 0 {
             app.goto_page(idx - 1);
         }
-        ui.label(
-            egui::RichText::new(trf(
-                "status.page_n_of_m",
-                &[("n", &(idx + 1).to_string()), ("m", &n.to_string())],
-            ))
-            .size(11.0)
-            .color(Tokens::text_dim()),
+        let counter = ui.add(
+            egui::Label::new(
+                egui::RichText::new(trf(
+                    "status.page_n_of_m",
+                    &[("n", &(idx + 1).to_string()), ("m", &n.to_string())],
+                ))
+                .size(11.0)
+                .color(Tokens::text_dim()),
+            )
+            .sense(Sense::click()),
         );
+        // A double click on "1 of N" opens Go to Page, when there is
+        // another page to go to (#3780).
+        if counter.double_clicked() && n > 1 {
+            app.dialog = crate::ui::dialogs::Dialog::GoToPage { page: idx + 1 };
+        }
         if nav_button(ui, Glyph::Next, &tr("status.next_page")) {
             app.goto_page(idx + 1);
         }

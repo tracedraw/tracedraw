@@ -290,7 +290,11 @@ fn page_file(
                 let transparent = st.transparent && ext == "png";
                 return streamed_picture(doc, pid, fit, ext, transparent, st.dpi, STRIP_PIXELS);
             }
-            if pixels > tracedraw_render::MAX_PIXELS {
+            // A format with a cap on its sides says so before the page is
+            // drawn: a 180 ft banner at 50 dpi took gigabytes of memory
+            // to be drawn whole, and then the JPEG writer turned it down
+            // for being wider than 65535 pixels (#3803).
+            if fit.0.max(fit.1) > max_side(ext) || pixels > tracedraw_render::MAX_PIXELS {
                 return Err(too_large(fit.0, fit.1));
             }
             let mut pm = tracedraw_render::render_page_export_image(doc, pid, st.render_dpi())
@@ -332,6 +336,16 @@ const STREAMED_PIXELS: u64 = 1 << 26;
 /// The most pixels of one strip of a picture written a strip at a time
 /// (64 MB of RGBA).
 const STRIP_PIXELS: u64 = 1 << 24;
+
+/// The longest side, in pixels, a picture of format `ext` can have: JPEG
+/// and GIF store their sides in 16 bits, WebP in 14.
+fn max_side(ext: &str) -> u32 {
+    match ext {
+        "jpg" | "gif" => 65_535,
+        "webp" => 16_383,
+        _ => u32::MAX,
+    }
+}
 
 /// Why a picture of `w` x `h` pixels was not made.
 fn too_large(w: u32, h: u32) -> String {
@@ -3526,6 +3540,26 @@ pub fn replace_properties(app: &mut App, st: &mut FindReplaceState) -> usize {
 #[cfg(test)]
 mod tests {
     use super::{is_address, shared_file_name, why_not_send_to, SendTarget};
+
+    /// A 180 ft x 10 ft banner at 50 dpi as JPEG: wider than a JPEG can
+    /// be, so it is turned down at once with a word on what to use,
+    /// before gigabytes go into drawing it whole (#3803).
+    #[test]
+    fn a_banner_too_wide_for_jpeg_is_turned_down_before_it_is_drawn() {
+        use super::{page_file, ExportState};
+        let doc = tracedraw_core::Document::new(
+            "banner",
+            tracedraw_core::geometry::Size::new(180.0 * 304.8, 10.0 * 304.8),
+        );
+        let st = ExportState {
+            dpi: 50.0,
+            ..ExportState::default()
+        };
+        let t = std::time::Instant::now();
+        let err = page_file(&doc, 0, "jpg", &st, None).expect_err("too wide for JPEG");
+        assert!(err.contains("PNG or TIFF"), "{err}");
+        assert!(t.elapsed() < std::time::Duration::from_secs(5));
+    }
 
     #[test]
     fn page_exports_omit_excluded_layer_contents_without_changing_the_drawing() {

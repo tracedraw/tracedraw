@@ -74,6 +74,10 @@ pub struct PixelEdit {
     pub hidden: RefCell<Option<(u64, std::rc::Rc<Document>)>>,
     /// The Light tool's lights (see `pixel_light.rs`).
     pub lights: crate::pixel_light::Lights,
+    /// Which time Edit Inside was entered since the program started: the
+    /// panels key their remembered sizes by it, so an entry never starts
+    /// from the sizes the last one was left at (#3852).
+    pub session: u64,
 }
 
 impl PixelEdit {
@@ -248,7 +252,10 @@ impl App {
         let size_px = img.dimensions();
         let img_to_page = img_to_page
             * Affine::scale_non_uniform(w0 / size_px.0.max(1) as f64, h0 / size_px.1.max(1) as f64);
+        static SESSIONS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let session = SESSIONS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         self.pixel_edit = Some(Box::new(PixelEdit {
+            session,
             shape: id,
             img_to_page,
             rect: *rect,

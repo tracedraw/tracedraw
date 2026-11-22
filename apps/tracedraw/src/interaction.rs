@@ -794,7 +794,28 @@ impl App {
         {
             return false;
         }
-        if !s.effects.is_empty() {
+        // Effects the renderer draws (a lens, a transparency, shadows, a
+        // glow, a blur, a halftone, Blend If) leave the object's outline
+        // as it is: it is picked as it stands, without working the effects
+        // out and copying the object at every move of the pointer (#3756).
+        // Groups, clip frames and symbols keep the full path below.
+        let renderer_only = !s.effects.is_empty()
+            && s.effects.iter().all(|e| e.drawn_by_renderer())
+            && !matches!(
+                s.kind,
+                ShapeKind::Group { .. }
+                    | ShapeKind::ClipFrame { .. }
+                    | ShapeKind::SymbolInstance { .. }
+            );
+        if renderer_only
+            && s.effects
+                .iter()
+                .any(|e| matches!(e, tracedraw_core::live::Effect::Lens(_)))
+            && tracedraw_core::command::close_subpaths(&s.page_path()).contains(p)
+        {
+            return true;
+        }
+        if !s.effects.is_empty() && !renderer_only {
             // What the object draws: its warped outline and the objects
             // its effects add.
             let ev = tracedraw_core::live::evaluate(s);
