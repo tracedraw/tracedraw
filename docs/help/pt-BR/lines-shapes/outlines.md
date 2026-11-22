@@ -52,10 +52,9 @@ cor, a largura, o estilo, os cantos, as pontas e as setas na seção
   [[menu.object > menu.object.create > menu.object.create_arrowhead]].
 - O [[docker.nib_stretch]] (0,1 a 1) e o [[docker.nib_angle_lc]] fazem um
   contorno caligráfico: mais fino de um lado da ponta que do outro, como uma
-  caneta chata. No painel [[docker.properties]] eles ficam com o
-  [[docker.miter_limit]] sob o título [[docker.outline_advanced]], depois das
-  configurações comuns, fechado de início a não ser que um deles esteja
-  definido.
+  caneta chata. No painel [[docker.properties]] eles ficam sob o título
+  [[docker.outline_advanced]], depois das configurações comuns, fechado de
+  início a não ser que um deles esteja definido.
 - [[docker.behind_fill]] desenha o contorno por baixo do preenchimento, então
   só a metade externa aparece.
 - [[docker.scale_with_object]]: a largura cresce e diminui quando você

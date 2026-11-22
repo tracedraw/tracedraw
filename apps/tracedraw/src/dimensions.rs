@@ -1091,7 +1091,52 @@ pub(crate) fn anchors_on(
     d: &Dimension,
     tol: f64,
 ) -> Vec<Anchor> {
+    anchors_on_with_edge_tol(layers, d, tol, tol)
+}
+
+fn collect_measurable_shapes<'a>(
+    s: &'a Shape,
+    parent: Affine,
+    out: &mut Vec<(&'a Shape, Affine)>,
+) {
+    if is_dimension(s) || !s.visible {
+        return;
+    }
+    match &s.kind {
+        ShapeKind::Group { children } => {
+            let next = parent * s.transform;
+            for c in children {
+                collect_measurable_shapes(c, next, out);
+            }
+        }
+        ShapeKind::ClipFrame { frame, contents } => {
+            let next = parent * s.transform;
+            collect_measurable_shapes(frame, next, out);
+            for c in contents {
+                collect_measurable_shapes(c, next, out);
+            }
+        }
+        _ => out.push((s, parent)),
+    }
+}
+
+fn anchors_on_with_edge_tol(
+    layers: &[&tracedraw_core::Layer],
+    d: &Dimension,
+    node_tol: f64,
+    edge_tol: f64,
+) -> Vec<Anchor> {
     use tracedraw_core::geometry::ParamCurveNearest;
+    let reach = node_tol.max(edge_tol);
+    let mut shapes = Vec::new();
+    for layer in layers {
+        if !layer.visible {
+            continue;
+        }
+        for s in &layer.shapes {
+            collect_measurable_shapes(s, Affine::IDENTITY, &mut shapes);
+        }
+    }
     let mut out = Vec::new();
     for i in 0..3u8 {
         let Some(p) = d.point(i) else {
@@ -1099,45 +1144,37 @@ pub(crate) fn anchors_on(
         };
         let mut node_best: Option<(Anchor, f64)> = None;
         let mut edge_best: Option<(Anchor, f64)> = None;
-        for layer in layers {
-            if !layer.visible {
+        for &(s, parent) in &shapes {
+            let path = parent * s.page_path();
+            if !path.bounding_box().inflate(reach, reach).contains(p) {
                 continue;
             }
-            for s in &layer.shapes {
-                if is_dimension(s) || !s.visible {
-                    continue;
+            for (node, q) in tracedraw_core::nodes::nodes(&path).into_iter().enumerate() {
+                let dist = (q.pos - p).hypot();
+                if dist <= node_tol && node_best.is_none_or(|b| dist < b.1) {
+                    let a = Anchor {
+                        point: i,
+                        shape: s.id,
+                        node,
+                        segment: None,
+                    };
+                    node_best = Some((a, dist));
                 }
-                let path = s.page_path();
-                if !path.bounding_box().inflate(tol, tol).contains(p) {
-                    continue;
-                }
-                for (node, q) in tracedraw_core::nodes::nodes(&path).into_iter().enumerate() {
-                    let dist = (q.pos - p).hypot();
-                    if dist <= tol && node_best.is_none_or(|b| dist < b.1) {
-                        let a = Anchor {
-                            point: i,
-                            shape: s.id,
-                            node,
-                            segment: None,
-                        };
-                        node_best = Some((a, dist));
-                    }
-                }
-                if node_best.is_some() {
-                    continue;
-                }
-                for (index, seg) in path.segments().enumerate() {
-                    let n = seg.nearest(p, 1e-6);
-                    let dist = n.distance_sq.sqrt();
-                    if dist <= tol && edge_best.is_none_or(|b| dist < b.1) {
-                        let a = Anchor {
-                            point: i,
-                            shape: s.id,
-                            node: 0,
-                            segment: Some((index, n.t)),
-                        };
-                        edge_best = Some((a, dist));
-                    }
+            }
+            if node_best.is_some() {
+                continue;
+            }
+            for (index, seg) in path.segments().enumerate() {
+                let n = seg.nearest(p, 1e-6);
+                let dist = n.distance_sq.sqrt();
+                if dist <= edge_tol && edge_best.is_none_or(|b| dist < b.1) {
+                    let a = Anchor {
+                        point: i,
+                        shape: s.id,
+                        node: 0,
+                        segment: Some((index, n.t)),
+                    };
+                    edge_best = Some((a, dist));
                 }
             }
         }
@@ -1275,8 +1312,9 @@ impl App {
     /// object on the page, or else on one of its segments: within 3
     /// pixels of it (see [`anchors_on`]).
     fn anchors_for(&self, d: &Dimension) -> Vec<Anchor> {
-        let tol = (3.0 / self.view.zoom as f64).max(1e-3);
-        anchors_on(&self.page_layers(), d, tol)
+        let node_tol = (3.0 / self.view.zoom.max(1e-6) as f64).max(1e-3);
+        let edge_tol = self.snap_tolerance().max(node_tol);
+        anchors_on_with_edge_tol(&self.page_layers(), d, node_tol, edge_tol)
     }
 
     /// `d` (dimension group `g`'s) with its anchored points on their nodes
@@ -1307,6 +1345,7 @@ impl App {
             let target = doc
                 .find_shape(a.shape)
                 .and_then(|s| a.place_on(s))
+                .map(|q| doc.parent_transform(a.shape).unwrap_or(Affine::IDENTITY) * q)
                 .map(|q| to_local * q);
             let (Some(target), Some(now)) = (target, d.point(a.point)) else {
                 continue;
@@ -1725,28 +1764,44 @@ impl App {
 
 impl App {
     /// The nearest segment of an object on the page within 6 pixels of
-    /// `p`: its two ends (page space).
-    pub fn segment_ends_at(&self, p: Point) -> Option<(Point, Point)> {
+    /// `p`: its two ends, the segment itself and the nearest point on it
+    /// (page space).
+    fn dimension_segment_at(
+        &self,
+        p: Point,
+    ) -> Option<(Point, Point, tracedraw_core::geometry::PathSeg, Point)> {
         use tracedraw_core::geometry::{ParamCurve, ParamCurveNearest};
-        let tol = 6.0 / self.view.zoom as f64;
-        let mut best: Option<(Point, Point, f64)> = None;
+        let tol = 6.0 / self.view.zoom.max(1e-6) as f64;
+        let mut shapes = Vec::new();
         for layer in self.page_layers() {
             if !layer.visible || layer.locked {
                 continue;
             }
             for s in &layer.shapes {
-                if !s.visible || !self.visual_bounds(s).inflate(tol, tol).contains(p) {
-                    continue;
-                }
-                for seg in s.page_path().segments() {
-                    let d = seg.nearest(p, 1e-6).distance_sq.sqrt();
-                    if d <= tol && best.is_none_or(|b| d < b.2) {
-                        best = Some((seg.start(), seg.end(), d));
-                    }
+                collect_measurable_shapes(s, Affine::IDENTITY, &mut shapes);
+            }
+        }
+        let mut best: Option<(Point, Point, tracedraw_core::geometry::PathSeg, Point, f64)> = None;
+        for (s, parent) in shapes {
+            let path = parent * s.page_path();
+            if !path.bounding_box().inflate(tol, tol).contains(p) {
+                continue;
+            }
+            for seg in path.segments() {
+                let near = seg.nearest(p, 1e-6);
+                let d = near.distance_sq.sqrt();
+                if d <= tol && best.is_none_or(|b| d < b.4) {
+                    best = Some((seg.start(), seg.end(), seg, seg.eval(near.t), d));
                 }
             }
         }
-        best.map(|(a, b, _)| (a, b))
+        best.map(|(a, b, seg, on, _)| (a, b, seg, on))
+    }
+
+    /// The nearest segment of an object on the page near `p`: its two ends
+    /// (page space).
+    pub fn segment_ends_at(&self, p: Point) -> Option<(Point, Point)> {
+        self.dimension_segment_at(p).map(|(a, b, _, _)| (a, b))
     }
 
     /// The two points a linear dimension tool measures between, from the
@@ -1850,7 +1905,20 @@ impl App {
     pub fn dimension_input(&mut self, response: &egui::Response, p: Point) {
         use crate::tools::Tool;
         use egui::PointerButton;
+        let raw = p;
         let p = self.snap_point(p);
+        if self.tool == Tool::SegmentDimension && self.dimension_points.is_empty() {
+            if let Some((_, _, seg, on)) = self
+                .dimension_segment_at(p)
+                .or_else(|| self.dimension_segment_at(raw))
+            {
+                self.snap_mark.set(Some(crate::snap_points::Target {
+                    point: on,
+                    mode: crate::snap_points::SnapMode::Edge,
+                    edge: Some(seg),
+                }));
+            }
+        }
         let ctrl = response
             .ctx
             .input(|i| i.modifiers.command || i.modifiers.ctrl);
@@ -1859,18 +1927,38 @@ impl App {
         if !angular {
             if response.drag_started_by(PointerButton::Primary) && self.dimension_points.is_empty()
             {
-                // Where the button went down, not where the drag was seen.
-                let origin = response
+                let raw_origin = response
                     .ctx
                     .input(|i| i.pointer.press_origin())
-                    .map(|o| self.snap_point(self.view.to_page(o)))
-                    .unwrap_or(p);
+                    .map(|o| self.view.to_page(o))
+                    .unwrap_or(raw);
+                let origin = self.snap_point(raw_origin);
+                if self.tool == Tool::SegmentDimension {
+                    if let Some((a, b)) = self
+                        .segment_ends_at(origin)
+                        .or_else(|| self.segment_ends_at(raw_origin))
+                    {
+                        self.dimension_points = vec![a, b];
+                        self.dimension_dragging = true;
+                        return;
+                    }
+                }
                 self.dimension_points.push(origin);
                 self.dimension_dragging = true;
                 return;
             }
             if response.drag_stopped() && self.dimension_dragging {
                 self.dimension_dragging = false;
+                if self.tool == Tool::SegmentDimension && self.dimension_points.len() == 2 {
+                    let (a, b) = (self.dimension_points[0], self.dimension_points[1]);
+                    let tol = 3.0 / self.view.zoom.max(1e-6) as f64;
+                    if (p - a).hypot() > tol && (p - b).hypot() > tol {
+                        self.dimension_points.clear();
+                        let (a, b) = self.measured_pair(a, b);
+                        self.create_dimension(a, b, p);
+                    }
+                    return;
+                }
                 let start = self.dimension_points.first().copied();
                 if start.is_some_and(|s| (p - s).hypot() > 1e-6) {
                     self.dimension_points.push(p);
@@ -1884,7 +1972,7 @@ impl App {
             return;
         }
         if self.tool == Tool::SegmentDimension && self.dimension_points.is_empty() {
-            if let Some((a, b)) = self.segment_ends_at(p) {
+            if let Some((a, b)) = self.segment_ends_at(p).or_else(|| self.segment_ends_at(raw)) {
                 self.dimension_points = vec![a, b];
                 return;
             }

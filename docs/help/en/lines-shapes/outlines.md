@@ -48,9 +48,9 @@ section of the [[docker.properties]] panel.
   it and choose [[menu.object > menu.object.create > menu.object.create_arrowhead]].
 - The [[docker.nib_stretch]] (0.1 to 1) and [[docker.nib_angle_lc]] make a
   calligraphic outline: thinner across the nib than along it, like a flat pen.
-  In the [[docker.properties]] panel they sit with the
-  [[docker.miter_limit]] under the [[docker.outline_advanced]] header after
-  the common settings, closed at first unless one of them is set.
+  In the [[docker.properties]] panel they sit under the
+  [[docker.outline_advanced]] header after the common settings, closed at
+  first unless one of them is set.
 - [[docker.behind_fill]] draws the outline under the fill, so only its outer
   half shows.
 - [[docker.scale_with_object]]: the width grows and shrinks when you resize

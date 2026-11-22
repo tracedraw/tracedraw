@@ -3826,7 +3826,13 @@ impl App {
                     } else {
                         c.alt_from = None;
                         if let Some(last) = c.nodes.last_mut() {
-                            last.1 = Some(p);
+                            // A slight tremor on a trackpad tap starts a
+                            // drag in egui without an intentional handle
+                            // pull: keep the node a crisp corner until the
+                            // handle is pulled at least 3 screen pixels out.
+                            let pulled =
+                                (p - last.0).hypot() * self.view.zoom.max(1e-6) as f64 >= 3.0;
+                            last.1 = pulled.then_some(p);
                         }
                     }
                 }

@@ -4451,6 +4451,27 @@ fn outline_editor_mixed(
                 }
             }
         });
+        if s.join == tracedraw_core::LineJoin::Miter {
+            ui.horizontal(|ui| {
+                ui.label(tr("docker.miter_limit"));
+                if ui
+                    .add(
+                        crate::ui::field::NumField::new(&mut s.miter_limit)
+                            .range(Stroke::MITER_LIMIT_RANGE)
+                            .speed(0.5)
+                            .max_decimals(1)
+                            .suffix("°")
+                            .width(56.0)
+                            .mixed(mix.has(StrokeField::MiterLimit)),
+                    )
+                    .rich_tip(tr("docker.miter_limit_tip"))
+                    .changed()
+                {
+                    touched.push(StrokeField::MiterLimit);
+                    changed = true;
+                }
+            });
+        }
         group_heading(ui, "docker.group_arrowheads");
         ui.horizontal_wrapped(|ui| {
             for (field, id, key) in [
@@ -4634,41 +4655,15 @@ fn outline_editor_mixed(
         // common ones are found at a glance (#487): open at first when
         // one of them is set away from its default or differs between
         // the objects, so nothing set is hidden.
-        let advanced_set = s.miter_limit != Stroke::DEFAULT_MITER_LIMIT
-            || s.stretch != 1.0
+        let advanced_set = s.stretch != 1.0
             || s.nib_angle != 0.0
-            || [
-                StrokeField::MiterLimit,
-                StrokeField::Stretch,
-                StrokeField::NibAngle,
-            ]
-            .iter()
-            .any(|f| mix.has(*f));
+            || [StrokeField::Stretch, StrokeField::NibAngle]
+                .iter()
+                .any(|f| mix.has(*f));
         let advanced = egui::CollapsingHeader::new(tr("docker.outline_advanced"))
             .id_salt("docker_outline_advanced")
             .default_open(advanced_set)
             .show(ui, |ui| {
-                if s.join == tracedraw_core::LineJoin::Miter {
-                    ui.horizontal(|ui| {
-                        ui.label(tr("docker.miter_limit"));
-                        if ui
-                            .add(
-                                crate::ui::field::NumField::new(&mut s.miter_limit)
-                                    .range(Stroke::MITER_LIMIT_RANGE)
-                                    .speed(0.5)
-                                    .max_decimals(1)
-                                    .suffix("°")
-                                    .width(56.0)
-                                    .mixed(mix.has(StrokeField::MiterLimit)),
-                            )
-                            .rich_tip(tr("docker.miter_limit_tip"))
-                            .changed()
-                        {
-                            touched.push(StrokeField::MiterLimit);
-                            changed = true;
-                        }
-                    });
-                }
                 // The calligraphic nib (#1200): stretch as a percentage,
                 // the angle, and the nib itself, dragged to turn and
                 // flatten it, as in the Outline Pen dialog.
@@ -6568,6 +6563,7 @@ pub(crate) mod tests {
             "docker.join_miter",
             "docker.join_round",
             "docker.join_bevel",
+            "docker.miter_limit",
             "docker.dash",
             "docker.dash_solid",
             "docker.dash_dashed",
@@ -6584,7 +6580,6 @@ pub(crate) mod tests {
             "docker.outline_advanced",
         ];
         let advanced = [
-            "docker.miter_limit",
             "docker.nib_stretch",
             "docker.nib_angle_lc",
         ];

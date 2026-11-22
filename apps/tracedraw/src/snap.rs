@@ -540,19 +540,23 @@ impl App {
             .or_else(|| self.dimension_points.last().copied())
     }
 
+    /// Whether the active tool is one of the dimension tools.
+    pub fn is_dimension_tool(&self) -> bool {
+        use crate::tools::Tool;
+        matches!(
+            self.tool,
+            Tool::ParallelDimension
+                | Tool::HorizontalVerticalDimension
+                | Tool::SegmentDimension
+                | Tool::AngularDimension
+        )
+    }
+
     /// Objects are snapped to: Snap To Objects is on, or a dimension tool
     /// is measuring, which always takes the objects' ends and edges so a
     /// dimension starts and ends on them (live test of 0.41).
     pub fn snaps_to_objects(&self) -> bool {
-        use crate::tools::Tool;
-        self.snap.objects
-            || matches!(
-                self.tool,
-                Tool::ParallelDimension
-                    | Tool::HorizontalVerticalDimension
-                    | Tool::SegmentDimension
-                    | Tool::AngularDimension
-            )
+        self.snap.objects || self.is_dimension_tool()
     }
 
     /// Snapping geometry of the page and of the objects whose bounds come
@@ -858,6 +862,12 @@ impl App {
                 self.acquire_anchor(t);
                 self.snap_mark.set(Some(t));
                 return t.point;
+            }
+            if self.is_dimension_tool() {
+                if let Some(t) = self.object_snap(p, exclude, own, false, true) {
+                    self.snap_mark.set(Some(t));
+                    return t.point;
+                }
             }
         }
         if let Some(q) = self.live_guide_point(p, exclude, enabled) {

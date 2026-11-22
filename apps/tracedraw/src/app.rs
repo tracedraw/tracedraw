@@ -800,16 +800,18 @@ impl CurveInProgress {
     /// The incoming handle of node `i`: frozen for a cusp, else the mirror
     /// of its outgoing handle about the node.
     pub fn in_handle(&self, i: usize) -> Option<Point> {
-        if let Some(h) = self.in_handles.get(&i) {
-            return *h;
-        }
         let (p, out) = *self.nodes.get(i)?;
+        if let Some(h) = self.in_handles.get(&i) {
+            return h.filter(|h| (*h - p).hypot() > 1e-9);
+        }
+        let out = out.filter(|o| (*o - p).hypot() > 1e-9);
         if let (Some(len), Some(o)) = (self.in_lengths.get(&i), out) {
             let d = o - p;
             let n = d.hypot();
-            if n > 1e-12 {
+            if n > 1e-12 && *len > 1e-9 {
                 return Some(p - d * (len / n));
             }
+            return None;
         }
         out.map(|o| p - (o - p))
     }
@@ -903,6 +905,7 @@ impl CurveInProgress {
             if let (Some((first, _)), Some((end, end_out))) =
                 (self.nodes.first().copied(), self.nodes.last().copied())
             {
+                let end_out = end_out.filter(|o| (*o - end).hypot() > 1e-9);
                 let into = self.closing_handle();
                 if self.smooth && last > 0 && (end_out.is_some() || into.is_some()) {
                     path.curve_to(end_out.unwrap_or(end), into.unwrap_or(first), first);
@@ -960,6 +963,7 @@ impl CurveInProgress {
                 continue;
             }
             let (prev, prev_out) = nodes[i - 1];
+            let prev_out = prev_out.filter(|o| (*o - prev).hypot() > 1e-9);
             let cur_in = if i < self.nodes.len() {
                 self.in_handle(i)
             } else {

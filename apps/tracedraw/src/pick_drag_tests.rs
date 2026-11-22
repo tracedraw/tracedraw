@@ -6058,6 +6058,102 @@ fn a_pen_click_after_a_pulled_node_follows_its_handle() {
     );
 }
 
+/// A slight tremor of 1 to 2 screen pixels on a trackpad press with the
+/// Pen tool (#3907) keeps the node a straight-edged corner instead of
+/// leaving a tiny or zero Bezier handle that rounds or bevels the miter.
+#[test]
+fn a_pen_micro_drag_keeps_a_sharp_miter_corner() {
+    let (ctx, mut app, _) = setup();
+    app.select(Vec::new());
+    app.set_tool(Tool::Pen);
+    let (a, b, c) = (
+        Point::new(80.0, 100.0),
+        Point::new(110.0, 150.0),
+        Point::new(140.0, 100.0),
+    );
+    click_page(&ctx, &mut app, a);
+    let bs = app.view.to_screen(b);
+    let jitter = bs + egui::vec2(1.5, 0.5);
+    frame(
+        &ctx,
+        &mut app,
+        vec![
+            Event::PointerMoved(bs),
+            button(bs, true, PointerButton::Primary, Modifiers::NONE),
+        ],
+        Modifiers::NONE,
+    );
+    frame(&ctx, &mut app, vec![Event::PointerMoved(jitter)], Modifiers::NONE);
+    frame(
+        &ctx,
+        &mut app,
+        vec![button(jitter, false, PointerButton::Primary, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    click_page(&ctx, &mut app, c);
+    app.finish_curve();
+    let segs: Vec<_> = last_path(&app).segments().collect();
+    assert_eq!(segs.len(), 2, "{segs:?}");
+    assert!(
+        segs.iter()
+            .all(|s| matches!(s, tracedraw_core::geometry::PathSeg::Line(_))),
+        "both legs stay straight for a true miter corner: {segs:?}"
+    );
+}
+
+/// Dimension tools detect object edges ahead of alignment guides and
+/// inside groups, light the snapped edge, and Segment Dimension measures
+/// a grouped edge cleanly (#3907).
+#[test]
+fn dimension_tools_detect_and_measure_edges_including_grouped_shapes() {
+    use crate::snap_points::SnapMode;
+    let (ctx, mut app, first) = setup();
+    app.select(vec![first]);
+    app.delete_selection();
+    let r = app
+        .new_shape(ShapeKind::Rect {
+            rect: Rect::new(40.0, 40.0, 120.0, 90.0),
+            radius: 0.0,
+            corners: None,
+        })
+        .expect("rect");
+    app.select(vec![r]);
+    app.group_selection();
+    app.snap.alignment_guides = true;
+    app.snap.grid = true;
+    app.set_tool(Tool::ParallelDimension);
+    let edge_pt = app.view.to_screen(Point::new(40.2, 58.0));
+    frame(
+        &ctx,
+        &mut app,
+        vec![Event::PointerMoved(edge_pt)],
+        Modifiers::NONE,
+    );
+    let mark = app.snap_mark.get().expect("edge mark");
+    assert_eq!(mark.mode, SnapMode::Edge);
+    assert!(mark.edge.is_some(), "edge geometry present for highlight");
+
+    app.set_tool(Tool::SegmentDimension);
+    let mid_top = app.view.to_screen(Point::new(80.0, 90.0));
+    frame(
+        &ctx,
+        &mut app,
+        vec![Event::PointerMoved(mid_top)],
+        Modifiers::NONE,
+    );
+    let seg_mark = app.snap_mark.get().expect("segment mark");
+    assert_eq!(seg_mark.mode, SnapMode::Edge);
+    assert!(seg_mark.edge.is_some());
+    click_at(&ctx, &mut app, mid_top, Modifiers::NONE);
+    assert_eq!(app.dimension_points.len(), 2, "segment ends captured");
+    let offset = app.view.to_screen(Point::new(80.0, 105.0));
+    click_at(&ctx, &mut app, offset, Modifiers::NONE);
+    let dim_id = app.selection[0];
+    let dim = crate::dimensions::Dimension::of(app.doc().find_shape(dim_id).expect("dim"))
+        .expect("dimension data");
+    assert_eq!(dim.anchors.len(), 2, "{:?}", dim.anchors);
+}
+
 /// A 3-point curve whose chord starts on an end node of the selected
 /// curve continues it, and one that ends on the other end node closes
 /// it (the owner's report: the second curve left the object open).

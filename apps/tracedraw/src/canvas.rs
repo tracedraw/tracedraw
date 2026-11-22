@@ -4374,8 +4374,12 @@ pub fn draw_snap_mark(app: &App, painter: &Painter) {
         return;
     }
     let c = app.view.to_screen(t.point);
-    // While dragging, the edge snapped to lights up in blue.
-    if let (Some(seg), false) = (t.edge, matches!(app.drag, crate::app::Drag::None)) {
+    // While dragging or measuring with a dimension tool, the edge snapped
+    // to lights up in blue.
+    let highlight_edge = !matches!(app.drag, crate::app::Drag::None)
+        || app.is_dimension_tool()
+        || app.dimension_dragging;
+    if let (Some(seg), true) = (t.edge, highlight_edge) {
         let pts: Vec<Pos2> = (0..=24)
             .map(|i| {
                 app.view
