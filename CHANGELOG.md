@@ -15,6 +15,7 @@ full, row-by-row status.
 - Document Options, Rulers: the vertical ruler can count from the top of the page down (#3872).
 - Object menu: Break Apart Keeping Holes splits a curve into its parts with each hole kept in the part around it, so the inside of an O stays in the O (#3700).
 - WMF export: a Dashed lines as solid lines box writes dashed and dotted outlines as solid lines; in tracedraw-cli, TRACEDRAW_WMF_SOLID_DASHES=1 does the same (#3819).
+- Progressive canvas rendering assembles bands as they finish instead of keeping a second picture's worth of finished bands, reducing temporary memory use on large previews (#3883).
 - Welcome screen: drawings on a network share or a USB drive show their folder as typed, without the `\\?\UNC\` or `\\?\` in front (#3812).
 - Colour Eyedropper: with Treat All Objects as Filled, an unfilled object lying over others no longer keeps the colour beneath it from being read; inside it the object beneath is read, on its outline its outline colour (#3856).
 - Text tool: over the outline of a curve inside a group (or a clip frame) the tool offers to type along it, as on a loose curve, and a click starts the text on it (#3864).

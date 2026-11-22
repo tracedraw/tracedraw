@@ -164,6 +164,23 @@
   closes the pop-up; a press anywhere else or Esc closes it. Check:
   `ui::window_bars::tests::view_navigator_has_the_key_n`.
 
+## Progressive preview memory
+
+The desktop canvas assembles completed render bands directly into one
+output picture. Finished bands are released after their preview callback;
+they do not accumulate into another whole picture before assembly. The
+assembly lock is released before the callback, so a slow consumer does
+not hold up workers copying other bands. Cancellation discards the
+incomplete output and never returns it as a finished picture (#3883).
+
+This reduces temporary band storage; it does not cap image decoding,
+effect buffers, or the interface's queued texture uploads. The synthetic
+`progressive_memory::progressive_assembly_does_not_retain_a_second_picture`
+regression measures live allocations, checks the pixels, and exercises
+cancellation before rendering and from a preview callback. Run that test
+binary alone on at least two CPUs, preferably in a memory-limited
+container.
+
 ## Checks
 
 - Given 100 % zoom, when the zoom-in step runs, then the zoom is 150 %.

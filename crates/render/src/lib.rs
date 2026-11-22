@@ -368,6 +368,9 @@ pub fn render_page_progressive(
         return None;
     }
     let cancelled = || cancel.load(Ordering::Relaxed);
+    if cancelled() {
+        return None;
+    }
     let cores = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(1)
@@ -389,7 +392,11 @@ pub fn render_page_progressive(
     // once here instead of once per band (#3559).
     let boxes = page_bounds_cache(doc, page);
     let next = AtomicUsize::new(0);
-    let done: std::sync::Mutex<Vec<(u32, Pixmap)>> = std::sync::Mutex::new(Vec::new());
+    // Assemble each band as it finishes instead of keeping a whole
+    // picture of bands beside a second whole picture at the end. Only
+    // the workers' current bands and their blur margins stay live.
+    let out = std::sync::Mutex::new(Pixmap::new(w, h)?);
+    let done = AtomicUsize::new(0);
     std::thread::scope(|sc| {
         for _ in 0..cores.min(bands.len() as u32) {
             sc.spawn(|| loop {
@@ -420,24 +427,28 @@ pub fn render_page_progressive(
                     return;
                 };
                 rows.data_mut().copy_from_slice(src);
-                band(y0, &rows);
-                if let Ok(mut d) = done.lock() {
-                    d.push((y0, rows));
+                drop(part);
+                {
+                    let Ok(mut out) = out.lock() else {
+                        return;
+                    };
+                    let start = y0 as usize * row;
+                    let Some(dst) = out.data_mut().get_mut(start..start + len) else {
+                        return;
+                    };
+                    dst.copy_from_slice(rows.data());
                 }
+                // The callback may wait for its consumer. It must never
+                // hold the assembly lock while it does so.
+                band(y0, &rows);
+                done.fetch_add(1, Ordering::Relaxed);
             });
         }
     });
-    let done = done.into_inner().ok()?;
-    if cancelled() || done.len() != bands.len() {
+    if cancelled() || done.load(Ordering::Relaxed) != bands.len() {
         return None;
     }
-    let mut out = Pixmap::new(w, h)?;
-    let row = w as usize * 4;
-    for (y0, rows) in done {
-        let d = y0 as usize * row;
-        out.data_mut()[d..d + rows.data().len()].copy_from_slice(rows.data());
-    }
-    Some(out)
+    out.into_inner().ok()
 }
 
 /// How many bands for each core a picture handed over a band at a time
