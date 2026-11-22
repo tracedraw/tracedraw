@@ -37,6 +37,8 @@ full, row-by-row status.
 - Select All with facing pages takes the objects of both pages of the spread shown, a text frame continued on the facing page among them; they stay on their own page (#3744).
 - Shape tool: with Alt held, dragging a node's handle drags the node, the handle keeping its place about it (#3719).
 - Tables: the text of a cell aligns from top to bottom (top, centre, bottom) with Align within Frame in the Text docker or the text bar; it did nothing in a cell (#3859).
+- Save Drawing: a click on a column title of the folder list sorts it, and a second click sorts it the other way round (#3858).
+- Shape Builder: selected open curves cut objects into parts, and the cells a grid of lines closes in become parts of their own (#3814).
 
 ## 0.50.3 (2026-11-22)
 

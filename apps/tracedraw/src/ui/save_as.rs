@@ -14,7 +14,7 @@ use crate::theme::Tokens;
 use crate::ui::dialogs::{enter_pressed, window};
 use crate::ui::options::{combo, grid, row_label};
 use crate::ui::tips::RichTip;
-use egui::{Context, RichText, Ui};
+use egui::{Context, RichText, Sense, Ui};
 use std::path::{Path, PathBuf};
 use tracedraw_core::document::{TDRAW_FORMAT_VERSION, TDRAW_RELEASES};
 use tracedraw_core::Command;
@@ -105,6 +105,18 @@ pub struct SaveAsState {
     pub bookmarks: Vec<PathBuf>,
     /// The folders used lately, newest first.
     pub recent: Vec<PathBuf>,
+    /// The column the list is sorted by, and whether downwards (#3858).
+    pub sort: (ListSort, bool),
+}
+
+/// A column of the folder list it can be sorted by (#3858).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ListSort {
+    #[default]
+    Name,
+    Modified,
+    Type,
+    Size,
 }
 
 impl SaveAsState {
@@ -207,6 +219,7 @@ impl SaveAsState {
             desktop_bookmarks: Vec::new(),
             bookmarks: app.settings.folder_bookmarks.clone(),
             recent: Vec::new(),
+            sort: (ListSort::Name, false),
         };
         if !files::WEB && !files::ANDROID {
             st.places = files::places();
@@ -441,13 +454,45 @@ impl SaveAsState {
         self.replace = None;
     }
 
-    /// The entries shown: folders, and files of the chosen type.
+    /// The entries shown: folders, and files of the chosen type, folders
+    /// first, sorted by the column chosen (#3858).
     pub fn shown(&self) -> Vec<&DirEntry> {
         let ext = format!(".{}", self.extension());
-        self.entries
+        let mut out: Vec<&DirEntry> = self
+            .entries
             .iter()
             .filter(|e| e.is_dir || e.name.to_ascii_lowercase().ends_with(&ext))
-            .collect()
+            .collect();
+        let (by, down) = self.sort;
+        let kind = |e: &DirEntry| {
+            Path::new(&e.name)
+                .extension()
+                .map(|x| x.to_string_lossy().to_lowercase())
+                .unwrap_or_default()
+        };
+        out.sort_by(|a, b| {
+            let key = match by {
+                ListSort::Name => std::cmp::Ordering::Equal,
+                ListSort::Modified => a.modified.cmp(&b.modified),
+                ListSort::Type => kind(a).cmp(&kind(b)),
+                ListSort::Size => a.size.cmp(&b.size),
+            }
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+            b.is_dir
+                .cmp(&a.is_dir)
+                .then(if down { key.reverse() } else { key })
+        });
+        out
+    }
+
+    /// A click on a column's title: sorted by it, the other way round when
+    /// it already was (#3858).
+    pub fn sort_by(&mut self, by: ListSort) {
+        self.sort = if self.sort.0 == by {
+            (by, !self.sort.1)
+        } else {
+            (by, false)
+        };
     }
 }
 
@@ -1103,13 +1148,34 @@ fn listing(ui: &mut Ui, st: &mut SaveAsState) {
                     .striped(true)
                     .spacing([16.0, 4.0])
                     .show(ui, |ui| {
-                        for head in [
-                            "dialog.col_name",
-                            "dialog.col_modified",
-                            "dialog.col_type",
-                            "dialog.col_size",
+                        // A click on a title sorts by its column (#3858).
+                        for (head, by) in [
+                            ("dialog.col_name", ListSort::Name),
+                            ("dialog.col_modified", ListSort::Modified),
+                            ("dialog.col_type", ListSort::Type),
+                            ("dialog.col_size", ListSort::Size),
                         ] {
-                            ui.label(RichText::new(tr(head)).color(Tokens::text_dim()));
+                            let r = ui.add(
+                                egui::Label::new(RichText::new(tr(head)).color(Tokens::text_dim()))
+                                    .sense(Sense::click()),
+                            );
+                            if st.sort.0 == by {
+                                // A small triangle after the title: up or down.
+                                let c = egui::pos2(r.rect.right() + 7.0, r.rect.center().y);
+                                let d = if st.sort.1 { 1.0 } else { -1.0 } * 3.0;
+                                ui.painter().add(egui::Shape::convex_polygon(
+                                    vec![
+                                        egui::pos2(c.x - 3.5, c.y - d),
+                                        egui::pos2(c.x + 3.5, c.y - d),
+                                        egui::pos2(c.x, c.y + d),
+                                    ],
+                                    Tokens::text_dim(),
+                                    egui::Stroke::NONE,
+                                ));
+                            }
+                            if r.clicked() {
+                                st.sort_by(by);
+                            }
                         }
                         ui.end_row();
                         let picked = st.selected.clone();
@@ -2028,6 +2094,37 @@ mod tests {
         assert_eq!(st.shown().len(), 2);
         assert_eq!(size_text(10), "1 KB");
         assert_eq!(size_text(3 * 1024 * 1024 + 1), "3.0 MB");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// #3858: the folder list sorts by the column whose title is
+    /// clicked, the other way round on a second click; folders stay first.
+    #[test]
+    fn the_folder_list_sorts_by_a_column() {
+        let dir = temp_dir("save-as-sort");
+        std::fs::create_dir_all(dir.join("zz")).expect("folder");
+        for (name, len) in [("a.tdraw", 300), ("b.tdraw", 10), ("c.tdraw", 100)] {
+            std::fs::write(dir.join(name), vec![0u8; len]).expect("file");
+        }
+        let mut app = drawing();
+        app.save_as_dialog();
+        let st = state(&mut app);
+        st.open_dir(dir.clone());
+        let names = |st: &SaveAsState| -> Vec<String> {
+            st.shown().iter().map(|e| e.name.clone()).collect()
+        };
+        assert_eq!(names(st), ["zz", "a.tdraw", "b.tdraw", "c.tdraw"]);
+        st.sort_by(ListSort::Size);
+        assert_eq!(names(st), ["zz", "b.tdraw", "c.tdraw", "a.tdraw"]);
+        st.sort_by(ListSort::Size);
+        assert_eq!(names(st), ["zz", "a.tdraw", "c.tdraw", "b.tdraw"]);
+        st.sort_by(ListSort::Name);
+        st.sort_by(ListSort::Name);
+        assert_eq!(names(st), ["zz", "c.tdraw", "b.tdraw", "a.tdraw"]);
+        // The dialog draws with a sorted list.
+        let ctx = crate::theme::ui_context();
+        frame(&ctx, &mut app, false);
+        assert!(matches!(app.dialog, Dialog::SaveAs(_)));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
