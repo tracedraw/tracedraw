@@ -431,6 +431,7 @@ impl App {
             .enumerate()
             .map(|(i, p)| (i, p.id))
             .collect();
+        let count = pages.len();
         let active = self.page;
         let master = self
             .active_layer()
@@ -492,7 +493,7 @@ impl App {
             let i = pages
                 .iter()
                 .position(|(_, p)| *p == active)
-                .filter(|i| scope.applies(*i) && self.page_numbers.field().numbers(*i))
+                .filter(|i| scope.applies(*i) && self.page_numbers.field().numbers_in(*i, count))
                 .or_else(|| {
                     let first = self.page_numbers.first_page.max(1) - 1;
                     (first..pages.len())
@@ -519,7 +520,7 @@ impl App {
             };
             // Covers and other pages before the first numbered page get
             // no number (#2127).
-            if !wanted || !self.page_numbers.field().numbers(i) {
+            if !wanted || !self.page_numbers.field().numbers_in(i, count) {
                 continue;
             }
             let Ok(page) = self.doc().page(pid) else {
@@ -543,8 +544,9 @@ impl App {
     /// page number settings say.
     fn page_number_text(&mut self, i: usize, size: tracedraw_core::geometry::Size) -> Shape {
         let id = self.engine.new_shape_id();
+        let count = self.doc().pages.len();
         let pn = &self.page_numbers;
-        let text = pn.label(i);
+        let text = pn.field().label_in(i, count);
         let em = pn.size_pt * 25.4 / 72.0;
         let margin = 10.0;
         // Outer corner: left on even (left-hand) pages, right on odd pages.

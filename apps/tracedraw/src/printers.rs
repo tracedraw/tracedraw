@@ -317,7 +317,28 @@ pub fn open_properties(printer: &str) -> Result<(), String> {
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         c.creation_flags(CREATE_NO_WINDOW);
     }
-    c.spawn().map(|_| ()).map_err(|e| format!("{program}: {e}"))
+    let mut child = c.spawn().map_err(|e| format!("{program}: {e}"))?;
+    // The desktop's settings tool that fails or gives up at once (a
+    // printer it does not know by that name, a tool that cannot start on
+    // this desktop) leaves the printer's page of CUPS in the browser instead
+    // of nothing (#3849).
+    if program == SETTINGS_TOOL {
+        let printer = printer.to_string();
+        let start = web_time::Instant::now();
+        std::thread::spawn(move || {
+            let status = child.wait();
+            // A window the user looked at stays open for more than a
+            // moment; a tool that ends within it showed nothing.
+            let quick = start.elapsed() < std::time::Duration::from_secs(3);
+            if status.is_ok_and(|status| !status.success()) || quick {
+                let (program, args) = properties_command_with(&printer, false);
+                if let Err(e) = std::process::Command::new(&program).args(&args).spawn() {
+                    log::warn!("{program}: {e}");
+                }
+            }
+        });
+    }
+    Ok(())
 }
 
 #[cfg(target_arch = "wasm32")]

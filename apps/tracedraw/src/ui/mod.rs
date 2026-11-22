@@ -125,6 +125,7 @@ pub mod tabs;
 pub mod template_dialog;
 pub mod text_bar;
 pub mod text_docker;
+pub mod text_field_menu;
 pub mod text_path_bar;
 pub mod time_tracker;
 pub mod workflow;

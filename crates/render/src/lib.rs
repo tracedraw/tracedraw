@@ -6504,9 +6504,28 @@ pub fn render_page_image_with(
 /// every pixel of it (see [`ViewTransform::whole_page`]), with no light
 /// row above it or column to its right.
 pub fn render_page_export_image(doc: &Document, page: PageId, dpi: f64) -> Option<Pixmap> {
+    render_page_export_image_aa(doc, page, dpi, true)
+}
+
+/// [`render_page_export_image`], its edges smoothed (`anti_alias`) or
+/// left hard, each pixel all in or all out of a shape.
+pub fn render_page_export_image_aa(
+    doc: &Document,
+    page: PageId,
+    dpi: f64,
+    anti_alias: bool,
+) -> Option<Pixmap> {
     let p = doc.page(page).ok()?;
     let fit = ViewTransform::whole_page(p.size.width, p.size.height, dpi / 25.4);
-    page_image_in(doc, page, fit, &RenderOptions::default())
+    page_image_in(
+        doc,
+        page,
+        fit,
+        &RenderOptions {
+            anti_alias,
+            ..RenderOptions::default()
+        },
+    )
 }
 
 /// `page` drawn `w` by `h` pixels through `view`, on white.

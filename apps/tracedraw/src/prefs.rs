@@ -761,6 +761,9 @@ pub struct ExportPreset {
     pub dxf_units: usize,
     /// WMF: dashes as solid lines (#3819).
     pub wmf_solid_dashes: bool,
+    /// Bitmaps: anti-aliasing (#3807); presets saved before have none
+    /// and keep it on.
+    pub anti_alias: bool,
 }
 
 impl Default for ExportPreset {
@@ -810,6 +813,7 @@ impl ExportPreset {
             svg_text: st.svg_text,
             dxf_units: st.dxf_units,
             wmf_solid_dashes: st.wmf_solid_dashes,
+            anti_alias: st.anti_alias,
         }
     }
 
@@ -850,6 +854,7 @@ impl ExportPreset {
             st.dxf_units = self.dxf_units;
         }
         st.wmf_solid_dashes = self.wmf_solid_dashes;
+        st.anti_alias = self.anti_alias;
         self.apply_plt(st);
         self.apply_size(st);
         st.preset = self.name.clone();

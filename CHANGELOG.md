@@ -11,6 +11,12 @@ full, row-by-row status.
 - Metafiles: text a metafile stores as glyph numbers comes in as text, or as the glyphs' outlines where no character matches, instead of question marks; the character set of the metafile's fonts (Cyrillic, Central European, Greek, Turkish, Hebrew, Arabic, Baltic, Vietnamese, Thai, Japanese, Korean, Chinese) is read and written, and spreadsheets in other encodings are read right (#3920, #3921; PR #3924 by ratmanz0000).
 - Symbols panel: By similarity turns every group that copies the selected one into an instance of one symbol where it stands, labels staying text; Replace merges one symbol into another with every instance following, in one undo step; a double click on a symbol's name renames it (#2343; PR #3801 by ratmanz0000).
 - Benchmark: Test Without the Graphics Card no longer turns Light zoom on for everyday use; a run with another renderer than a normal start only compares, and says so (#3664).
+- Right-click menu: Convert Outline To Object sits under Convert to Curves (#3895).
+- Object menu, Transformations: Object Size... types the width and height of the selection in a small box, with the lock for proportions; a shortcut can be given to it in Customization (#3799, #3890).
+- Export: bitmap formats have an Anti-aliasing box; off, the picture has hard edges with no blended colours (#3807).
+- Text boxes: a right click on any text box (font name, size, dialog fields) offers Cut, Copy, Paste, Select All and Delete (#3798).
+- Page Number Settings: Last pages without a number and Pages without a number ("5, 9-10") leave those pages out, the numbering going on after them without counting them (#3789).
+- Print: on Linux, when the printer settings tool fails or closes at once, the printer's page of CUPS opens in the browser instead (#3849).
 - Contours, blends and extrusions: the worked-out steps of up to 32 objects are kept instead of 8, and found by the object first, so a page with several of them no longer works them out again at each move of the pointer (#3765).
 - Windows setup: it always writes a log in the Temp folder, also when an older TraceDraw starts it for an update, so an update that is undone can be looked into (#3816).
 - Break Apart (Ctrl+K) on a text frame gives one artistic text per line, where the line was; Combine (Ctrl+L) on texts makes one text that stays editable, read from the top line down, instead of curves (#3763).

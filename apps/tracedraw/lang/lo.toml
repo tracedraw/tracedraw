@@ -10893,3 +10893,11 @@ docker.replace_target = "ລວມເຂົ້າໃນສັນຍາລັກ�
 docker.replace_pick = "ເລືອກສັນຍາລັກເປົ້າໝາຍ ຫຼື Esc ເພື່ອຍົກເລີກ." # mt
 
 docker.rename_symbol_tip = "ຄລິກສອງເທື່ອທີ່ຊື່ເພື່ອປ່ຽນຊື່ສັນຍາລັກ." # mt
+menu.object.object_size = "Object Size..."
+menu.object.object_size_desc = "Type the width and height of the selected objects in a small box; a shortcut can be given to it in Customization."
+dialog.object_size = "Object Size"
+dialog.export_anti_alias_desc = "Smooth the edges of shapes and text in the picture. Off, each pixel is all in or all out of a shape, with hard edges and no blended colors."
+dialog.pn_skip_last = "Last pages without a number:"
+dialog.pn_skip_last_desc = "How many pages at the end, such as a back cover, show no page number."
+dialog.pn_skip = "Pages without a number:"
+dialog.pn_skip_desc = "Pages that show no number, such as \"5, 9-10\". The numbering goes on after them without counting them."

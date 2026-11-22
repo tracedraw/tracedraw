@@ -10893,3 +10893,11 @@ docker.replace_target = "Fusionner dans ce symbole" # mt
 docker.replace_pick = "Choisissez le symbole cible ou Échap pour annuler." # mt
 
 docker.rename_symbol_tip = "Double-cliquez sur le nom pour renommer le symbole." # mt
+menu.object.object_size = "Taille de l'objet..." # mt
+menu.object.object_size_desc = "Saisissez la largeur et la hauteur des objets sélectionnés dans une petite boîte ; un raccourci peut lui être donné dans Personnalisation." # mt
+dialog.object_size = "Taille de l'objet" # mt
+dialog.export_anti_alias_desc = "Lisse les bords des formes et du texte dans l'image. Désactivé, chaque pixel est entièrement dans ou hors d'une forme, avec des bords nets et sans couleurs mélangées." # mt
+dialog.pn_skip_last = "Dernières pages sans numéro :" # mt
+dialog.pn_skip_last_desc = "Combien de pages à la fin, comme une quatrième de couverture, n'affichent pas de numéro." # mt
+dialog.pn_skip = "Pages sans numéro :" # mt
+dialog.pn_skip_desc = "Pages sans numéro, comme \"5, 9-10\". La numérotation continue après elles sans les compter." # mt

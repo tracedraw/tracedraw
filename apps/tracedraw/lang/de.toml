@@ -10893,3 +10893,11 @@ docker.replace_target = "In dieses Symbol zusammenführen" # mt
 docker.replace_pick = "Zielsymbol wählen oder Esc zum Abbrechen." # mt
 
 docker.rename_symbol_tip = "Doppelklick auf den Namen benennt das Symbol um." # mt
+menu.object.object_size = "Objektgröße..." # mt
+menu.object.object_size_desc = "Breite und Höhe der ausgewählten Objekte in einem kleinen Fenster eingeben; ein Tastenkürzel kann in Anpassung vergeben werden." # mt
+dialog.object_size = "Objektgröße" # mt
+dialog.export_anti_alias_desc = "Glättet die Kanten von Formen und Text im Bild. Aus: Jedes Pixel liegt ganz in oder ganz außerhalb einer Form, mit harten Kanten und ohne Mischfarben." # mt
+dialog.pn_skip_last = "Letzte Seiten ohne Nummer:" # mt
+dialog.pn_skip_last_desc = "Wie viele Seiten am Ende, etwa eine Rückseite, keine Seitenzahl zeigen." # mt
+dialog.pn_skip = "Seiten ohne Nummer:" # mt
+dialog.pn_skip_desc = "Seiten ohne Nummer, etwa \"5, 9-10\". Die Nummerierung geht danach weiter, ohne sie zu zählen." # mt
