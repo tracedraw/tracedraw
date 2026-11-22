@@ -13,6 +13,8 @@ full, row-by-row status.
 - Guidelines: a guideline dragged with a finger on a touch screen moves and stays where it is let go, instead of being deleted (#3867).
 - Freehand: a new option in Options > Tools > Freehand/Bézier, "Second click ends the line", draws one straight segment with two clicks and stops, instead of going on from the second click (#3848).
 - Show Full Preview: the mirrored copies of a symmetry group show at once at every zoom, instead of partly missing until a zoom out (#3821).
+- PDF import: a PDF drawn in RGB colours opens as an RGB document, so a .cdr saved from it stays one and other programs no longer show the contents of its clip frames in CMYK (#3917).
+- PDF/X-1a export: a see-through object is flattened into the CMYK inks the drawing's colours blend to, so it no longer comes out duller and a rich black under it no longer turns into black ink alone; a group with a see-through object in it is flattened only where that object is, and its other objects stay vector objects (#3942, #3929).
 
 ## 0.51.0 (2026-11-22)
 

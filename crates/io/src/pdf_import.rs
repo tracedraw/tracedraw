@@ -419,7 +419,56 @@ pub fn to_document(imp: ImportedPdf, title: &str) -> tracedraw_core::Document {
             background: None,
         });
     }
+    // A drawing in RGB colours opens as an RGB document, so that saving
+    // it keeps it one: a .cdr written as a CMYK document showed the
+    // contents of its clip frames in CMYK in other readers (#3917).
+    if mostly_rgb(&doc) {
+        let mode = tracedraw_core::document::PrimaryColorMode::Rgb;
+        doc.metadata.primary_color_mode = mode;
+        doc.defaults = doc.defaults.in_mode(mode);
+    }
     doc
+}
+
+/// Whether more of the drawing's colours (fills, fountain stops and
+/// outlines, inside groups and clip frames too) are RGB than CMYK.
+fn mostly_rgb(doc: &tracedraw_core::Document) -> bool {
+    use tracedraw_core::document::{Shape, ShapeKind};
+    fn count(c: &Color, n: &mut (usize, usize)) {
+        match c {
+            Color::Rgb { .. } => n.0 += 1,
+            Color::Cmyk { .. } => n.1 += 1,
+            _ => {}
+        }
+    }
+    fn walk(s: &Shape, n: &mut (usize, usize)) {
+        match &s.fill {
+            Fill::Solid(c) => count(c, n),
+            Fill::Fountain(f) => f.stops.iter().for_each(|st| count(&st.color, n)),
+            _ => {}
+        }
+        if let Some(st) = &s.stroke {
+            count(&st.color, n);
+        }
+        match &s.kind {
+            ShapeKind::Group { children } => children.iter().for_each(|c| walk(c, n)),
+            ShapeKind::ClipFrame { frame, contents } => {
+                walk(frame, n);
+                contents.iter().for_each(|c| walk(c, n));
+            }
+            _ => {}
+        }
+    }
+    let mut n = (0, 0);
+    for s in doc
+        .pages
+        .iter()
+        .flat_map(|p| &p.layers)
+        .flat_map(|l| &l.shapes)
+    {
+        walk(s, &mut n);
+    }
+    n.0 > n.1
 }
 
 /// Text string (PDFDocEncoding or UTF-16BE with BOM).
@@ -6928,6 +6977,22 @@ mod tests {
         assert_eq!(p.shapes.len(), 1, "{:?}", imp.warnings);
         assert!(matches!(p.shapes[0].fill, Fill::Pattern(_)));
         assert!(imp.warnings.is_empty(), "{:?}", imp.warnings);
+    }
+
+    /// A PDF in RGB colours, clipped ones too, opens as an RGB document,
+    /// and one in CMYK colours as a CMYK one, so a .cdr saved from it
+    /// keeps its colour model (#3917).
+    #[test]
+    fn an_rgb_pdf_opens_as_an_rgb_document() {
+        use tracedraw_core::document::PrimaryColorMode;
+        let mode = |content: &str| {
+            let mut ids = IdSource::default();
+            let imp = parse(&one_page(content, "<< >>", &[]), &mut ids).expect("parse");
+            to_document(imp, "mode").metadata.primary_color_mode
+        };
+        let clipped = "q 0 0 50 50 re W n 1 0 0 rg 0 0 100 100 re f Q 0 0 1 rg 60 60 10 10 re f";
+        assert_eq!(mode(clipped), PrimaryColorMode::Rgb);
+        assert_eq!(mode("0 1 0 0 k 0 0 100 100 re f"), PrimaryColorMode::Cmyk);
     }
 
     #[test]
