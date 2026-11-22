@@ -701,6 +701,15 @@ impl App {
         self.adopt_spread_objects(&ids)
     }
 
+    /// With facing pages, every object of the other page of the spread
+    /// comes onto the current page, where it shows, for Select All to take
+    /// the whole spread shown (#3744: a text frame continued on the facing
+    /// page was left out). They go back once deselected.
+    pub fn adopt_whole_spread(&mut self) -> Vec<ShapeId> {
+        let ids = self.spread_objects(|_, _, _| true);
+        self.adopt_spread_objects(&ids)
+    }
+
     /// Bring the objects `ids` of the other pages of the current spread
     /// onto the current page, where they show (a spread is edited as
     /// one): each on the current page's layer of the same name, else the
@@ -1694,6 +1703,43 @@ mod tests {
         app.set_facing_pages(false, PageSide::Right);
         app.select(vec![a]);
         assert!(!app.spread_shift_press(on_b));
+    }
+
+    /// #3744: Select All on a page of a spread takes the facing page's
+    /// objects too (a text frame continued there among them); once
+    /// deselected they are back on their page.
+    #[test]
+    fn select_all_takes_both_facing_pages() {
+        let mut app = facing_app();
+        app.set_facing_pages(true, PageSide::Right);
+        app.fit_pending = false;
+        let (p2, p3) = (app.doc().pages[1].id, app.doc().pages[2].id);
+        app.page = p3;
+        let b = app
+            .new_shape(tracedraw_core::ShapeKind::Rect {
+                rect: Rect::new(50.0, 100.0, 80.0, 130.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        app.page = p2;
+        let own = app.selectable_ids();
+        app.select_all();
+        assert!(app.selection.contains(&b), "{:?}", app.selection);
+        assert!(own.iter().all(|id| app.selection.contains(id)));
+        app.select(Vec::new());
+        app.return_spread_adopted();
+        let home = app
+            .doc()
+            .pages
+            .iter()
+            .find(|p| p.layers.iter().any(|l| l.shapes.iter().any(|s| s.id == b)))
+            .map(|p| p.id);
+        assert_eq!(home, Some(p3));
+        // Without facing pages: the current page only.
+        app.set_facing_pages(false, PageSide::Right);
+        app.select_all();
+        assert!(!app.selection.contains(&b));
     }
 
     /// #3817: selecting objects of both facing pages does not move any to

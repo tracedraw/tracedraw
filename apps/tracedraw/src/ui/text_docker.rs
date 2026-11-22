@@ -1938,7 +1938,12 @@ fn frame(app: &mut App, ui: &mut Ui, first: Option<&tracedraw_core::Shape>) {
             .changed();
     }
     if pc {
-        app.set_paragraph_style(id, p);
+        if app.table_edit.is_some() {
+            // Table cells being edited: where their text sits (#3859).
+            app.set_cells_vertical_align(p.vertical_align);
+        } else {
+            app.set_paragraph_style(id, p);
+        }
     }
 }
 

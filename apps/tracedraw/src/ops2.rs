@@ -3881,6 +3881,9 @@ impl App {
     /// of the first paragraph text in a frame among the text being edited
     /// or the selected texts; `None` with no such text.
     pub fn frame_text_vertical_align(&self) -> Option<tracedraw_core::VerticalAlign> {
+        if self.table_edit.is_some() {
+            return self.active_cell_vertical_align();
+        }
         self.hyphenation_targets().iter().find_map(|id| {
             match &self.doc().find_shape(*id)?.kind {
                 ShapeKind::Text {
@@ -3897,6 +3900,11 @@ impl App {
     /// or of every selected paragraph text, from the text property bar
     /// (#3543), as the Text docker does for one text. One undo step.
     pub fn set_frame_text_vertical_align(&mut self, v: tracedraw_core::VerticalAlign) {
+        // Table cells being edited: theirs (#3859).
+        if self.table_edit.is_some() {
+            self.set_cells_vertical_align(v);
+            return;
+        }
         let mut cmds = Vec::new();
         for id in self.hyphenation_targets() {
             let Some(s) = self.doc().find_shape(id) else {

@@ -30724,3 +30724,44 @@ fn handled_curve(y: f64) -> tracedraw_core::BezPath {
     path.curve_to((40.0, y - 20.0), (80.0, y - 20.0), (100.0, y));
     path
 }
+
+/// #3719: with Alt held, dragging a node's handle with the Shape tool
+/// drags the node; the handle keeps its place about the node.
+#[test]
+fn alt_drags_the_node_by_its_handle() {
+    let (ctx, mut app, id) = setup();
+    app.select(vec![id]);
+    app.delete_selection();
+    let c = app
+        .new_shape(ShapeKind::Path {
+            path: handled_curve(100.0),
+            closed: false,
+        })
+        .expect("curve");
+    app.set_tool(Tool::Shape);
+    app.select(vec![c]);
+    app.node_selection = vec![(c, 1)];
+    for _ in 0..2 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let path_of = |app: &App| app.doc().find_shape(c).expect("curve").page_path();
+    let ends = |app: &App| {
+        path_of(app)
+            .elements()
+            .iter()
+            .find_map(|e| match e {
+                tracedraw_core::geometry::PathEl::CurveTo(c1, c2, end) => Some((*c1, *c2, *end)),
+                _ => None,
+            })
+            .expect("curve")
+    };
+    let (c1, c2, end) = ends(&app);
+    let at = |p: Point| app.view.to_screen(p);
+    let (from, to) = (at(c2), at(Point::new(c2.x + 10.0, c2.y + 20.0)));
+    drag(&ctx, &mut app, from, to, Modifiers::ALT, Vec::new());
+    let (n1, n2, nend) = ends(&app);
+    let moved = nend - end;
+    assert!(moved.hypot() > 15.0, "the node moved: {moved:?}");
+    assert!(((n2 - nend) - (c2 - end)).hypot() < 1e-6, "the handle kept its place about it");
+    assert!((n1 - c1).hypot() < 1e-6, "the other segment's start handle stays");
+}

@@ -1332,6 +1332,22 @@ fn entry_icon(ui: &mut Ui, folder: bool) {
 /// from right to left), and a name that begins with such a letter sits at
 /// the field's right edge.
 pub fn name_edit(ui: &mut Ui, text: &mut String, id: egui::Id, width: f32) -> egui::Response {
+    name_edit_in(ui, text, id, width, None)
+}
+
+/// [`name_edit`] filling `rect`, as the other fields of a drawn dialog
+/// (the New Document name, #3885).
+pub fn name_edit_at(ui: &mut Ui, rect: egui::Rect, text: &mut String, id: egui::Id) -> egui::Response {
+    name_edit_in(ui, text, id, rect.width(), Some(rect))
+}
+
+fn name_edit_in(
+    ui: &mut Ui,
+    text: &mut String,
+    id: egui::Id,
+    width: f32,
+    rect: Option<egui::Rect>,
+) -> egui::Response {
     let typing = ui.memory(|m| m.has_focus(id));
     let seen = if typing {
         None
@@ -1357,7 +1373,15 @@ pub fn name_edit(ui: &mut Ui, text: &mut String, id: egui::Id, width: f32) -> eg
     if seen.is_some() {
         edit = edit.layouter(&mut layouter);
     }
-    ui.add(edit)
+    match rect {
+        Some(rect) => ui.put(
+            rect,
+            edit.vertical_align(egui::Align::Center)
+                .margin(egui::Margin::symmetric(4, 0))
+                .min_size(rect.size()),
+        ),
+        None => ui.add(edit),
+    }
 }
 
 /// Whether the first letter of `text` is written right to left.
@@ -1713,6 +1737,40 @@ mod tests {
         assert_eq!(st.file_name(), format!("{typed}.tdraw"));
         assert!(begins_right_to_left(typed));
         assert!(!begins_right_to_left("logo \u{5D0}"));
+    }
+
+    /// #3885: the New Document name field reads a Hebrew name right to
+    /// left, as the Save Drawing one does.
+    #[test]
+    fn a_field_filling_a_rect_reads_hebrew_right_to_left() {
+        let typed = "\u{5E9}\u{5DC}\u{5D5}\u{5DD} \u{5E2}\u{5D5}\u{5DC}\u{5DD}";
+        let reads = "\u{5DD}\u{5DC}\u{5D5}\u{5E2} \u{5DD}\u{5D5}\u{5DC}\u{5E9}";
+        let ctx = crate::theme::ui_context();
+        let mut name = typed.to_string();
+        let mut texts = Vec::new();
+        for _ in 0..2 {
+            let input = egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(400.0, 100.0))),
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(input, |ui| {
+                name_edit_at(
+                    ui,
+                    Rect::from_min_size(Pos2::new(10.0, 10.0), vec2(250.0, 24.0)),
+                    &mut name,
+                    egui::Id::new("newdoc_name_field"),
+                );
+            });
+            out.textures_delta.clear();
+            texts.clear();
+            for c in &out.shapes {
+                if let egui::Shape::Text(t) = &c.shape {
+                    texts.push(t.galley.text().to_string());
+                }
+            }
+        }
+        assert!(texts.iter().any(|t| t == reads), "{texts:?}");
+        assert_eq!(name, typed);
     }
 
     #[test]

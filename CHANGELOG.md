@@ -13,6 +13,11 @@ full, row-by-row status.
 - Objects panel: a Ctrl+click (or Shift+click) on a row keeps the list where it is scrolled; it jumped back to the first selected object (#3822).
 - A drawing sent zipped (`name.cdr.zip`, as messaging apps save it) opens when the .zip is dropped on the window: the drawings inside open, its other files are left (#3853).
 - Shape tool: dragging a handle of one curve no longer undoes the handle drag just made on another curve (#3689).
+- New Document: a name in Hebrew or Arabic reads right to left in the Name field, as in Save Drawing (#3885).
+- Properties docker: dragging the outline width slider changes the outline as it moves, in one undo step; it changed only when let go (#3823).
+- Select All with facing pages takes the objects of both pages of the spread shown, a text frame continued on the facing page among them; they stay on their own page (#3744).
+- Shape tool: with Alt held, dragging a node's handle drags the node, the handle keeping its place about it (#3719).
+- Tables: the text of a cell aligns from top to bottom (top, centre, bottom) with Align within Frame in the Text docker or the text bar; it did nothing in a cell (#3859).
 
 ## 0.50.3 (2026-11-22)
 

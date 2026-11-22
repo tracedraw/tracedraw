@@ -7405,6 +7405,10 @@ impl App {
     }
 
     pub fn select_all(&mut self) {
+        // With facing pages the whole spread shown is taken (#3744).
+        if self.focus_shape_on_page().is_none() {
+            self.adopt_whole_spread();
+        }
         let ids = self.selectable_ids();
         self.select(ids);
     }

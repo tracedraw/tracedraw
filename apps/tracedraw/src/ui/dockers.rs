@@ -2014,7 +2014,7 @@ fn properties(app: &mut App, ui: &mut Ui) {
                 let mut stroke = old.clone();
                 let custom = crate::ui::line_style::OutlineLib::of(app);
                 let mut touched = Vec::new();
-                if outline_editor_mixed(ui, &mut stroke, &custom, &mix, &mut touched) {
+                if outline_editor_mixed(ui, &mut stroke, &custom, &mix, &mut touched, true) {
                     // Dragging in the picker (or a slider): one step, and
                     // a new colour joins the document palette on release.
                     let live = app.live_stroke.is_some() || ui.input(|i| i.pointer.any_down());
@@ -4229,7 +4229,7 @@ fn outline_editor(
     stroke: &mut Option<Stroke>,
     lib: &crate::ui::line_style::OutlineLib,
 ) -> bool {
-    outline_editor_mixed(ui, stroke, lib, &StrokeMix::default(), &mut Vec::new())
+    outline_editor_mixed(ui, stroke, lib, &StrokeMix::default(), &mut Vec::new(), false)
 }
 
 /// [`outline_editor`] for a selection whose outlines differ as `mix`
@@ -4237,13 +4237,15 @@ fn outline_editor(
 /// no button highlighted, a check box neither on nor off). Every control
 /// the user sets adds its field to `touched`, so a value chosen in a
 /// mixed control applies to every object even when it equals the one
-/// shown.
+/// shown. With `live` the width slider reports each step of a drag (the
+/// caller applies them as one undo step); without, only its release.
 fn outline_editor_mixed(
     ui: &mut Ui,
     stroke: &mut Option<Stroke>,
     lib: &crate::ui::line_style::OutlineLib,
     mix: &StrokeMix,
     touched: &mut Vec<StrokeField>,
+    live: bool,
 ) -> bool {
     let custom = lib.arrows.as_slice();
     let mut changed = false;
@@ -4323,8 +4325,8 @@ fn outline_editor_mixed(
             changed = true;
         }
         if !hair || width_mixed {
-            // The slider applies when let go; the box takes any width
-            // typed (Enter or leaving it applies).
+            // The slider applies as it is dragged, one undo step (#3823);
+            // the box takes any width typed (Enter or leaving it applies).
             ui.horizontal_wrapped(|ui| {
                 let width_tip =
                     crate::ui::tips::pair("toolbar.outline_width", "docker.outline_width_desc");
@@ -4337,7 +4339,7 @@ fn outline_editor_mixed(
                             .reserve(150.0),
                     )
                     .rich_tip(width_tip.clone());
-                let mut w = r.settled();
+                let mut w = r.settled() || (live && r.changed());
                 // The width in the outline unit; the model keeps mm.
                 let u = lib.units;
                 let mut v = u.from_mm(s.width);
@@ -5080,6 +5082,67 @@ pub(crate) mod tests {
         };
         let mut out = ctx.run_ui(input, |ui| crate::ui::root(app, ui));
         out.textures_delta.clear();
+    }
+
+    /// #3823: dragging the outline width slider of the Properties docker
+    /// reports each step of the drag (applied live as one undo step);
+    /// elsewhere it still reports only the release.
+    #[test]
+    fn the_outline_width_slider_reports_the_drag_as_it_goes() {
+        let ctx = crate::theme::ui_context();
+        let app = App::headless();
+        let lib = crate::ui::line_style::OutlineLib::of(&app);
+        for live in [true, false] {
+            let mut stroke = Some(Stroke {
+                width: 1.0,
+                ..Stroke::default()
+            });
+            let run = |stroke: &mut Option<Stroke>, events: Vec<egui::Event>| {
+                let input = egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(400.0, 900.0),
+                    )),
+                    events,
+                    ..Default::default()
+                };
+                let mut changed = false;
+                let mut out = ctx.run_ui(input, |ui| {
+                    changed = outline_editor_mixed(
+                        ui,
+                        stroke,
+                        &lib,
+                        &StrokeMix::default(),
+                        &mut Vec::new(),
+                        live,
+                    );
+                });
+                out.textures_delta.clear();
+                changed
+            };
+            run(&mut stroke, Vec::new());
+            run(&mut stroke, Vec::new());
+            let rail = crate::ui::slider::rail_rect(&ctx, "").expect("the width slider");
+            let from = rail.left_center() + egui::vec2(rail.width() * 0.3, 0.0);
+            let to = rail.left_center() + egui::vec2(rail.width() * 0.8, 0.0);
+            let button = |pos, pressed| egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: egui::Modifiers::NONE,
+            };
+            run(&mut stroke, vec![egui::Event::PointerMoved(from)]);
+            run(&mut stroke, vec![button(from, true)]);
+            let mut during = false;
+            for i in 1..=4 {
+                let p = from + (to - from) * (i as f32 / 4.0);
+                during |= run(&mut stroke, vec![egui::Event::PointerMoved(p)]);
+            }
+            assert_eq!(during, live, "live {live}");
+            let released = run(&mut stroke, vec![button(to, false)]);
+            assert!(during || released, "the release applies");
+            assert!(stroke.as_ref().is_some_and(|s| s.width > 1.5), "{stroke:?}");
+        }
     }
 
     /// The texture editor applies its Scale slider however the value

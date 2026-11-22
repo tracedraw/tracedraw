@@ -350,7 +350,13 @@ pub fn new_document_dialog(app: &mut App, ctx: &Context, st: &mut NewDocState, c
                 at(0.0, y + 14.0).y,
                 &tr("dialog.name"),
             );
-            chrome::text_field(ui, field(FIELD_X, y, WIDE), &mut st.name);
+            // A Hebrew or Arabic name reads right to left (#3885).
+            crate::ui::save_as::name_edit_at(
+                ui,
+                field(FIELD_X, y, WIDE),
+                &mut st.name,
+                egui::Id::new("newdoc_name_field"),
+            );
             tip(
                 ui,
                 field(FIELD_X, y, WIDE),

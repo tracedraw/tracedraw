@@ -931,7 +931,28 @@ impl App {
                     // without a drag chooses it for the arrow keys
                     // (#2819, #3041, #3042).
                     self.chosen_handle = None;
-                    if let Some((path, closed, t)) = self.path_of(shape) {
+                    // Alt held: the node is dragged by its handle, the
+                    // handle keeping its place about it (#3719).
+                    let by_handle = mods.alt
+                        && self.path_of(shape).is_some_and(|(path, closed, t)| {
+                            let Some(n) = nodes::nodes(&path).into_iter().find(|n| n.index == index)
+                            else {
+                                return false;
+                            };
+                            let tip = match which {
+                                nodes::Which::In => n.ctrl_in,
+                                nodes::Which::Out => n.ctrl_out,
+                            };
+                            let Some(tip) = tip else { return false };
+                            let q = t.inverse() * self.snap_point_excluding(p, &[shape]);
+                            let np = nodes::move_node(&path, index, q - tip);
+                            let begun = self.node_drag_shown.is_some();
+                            self.note_node_drag_step(begun);
+                            self.set_path(shape, np, closed, "Edit Handle", begun);
+                            true
+                        });
+                    let plain = if by_handle { None } else { self.path_of(shape) };
+                    if let Some((path, closed, t)) = plain {
                         // The handle snaps like a node does; Ctrl or Shift
                         // keeps it to the constrain angle about its node,
                         // on the page, and a smooth node's other handle
