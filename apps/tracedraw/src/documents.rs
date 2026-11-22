@@ -64,6 +64,9 @@ pub struct DocSlot {
     pub pivots: crate::app::Pivots,
     /// The layer made active in the Objects docker.
     pub picked_layer: Option<tracedraw_core::LayerId>,
+    /// The layers picked with Ctrl or Shift in the Objects docker
+    /// (#3966), kept with the window as the pick is.
+    pub selected_layers: Vec<tracedraw_core::LayerId>,
     /// The drawing's rendered page, kept while another drawing is active
     /// (its window shows it when windows are tiled or cascaded).
     pub raster: crate::raster::Raster,
@@ -104,6 +107,7 @@ impl Default for DocSlot {
             units: Default::default(),
             pivots: Default::default(),
             picked_layer: None,
+            selected_layers: Vec::new(),
             raster: Default::default(),
             page_rasters: Default::default(),
             page_snapshot: None,
@@ -132,6 +136,7 @@ impl App {
         std::mem::swap(&mut self.page_views, &mut slot.page_views);
         std::mem::swap(&mut self.open_view_pending, &mut slot.open_view_pending);
         std::mem::swap(&mut self.picked_layer, &mut slot.picked_layer);
+        std::mem::swap(&mut self.selected_layers, &mut slot.selected_layers);
         std::mem::swap(self.raster.get_mut(), &mut slot.raster);
         std::mem::swap(self.page_rasters.get_mut(), &mut slot.page_rasters);
         std::mem::swap(&mut self.view_anchor, &mut slot.view_anchor);
@@ -203,6 +208,13 @@ impl App {
                 .filter(|id| doc.find_shape(*id).is_some())
                 .collect();
             self.selection = kept;
+        }
+        self.selected_layers.retain(|id| doc.layer(*id).is_ok());
+        if self
+            .picked_layer
+            .is_some_and(|id| doc.layer(id).is_err())
+        {
+            self.picked_layer = self.selected_layers.last().copied();
         }
     }
 
@@ -336,6 +348,7 @@ impl App {
         self.units = units;
         self.pivots = Default::default();
         self.picked_layer = None;
+        self.selected_layers.clear();
         *self.raster.get_mut() = Default::default();
         self.page_rasters.get_mut().clear();
         *self.page_snapshot.get_mut() = None;
@@ -515,6 +528,7 @@ impl App {
             selection: self.selection.clone(),
             fit_pending: self.fit_pending,
             picked_layer: self.picked_layer,
+            selected_layers: self.selected_layers.clone(),
             view_anchor: self.view_anchor,
             ..DocSlot::default()
         };
@@ -589,6 +603,7 @@ impl App {
         self.missing_fonts.clear();
         self.pivots = Default::default();
         self.picked_layer = None;
+        self.selected_layers.clear();
         *self.raster.get_mut() = Default::default();
         self.page_rasters.get_mut().clear();
         *self.page_snapshot.get_mut() = None;

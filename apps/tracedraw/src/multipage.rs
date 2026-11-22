@@ -381,6 +381,7 @@ impl App {
                 {
                     self.page = id;
                     self.selection.clear();
+                    self.selected_layers.clear();
                 }
             }
         }
@@ -443,6 +444,7 @@ impl App {
                 self.selection.clear();
                 self.focus.clear();
                 self.picked_layer = None;
+                self.selected_layers.clear();
             }
             return;
         };
@@ -453,6 +455,7 @@ impl App {
         self.selection.clear();
         self.focus.clear();
         self.picked_layer = None;
+        self.selected_layers.clear();
     }
 
     /// In the Multipage View and a spread of facing pages, a press on
