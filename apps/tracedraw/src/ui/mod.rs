@@ -546,6 +546,8 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
     }
     // VBA macros: their requests, dialogs, forms and editor.
     macros_ui::frame(app, &ctx);
+    // Print Merged Document's drawing goes once its printing is over.
+    app.close_printed_merge();
     // A print on its way to a printer (#810).
     if app.poll_print_job() {
         ctx.request_repaint_after(std::time::Duration::from_millis(250));

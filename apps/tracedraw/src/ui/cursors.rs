@@ -1063,6 +1063,13 @@ pub fn has_cross_hair(cursor: ToolCursor) -> bool {
     )
 }
 
+/// Whether `cursor` gets the lines to the window edges: the cross hair
+/// pointers, and the Shape tool's arrow, which lines nodes up by eye
+/// the same way (the lines cross at its tip).
+pub fn has_edge_lines(cursor: ToolCursor) -> bool {
+    has_cross_hair(cursor) || matches!(cursor, ToolCursor::ShapeArrow(_))
+}
+
 /// The two lines through `p` from edge to edge of `area`, on pixel
 /// centres (see [`cross_hair_lines`]).
 pub fn edge_lines(p: Pos2, area: egui::Rect, ppp: f32) -> [[Pos2; 2]; 2] {
@@ -1076,9 +1083,10 @@ pub fn edge_lines(p: Pos2, area: egui::Rect, ppp: f32) -> [[Pos2; 2]; 2] {
 
 /// With Options > Tools > Pick > "Cross hair to the window edges": a
 /// cross hair pointer's lines carried on to the edges of the drawing
-/// window `area`, thin and light under the pointer itself (#2996).
+/// window `area`, thin and light under the pointer itself (#2996); the
+/// Shape tool's arrow gets them too.
 pub fn paint_edge_lines(painter: &Painter, cursor: ToolCursor, p: Pos2, area: egui::Rect) {
-    if !has_cross_hair(cursor) {
+    if !has_edge_lines(cursor) {
         return;
     }
     let ink = Color32::from_rgba_unmultiplied(0, 0, 0, 160);
@@ -1728,6 +1736,13 @@ mod tests {
         assert!(has_cross_hair(ToolCursor::Badge(Tool::Rectangle)));
         assert!(!has_cross_hair(ToolCursor::IBeam));
         assert!(!has_cross_hair(ToolCursor::System(egui::CursorIcon::Default)));
+        // The Shape tool's arrow has no cross hair of its own, but the
+        // lines to the edges run through its tip too.
+        assert!(has_edge_lines(ToolCursor::Cross));
+        assert!(has_edge_lines(ToolCursor::ShapeArrow(ShapeMark::Nothing)));
+        assert!(has_edge_lines(ToolCursor::ShapeArrow(ShapeMark::Node)));
+        assert!(!has_edge_lines(ToolCursor::IBeam));
+        assert!(!has_edge_lines(ToolCursor::System(egui::CursorIcon::Default)));
         assert!(!crate::settings::Settings::default().crosshair_to_edges);
     }
 
