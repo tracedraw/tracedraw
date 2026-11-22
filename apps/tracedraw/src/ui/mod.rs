@@ -3396,6 +3396,7 @@ mod tests {
         // Export asks for the file first, then shows the options.
         crate::files::test_save::answer(Some(std::env::temp_dir().join("td-keys")));
         key(&ctx, &mut app, Key::E, Modifiers::COMMAND);
+        crate::files::test_save::finish(&mut app);
         assert!(
             matches!(app.dialog, crate::ui::dialogs::Dialog::Export(_)),
             "Ctrl+E opens Export"

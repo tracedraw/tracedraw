@@ -898,6 +898,9 @@ pub fn size_text(bytes: u64) -> String {
 }
 
 pub fn dialog(app: &mut App, ctx: &Context, st: &mut SaveAsState, close: &mut bool) {
+    if let Some(dir) = files::take_picked("save-as-folder") {
+        st.open_dir(dir);
+    }
     window(ctx, tr("dialog.save_drawing")).show(ctx, |ui| {
         ui.set_width(WIDTH);
         // No folders in a browser (a download) or on Android (the
@@ -1031,9 +1034,7 @@ fn folder_bar(ui: &mut Ui, st: &mut SaveAsState) {
                 .rich_tip(tr("options.browse_tip"))
                 .clicked()
             {
-                if let Some(dir) = files::pick_folder_from(token, Some(&st.dir)) {
-                    st.open_dir(dir);
-                }
+                files::pick_folder_into(token, Some(&st.dir), "save-as-folder");
             }
         }
     });
@@ -2021,6 +2022,7 @@ mod tests {
         let _ = files::test_save::asked();
         files::test_save::answer(Some(dir.join("poster.cdr")));
         app.save_as_dialog();
+        files::test_save::finish(&mut app);
         assert!(matches!(app.dialog, crate::ui::dialogs::Dialog::None));
         let asked = files::test_save::asked();
         assert_eq!(asked.len(), 1);
@@ -2034,6 +2036,7 @@ mod tests {
         // Cancel saves nothing.
         files::test_save::answer(None);
         app.save_as_dialog();
+        files::test_save::finish(&mut app);
         assert!(matches!(app.dialog, crate::ui::dialogs::Dialog::None));
         let _ = std::fs::remove_dir_all(&dir);
     }
