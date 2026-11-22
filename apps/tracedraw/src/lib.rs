@@ -101,6 +101,7 @@ mod shape_gen;
 mod shape_gen_cells;
 mod shape_gen_curves;
 mod shape_gen_fill;
+mod shape_gen_growth;
 mod shape_gen_slice;
 mod fill_tool;
 mod pattern_fill_tool;

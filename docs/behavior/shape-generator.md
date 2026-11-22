@@ -186,3 +186,29 @@ the settings) and `ui/shape_gen_docker.rs`. Issues #3412 and #3413.
   layer in one undo step with the originals deleted (kept with Keep
   original).
 
+## Differential growth (`shape_gen_growth.rs`)
+
+- Start: a ring of points one spacing apart (radius size % of half the
+  box's smaller side, at least two spacings), a horizontal open line
+  (size % of the width), or n rings at seeded random places; each is
+  halved until all its points are allowed, up to eight times. The start
+  is the box's middle, or the inside cell nearest to it.
+- Allowed: inside the box less half a spacing, and inside the outline
+  with half a spacing to spare left, right, up and down (a grid of
+  inside flags, 400 cells along the box's longer side).
+- A step: each point moves by a quarter of each neighbour edge's stretch
+  past the spacing, plus smoothing times the way to its neighbours'
+  middle, plus half a spacing times the sum of pushes (unit vector times
+  (r - d) / r) from points within the repulsion radius (spacing times
+  Repulsion; its own neighbours left out), at most half a spacing; a move
+  to a place not allowed is not made. Then edges longer than 1.4
+  spacings split at their middle, and Growth rate random edges split, up
+  to the point limit.
+- It settles when nothing split and no point moved a hundredth of a
+  spacing, or 50 steps after the point limit; at most 5000 steps.
+- Seeded and deterministic: Create and Update run the saved steps (or
+  reuse the live growth when it is exactly there).
+- Live: the panel advances it up to 12 ms a frame; running, Steps
+  follows it; paused, it catches up with Steps (going back restarts it);
+  any other change restarts it. Space over the panel starts or pauses,
+  Shift+Space or Stop makes the curves (Create, one undo step).

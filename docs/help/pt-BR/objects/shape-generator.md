@@ -287,3 +287,21 @@ continua editável e as imagens mantêm os pixels; os pedaços vêm num grupo, e
 [[shapegen.slice_keep]] deixa o original no lugar.
 
 ![Um selo cortado em faixas, cada uma movida ao acaso](../../img/objects-shape-generator-slice.png)
+
+## Crescimento diferencial {#growth}
+
+Uma linha que cresce e se dobra dentro da caixa, ou dentro do contorno da
+seleção depois de [[shapegen.use_selection]]. Escolha com o que
+[[shapegen.growth_start]] (um círculo, uma linha aberta ou vários círculos),
+o [[shapegen.growth_spacing]], o quanto os pontos se afastam
+([[shapegen.growth_repel]]) e se alinham ([[shapegen.growth_align]]), e o
+[[shapegen.growth_rate]].
+
+Clique em [[shapegen.growth_run]] para ver crescer na pré-visualização, ou
+pressione Espaço com o ponteiro sobre o painel; pressione de novo para
+pausar. Ele para sozinho quando o espaço enche ou o
+[[shapegen.growth_max_nodes]] é atingido. [[shapegen.growth_stop]]
+(Shift+Espaço) coloca o resultado na página como curvas.
+[[shapegen.growth_steps]] acompanha o crescimento, e os mesmos passos
+sempre fazem a mesma linha, então um crescimento pausado pode ser avançado
+à mão e Atualizar refaz o grupo exatamente igual.

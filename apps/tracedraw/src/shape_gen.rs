@@ -56,10 +56,11 @@ pub enum GenKind {
     Maze,
     SpaceCurve,
     SliceGrid,
+    Growth,
 }
 
 impl GenKind {
-    pub const ALL: [GenKind; 20] = [
+    pub const ALL: [GenKind; 21] = [
         GenKind::DotGrid,
         GenKind::Truchet,
         GenKind::Tessellation,
@@ -80,6 +81,7 @@ impl GenKind {
         GenKind::Maze,
         GenKind::SpaceCurve,
         GenKind::SliceGrid,
+        GenKind::Growth,
     ];
     pub fn key(self) -> &'static str {
         match self {
@@ -103,6 +105,7 @@ impl GenKind {
             GenKind::Maze => "shapegen.kind_maze",
             GenKind::SpaceCurve => "shapegen.kind_space_curve",
             GenKind::SliceGrid => "shapegen.kind_slice",
+            GenKind::Growth => "shapegen.kind_growth",
         }
     }
     /// Whether the generator works from the panel's picked selection (an
@@ -117,6 +120,7 @@ impl GenKind {
                 | GenKind::Contour
                 | GenKind::Maze
                 | GenKind::SpaceCurve
+                | GenKind::Growth
         )
     }
     /// Whether it reads the picked picture's tones.
@@ -526,6 +530,25 @@ pub struct ShapeGenSettings {
     pub slice_gap: f64,
     /// Leave the selection in place.
     pub slice_keep: bool,
+
+    // Differential growth.
+    pub growth_start: crate::shape_gen_growth::GrowthStart,
+    /// Circles for the several-circles start, 1 to 50.
+    pub growth_seed_count: u32,
+    /// The starting circle's or line's size, % of the box.
+    pub growth_size: f64,
+    /// Edge length between points, mm.
+    pub growth_spacing: f64,
+    /// How far points push each other, in edge lengths.
+    pub growth_repel: f64,
+    /// Pull toward the neighbours' middle, 0 to 1.
+    pub growth_align: f64,
+    /// Random splits per step.
+    pub growth_rate: u32,
+    /// Steps grown; the live run sets it.
+    pub growth_steps: u32,
+    /// The point limit.
+    pub growth_max_nodes: u32,
 }
 
 impl Default for ShapeGenSettings {
@@ -671,6 +694,15 @@ impl Default for ShapeGenSettings {
             slice_waves: 1.0,
             slice_gap: 0.0,
             slice_keep: false,
+            growth_start: crate::shape_gen_growth::GrowthStart::Circle,
+            growth_seed_count: 5,
+            growth_size: 20.0,
+            growth_spacing: 1.5,
+            growth_repel: 2.5,
+            growth_align: 0.4,
+            growth_rate: 3,
+            growth_steps: 200,
+            growth_max_nodes: 3000,
         }
     }
 }
@@ -901,6 +933,15 @@ impl ShapeGenSettings {
         s.slice_dy = clampf(s.slice_dy, -1000.0, 1000.0, 0.0);
         s.slice_waves = clampf(s.slice_waves, 0.1, 50.0, d.slice_waves);
         s.slice_gap = clampf(s.slice_gap, 0.0, 1000.0, 0.0);
+        s.growth_seed_count = s.growth_seed_count.clamp(1, 50);
+        s.growth_size = clampf(s.growth_size, 5.0, 100.0, d.growth_size);
+        let step = (side / 400.0).max(0.05);
+        s.growth_spacing = clampf(s.growth_spacing, step, 50.0, d.growth_spacing).max(step);
+        s.growth_repel = clampf(s.growth_repel, 1.0, 5.0, d.growth_repel);
+        s.growth_align = clampf(s.growth_align, 0.0, 1.0, d.growth_align);
+        s.growth_rate = s.growth_rate.min(100);
+        s.growth_steps = s.growth_steps.min(crate::shape_gen_growth::MAX_STEPS);
+        s.growth_max_nodes = s.growth_max_nodes.clamp(100, 20_000);
         s
     }
 }
@@ -930,6 +971,7 @@ pub fn generate(settings: &ShapeGenSettings) -> Generated {
         GenKind::Maze => crate::shape_gen_fill::maze(&s, &mut out),
         GenKind::SpaceCurve => crate::shape_gen_fill::space_curve(&s, &mut out),
         GenKind::SliceGrid => crate::shape_gen_slice::slice_grid(&s, &mut out),
+        GenKind::Growth => crate::shape_gen_growth::growth(&s, &mut out),
     }
     out
 }
@@ -2254,7 +2296,9 @@ impl crate::app::App {
     /// (one undo step), selected.
     pub fn shape_gen_create(&mut self) -> Option<tracedraw_core::ShapeId> {
         let s = self.shape_gen.sanitized();
-        let g = generate(&s);
+        let g = self
+            .shape_gen_growth_cached(&s)
+            .unwrap_or_else(|| generate(&s));
         let center = match s.source_center {
             Some(c) if s.kind.uses_source() => Point::new(c[0], c[1]),
             _ => self.shape_gen_place(),
@@ -2271,7 +2315,9 @@ impl crate::app::App {
             Some(c) if s.kind.uses_source() => Point::new(c[0], c[1]),
             _ => self.selection_bounds()?.center(),
         };
-        let g = generate(&s);
+        let g = self
+            .shape_gen_growth_cached(&s)
+            .unwrap_or_else(|| generate(&s));
         self.shape_gen_add(&s, &g, center, Some(old), "Shape Generator")
     }
 

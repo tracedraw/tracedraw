@@ -275,3 +275,20 @@ editable text and pictures keep their pixels; the pieces come in one
 group, and [[shapegen.slice_keep]] leaves the original in place.
 
 ![A badge cut into rows of strips, each moved at random](../../img/objects-shape-generator-slice.png)
+
+## Differential growth {#growth}
+
+A line that grows and folds inside the box, or inside the selection's
+outline after [[shapegen.use_selection]]. Choose what to
+[[shapegen.growth_start]] (a circle, an open line or several circles), the
+[[shapegen.growth_spacing]] between its points, how strongly they push
+apart ([[shapegen.growth_repel]]) and line up ([[shapegen.growth_align]]),
+and the [[shapegen.growth_rate]].
+
+Click [[shapegen.growth_run]] to watch it grow in the preview, or press
+Space with the pointer over the panel; press it again to pause. It stops
+by itself when the space is full or the [[shapegen.growth_max_nodes]] is
+reached. [[shapegen.growth_stop]] (Shift+Space) puts it on the page as
+curves. [[shapegen.growth_steps]] follows the growth, and the same steps
+always grow the same line, so a paused growth can be stepped by hand and
+Update makes a group again exactly.

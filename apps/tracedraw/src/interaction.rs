@@ -5015,6 +5015,10 @@ impl App {
         if self.import_placement_keys(ctx) {
             return;
         }
+        // Space over the Shape Generator's growth starts or pauses it.
+        if crate::ui::shape_gen_docker::growth_keys(self, ctx) {
+            return;
+        }
         // Esc during a move, scale, rotation or skew cancels it: nothing
         // changes and the selection stays.
         if (self.pending_shaping.is_some() || self.pending_merge_frame)

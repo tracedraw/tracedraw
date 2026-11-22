@@ -16,6 +16,7 @@ use crate::shape_gen::{
 use crate::shape_gen_cells::{Gradient, HtShape, PointMode};
 use crate::shape_gen_curves::{FractalType, SpiroType, TilingType};
 use crate::shape_gen_fill::{ContourMode, HatchMode, MazeStyle, SpaceCurve};
+use crate::shape_gen_growth::GrowthStart;
 use crate::shape_gen_slice::{SliceLayout, SlicePattern};
 use crate::theme::Tokens;
 use crate::ui::docker_form::{indented, row, section, wide_button};
@@ -36,6 +37,122 @@ struct PreviewData {
     frame: (f64, f64, f64),
     /// Voronoi sites in the drawing's coordinates.
     sites: Vec<(f64, f64)>,
+}
+
+/// The live growth: advance it a little each frame, Start or Pause and
+/// Stop, its steps and points, and its preview. The panel's area is kept
+/// so Space over it starts and pauses the growth (and Shift+Space
+/// stops it).
+fn growth_controls(app: &mut App, ui: &mut Ui) -> Arc<PreviewData> {
+    let more = app.shape_gen_growth_tick(std::time::Duration::from_millis(12));
+    if more || app.shape_gen_growth_running() {
+        ui.ctx().request_repaint();
+    }
+    let panel = ui.clip_rect();
+    let frame = ui.ctx().cumulative_frame_nr();
+    ui.ctx().data_mut(|d| {
+        d.insert_temp(egui::Id::new(GROWTH_PANEL), (panel, frame));
+    });
+    let running = app.shape_gen_growth_running();
+    let (steps, points, settled) = app
+        .shape_gen_growth
+        .as_ref()
+        .map(|l| (l.sim.steps, l.sim.node_count(), l.sim.settled))
+        .unwrap_or((0, 0, false));
+    let has_doc = app.active_layer().is_some();
+    ui.horizontal(|ui| {
+        let (label, key) = if running {
+            (tr("shapegen.growth_pause"), "shapegen.growth_pause")
+        } else {
+            (tr("shapegen.growth_run"), "shapegen.growth_run")
+        };
+        if ui
+            .add_enabled(running || !settled, egui::Button::new(label))
+            .rich_tip(crate::ui::tips::keyed(key))
+            .clicked()
+        {
+            app.shape_gen_growth_toggle();
+        }
+        if ui
+            .add_enabled(
+                has_doc && points > 0,
+                egui::Button::new(tr("shapegen.growth_stop")),
+            )
+            .rich_tip(crate::ui::tips::keyed("shapegen.growth_stop"))
+            .clicked()
+        {
+            app.shape_gen_growth_stop();
+        }
+    });
+    let state = if settled {
+        "shapegen.growth_done"
+    } else {
+        "shapegen.growth_state"
+    };
+    ui.label(
+        egui::RichText::new(trf(
+            state,
+            &[
+                ("steps", &steps.to_string()),
+                ("points", &points.to_string()),
+            ],
+        ))
+        .color(Tokens::text_dim()),
+    );
+    // The preview, made again only when the growth moved on.
+    let id = egui::Id::new("shape_gen_growth_preview");
+    let key = (app.shape_gen.sanitized(), steps, points);
+    let cached: Option<((ShapeGenSettings, u32, usize), Arc<PreviewData>)> =
+        ui.ctx().data(|d| d.get_temp(id));
+    if let Some((k, data)) = cached {
+        if k == key {
+            return data;
+        }
+    }
+    let mut g = Generated::default();
+    if let Some(l) = &app.shape_gen_growth {
+        l.sim.draw(&mut g);
+    }
+    let data = Arc::new(build_preview(&g));
+    ui.ctx()
+        .data_mut(|d| d.insert_temp(id, (key, data.clone())));
+    data
+}
+
+/// Where the growth controls were last drawn, and on which frame.
+pub const GROWTH_PANEL: &str = "shape_gen_growth_panel";
+
+/// Space over the Shape Generator panel showing the growth starts or
+/// pauses it, Shift+Space stops it (makes it curves). True when it took
+/// the key.
+pub fn growth_keys(app: &mut App, ctx: &egui::Context) -> bool {
+    if app.shape_gen.kind != GenKind::Growth || ctx.egui_wants_keyboard_input() {
+        return false;
+    }
+    let Some((rect, frame)): Option<(egui::Rect, u64)> =
+        ctx.data(|d| d.get_temp(egui::Id::new(GROWTH_PANEL)))
+    else {
+        return false;
+    };
+    // Drawn on this frame or the one before: the panel is showing.
+    if frame + 1 < ctx.cumulative_frame_nr() {
+        return false;
+    }
+    let over = ctx
+        .input(|i| i.pointer.hover_pos())
+        .is_some_and(|p| rect.contains(p));
+    if !over {
+        return false;
+    }
+    if ctx.input_mut(|i| i.consume_key(egui::Modifiers::SHIFT, egui::Key::Space)) {
+        app.shape_gen_growth_stop();
+        return true;
+    }
+    if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Space)) {
+        app.shape_gen_growth_toggle();
+        return true;
+    }
+    false
 }
 
 /// The most curves the preview draws (Create makes them all).
@@ -1621,6 +1738,89 @@ pub fn shape_generator(app: &mut App, ui: &mut Ui) {
                     seed_row(ui, s);
                 }
             }
+            GenKind::Growth => {
+                row(ui, &tr("shapegen.growth_start"), |ui| {
+                    combo(
+                        ui,
+                        "shapegen_growth_start",
+                        &mut s.growth_start,
+                        &GrowthStart::ALL,
+                        GrowthStart::key,
+                        "shapegen.growth_start",
+                    );
+                });
+                if s.growth_start == GrowthStart::Seeds {
+                    row(ui, &tr("shapegen.growth_seed_count"), |ui| {
+                        count(
+                            ui,
+                            &mut s.growth_seed_count,
+                            1..=50,
+                            "shapegen.growth_seed_count",
+                        )
+                    });
+                }
+                row(ui, &tr("shapegen.growth_size"), |ui| {
+                    slider(
+                        ui,
+                        &mut s.growth_size,
+                        5.0..=100.0,
+                        0,
+                        " %",
+                        "shapegen.growth_size",
+                    )
+                });
+                row(ui, &tr("shapegen.growth_spacing"), |ui| {
+                    length(
+                        ui,
+                        units,
+                        precision,
+                        &mut s.growth_spacing,
+                        0.05,
+                        50.0,
+                        "shapegen.growth_spacing",
+                    )
+                });
+                row(ui, &tr("shapegen.growth_repel"), |ui| {
+                    slider(
+                        ui,
+                        &mut s.growth_repel,
+                        1.0..=5.0,
+                        1,
+                        "",
+                        "shapegen.growth_repel",
+                    )
+                });
+                row(ui, &tr("shapegen.growth_align"), |ui| {
+                    slider(
+                        ui,
+                        &mut s.growth_align,
+                        0.0..=1.0,
+                        2,
+                        "",
+                        "shapegen.growth_align",
+                    )
+                });
+                row(ui, &tr("shapegen.growth_rate"), |ui| {
+                    count(ui, &mut s.growth_rate, 0..=100, "shapegen.growth_rate")
+                });
+                row(ui, &tr("shapegen.growth_max_nodes"), |ui| {
+                    count(
+                        ui,
+                        &mut s.growth_max_nodes,
+                        100..=20_000,
+                        "shapegen.growth_max_nodes",
+                    )
+                });
+                row(ui, &tr("shapegen.growth_steps"), |ui| {
+                    count(
+                        ui,
+                        &mut s.growth_steps,
+                        0..=crate::shape_gen_growth::MAX_STEPS,
+                        "shapegen.growth_steps",
+                    )
+                });
+                seed_row(ui, s);
+            }
         }
         if !matches!(
             s.kind,
@@ -1652,7 +1852,12 @@ pub fn shape_generator(app: &mut App, ui: &mut Ui) {
         source_row(app, ui);
     }
     section(ui, None);
-    let data = preview_for(ui, &app.shape_gen.sanitized());
+    let growing = app.shape_gen.kind == GenKind::Growth;
+    let data = if growing {
+        growth_controls(app, ui)
+    } else {
+        preview_for(ui, &app.shape_gen.sanitized())
+    };
     let editing = app.shape_gen.kind == GenKind::Voronoi;
     let sense = if editing {
         Sense::click_and_drag()
