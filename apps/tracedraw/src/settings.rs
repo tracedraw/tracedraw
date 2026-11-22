@@ -408,6 +408,10 @@ pub struct Settings {
     /// only their outline (#3569). Off by default.
     #[serde(default)]
     pub live_transform_preview: bool,
+    /// Options > Display: with Show objects while transforming on, the
+    /// drag outline is drawn over the objects too (#3704: hide it).
+    #[serde(default = "default_true")]
+    pub transform_outline_over_objects: bool,
     /// Options > Display: Shift, Ctrl, Alt and Delete on the drawing,
     /// where there is a touch screen (#1996).
     #[serde(default = "default_true")]
@@ -2433,6 +2437,7 @@ impl Default for Settings {
             hide_bbox_curve_tools: false,
             node_tracking: false,
             live_transform_preview: false,
+            transform_outline_over_objects: true,
             touch_keys: true,
             touch_selection_bar: true,
             selection_bar_mouse: false,

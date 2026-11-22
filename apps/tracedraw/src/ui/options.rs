@@ -1258,6 +1258,18 @@ fn display_page(app: &mut App, ui: &mut Ui) {
             "options.live_transform_preview",
             "options.live_transform_preview_tip",
         ));
+        // The drag outline over the objects shown while transforming
+        // (#3704); only of use when they are shown.
+        ui.add_enabled_ui(app.settings.live_transform_preview, |ui| {
+            ui.checkbox(
+                &mut app.settings.transform_outline_over_objects,
+                tr("options.transform_outline_over_objects"),
+            )
+            .rich_tip(crate::ui::tips::pair(
+                "options.transform_outline_over_objects",
+                "options.transform_outline_over_objects_tip",
+            ));
+        });
         ui.checkbox(&mut app.settings.touch_keys, tr("options.touch_keys"))
             .rich_tip(crate::ui::tips::pair(
                 "options.touch_keys",

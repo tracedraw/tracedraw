@@ -42,6 +42,8 @@ full, row-by-row status.
 - Tables: the text of a cell aligns from top to bottom (top, centre, bottom) with Align within Frame in the Text docker or the text bar; it did nothing in a cell (#3859).
 - Save Drawing: a click on a column title of the folder list sorts it, and a second click sorts it the other way round (#3858).
 - Shape Builder: selected open curves cut objects into parts, and the cells a grid of lines closes in become parts of their own (#3814).
+- Options > Display: Outline over the objects while transforming; turned off, with Show objects while transforming on, only the objects are drawn while they are moved, scaled or turned (#3704).
+- Insert Formula: a formula fills as text does, so overlapping letter contours no longer leave holes, and a space typed between words (`\text{...}`) and the formula is kept (#3793).
 
 ## 0.50.3 (2026-11-22)
 

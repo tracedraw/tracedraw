@@ -302,8 +302,13 @@ impl Parser<'_> {
     /// breaks lines at the top only.
     fn row(&mut self, in_group: bool) -> Vec<Node> {
         let mut out: Vec<Node> = Vec::new();
+        // Whether the last part is words (`\text{...}` or a word in a
+        // script of its own), for the space typed after it (#3793).
+        let mut last_words = false;
         loop {
+            let before = self.pos;
             self.skip_space();
+            let spaced = self.pos > before;
             let Some(c) = self.peek() else { break };
             if c == '}' {
                 if in_group {
@@ -327,14 +332,18 @@ impl Parser<'_> {
                     self.pos = save;
                     break;
                 }
+                let words = matches!(name.as_str(), "text" | "textrm");
                 if let Some(n) = self.command_node(&name) {
-                    out.push(n);
+                    push_spaced(&mut out, n, spaced && (words || last_words));
                 }
+                last_words = words;
                 continue;
             }
+            let words = in_script_word(c);
             if let Some(n) = self.atom() {
-                out.push(n);
+                push_spaced(&mut out, n, spaced && (words || last_words));
             }
+            last_words = words;
         }
         out
     }
@@ -613,6 +622,18 @@ fn in_script_word(c: char) -> bool {
         && !c.is_whitespace()
         && !(0x2000..=0x2BFF).contains(&u)
         && !(0x1D400..=0x1D7FF).contains(&u)
+}
+
+/// Push `n` onto the row `out`, after a word space when `space` (a space
+/// typed between words and the formula, #3793: math ignores spaces, so
+/// "Area = " ran into what followed) and neither side is a sign that
+/// brings its own space.
+fn push_spaced(out: &mut Vec<Node>, n: Node, space: bool) {
+    let spaced_sign = |n: &Node| matches!(class_of(n), Class::Bin | Class::Rel | Class::Punct);
+    if space && out.last().is_some_and(|l| !spaced_sign(l)) && !spaced_sign(&n) {
+        out.push(Node::Space(0.33));
+    }
+    out.push(n);
 }
 
 fn upright(t: &str) -> Node {
@@ -1167,6 +1188,28 @@ mod tests {
             })
             .collect();
         assert_eq!(texts, ["मेरा नाम", "=", "α", "+", "β"]);
+    }
+
+    /// #3793: a space typed between words and the formula is kept as a
+    /// word space; between math symbols spaces still count for nothing.
+    #[test]
+    fn a_space_after_words_is_kept() {
+        let spaces = |src: &str| -> usize {
+            let (lines, _) = parse(src);
+            let Node::Row(items) = &lines[0] else {
+                panic!()
+            };
+            items.iter().filter(|n| matches!(n, Node::Space(_))).count()
+        };
+        assert_eq!(spaces(r"\text{Area} \frac{a}{b}"), 1);
+        assert_eq!(spaces(r"\text{Area}\frac{a}{b}"), 0);
+        assert_eq!(spaces(r"\frac{a}{b} \text{cm}"), 1);
+        assert_eq!(spaces("मेरा x"), 1);
+        assert_eq!(spaces("a b"), 0, "math ignores spaces");
+        assert_eq!(spaces(r"\text{Area} = x"), 0, "the sign brings its own");
+        let with = layout(&spec(r"\text{A} x")).path.bounding_box();
+        let without = layout(&spec(r"\text{A}x")).path.bounding_box();
+        assert!(with.width() > without.width());
     }
 
     #[test]

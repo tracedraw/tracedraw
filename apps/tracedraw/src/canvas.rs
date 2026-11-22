@@ -155,6 +155,7 @@ pub fn draw_canvas(app: &App, painter: &Painter, rect: ERect) {
 
     // Selection.
     match preview {
+        Some(_) if !shows_transform_outline(app, live.is_some()) => {}
         Some(t) => draw_transform_outline(app, painter, t),
         None => draw_selection(app, painter, None),
     }
@@ -2317,6 +2318,13 @@ fn symmetry_copy_paths(
             symmetry_copy_paths(&c, edited, out);
         }
     }
+}
+
+/// Whether the drag outline shows while the selection is transformed:
+/// always, unless the objects are drawn where they go (`live`) and
+/// Options > Display has the outline over them off (#3704).
+fn shows_transform_outline(app: &App, live: bool) -> bool {
+    !live || app.settings.transform_outline_over_objects
 }
 
 pub fn draw_transform_outline(app: &App, painter: &Painter, t: Affine) {
@@ -4931,6 +4939,21 @@ mod tests {
                 && !bottom.is_empty(),
             "the bottom drawn in, scaled: {bottom:?}"
         );
+    }
+
+    /// #3704: the drag outline over the objects shown while transforming
+    /// is on by default and can be turned off; without the objects shown
+    /// the outline always shows.
+    #[test]
+    fn the_outline_over_objects_while_transforming_can_be_hidden() {
+        let mut app = App::headless();
+        assert!(app.settings.transform_outline_over_objects);
+        assert!(shows_transform_outline(&app, true));
+        app.settings.transform_outline_over_objects = false;
+        assert!(!shows_transform_outline(&app, true));
+        assert!(shows_transform_outline(&app, false));
+        let old: crate::settings::Settings = serde_json::from_str("{}").expect("old settings");
+        assert!(old.transform_outline_over_objects, "on for settings saved before");
     }
 
     /// Show objects while transforming is off by default (#3569).
