@@ -16,6 +16,10 @@ full, row-by-row status.
 - Export: a picture wider than JPEG, GIF or WebP can hold says so at once and points to PNG or TIFF, which are written a strip at a time at any size, instead of first drawing the whole page in memory (#3803).
 - Edit Inside: the Layers panel keeps its size when Edit Inside is entered again after Finish or Cancel; it came back a few pixels high (#3852).
 - Multipage View: Zoom to Page (Shift+F4) and Zoom to Fit (F4) take the page in use instead of every page shown, and a double click on "1 of N" in the page bar opens Go to Page (#3780).
+- Text in a group: choosing one text inside a group, then another, shows each one's own font, size and style in the property bar instead of keeping those of the text chosen before (#3896).
+- .cdr import: a radial fountain fill or transparency from version 16 files on runs from its centre out to the object's own edges, as the file sets it, instead of reaching past them to the corners of the box; a radial transparency on an ellipse now fades out at the ellipse's edge (#3805).
+- Object Data docker: a Data Sheet button opens a small spreadsheet of the selected objects (or every object on the page) with their data fields as columns, nested group members under a Show levels setting, cells you can edit in place, and a total of the Cost column (#3084).
+- PDF import: text in an embedded Type 1 font shows its accented letters (ě, ř, š and the like) as the file does, read through the font's own encoding instead of the Windows code page, and comes in as curves from the font's outlines when text is imported as curves (#3810).
 - Right-click menu: Change Case is offered on a selected text and while typing one (#3826).
 - Smart Fill: Use Guidelines on its bar lets the guidelines shown close off the area too, as in the Shape Builder (#3863).
 - Colour panel "..." menu: Swap Fills exchanges the fills of two selected objects, and Outline From Fill gives each selected object's outline the colour of its own fill (#3770).

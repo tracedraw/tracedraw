@@ -3650,7 +3650,10 @@ impl<'a> Importer<'a> {
         let one_byte = if two_byte {
             None
         } else {
-            Some(self.simple_encoding(fd, &base, &subtype))
+            let builtin = descriptor
+                .as_ref()
+                .and_then(|d| self.type1_program_encoding(d));
+            Some(self.simple_encoding(fd, &base, &subtype, builtin))
         };
         // Widths.
         let mut widths = HashMap::new();
@@ -3792,7 +3795,10 @@ impl<'a> Importer<'a> {
             let d = s.decompressed_content().ok().or(Some(s.content.clone()))?;
             (d, sub != b"OpenType")
         } else {
-            return None;
+            // A Type 1 program, read as the OpenType font a Type 1 font
+            // file installed here becomes (#3810).
+            let d = self.get(desc, b"FontFile").and_then(stream_bytes)?;
+            (tracedraw_text::type1::convert(&d, None)?, false)
         };
         let cid_to_gid = if two_byte {
             match self.get(desc_font, b"CIDToGIDMap") {
@@ -4128,6 +4134,7 @@ impl<'a> Importer<'a> {
         fd: &Dictionary,
         base: &str,
         subtype: &[u8],
+        builtin: Option<[Option<char>; 256]>,
     ) -> [Option<char>; 256] {
         let symbolic = base.contains("Symbol") || base.contains("Dingbat");
         let mut table: [Option<char>; 256] = if symbolic && subtype != b"TrueType" {
@@ -4144,6 +4151,10 @@ impl<'a> Importer<'a> {
                     if let Some(t) = named_encoding(n) {
                         table = t;
                     }
+                } else if let Some(b) = builtin {
+                    // Differences from no named base start from the
+                    // embedded program's own encoding (9.6.5.1).
+                    table = b;
                 } else if !symbolic {
                     table = standard_table(STANDARD_ENCODING);
                 }
@@ -4167,12 +4178,35 @@ impl<'a> Importer<'a> {
                 }
             }
             _ => {
-                if !symbolic {
+                if let Some(b) = builtin {
+                    // No encoding named: an embedded Type 1 program's codes
+                    // are those of its own encoding (#3810).
+                    table = b;
+                } else if !symbolic {
                     table = standard_table(WIN_ANSI_ENCODING);
                 }
             }
         }
         table
+    }
+
+    /// The built-in encoding of the Type 1 program a font descriptor
+    /// embeds (`FontFile`), as the characters its codes stand for; `None`
+    /// with no such program or one that uses the Standard encoding.
+    fn type1_program_encoding(&self, desc: &Dictionary) -> Option<[Option<char>; 256]> {
+        let Some(Object::Stream(s)) = self.get(desc, b"FontFile") else {
+            return None;
+        };
+        let data = s
+            .decompressed_content()
+            .ok()
+            .unwrap_or_else(|| s.content.clone());
+        let entries = tracedraw_text::type1::own_encoding(&data)?;
+        let mut table = [None; 256];
+        for (code, name) in entries {
+            table[usize::from(code)] = glyph_name_to_char(name.as_bytes());
+        }
+        Some(table)
     }
 
     fn show_text(
@@ -5713,6 +5747,12 @@ fn glyph_name_to_char(name: &[u8]) -> Option<char> {
         ("florin", '\u{192}'),
         ("circumflex", '\u{2c6}'),
         ("tilde", '\u{2dc}'),
+        ("caron", '\u{2c7}'),
+        ("breve", '\u{2d8}'),
+        ("dotaccent", '\u{2d9}'),
+        ("ring", '\u{2da}'),
+        ("ogonek", '\u{2db}'),
+        ("hungarumlaut", '\u{2dd}'),
         ("dotlessi", '\u{131}'),
         ("Lslash", '\u{141}'),
         ("lslash", '\u{142}'),
@@ -8210,6 +8250,283 @@ mod tests {
             })
             .collect();
         assert_eq!(texts, ["युक्ति", "मुश्किल", "स्कूल", "विश्वास", "उपयुक्त"]);
+    }
+
+    /// A PDF whose text is in an embedded Type 1 font (`FontFile`) with
+    /// a built-in encoding of its own, and `encoding` as the font's
+    /// `/Encoding` entry (none when `None`): the bytes 0xEC 0xF8 0x9A
+    /// 0x41 shown.
+    fn type1_pdf(encoding: Option<lopdf::Object>) -> Vec<u8> {
+        // The clear-text part of a Type 1 program; the encrypted part
+        // (charstrings) is not read for the encoding.
+        let program = b"%!PS-AdobeFont-1.0: ABCDEF+Liberec 001.000\n\
+            12 dict begin\n/FontName /ABCDEF+Liberec def\n\
+            /Encoding 256 array\n0 1 255 {1 index exch /.notdef put} for\n\
+            dup 65 /A put\ndup 154 /scaron put\ndup 236 /ecaron put\n\
+            dup 248 /rcaron put\nreadonly def\ncurrentdict end\n\
+            currentfile eexec\n\x8a\x1b\x00\xff"
+            .to_vec();
+        type1_pdf_with(encoding, program)
+    }
+
+    fn type1_pdf_with(encoding: Option<lopdf::Object>, program: Vec<u8>) -> Vec<u8> {
+        use lopdf::{dictionary, Object, Stream};
+        let mut doc = lopdf::Document::with_version("1.4");
+        let file = doc.add_object(Stream::new(
+            dictionary! { "Length1" => 300, "Length2" => 4, "Length3" => 0 },
+            program,
+        ));
+        let descriptor = doc.add_object(dictionary! {
+            "Type" => "FontDescriptor", "FontName" => "ABCDEF+Liberec", "Flags" => 32,
+            "FontBBox" => vec![0.into(), (-200).into(), 1000.into(), 900.into()],
+            "ItalicAngle" => 0, "Ascent" => 800, "Descent" => -200, "CapHeight" => 700,
+            "StemV" => 80, "FontFile" => file,
+        });
+        let mut font = dictionary! {
+            "Type" => "Font", "Subtype" => "Type1", "BaseFont" => "ABCDEF+Liberec",
+            "FirstChar" => 0, "LastChar" => 255, "FontDescriptor" => descriptor,
+        };
+        if let Some(e) = encoding {
+            font.set("Encoding", e);
+        }
+        let font = doc.add_object(font);
+        let content = b"BT /F1 12 Tf 1 0 0 1 20 800 Tm <ECF89A41> Tj ET\n".to_vec();
+        let contents = doc.add_object(Stream::new(dictionary! {}, content));
+        let pages_id = doc.new_object_id();
+        let page = doc.add_object(dictionary! {
+            "Type" => "Page", "Parent" => pages_id,
+            "MediaBox" => vec![0.into(), 0.into(), 595.into(), 842.into()],
+            "Contents" => contents,
+            "Resources" => dictionary! { "Font" => dictionary! { "F1" => font } },
+        });
+        doc.objects.insert(
+            pages_id,
+            Object::Dictionary(
+                dictionary! { "Type" => "Pages", "Kids" => vec![page.into()], "Count" => 1 },
+            ),
+        );
+        let catalog = doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages_id });
+        doc.trailer.set("Root", catalog);
+        let mut out = Vec::new();
+        doc.save_to(&mut out).expect("writes");
+        out
+    }
+
+    fn page_text(bytes: &[u8]) -> String {
+        let mut ids = IdSource::default();
+        let imp = parse(bytes, &mut ids).expect("parse");
+        imp.pages[0]
+            .shapes
+            .iter()
+            .filter_map(|s| match &s.kind {
+                ShapeKind::Text { spans, .. } => {
+                    Some(spans.iter().map(|s| s.text.as_str()).collect::<String>())
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// An embedded Type 1 font with no `/Encoding` in the PDF takes its
+    /// codes from the program's own encoding: Czech letters came in as
+    /// the Windows code page's (ì ø š for ě ř š) (#3810).
+    #[test]
+    fn type1_fonts_without_an_encoding_use_their_own() {
+        assert_eq!(page_text(&type1_pdf(None)), "ěřšA");
+    }
+
+    /// Differences with no base encoding change the program's own
+    /// encoding, not the Standard one; a named encoding still wins.
+    #[test]
+    fn type1_differences_start_from_the_program_s_encoding() {
+        use lopdf::{dictionary, Object};
+        let diff = dictionary! {
+            "Type" => "Encoding",
+            "Differences" => vec![Object::Integer(65), Object::Name(b"Aacute".to_vec())],
+        };
+        assert_eq!(
+            page_text(&type1_pdf(Some(Object::Dictionary(diff)))),
+            "ěřšÁ"
+        );
+        let named = Object::Name(b"WinAnsiEncoding".to_vec());
+        assert_eq!(page_text(&type1_pdf(Some(named))), "\u{ec}\u{f8}\u{161}A");
+    }
+
+    /// Text in an embedded Type 1 font comes in as curves from the
+    /// font's own outlines when asked: the accented letters drawn by
+    /// `seac` as letter and accent (#3810).
+    #[test]
+    fn type1_text_comes_in_as_curves_from_the_font() {
+        let accent = charstring(&[
+            Ok(0),
+            Ok(300),
+            Err(13),
+            Ok(0),
+            Ok(700),
+            Err(21),
+            Ok(100),
+            Err(6),
+            Ok(100),
+            Err(7),
+            Ok(-100),
+            Err(6),
+            Err(9),
+            Err(14),
+        ]);
+        let composite = |base: i32| {
+            charstring(&[
+                Ok(100),
+                Ok(700),
+                Err(13),
+                Ok(100),
+                Ok(150),
+                Ok(0),
+                Ok(base),
+                Ok(207),
+                Err(12 * 256 + 6),
+            ])
+        };
+        let font = program(
+            &[
+                ("A", square()),
+                ("e", square()),
+                ("r", square()),
+                ("s", square()),
+                ("caron", accent),
+                ("ecaron", composite(101)),
+                ("rcaron", composite(114)),
+                ("scaron", composite(115)),
+            ],
+            &[(65, "A"), (154, "scaron"), (236, "ecaron"), (248, "rcaron")],
+        );
+        let bytes = type1_pdf_with(None, font);
+        let mut ids = IdSource::default();
+        let options = ImportOptions {
+            text_as_curves: true,
+            ..ImportOptions::default()
+        };
+        let imp = parse_with_options(&bytes, &mut ids, "", options).expect("parse");
+        let shapes = &imp.pages[0].shapes;
+        assert_eq!(shapes.len(), 1, "{:?}", imp.warnings);
+        let ShapeKind::Path { path, .. } = &shapes[0].kind else {
+            panic!("curves expected: {:?}", shapes[0].kind);
+        };
+        let moves = path
+            .elements()
+            .iter()
+            .filter(|e| matches!(e, tracedraw_core::geometry::PathEl::MoveTo(_)))
+            .count();
+        // Three letters with an accent each, and the A.
+        assert_eq!(moves, 7);
+    }
+
+    #[test]
+    fn a_standard_encoded_type1_program_has_no_encoding_of_its_own() {
+        let p = b"%!FontType1-1.0: X\n/FontName /X def /Encoding StandardEncoding def currentfile eexec\n";
+        assert!(tracedraw_text::type1::own_encoding(p).is_none());
+        let p = b"%!FontType1-1.0: X\n/Encoding 256 array dup 32 /space put dup 200 /Zcaron put readonly def currentfile eexec\n";
+        assert_eq!(
+            tracedraw_text::type1::own_encoding(p),
+            Some(vec![(32, "space".to_string()), (200, "Zcaron".to_string())])
+        );
+    }
+
+    fn num(v: i32, out: &mut Vec<u8>) {
+        match v {
+            -107..=107 => out.push((v + 139) as u8),
+            108..=1131 => {
+                let w = v - 108;
+                out.push((w / 256 + 247) as u8);
+                out.push((w % 256) as u8);
+            }
+            -1131..=-108 => {
+                let w = -v - 108;
+                out.push((w / 256 + 251) as u8);
+                out.push((w % 256) as u8);
+            }
+            _ => {
+                out.push(255);
+                out.extend_from_slice(&v.to_be_bytes());
+            }
+        }
+    }
+
+    fn encrypt(plain: &[u8], key: u16, lead: usize) -> Vec<u8> {
+        let mut r = key;
+        let mut out = Vec::new();
+        for &p in std::iter::repeat_n(&0u8, lead).chain(plain) {
+            let c = p ^ (r >> 8) as u8;
+            r = (u16::from(c).wrapping_add(r))
+                .wrapping_mul(52845)
+                .wrapping_add(22719);
+            out.push(c);
+        }
+        out
+    }
+
+    /// A charstring from numbers and operators (`Err` for an operator,
+    /// escape operators as 12 * 256 + n).
+    fn charstring(items: &[Result<i32, u16>]) -> Vec<u8> {
+        let mut out = Vec::new();
+        for it in items {
+            match it {
+                Ok(v) => num(*v, &mut out),
+                Err(op) if *op >= 12 * 256 => out.extend_from_slice(&[12, (*op - 12 * 256) as u8]),
+                Err(op) => out.push(*op as u8),
+            }
+        }
+        out
+    }
+
+    /// A Type 1 program (#3810 tests) with the charstrings `glyphs` (by name), the
+    /// `encoding` entries and one subroutine (0: a plain return), its
+    /// private part encrypted as `eexec` writes it.
+    fn program(glyphs: &[(&str, Vec<u8>)], encoding: &[(u8, &str)]) -> Vec<u8> {
+        let mut clear = String::from(
+            "%!PS-AdobeFont-1.0: Test 001.000\n12 dict begin\n/FontName /Test def\n\
+             /FontMatrix [0.001 0 0 0.001 0 0] readonly def\n\
+             /Encoding 256 array\n0 1 255 {1 index exch /.notdef put} for\n",
+        );
+        for (c, n) in encoding {
+            clear.push_str(&format!("dup {c} /{n} put\n"));
+        }
+        clear.push_str("readonly def\ncurrentdict end\ncurrentfile eexec\n");
+        let mut private: Vec<u8> =
+            b"dup /Private 8 dict dup begin\n/lenIV 4 def\n/Subrs 1 array\n".to_vec();
+        let ret = encrypt(&[11], 4330, 4);
+        private.extend_from_slice(format!("dup 0 {} RD ", ret.len()).as_bytes());
+        private.extend_from_slice(&ret);
+        private.extend_from_slice(b" NP\nND\n2 index /CharStrings ");
+        private.extend_from_slice(format!("{} dict dup begin\n", glyphs.len()).as_bytes());
+        for (name, cs) in glyphs {
+            let enc = encrypt(cs, 4330, 4);
+            private.extend_from_slice(format!("/{name} {} RD ", enc.len()).as_bytes());
+            private.extend_from_slice(&enc);
+            private.extend_from_slice(b" ND\n");
+        }
+        private.extend_from_slice(b"end\nend\nmark currentfile closefile\n");
+        let mut out = clear.into_bytes();
+        out.extend(encrypt(&private, 55665, 4));
+        out
+    }
+
+    /// A square glyph 100 to 600 on both axes.
+    fn square() -> Vec<u8> {
+        charstring(&[
+            Ok(100),
+            Ok(700),
+            Err(13), // hsbw
+            Ok(100),
+            Err(4), // vmoveto
+            Ok(500),
+            Err(6), // hlineto
+            Ok(500),
+            Err(7),
+            Ok(-500),
+            Err(6),
+            Err(9), // closepath
+            Err(14),
+        ])
     }
 }
 

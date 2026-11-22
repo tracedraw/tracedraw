@@ -8,6 +8,9 @@ description = "Import/export between the TraceDraw document model and other form
 [dependencies]
 tracedraw-core.workspace = true
 tracedraw-render.workspace = true
+# Type 1 font programs embedded in PDF files are read by its Type 1
+# reader (#3810).
+tracedraw-text.workspace = true
 kurbo.workspace = true
 thiserror.workspace = true
 base64 = "0.22"

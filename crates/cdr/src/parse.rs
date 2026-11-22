@@ -1699,6 +1699,8 @@ impl<'a> Ctx<'a> {
             r.skip(3);
             if kind == FountainKind::Linear {
                 object_handles = linear_frame(body.get(r.pos..).unwrap_or(&[]));
+            } else if kind == FountainKind::Radial {
+                object_handles = radial_frame(body.get(r.pos..).unwrap_or(&[]));
             }
             if r.remaining() >= 32 {
                 let (Some(ox), Some(oy), Some(w), Some(h)) = (r.f64(), r.f64(), r.f64(), r.f64())
@@ -7265,6 +7267,35 @@ pub(crate) fn color_from_model(model: u16, b: [u8; 4]) -> Option<Color> {
     })
 }
 
+/// The frame of a version 16+ radial fountain (#3805): the same eight
+/// doubles as [`linear_frame`], the centre and then a matrix whose two
+/// axes are the ellipse's half axes in box units of a full side (1.0
+/// across the whole width), so a fill of 1.0 by 1.0 runs from the centre
+/// out to the object's edges, not to its corners. Its frame in half
+/// sizes: the centre twice over, the axes as they are.
+fn radial_frame(d: &[u8]) -> Option<tracedraw_core::style::FountainHandles> {
+    let f = |k: usize| {
+        let b = d.get(8 * k..8 * k + 8)?;
+        let v = f64::from_le_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]]);
+        v.is_finite().then_some(v)
+    };
+    let (ox, oy) = (f(0)?, f(1)?);
+    let (xa, xb, ya, yb) = (f(2)?, f(5)?, f(3)?, f(6)?);
+    f(4)?;
+    f(7)?;
+    let (lx, ly) = (xa.hypot(xb), ya.hypot(yb));
+    let ok = |l: f64| (1e-6..=1e3).contains(&l);
+    if !ok(lx) || !ok(ly) || ox.abs() > 1e3 || oy.abs() > 1e3 {
+        return None;
+    }
+    let start = Point::new(2.0 * ox, 2.0 * oy);
+    Some(tracedraw_core::style::FountainHandles {
+        start,
+        end: Point::new(start.x + xa, start.y + xb),
+        skew: Point::new(start.x + ya, start.y + yb),
+    })
+}
+
 /// The run of a version 16+ linear fill from the tail after its stops
 /// (`d`): eight f64, the centre of the fill (x, y) and a matrix (a, c, e,
 /// b, d, f; the offsets zero) in units of the object box's width and
@@ -8340,6 +8371,23 @@ fn grey_mask(f: &tracedraw_core::Fountain) -> Fill {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+
+    /// A version 16+ radial fountain of 1.0 by 1.0 runs from the centre
+    /// to the object's edges, its half axes on the box's half sides, as
+    /// the radial transparency of #3805 is drawn (it faded out at the
+    /// ellipse's own edge, not past it).
+    #[test]
+    fn a_radial_frame_reaches_the_object_s_edges() {
+        let tail: Vec<u8> = [0.25, 0.0, 1.0, 0.0, 0.0, 0.0, 0.5, 0.0]
+            .iter()
+            .flat_map(|v: &f64| v.to_le_bytes())
+            .collect();
+        let h = radial_frame(&tail).unwrap();
+        assert_eq!(h.start, Point::new(0.5, 0.0));
+        assert_eq!(h.end, Point::new(1.5, 0.0));
+        assert_eq!(h.skew, Point::new(0.5, 0.5));
+        assert!(radial_frame(&tail[..56]).is_none());
+    }
 
     /// A black and white picture coloured in the other program (yellow
     /// outline, blue fill) opens with those colours in its pixels and no
