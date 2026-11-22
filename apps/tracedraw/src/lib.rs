@@ -201,6 +201,7 @@ mod picture_plates;
 mod pixel_edit;
 mod pixel_edit_app;
 mod pixel_light;
+mod pixel_paint;
 mod pixel_warp;
 mod placeholder;
 mod plugins;

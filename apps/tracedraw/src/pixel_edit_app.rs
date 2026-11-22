@@ -82,6 +82,9 @@ pub struct PixelEdit {
     pub warp: Option<crate::pixel_warp::Warp>,
     pub warp_box: Dirty,
     pub warp_grid: usize,
+    /// The picture as it was when the editing began (Restore paints it
+    /// back).
+    pub original: std::rc::Rc<image::RgbaImage>,
     /// Clone and heal: the source set with Alt+click, and the offset
     /// fixed by the first stroke after it (the source follows the brush).
     pub clone_src: Option<(f32, f32)>,
@@ -421,6 +424,7 @@ impl App {
             img_to_page,
             rect: *rect,
             size_px,
+            original: std::rc::Rc::new(img.clone()),
             pi: PixelImage::new(img),
             history: History::default(),
             tool: PixelTool::Brush,
@@ -605,7 +609,7 @@ impl App {
             && (tool.is_brush()
                 || matches!(
                     tool,
-                    PixelTool::Fill | PixelTool::Gradient | PixelTool::Move
+                    PixelTool::Fill | PixelTool::Gradient | PixelTool::Move | PixelTool::Shape
                 ))
         {
             if !matches!(tool, PixelTool::Brush | PixelTool::Eraser) {
@@ -653,7 +657,11 @@ impl App {
             || tool == PixelTool::Light
             || matches!(
                 tool,
-                PixelTool::Fill | PixelTool::Gradient | PixelTool::Move | PixelTool::Warp
+                PixelTool::Fill
+                    | PixelTool::Gradient
+                    | PixelTool::Move
+                    | PixelTool::Warp
+                    | PixelTool::Shape
             );
         if paints && pe.pi.active_locked() {
             if started || clicked {
@@ -762,6 +770,9 @@ impl App {
                 };
                 pe.step();
                 let mut s = Stroke::new(tool, pe.opts, &pe.pi, offset);
+                if tool == PixelTool::Restore {
+                    s = s.with_original(pe.original.clone());
+                }
                 let b = s.to(&mut pe.pi, x, y);
                 pe.mark(b);
                 pe.stroke = Some(s);
@@ -782,13 +793,16 @@ impl App {
             return;
         }
         match tool {
-            PixelTool::RectSelect | PixelTool::EllipseSelect | PixelTool::Gradient => {
+            PixelTool::RectSelect
+            | PixelTool::EllipseSelect
+            | PixelTool::Gradient
+            | PixelTool::Shape => {
                 if started {
                     pe.drag_from = Some((x, y));
                     pe.drag_to = Some((x, y));
                 } else if dragged {
                     pe.drag_to = Some((x, y));
-                } else if clicked && tool != PixelTool::Gradient && mode == SelectMode::Replace {
+                } else if clicked && tool.is_selection() && mode == SelectMode::Replace {
                     // A click with no drag: nothing selected.
                     if pe.pi.sel.is_some() {
                         pe.set_selection(None);
@@ -962,6 +976,16 @@ fn pixel_release(pe: &mut PixelEdit, mods: Modifiers) {
             let o = pe.opts;
             pe.apply(false, |pi| pixel_edit::gradient(pi, a, b, &o));
         }
+        PixelTool::Shape => {
+            let (Some(a), Some(b)) = (from, to) else {
+                return;
+            };
+            if (a.0 - b.0).abs() + (a.1 - b.1).abs() < 1.0 {
+                return;
+            }
+            let o = pe.opts;
+            pe.apply(false, |pi| crate::pixel_paint::draw_shape(pi, a, b, &o));
+        }
         _ => {}
     }
 }
@@ -1126,6 +1150,34 @@ pub fn draw(app: &App, painter: &egui::Painter) {
             PixelTool::RectSelect => {
                 let pts = [a, (b.0, a.1), b, (a.0, b.1), a].map(to_screen);
                 painter.add(egui::Shape::line(pts.to_vec(), ink));
+            }
+            PixelTool::Shape => {
+                use crate::pixel_paint::PixelShape;
+                let pts: Vec<(f32, f32)> = match pe.opts.shape {
+                    PixelShape::Rect => vec![a, (b.0, a.1), b, (a.0, b.1), a],
+                    PixelShape::Line => vec![a, b],
+                    PixelShape::Polygon => {
+                        let mut p = crate::pixel_paint::polygon_points(a, b, pe.opts.sides);
+                        if let Some(f) = p.first().copied() {
+                            p.push(f);
+                        }
+                        p
+                    }
+                    PixelShape::Ellipse => {
+                        let (cx, cy) = ((a.0 + b.0) / 2.0, (a.1 + b.1) / 2.0);
+                        let (rx, ry) = ((b.0 - a.0).abs() / 2.0, (b.1 - a.1).abs() / 2.0);
+                        (0..=48)
+                            .map(|i| {
+                                let t = i as f32 / 48.0 * std::f32::consts::TAU;
+                                (cx + rx * t.cos(), cy + ry * t.sin())
+                            })
+                            .collect()
+                    }
+                };
+                painter.add(egui::Shape::line(
+                    pts.into_iter().map(to_screen).collect(),
+                    ink,
+                ));
             }
             PixelTool::EllipseSelect => {
                 let (cx, cy) = ((a.0 + b.0) / 2.0, (a.1 + b.1) / 2.0);
@@ -1462,5 +1514,22 @@ mod tests {
         assert_eq!(pe.pi.img.get_pixel(7, 5)[0], 0);
         pe.undo();
         assert_eq!(pe.pi.img, before);
+    }
+
+    #[test]
+    fn a_dragged_shape_is_drawn_as_one_undo_step() {
+        let (mut app, id) = app_with_picture();
+        app.edit_bitmap_inside(id);
+        let pe = app.pixel_edit.as_mut().unwrap();
+        pe.tool = PixelTool::Shape;
+        pe.opts.color = [255, 0, 0, 255];
+        pe.opts.opacity = 1.0;
+        pe.drag_from = Some((2.0, 2.0));
+        pe.drag_to = Some((12.0, 8.0));
+        pixel_release(pe, Modifiers::NONE);
+        assert_eq!(*pe.pi.img.get_pixel(6, 5), Rgba([255, 0, 0, 255]));
+        assert_eq!(*pe.pi.img.get_pixel(16, 5), Rgba([255, 255, 255, 255]));
+        pe.undo();
+        assert_eq!(*pe.pi.img.get_pixel(6, 5), Rgba([255, 255, 255, 255]));
     }
 }

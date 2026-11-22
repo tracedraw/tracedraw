@@ -175,10 +175,57 @@ fn tool_options(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app::PixelEdit) {
         if t != PixelTool::Smudge {
             percent(ui, "pixel.opt.flow", &mut o.flow);
         }
+        // The tip's spacing, scatter, angle and roundness, in a menu.
+        ui.menu_button(tr("pixel.opt.tip"), |ui| {
+            let mut sp = (o.spacing * 100.0).round();
+            if ui
+                .add(
+                    egui::Slider::new(&mut sp, 1.0..=300.0)
+                        .suffix(" %")
+                        .text(tr("pixel.opt.spacing")),
+                )
+                .changed()
+            {
+                o.spacing = sp / 100.0;
+            }
+            let mut sc = (o.scatter * 100.0).round();
+            if ui
+                .add(
+                    egui::Slider::new(&mut sc, 0.0..=300.0)
+                        .suffix(" %")
+                        .text(tr("pixel.opt.scatter")),
+                )
+                .changed()
+            {
+                o.scatter = sc / 100.0;
+            }
+            ui.add(
+                egui::Slider::new(&mut o.angle, 0.0..=180.0)
+                    .suffix("\u{b0}")
+                    .text(tr("pixel.opt.angle")),
+            );
+            let mut r = (o.roundness * 100.0).round();
+            if ui
+                .add(
+                    egui::Slider::new(&mut r, 5.0..=100.0)
+                        .suffix(" %")
+                        .text(tr("pixel.opt.roundness")),
+                )
+                .changed()
+            {
+                o.roundness = r / 100.0;
+            }
+        });
     }
     if matches!(
         t,
-        PixelTool::Brush | PixelTool::Fill | PixelTool::Gradient | PixelTool::Eyedropper
+        PixelTool::Brush
+            | PixelTool::Fill
+            | PixelTool::Gradient
+            | PixelTool::Eyedropper
+            | PixelTool::Tint
+            | PixelTool::ReplaceColor
+            | PixelTool::Shape
     ) {
         let mut c = Color32::from_rgba_unmultiplied(o.color[0], o.color[1], o.color[2], o.color[3]);
         ui.label(tr("pixel.opt.color"));
@@ -193,18 +240,31 @@ fn tool_options(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app::PixelEdit) {
             o.color = [r, g, b, a];
         }
     }
-    if matches!(t, PixelTool::Fill | PixelTool::Gradient) {
+    if matches!(t, PixelTool::Fill | PixelTool::Gradient | PixelTool::Shape) {
         percent(ui, "pixel.opt.opacity", &mut o.opacity);
     }
     if matches!(t, PixelTool::MagicWand | PixelTool::Fill) {
         ui.add(egui::Slider::new(&mut o.tolerance, 0..=255).text(tr("pixel.opt.tolerance")));
         ui.checkbox(&mut o.contiguous, tr("pixel.opt.contiguous"));
     }
+    if t == PixelTool::ReplaceColor {
+        ui.add(egui::Slider::new(&mut o.tolerance, 0..=255).text(tr("pixel.opt.tolerance")));
+    }
+    if t == PixelTool::Shape {
+        shape_options(ui, o);
+    }
     match t {
         PixelTool::Sponge => {
             ui.checkbox(&mut o.desaturate, tr("pixel.opt.desaturate"));
         }
         PixelTool::Gradient => {
+            egui::ComboBox::from_id_salt("pixel_gradient_kind")
+                .selected_text(tr(o.gradient.key()))
+                .show_ui(ui, |ui| {
+                    for k in crate::pixel_paint::GradientKind::ALL {
+                        ui.selectable_value(&mut o.gradient, k, tr(k.key()));
+                    }
+                });
             ui.checkbox(&mut o.gradient_to_clear, tr("pixel.opt.to_clear"));
         }
         _ => {}
@@ -215,6 +275,48 @@ fn tool_options(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app::PixelEdit) {
             .color(Tokens::text_dim())
             .small(),
     );
+}
+
+/// The Shape tool's settings: the shape, fill, outline, its colour and
+/// width, and the polygon's sides.
+fn shape_options(ui: &mut egui::Ui, o: &mut pixel_edit::BrushOpts) {
+    use crate::pixel_paint::PixelShape;
+    egui::ComboBox::from_id_salt("pixel_shape_kind")
+        .selected_text(tr(o.shape.key()))
+        .show_ui(ui, |ui| {
+            for k in PixelShape::ALL {
+                ui.selectable_value(&mut o.shape, k, tr(k.key()));
+            }
+        });
+    if o.shape == PixelShape::Polygon {
+        ui.add(egui::Slider::new(&mut o.sides, 3..=24).text(tr("pixel.opt.sides")));
+    }
+    if o.shape != PixelShape::Line {
+        ui.checkbox(&mut o.shape_fill, tr("pixel.opt.fill"));
+        ui.checkbox(&mut o.shape_outline, tr("pixel.opt.outline"));
+    }
+    if o.shape == PixelShape::Line || o.shape_outline {
+        ui.add(
+            egui::Slider::new(&mut o.line_width, 0.5..=200.0)
+                .logarithmic(true)
+                .suffix(" px")
+                .text(tr("pixel.opt.width")),
+        );
+    }
+    if o.shape != PixelShape::Line && o.shape_outline {
+        let c = o.outline_color;
+        let mut c = Color32::from_rgba_unmultiplied(c[0], c[1], c[2], c[3]);
+        ui.label(tr("pixel.opt.outline_color"));
+        if egui::color_picker::color_edit_button_srgba(
+            ui,
+            &mut c,
+            egui::color_picker::Alpha::OnlyBlend,
+        )
+        .changed()
+        {
+            o.outline_color = c.to_srgba_unmultiplied();
+        }
+    }
 }
 
 fn panel(app: &mut App, ctx: &Context) {

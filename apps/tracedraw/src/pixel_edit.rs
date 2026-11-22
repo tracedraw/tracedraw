@@ -38,10 +38,18 @@ pub enum PixelTool {
     Light,
     /// Bends the layer in use with a grid of points.
     Warp,
+    /// Paints the picture back as it was when the editing began.
+    Restore,
+    /// Colours the pixels with the brush colour, keeping their light.
+    Tint,
+    /// Swaps the colour under the first dab for the brush colour.
+    ReplaceColor,
+    /// Rectangles, ellipses, polygons and lines.
+    Shape,
 }
 
 impl PixelTool {
-    pub const ALL: [PixelTool; 21] = [
+    pub const ALL: [PixelTool; 25] = [
         PixelTool::RectSelect,
         PixelTool::EllipseSelect,
         PixelTool::Lasso,
@@ -63,6 +71,10 @@ impl PixelTool {
         PixelTool::Move,
         PixelTool::Light,
         PixelTool::Warp,
+        PixelTool::Restore,
+        PixelTool::Tint,
+        PixelTool::ReplaceColor,
+        PixelTool::Shape,
     ];
 
     /// The tool's i18n key (`pixel.tool.<name>`).
@@ -89,6 +101,10 @@ impl PixelTool {
             PixelTool::Move => "pixel.tool.move",
             PixelTool::Light => "pixel.tool.light",
             PixelTool::Warp => "pixel.tool.warp",
+            PixelTool::Restore => "pixel.tool.restore",
+            PixelTool::Tint => "pixel.tool.tint",
+            PixelTool::ReplaceColor => "pixel.tool.replace_color",
+            PixelTool::Shape => "pixel.tool.shape",
         }
     }
 
@@ -107,6 +123,9 @@ impl PixelTool {
                 | PixelTool::Sharpen
                 | PixelTool::Smudge
                 | PixelTool::RedEye
+                | PixelTool::Restore
+                | PixelTool::Tint
+                | PixelTool::ReplaceColor
         )
     }
 
@@ -150,6 +169,23 @@ pub struct BrushOpts {
     pub desaturate: bool,
     /// The gradient goes from the colour to see-through (else to white).
     pub gradient_to_clear: bool,
+    /// How the gradient spreads.
+    pub gradient: crate::pixel_paint::GradientKind,
+    /// Brush tip: the distance between dabs as a share of the size, how
+    /// far dabs stray from the stroke (share of the size), the tip's
+    /// angle in degrees and its roundness (1 round, less flatter).
+    pub spacing: f32,
+    pub scatter: f32,
+    pub angle: f32,
+    pub roundness: f32,
+    /// The Shape tool: which shape, filled, outlined, the outline's width
+    /// (and the line's), its colour and the polygon's sides.
+    pub shape: crate::pixel_paint::PixelShape,
+    pub shape_fill: bool,
+    pub shape_outline: bool,
+    pub line_width: f32,
+    pub outline_color: [u8; 4],
+    pub sides: u32,
 }
 
 impl Default for BrushOpts {
@@ -164,6 +200,17 @@ impl Default for BrushOpts {
             contiguous: true,
             desaturate: false,
             gradient_to_clear: true,
+            gradient: crate::pixel_paint::GradientKind::Linear,
+            spacing: 0.25,
+            scatter: 0.0,
+            angle: 0.0,
+            roundness: 1.0,
+            shape: crate::pixel_paint::PixelShape::Rect,
+            shape_fill: true,
+            shape_outline: false,
+            line_width: 4.0,
+            outline_color: [0, 0, 0, 255],
+            sides: 5,
         }
     }
 }
@@ -585,12 +632,11 @@ pub fn bucket_fill(pi: &mut PixelImage, x: u32, y: u32, o: &BrushOpts) -> Option
     b
 }
 
-/// A straight gradient from `a` to `b` (picture pixels) in the
-/// selection: the colour at `a`, fading to clear (or white) at `b`.
+/// A gradient from `a` to `b` (picture pixels) in the selection, spread
+/// as `o.gradient` says: the colour at `a`, fading to clear (or white) at
+/// `b`.
 pub fn gradient(pi: &mut PixelImage, a: (f32, f32), b: (f32, f32), o: &BrushOpts) -> Option<Dirty> {
     let bounds = pi.sel_bounds()?;
-    let (dx, dy) = (b.0 - a.0, b.1 - a.1);
-    let len2 = (dx * dx + dy * dy).max(1e-6);
     let end = if o.gradient_to_clear {
         [o.color[0], o.color[1], o.color[2], 0]
     } else {
@@ -602,8 +648,8 @@ pub fn gradient(pi: &mut PixelImage, a: (f32, f32), b: (f32, f32), o: &BrushOpts
             if s <= 0.0 {
                 continue;
             }
-            let t = (((x as f32 + 0.5 - a.0) * dx + (y as f32 + 0.5 - a.1) * dy) / len2)
-                .clamp(0.0, 1.0);
+            let t =
+                crate::pixel_paint::gradient_t(o.gradient, a, b, x as f32 + 0.5, y as f32 + 0.5);
             let c = [0, 1, 2, 3].map(|i| {
                 (o.color[i] as f32 + (end[i] as f32 - o.color[i] as f32) * t).round() as u8
             });
@@ -1336,6 +1382,14 @@ pub struct Stroke {
     /// Smudge: the colours carried along.
     carried: Vec<[f32; 4]>,
     pub dirty: Option<Dirty>,
+    /// Restore: the picture as it was when the editing began, and where
+    /// the picture's top left pixel lies in it.
+    original: Option<std::rc::Rc<RgbaImage>>,
+    origin: (i64, i64),
+    /// Replace colour: the colour under the first dab.
+    target: Option<Rgba<u8>>,
+    /// Scatter: the state of the dabs' random offsets.
+    seed: u32,
 }
 
 impl Stroke {
@@ -1350,17 +1404,46 @@ impl Stroke {
             offset,
             carried: Vec::new(),
             dirty: None,
+            original: None,
+            origin: pi.origin,
+            target: None,
+            seed: 0x9E37_79B9,
+        }
+    }
+
+    /// The picture as it was when the editing began, for Restore.
+    pub fn with_original(mut self, img: std::rc::Rc<RgbaImage>) -> Self {
+        self.original = Some(img);
+        self
+    }
+
+    /// A random number from -1 to 1 (the same each stroke).
+    fn jitter(&mut self) -> f32 {
+        self.seed ^= self.seed << 13;
+        self.seed ^= self.seed >> 17;
+        self.seed ^= self.seed << 5;
+        (self.seed as f32 / u32::MAX as f32) * 2.0 - 1.0
+    }
+
+    /// A dab at (x, y), strayed by the scatter.
+    fn scattered_dab(&mut self, pi: &mut PixelImage, x: f32, y: f32) -> Option<Dirty> {
+        let s = self.opts.scatter.max(0.0) * self.opts.size * 0.5;
+        if s > 0.0 {
+            let (jx, jy) = (self.jitter(), self.jitter());
+            self.dab(pi, x + jx * s, y + jy * s)
+        } else {
+            self.dab(pi, x, y)
         }
     }
 
     /// The brush taken to (x, y): dabs along the way from the last
-    /// point, a quarter of the brush apart.
+    /// point, the spacing apart (a quarter of the brush by default).
     pub fn to(&mut self, pi: &mut PixelImage, x: f32, y: f32) -> Option<Dirty> {
-        let step = (self.opts.size * 0.25).max(1.0);
+        let step = (self.opts.size * self.opts.spacing.clamp(0.01, 5.0)).max(1.0);
         let mut changed: Option<Dirty> = None;
         match self.last {
             None => {
-                changed = self.dab(pi, x, y);
+                changed = self.scattered_dab(pi, x, y);
             }
             Some((lx, ly)) => {
                 let d = ((x - lx).powi(2) + (y - ly).powi(2)).sqrt();
@@ -1371,7 +1454,7 @@ impl Stroke {
                 for i in 1..=n {
                     let t = i as f32 * step / d;
                     let (px, py) = (lx + (x - lx) * t, ly + (y - ly) * t);
-                    if let Some(b) = self.dab(pi, px, py) {
+                    if let Some(b) = self.scattered_dab(pi, px, py) {
                         changed = Some(union(changed, b));
                     }
                 }
@@ -1419,11 +1502,25 @@ impl Stroke {
             }
             _ => None,
         };
+        if self.tool == PixelTool::ReplaceColor && self.target.is_none() {
+            let (tx, ty) = (cx.floor().max(0.0) as u32, cy.floor().max(0.0) as u32);
+            self.target = self.base.get_pixel_checked(tx, ty).copied();
+        }
         let flow = self.opts.flow.clamp(0.01, 1.0);
         let opacity = self.opts.opacity.clamp(0.0, 1.0);
+        // The tip turned by its angle and flattened by its roundness.
+        let (sin, cos) = self.opts.angle.to_radians().sin_cos();
+        let round = self.opts.roundness.clamp(0.05, 1.0);
         for y in y0..y1 {
             for x in x0..x1 {
-                let d = ((x as f32 + 0.5 - cx).powi(2) + (y as f32 + 0.5 - cy).powi(2)).sqrt();
+                let (px, py) = (x as f32 + 0.5 - cx, y as f32 + 0.5 - cy);
+                let d = if round < 1.0 {
+                    let u = px * cos + py * sin;
+                    let v = (py * cos - px * sin) / round;
+                    (u * u + v * v).sqrt()
+                } else {
+                    (px * px + py * py).sqrt()
+                };
                 let wgt = dab_weight(d, self.opts.size, self.opts.hardness) * pi.sel_at(x, y);
                 if wgt <= 0.0 {
                     continue;
@@ -1532,6 +1629,42 @@ impl Stroke {
                 None => *base,
             },
             PixelTool::RedEye => red_eye_px(base, t),
+            PixelTool::Restore => {
+                let ox = x as i64 + self.origin.0;
+                let oy = y as i64 + self.origin.1;
+                let was = self
+                    .original
+                    .as_ref()
+                    .filter(|_| ox >= 0 && oy >= 0)
+                    .and_then(|o| o.get_pixel_checked(ox as u32, oy as u32).copied())
+                    .unwrap_or(Rgba([0, 0, 0, 0]));
+                mix(base, &was, t)
+            }
+            PixelTool::Tint => {
+                // The brush colour moved to the pixel's lightness.
+                let c = Rgba(self.opts.color);
+                let shift = crate::fx::util::luma(base) - crate::fx::util::luma(&c);
+                let ch = |i: usize| (c[i] as f32 + shift).round().clamp(0.0, 255.0) as u8;
+                mix(base, &Rgba([ch(0), ch(1), ch(2), base[3]]), t)
+            }
+            PixelTool::ReplaceColor => {
+                // Pixels near the first dab's colour take the brush colour,
+                // keeping how far they were from it.
+                let Some(tg) = self.target else {
+                    return *base;
+                };
+                let tol = self.opts.tolerance.max(1) as f32;
+                let near = 1.0 - (color_distance(base, &tg) as f32 / tol).min(1.0);
+                if near <= 0.0 {
+                    return *base;
+                }
+                let ch = |i: usize| {
+                    (self.opts.color[i] as f32 + base[i] as f32 - tg[i] as f32)
+                        .round()
+                        .clamp(0.0, 255.0) as u8
+                };
+                mix(base, &Rgba([ch(0), ch(1), ch(2), base[3]]), t * near)
+            }
             _ => *base,
         }
     }
@@ -2362,6 +2495,88 @@ mod tests {
         paste_as_layer(&mut pi, "p".into(), &img).unwrap();
         assert_eq!(*pi.img.get_pixel(4, 4), Rgba([1, 2, 3, 255]));
         assert_eq!(pi.img.get_pixel(7, 7)[3], 0);
+    }
+
+    #[test]
+    fn restore_tint_and_replace_colour_brushes() {
+        let hard = BrushOpts {
+            size: 6.0,
+            hardness: 1.0,
+            opacity: 1.0,
+            flow: 1.0,
+            ..BrushOpts::default()
+        };
+        // Restore paints back the picture as first opened, crop included.
+        let orig = std::rc::Rc::new(RgbaImage::from_pixel(10, 10, Rgba([9, 9, 9, 255])));
+        let mut pi = solid(10, 10, [200, 0, 0, 255]);
+        pi.origin = (2, 0);
+        let mut s = Stroke::new(PixelTool::Restore, hard, &pi, (0.0, 0.0)).with_original(orig);
+        s.to(&mut pi, 3.0, 5.0);
+        assert_eq!(*pi.img.get_pixel(3, 5), Rgba([9, 9, 9, 255]));
+        assert_eq!(pi.img.get_pixel(9, 5)[0], 200);
+        // Outside the original picture it paints clear.
+        let mut s = Stroke::new(PixelTool::Restore, hard, &pi, (0.0, 0.0))
+            .with_original(std::rc::Rc::new(RgbaImage::new(4, 4)));
+        s.to(&mut pi, 7.0, 5.0);
+        assert_eq!(pi.img.get_pixel(7, 5)[3], 0);
+        // Tint: a grey pixel takes the hue and keeps its lightness.
+        let mut pi = solid(10, 10, [128, 128, 128, 255]);
+        let o = BrushOpts {
+            color: [255, 0, 0, 255],
+            ..hard
+        };
+        Stroke::new(PixelTool::Tint, o, &pi, (0.0, 0.0)).to(&mut pi, 5.0, 5.0);
+        let q = *pi.img.get_pixel(5, 5);
+        assert!(q[0] > q[1] && q[1] == q[2], "{q:?}");
+        let l = crate::fx::util::luma(&q);
+        assert!((l - 128.0).abs() < 25.0, "{l}");
+        // Replace colour: only pixels like the first dab's change.
+        let mut pi = solid(10, 10, [0, 200, 0, 255]);
+        for y in 0..10 {
+            pi.img.put_pixel(6, y, Rgba([0, 0, 200, 255]));
+        }
+        let o = BrushOpts {
+            color: [200, 0, 0, 255],
+            tolerance: 40,
+            size: 10.0,
+            ..hard
+        };
+        Stroke::new(PixelTool::ReplaceColor, o, &pi, (0.0, 0.0)).to(&mut pi, 4.5, 5.0);
+        assert_eq!(*pi.img.get_pixel(4, 5), Rgba([200, 0, 0, 255]));
+        assert_eq!(*pi.img.get_pixel(6, 5), Rgba([0, 0, 200, 255]));
+    }
+
+    #[test]
+    fn the_tip_spacing_and_roundness_shape_the_stroke() {
+        let o = BrushOpts {
+            size: 10.0,
+            hardness: 1.0,
+            opacity: 1.0,
+            flow: 1.0,
+            color: [0, 0, 0, 255],
+            roundness: 0.3,
+            angle: 0.0,
+            ..BrushOpts::default()
+        };
+        let mut pi = solid(20, 20, [255, 255, 255, 255]);
+        Stroke::new(PixelTool::Brush, o, &pi, (0.0, 0.0)).to(&mut pi, 10.0, 10.0);
+        assert_eq!(pi.img.get_pixel(14, 10)[0], 0, "wide across");
+        assert_eq!(pi.img.get_pixel(10, 14)[0], 255, "flat up and down");
+        let o = BrushOpts {
+            size: 2.0,
+            spacing: 3.0,
+            roundness: 1.0,
+            ..o
+        };
+        let mut pi = solid(20, 4, [255, 255, 255, 255]);
+        let mut s = Stroke::new(PixelTool::Brush, o, &pi, (0.0, 0.0));
+        s.to(&mut pi, 1.0, 2.0);
+        s.to(&mut pi, 19.0, 2.0);
+        let painted = (0..20).filter(|x| pi.img.get_pixel(*x, 2)[0] == 0).count();
+        assert!(
+            (3..=10).contains(&painted),
+            "dabs six pixels apart: {painted}"
+        );
     }
 
     #[test]

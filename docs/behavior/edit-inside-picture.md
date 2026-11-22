@@ -54,14 +54,23 @@ pixel y runs down, page y runs up.
 | Smudge | | drags colour along the stroke |
 | Red eye brush | | takes red out where painted |
 | Fill bucket | G | fills like-coloured pixels (Tolerance, Contiguous) |
-| Gradient | | from the colour to clear, or to white |
+| Gradient | | from the colour to clear, or to white: linear, reflected, radial, conical or square |
 | Eyedropper | I | picks the colour seen (all layers) |
 | Move | V | drags the pixels of the layer in use; what leaves the picture is lost |
 | Light | | paints light on the layer in use with the active light (see Light tool) |
+| Restore | | paints back the picture as it was when the editing began (clear where the picture had no pixels then) |
+| Tint | | the brush colour moved to each pixel's lightness (luma), alpha kept |
+| Replace Colour | | pixels within Tolerance of the colour under the first dab take the brush colour plus their difference from it, fading out towards the tolerance |
+| Shape | | rectangle, ellipse, regular polygon (3 to 24 sides, first corner at the top) or line in the dragged box: filled with the colour, outlined with the outline colour and width (centred on the edge), a line in the colour; anti-aliased, inside the selection, with the opacity; one undo step |
 
 Brush options: Size 1 to 1000 px (default 40), Hardness 0 to 100 %
 (50), Opacity 0 to 100 % (100), Flow 0 to 100 % (60). `[` and `]` change
 the size.
+
+Tip (a menu beside the brush options): Spacing 1 to 300 % of the size
+between dabs (25 %), Scatter 0 to 300 % (each dab strays up to half the
+size times it, across and along, the same each stroke), Angle 0 to 180
+degrees and Roundness 5 to 100 % (the tip flattened across its angle).
 
 Dab weight at distance `d` from the centre, `r = size / 2`,
 `inner = r * hardness`: 1 inside `inner`, 0 beyond `r`, smoothstep
@@ -249,6 +258,11 @@ settings with nothing painted.
   `a_mask_stroke_moves_towards_its_value_up_to_the_opacity`,
   `tone_channel_border_and_smooth_selections`,
   `quick_mask_turns_painting_into_a_selection`.
+- Brushes and shapes: `restore_tint_and_replace_colour_brushes`,
+  `the_tip_spacing_and_roundness_shape_the_stroke`,
+  `each_gradient_kind_spreads_its_own_way`,
+  `a_shape_is_filled_and_outlined_inside_the_selection`,
+  `a_line_and_a_polygon_are_drawn`.
 - Stretch and warp: `stretch_repeats_the_selections_edge_to_the_picture_edge`,
   `an_untouched_warp_leaves_the_layer_as_it_was`,
   `dragging_a_point_moves_the_pixels_with_it` in `pixel_warp::tests`.
