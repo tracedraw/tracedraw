@@ -4669,6 +4669,11 @@ fn text_menu(app: &mut App, ui: &mut Ui) {
         if item(ui, "menu.text.frame_unlink", "", linked) {
             app.unlink_text_frames();
         }
+        // Text and a closed shape picked: the text goes inside the
+        // shape's outline (discussion #3238).
+        if item(ui, "menu.text.frame_inside_shape", "", app.selection.len() == 2) {
+            app.put_text_inside_shape();
+        }
     });
     // Linked text content (#1568): texts that hold the same characters,
     // each in its own look; not the frame flow above.

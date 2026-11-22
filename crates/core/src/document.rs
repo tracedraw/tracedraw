@@ -2112,6 +2112,12 @@ pub struct ParagraphStyle {
     /// [`crate::text_flow`]); not saved.
     #[serde(skip)]
     pub flow: crate::text_flow::FrameFlow,
+    /// The closed shape this frame's text was put into (Text > Text
+    /// Frame > Put Text Inside Shape): its lines stay inside that
+    /// shape's outline, wherever the two stand. `None`, or a shape that
+    /// is gone: the plain rectangular frame. Not in older files.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inside: Option<ShapeId>,
     /// Which bullets this text draws when it is one part of a text drawn
     /// in parts ([`Shape::text_parts`], #3682); `None` (a whole text):
     /// every bullet, in its paragraph's first letter's look. Set only on
@@ -2301,6 +2307,14 @@ impl LeadingUnit {
 }
 
 impl ParagraphStyle {
+    /// The room kept between the outline of the shape the text was put
+    /// into ([`ParagraphStyle::inside`]) and its lines, mm.
+    pub fn inside_inset(&self) -> f64 {
+        1.0
+    }
+}
+
+impl ParagraphStyle {
     /// The distance from one baseline to the next, mm, for a line whose
     /// font has `line_height_mm` from ascent to descent plus gap at a size
     /// of `size_mm`.
@@ -2423,6 +2437,7 @@ impl Default for ParagraphStyle {
             frame_fill: None,
             bullet_part: None,
             flow: crate::text_flow::FrameFlow::default(),
+            inside: None,
         }
     }
 }
