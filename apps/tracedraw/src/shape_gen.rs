@@ -549,6 +549,21 @@ pub struct ShapeGenSettings {
     pub growth_steps: u32,
     /// The point limit.
     pub growth_max_nodes: u32,
+
+    // Deform and split (any generator).
+    /// Pins: anchor (share of Width and Height) and pull (share of the
+    /// longer side).
+    pub warp_pins: Vec<[f64; 4]>,
+    /// How far a pin's pull reaches, % of the longer side.
+    pub warp_reach: f64,
+    pub split_mode: crate::shape_gen_warp::SplitMode,
+    /// The picked outline, centred on the origin, mm.
+    pub split_shape: Option<BezPath>,
+    /// Where the picked outline's middle is on the page.
+    pub split_center: Option<[f64; 2]>,
+    /// The lines inside: colour and width (0 keeps the line width), mm.
+    pub split_color: [u8; 3],
+    pub split_width: f64,
 }
 
 impl Default for ShapeGenSettings {
@@ -703,6 +718,13 @@ impl Default for ShapeGenSettings {
             growth_rate: 3,
             growth_steps: 200,
             growth_max_nodes: 3000,
+            warp_pins: Vec::new(),
+            warp_reach: 20.0,
+            split_mode: crate::shape_gen_warp::SplitMode::Off,
+            split_shape: None,
+            split_center: None,
+            split_color: [255, 205, 220],
+            split_width: 0.0,
         }
     }
 }
@@ -720,6 +742,8 @@ pub enum Paint {
     /// A halftone screen's ink (0 cyan, 1 magenta, 2 yellow, 3 black):
     /// filled with it, each ink grouped on its own.
     Ink(u8),
+    /// Lines inside the split shape: the second colour and width.
+    Accent,
 }
 
 #[derive(Debug, Clone)]
@@ -942,6 +966,20 @@ impl ShapeGenSettings {
         s.growth_rate = s.growth_rate.min(100);
         s.growth_steps = s.growth_steps.min(crate::shape_gen_growth::MAX_STEPS);
         s.growth_max_nodes = s.growth_max_nodes.clamp(100, 20_000);
+        s.warp_pins.retain(|p| p.iter().all(|v| v.is_finite()));
+        s.warp_pins.truncate(crate::shape_gen_warp::MAX_PINS);
+        for p in &mut s.warp_pins {
+            p[0] = p[0].clamp(-1.0, 2.0);
+            p[1] = p[1].clamp(-1.0, 2.0);
+            p[2] = p[2].clamp(-2.0, 2.0);
+            p[3] = p[3].clamp(-2.0, 2.0);
+        }
+        s.warp_reach = clampf(s.warp_reach, 1.0, 100.0, d.warp_reach);
+        s.split_width = clampf(s.split_width, 0.0, 50.0, 0.0);
+        s.split_shape = s
+            .split_shape
+            .take()
+            .filter(|p| !p.elements().is_empty() && p.elements().len() < 2_000_000);
         s
     }
 }
@@ -973,6 +1011,7 @@ pub fn generate(settings: &ShapeGenSettings) -> Generated {
         GenKind::SliceGrid => crate::shape_gen_slice::slice_grid(&s, &mut out),
         GenKind::Growth => crate::shape_gen_growth::growth(&s, &mut out),
     }
+    crate::shape_gen_warp::post(&s, &mut out);
     out
 }
 
@@ -2185,6 +2224,15 @@ impl crate::app::App {
         let shift = Affine::translate(center - anchor.center());
         let color = self.shape_gen_color();
         let line = self.shape_gen_line_stroke(s);
+        let accent = {
+            let [r, g, b] = s.split_color;
+            let mut st = line.clone();
+            st.color = tracedraw_core::Color::rgb8(r, g, b);
+            if s.split_width > 0.0 {
+                st.width = s.split_width;
+            }
+            st
+        };
         let mut children: Vec<Shape> = Vec::new();
         let make = |app: &mut Self, path: BezPath, closed: bool, paint: Paint| {
             let id = app.engine.new_shape_id();
@@ -2207,6 +2255,10 @@ impl crate::app::App {
                 Paint::Ink(k) => {
                     shape.fill = Fill::Solid(crate::shape_gen_cells::ink_color(k));
                     shape.stroke = None;
+                }
+                Paint::Accent => {
+                    shape.fill = Fill::None;
+                    shape.stroke = Some(accent.clone());
                 }
             }
             shape
@@ -2299,8 +2351,15 @@ impl crate::app::App {
         let g = self
             .shape_gen_growth_cached(&s)
             .unwrap_or_else(|| generate(&s));
-        let center = match s.source_center {
-            Some(c) if s.kind.uses_source() => Point::new(c[0], c[1]),
+        let split = s.split_center.filter(|_| {
+            s.split_mode != crate::shape_gen_warp::SplitMode::Off
+                && s.split_shape.is_some()
+                && crate::shape_gen_warp::applies(s.kind)
+        });
+        let center = match (s.source_center, split) {
+            (Some(c), _) if s.kind.uses_source() => Point::new(c[0], c[1]),
+            // Split by a shape: the drawing centred on it.
+            (_, Some(c)) => Point::new(c[0], c[1]),
             _ => self.shape_gen_place(),
         };
         self.shape_gen_add(&s, &g, center, None, "Shape Generator")
@@ -2367,18 +2426,14 @@ impl crate::app::App {
         Some(gid)
     }
 
-    /// Use Selection: the selection becomes the panel's source. Its box
-    /// sets Width and Height and where Create puts the result, its closed
-    /// curves (welded, holes kept) the outline Voronoi fills and marks
-    /// stay in, and for stippling and halftone it is drawn to a picture
-    /// whose tones size the marks. False with nothing selected.
-    pub fn shape_gen_use_selection(&mut self) -> bool {
+    /// The selection's box and its closed outlines welded into one
+    /// (holes kept; text as its letters), in page space; None with
+    /// nothing selected or a flat selection.
+    pub(crate) fn shape_gen_selection_outline(&self) -> Option<(Rect, Option<BezPath>)> {
         use tracedraw_core::{Shape, ShapeKind};
-        let Some(bounds) = self.selection_bounds() else {
-            return false;
-        };
+        let bounds = self.selection_bounds()?;
         if bounds.width() <= 1e-6 || bounds.height() <= 1e-6 {
-            return false;
+            return None;
         }
         fn walk(shape: &Shape, t: Affine, out: &mut Vec<BezPath>) {
             match &shape.kind {
@@ -2399,10 +2454,8 @@ impl crate::app::App {
         for shape in self.selected_shapes() {
             walk(&shape, Affine::IDENTITY, &mut paths);
         }
-        let to_box = Affine::translate(Vec2::new(-bounds.x0, -bounds.y0));
         let mut outline: Option<BezPath> = None;
         for p in paths {
-            let p = to_box * p;
             outline = Some(match outline {
                 None => tracedraw_core::shaping::overlay(
                     &p,
@@ -2414,11 +2467,25 @@ impl crate::app::App {
                 }
             });
         }
+        Some((bounds, outline.filter(|o| !o.elements().is_empty())))
+    }
+
+    /// Use Selection: the selection becomes the panel's source. Its box
+    /// sets Width and Height and where Create puts the result, its closed
+    /// curves (welded, holes kept) the outline Voronoi fills and marks
+    /// stay in, and for stippling and halftone it is drawn to a picture
+    /// whose tones size the marks. False with nothing selected.
+    pub fn shape_gen_use_selection(&mut self) -> bool {
+        let Some((bounds, outline)) = self.shape_gen_selection_outline() else {
+            return false;
+        };
+        let to_box = Affine::translate(Vec2::new(-bounds.x0, -bounds.y0));
+        let outline = outline.map(|o| to_box * o);
         let s = &mut self.shape_gen;
         s.width = bounds.width();
         s.height = bounds.height();
         s.source_center = Some([bounds.center().x, bounds.center().y]);
-        s.boundary = outline.filter(|o| !o.elements().is_empty());
+        s.boundary = outline;
         s.vor_points.clear();
         s.tone = None;
         if self.shape_gen.kind.uses_tone() {

@@ -103,6 +103,7 @@ mod shape_gen_curves;
 mod shape_gen_fill;
 mod shape_gen_growth;
 mod shape_gen_slice;
+mod shape_gen_warp;
 mod fill_tool;
 mod pattern_fill_tool;
 mod fit_live;

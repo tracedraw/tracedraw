@@ -292,3 +292,17 @@ reached. [[shapegen.growth_stop]] (Shift+Space) puts it on the page as
 curves. [[shapegen.growth_steps]] follows the growth, and the same steps
 always grow the same line, so a paused growth can be stepped by hand and
 Update makes a group again exactly.
+
+## Deform and split by a shape {#deform}
+
+Open [[shapegen.deform]] and drag in the preview to add a pin and pull the
+drawing with it: the lines near the pin follow, fading out over the
+[[shapegen.warp_reach]], so rings and waves bend smoothly like a
+fingerprint. Drag a pin's end to change its pull or its start to move it,
+right-click it to remove it, and [[shapegen.warp_clear]] removes them all.
+
+[[shapegen.split_mode]] cuts the lines where they cross a shape or text:
+select it, click [[shapegen.split_pick]], and choose to draw the parts
+inside in the [[shapegen.split_color]] and [[shapegen.split_width]], or to
+keep only the parts inside or outside. Create centres the drawing on the
+picked shape, and the pieces stay open lines.

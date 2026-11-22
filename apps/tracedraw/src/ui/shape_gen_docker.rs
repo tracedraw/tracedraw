@@ -18,6 +18,7 @@ use crate::shape_gen_curves::{FractalType, SpiroType, TilingType};
 use crate::shape_gen_fill::{ContourMode, HatchMode, MazeStyle, SpaceCurve};
 use crate::shape_gen_growth::GrowthStart;
 use crate::shape_gen_slice::{SliceLayout, SlicePattern};
+use crate::shape_gen_warp::SplitMode;
 use crate::theme::Tokens;
 use crate::ui::docker_form::{indented, row, section, wide_button};
 use crate::ui::tips::RichTip;
@@ -295,7 +296,7 @@ fn draw_preview(ui: &mut Ui, data: &PreviewData, sense: Sense) -> (egui::Respons
     for (pts, closed, paint) in &data.curves {
         let pts: Vec<Pos2> = pts.iter().map(|p| map(*p)).collect();
         let fill = match paint {
-            Paint::Line => None,
+            Paint::Line | Paint::Accent => None,
             Paint::Solid => Some(ink),
             Paint::Face(0) => Some(Color32::from_gray(0xE8)),
             Paint::Face(1) => Some(Color32::from_gray(0x9C)),
@@ -317,12 +318,202 @@ fn draw_preview(ui: &mut Ui, data: &PreviewData, sense: Sense) -> (egui::Respons
             _ if *closed => {
                 painter.add(egui::Shape::closed_line(pts, line));
             }
+            _ if *paint == Paint::Accent => {
+                painter.add(egui::Shape::line(pts, Stroke::new(1.4, ACCENT)));
+            }
             _ => {
                 painter.add(egui::Shape::line(pts, line));
             }
         }
     }
     (resp, pm)
+}
+
+/// How the preview shows lines inside the split shape and the pins.
+const ACCENT: Color32 = Color32::from_rgb(0xD0, 0x30, 0x70);
+
+/// Pins edited in the preview: drag from anywhere to add a pin and pull,
+/// drag a pin's end to change its pull or its start to move it, right
+/// click one to delete it.
+fn edit_pins(app: &mut App, data: &PreviewData, resp: &egui::Response, pm: PreviewMap) {
+    use crate::shape_gen_warp::{pins, MAX_PINS};
+    let s = &mut app.shape_gen;
+    let (w, h) = (s.width.max(1e-9), s.height.max(1e-9));
+    let side = w.max(h);
+    let painter = resp
+        .ctx
+        .layer_painter(resp.layer_id)
+        .with_clip_rect(resp.rect);
+    let at = pins(s);
+    let screen: Vec<(Pos2, Pos2)> = at
+        .iter()
+        .map(|(a, pull)| {
+            (
+                pm.to_screen(data, a.x, a.y),
+                pm.to_screen(data, a.x + pull.x, a.y + pull.y),
+            )
+        })
+        .collect();
+    for (a, b) in &screen {
+        painter.line_segment([*a, *b], Stroke::new(1.2, ACCENT));
+        painter.circle_stroke(*a, 3.0, Stroke::new(1.2, ACCENT));
+        painter.circle_filled(*b, 3.5, ACCENT);
+    }
+    // The end first: a pin with no pull yet is moved by its end.
+    let hit = |p: Pos2| -> Option<(bool, usize)> {
+        let near = |q: Pos2| q.distance(p) <= 8.0;
+        screen
+            .iter()
+            .position(|(_, b)| near(*b))
+            .map(|k| (true, k))
+            .or_else(|| {
+                screen
+                    .iter()
+                    .position(|(a, _)| near(*a))
+                    .map(|k| (false, k))
+            })
+    };
+    let id = resp.id.with("dragged_pin");
+    if resp.drag_started() {
+        let target = resp.interact_pointer_pos().and_then(|p| {
+            hit(p).or_else(|| {
+                (s.warp_pins.len() < MAX_PINS).then(|| {
+                    let (x, y) = pm.to_drawing(data, p);
+                    s.warp_pins.push([x / w, y / h, 0.0, 0.0]);
+                    (true, s.warp_pins.len() - 1)
+                })
+            })
+        });
+        resp.ctx.data_mut(|d| d.insert_temp(id, target));
+    }
+    if resp.dragged() {
+        let target: Option<(bool, usize)> = resp.ctx.data(|d| d.get_temp(id)).flatten();
+        if let (Some((end, k)), Some(p)) = (target, resp.interact_pointer_pos()) {
+            let (x, y) = pm.to_drawing(data, p);
+            if let Some(pin) = s.warp_pins.get_mut(k) {
+                if end {
+                    pin[2] = (x - pin[0] * w) / side;
+                    pin[3] = (y - pin[1] * h) / side;
+                } else {
+                    pin[0] = x / w;
+                    pin[1] = y / h;
+                }
+            }
+        }
+    }
+    if resp.drag_stopped() {
+        resp.ctx
+            .data_mut(|d| d.insert_temp::<Option<(bool, usize)>>(id, None));
+    }
+    if resp.secondary_clicked() {
+        if let Some((_, k)) = resp.interact_pointer_pos().and_then(hit) {
+            if k < s.warp_pins.len() {
+                s.warp_pins.remove(k);
+            }
+        }
+    }
+}
+
+/// Deform (pins and their reach) and Split by shape (how, the second
+/// colour and width, and the picked outline).
+fn deform_split(app: &mut App, ui: &mut Ui, units: crate::app::Units, precision: usize) {
+    section(ui, None);
+    let used = !app.shape_gen.warp_pins.is_empty() || app.shape_gen.split_mode != SplitMode::Off;
+    let shown = egui::CollapsingHeader::new(tr("shapegen.deform"))
+        .id_salt("shapegen_deform")
+        .default_open(used)
+        .show(ui, |ui| deform_split_body(app, ui, units, precision));
+    shown
+        .header_response
+        .rich_tip(crate::ui::tips::keyed("shapegen.deform"));
+}
+
+fn deform_split_body(app: &mut App, ui: &mut Ui, units: crate::app::Units, precision: usize) {
+    {
+        let s = &mut app.shape_gen;
+        ui.add(
+            egui::Label::new(
+                egui::RichText::new(tr("shapegen.deform_hint")).color(Tokens::text_dim()),
+            )
+            .wrap(),
+        );
+        row(ui, &tr("shapegen.warp_reach"), |ui| {
+            slider(
+                ui,
+                &mut s.warp_reach,
+                1.0..=100.0,
+                0,
+                " %",
+                "shapegen.warp_reach",
+            )
+        });
+        if !s.warp_pins.is_empty() {
+            indented(ui, |ui| {
+                if ui
+                    .button(tr("shapegen.warp_clear"))
+                    .rich_tip(crate::ui::tips::keyed("shapegen.warp_clear"))
+                    .clicked()
+                {
+                    s.warp_pins.clear();
+                }
+            });
+        }
+        row(ui, &tr("shapegen.split_mode"), |ui| {
+            combo(
+                ui,
+                "shapegen_split_mode",
+                &mut s.split_mode,
+                &SplitMode::ALL,
+                SplitMode::key,
+                "shapegen.split_mode",
+            );
+        });
+        if s.split_mode == SplitMode::Colors {
+            row(ui, &tr("shapegen.split_color"), |ui| {
+                ui.color_edit_button_srgb(&mut s.split_color)
+                    .rich_tip(crate::ui::tips::keyed("shapegen.split_color"));
+            });
+            row(ui, &tr("shapegen.split_width"), |ui| {
+                length(
+                    ui,
+                    units,
+                    precision,
+                    &mut s.split_width,
+                    0.0,
+                    50.0,
+                    "shapegen.split_width",
+                )
+            });
+        }
+    }
+    if app.shape_gen.split_mode == SplitMode::Off {
+        return;
+    }
+    let picked = app.shape_gen.split_shape.is_some();
+    let text = if picked {
+        tr("shapegen.split_picked")
+    } else {
+        tr("shapegen.split_none")
+    };
+    ui.add(egui::Label::new(egui::RichText::new(text).color(Tokens::text_dim())).wrap());
+    let can = !app.selection.is_empty() && app.shape_gen_selected().is_none();
+    ui.horizontal(|ui| {
+        if ui
+            .add_enabled(can, egui::Button::new(tr("shapegen.split_pick")))
+            .rich_tip(crate::ui::tips::keyed("shapegen.split_pick"))
+            .clicked()
+        {
+            app.shape_gen_pick_split();
+        }
+        if picked
+            && ui
+                .button(tr("shapegen.clear_source"))
+                .rich_tip(crate::ui::tips::keyed("shapegen.split_clear"))
+                .clicked()
+        {
+            app.shape_gen_clear_split();
+        }
+    });
 }
 
 /// Voronoi sites edited in the preview: drag one to move it, double
@@ -1851,6 +2042,10 @@ pub fn shape_generator(app: &mut App, ui: &mut Ui) {
     if app.shape_gen.kind.uses_source() {
         source_row(app, ui);
     }
+    let warping = crate::shape_gen_warp::applies(app.shape_gen.kind);
+    if warping {
+        deform_split(app, ui, units, precision);
+    }
     section(ui, None);
     let growing = app.shape_gen.kind == GenKind::Growth;
     let data = if growing {
@@ -1859,7 +2054,8 @@ pub fn shape_generator(app: &mut App, ui: &mut Ui) {
         preview_for(ui, &app.shape_gen.sanitized())
     };
     let editing = app.shape_gen.kind == GenKind::Voronoi;
-    let sense = if editing {
+    let pinning = warping && !editing;
+    let sense = if editing || pinning {
         Sense::click_and_drag()
     } else {
         Sense::hover()
@@ -1868,6 +2064,9 @@ pub fn shape_generator(app: &mut App, ui: &mut Ui) {
     if editing {
         let resp = resp.rich_tip(crate::ui::tips::keyed("shapegen.edit_points"));
         edit_sites(app, &data, &resp, pm);
+    } else if pinning {
+        let resp = resp.rich_tip(crate::ui::tips::keyed("shapegen.edit_pins"));
+        edit_pins(app, &data, &resp, pm);
     }
     let n = if data.cut {
         trf(

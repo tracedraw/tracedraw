@@ -305,3 +305,18 @@ pausar. Ele para sozinho quando o espaço enche ou o
 [[shapegen.growth_steps]] acompanha o crescimento, e os mesmos passos
 sempre fazem a mesma linha, então um crescimento pausado pode ser avançado
 à mão e Atualizar refaz o grupo exatamente igual.
+
+## Deformar e dividir por uma forma {#deform}
+
+Abra [[shapegen.deform]] e arraste na pré-visualização para criar um pino e
+puxar o desenho com ele: as linhas perto do pino acompanham, diminuindo ao
+longo do [[shapegen.warp_reach]], então anéis e ondas se curvam suavemente
+como uma impressão digital. Arraste a ponta de um pino para mudar a força ou
+o início para movê-lo, clique com o botão direito para removê-lo, e
+[[shapegen.warp_clear]] remove todos.
+
+[[shapegen.split_mode]] corta as linhas onde elas cruzam uma forma ou um
+texto: selecione-o, clique em [[shapegen.split_pick]] e escolha desenhar as
+partes de dentro com a [[shapegen.split_color]] e a [[shapegen.split_width]],
+ou manter só as partes de dentro ou de fora. Criar centraliza o desenho na
+forma escolhida, e os pedaços continuam linhas abertas.

@@ -212,3 +212,24 @@ the settings) and `ui/shape_gen_docker.rs`. Issues #3412 and #3413.
   follows it; paused, it catches up with Steps (going back restarts it);
   any other change restarts it. Space over the panel starts or pauses,
   Shift+Space or Stop makes the curves (Create, one undo step).
+
+## Deform and split (`shape_gen_warp.rs`)
+
+- After any generator but the cone template, slice grid and growth.
+- Pins: anchor as a share of Width and Height, pull as a share of the
+  longer side (at most 64). Every curve is flattened (tolerance side /
+  4000, pieces at most side / 300 long) and each point moves by the sum
+  of the pulls times exp(-d^2 / 2 sigma^2), sigma = Reach % of the longer
+  side; the curves become straight-line paths, closed ones stay closed.
+  The drawing's frame stays its unbent box.
+- Split by shape: the picked outline (the selection's closed curves and
+  text welded, holes kept) is stored centred on the origin and placed on
+  the drawing's middle; outline-only curves are cut where they cross it
+  (`shaping::cut_open`, nonzero inside): Inside in another colour keeps
+  both sides, the inside parts with the second colour and width (0 keeps
+  the line width); Inside only and Outside only keep one side as plain
+  lines. Every piece is open; filled marks are left whole. Create puts
+  the drawing's middle on the picked outline's middle.
+- Preview: drag from empty space adds a pin and sets its pull, drag a
+  pin's end or start edits it, right click deletes it (Voronoi keeps its
+  site editing instead).
