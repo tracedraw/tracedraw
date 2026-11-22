@@ -1012,7 +1012,6 @@ docker.duplicate_symbol_tip = "Nový symbol kreslící kopii objektů tohoto sym
 docker.symbol_copy_name = "{name} kopie" # mt
 docker.symbolize_similar = "Podle podobnosti" # mt
 docker.symbolize_similar_tip = "Převede každou skupinu, která kopíruje vybranou skupinu, na instanci jednoho symbolu, na místě každé skupiny; popisky zůstávají upravitelným textem." # mt
-docker.symbol_search = "Hledat symboly" # mt
 docker.replace_symbol = "Nahradit" # mt
 docker.replace_symbol_tip = "Sloučí tento symbol s jiným: všechny instance jej následují a tato definice se odstraní." # mt
 docker.edit_with_text_tool = "Upravit nástrojem Text (F8)"

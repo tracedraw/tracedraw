@@ -1012,7 +1012,6 @@ docker.duplicate_symbol_tip = "इस प्रतीक की वस्तु�
 docker.symbol_copy_name = "{name} प्रति" # mt
 docker.symbolize_similar = "समानता से" # mt
 docker.symbolize_similar_tip = "हर उस समूह को, जो चयनित समूह की नकल करता है, एक ही प्रतीक के इंस्टेंस में बदलें, प्रत्येक समूह अपनी जगह पर रहे; लेबल संपादन योग्य पाठ बने रहते हैं।" # mt
-docker.symbol_search = "प्रतीक खोजें" # mt
 docker.replace_symbol = "बदलें" # mt
 docker.replace_symbol_tip = "इस प्रतीक को दूसरे में मिलाएँ: हर इंस्टेंस उसका अनुसरण करता है और यह परिभाषा हटा दी जाती है।" # mt
 docker.edit_with_text_tool = "टेक्स्ट टूल से संपादित करें (F8)"

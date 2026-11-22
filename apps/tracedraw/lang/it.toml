@@ -1012,7 +1012,6 @@ docker.duplicate_symbol_tip = "Un nuovo simbolo che disegna una copia degli ogge
 docker.symbol_copy_name = "Copia di {name}" # mt
 docker.symbolize_similar = "Per somiglianza" # mt
 docker.symbolize_similar_tip = "Trasforma ogni gruppo che copia il gruppo selezionato in un'istanza di un unico simbolo, al posto di ciascun gruppo; le etichette restano testo modificabile." # mt
-docker.symbol_search = "Cerca simboli" # mt
 docker.replace_symbol = "Sostituisci" # mt
 docker.replace_symbol_tip = "Unisce questo simbolo a un altro: ogni istanza segue e questa definizione viene rimossa." # mt
 docker.edit_with_text_tool = "Modifica con lo strumento Testo (F8)"

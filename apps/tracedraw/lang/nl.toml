@@ -1012,7 +1012,6 @@ docker.duplicate_symbol_tip = "Een nieuw symbool dat een kopie van de objecten v
 docker.symbol_copy_name = "Kopie van {name}" # mt
 docker.symbolize_similar = "Op gelijkenis" # mt
 docker.symbolize_similar_tip = "Maakt van elke groep die de geselecteerde groep kopieert een instantie van één symbool, op de plaats van elke groep; labels blijven bewerkbare tekst." # mt
-docker.symbol_search = "Symbolen zoeken" # mt
 docker.replace_symbol = "Vervangen" # mt
 docker.replace_symbol_tip = "Voegt dit symbool samen met een ander: elke instantie volgt en deze definitie wordt verwijderd." # mt
 docker.edit_with_text_tool = "Bewerken met het gereedschap Tekst (F8)"

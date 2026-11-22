@@ -1012,7 +1012,6 @@ docker.duplicate_symbol_tip = "Simbol baru yang menggambar salinan objek simbol 
 docker.symbol_copy_name = "Salinan {name}" # mt
 docker.symbolize_similar = "Berdasarkan kemiripan" # mt
 docker.symbolize_similar_tip = "Ubah setiap grup yang menyalin grup terpilih menjadi instans dari satu simbol, di tempat masing-masing grup; label tetap teks yang dapat diedit." # mt
-docker.symbol_search = "Cari simbol" # mt
 docker.replace_symbol = "Ganti" # mt
 docker.replace_symbol_tip = "Gabungkan simbol ini ke simbol lain: semua instans mengikutinya dan definisi ini dihapus." # mt
 docker.edit_with_text_tool = "Edit dengan alat Teks (F8)"

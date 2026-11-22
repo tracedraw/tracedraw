@@ -1012,7 +1012,6 @@ docker.duplicate_symbol_tip = "Ein neues Symbol, das eine Kopie der Objekte dies
 docker.symbol_copy_name = "{name} Kopie" # mt
 docker.symbolize_similar = "Nach Ähnlichkeit" # mt
 docker.symbolize_similar_tip = "Wandelt jede Gruppe, die die ausgewählte Gruppe kopiert, in eine Instanz eines Symbols um, an der Stelle jeder Gruppe; Beschriftungen bleiben bearbeitbarer Text." # mt
-docker.symbol_search = "Symbole suchen" # mt
 docker.replace_symbol = "Ersetzen" # mt
 docker.replace_symbol_tip = "Führt dieses Symbol mit einem anderen zusammen: jede Instanz folgt und diese Definition wird entfernt." # mt
 docker.edit_with_text_tool = "Mit dem Hilfsmittel Text bearbeiten (F8)"

@@ -1012,7 +1012,6 @@ docker.duplicate_symbol_tip = "এই প্রতীকের বস্তু�
 docker.symbol_copy_name = "{name} অনুলিপি" # mt
 docker.symbolize_similar = "সাদৃশ্য অনুযায়ী" # mt
 docker.symbolize_similar_tip = "নির্বাচিত গ্রুপের অনুলিপি করা প্রতিটি গ্রুপকে একই প্রতীকের একটি ইনস্ট্যান্সে পরিণত করুন, প্রতিটি গ্রুপ তার নিজের জায়গায় থাকবে; লেবেল সম্পাদনাযোগ্য পাঠ্য হিসেবে থাকবে।" # mt
-docker.symbol_search = "প্রতীক খুঁজুন" # mt
 docker.replace_symbol = "প্রতিস্থাপন" # mt
 docker.replace_symbol_tip = "এই প্রতীকটি অন্য একটিতে একীভূত করুন: প্রতিটি ইনস্ট্যান্স অনুসরণ করবে এবং এই সংজ্ঞা সরানো হবে।" # mt
 docker.edit_with_text_tool = "টেক্সট টুল দিয়ে সম্পাদনা করুন (F8)"

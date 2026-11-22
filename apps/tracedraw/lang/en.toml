@@ -1014,7 +1014,6 @@ docker.duplicate_symbol_tip = "A new symbol drawing a copy of this one's objects
 docker.symbol_copy_name = "{name} copy"
 docker.symbolize_similar = "By similarity"
 docker.symbolize_similar_tip = "Turn every group that copies the selected group into an instance of one symbol, where each group stands; labels stay editable text."
-docker.symbol_search = "Search symbols"
 docker.replace_symbol = "Replace"
 docker.replace_symbol_tip = "Merge this symbol into another: every instance follows and this definition is removed."
 docker.edit_with_text_tool = "Edit with the Text tool (F8)"

@@ -1012,7 +1012,6 @@ docker.duplicate_symbol_tip = "رمز جديد يرسم نسخة من كائنا
 docker.symbol_copy_name = "نسخة من {name}" # mt
 docker.symbolize_similar = "حسب التشابه" # mt
 docker.symbolize_similar_tip = "حوّل كل مجموعة تنسخ المجموعة المحددة إلى مثيل لرمز واحد، في مكان كل مجموعة؛ تبقى التسميات نصًا قابلًا للتحرير." # mt
-docker.symbol_search = "البحث عن الرموز" # mt
 docker.replace_symbol = "استبدال" # mt
 docker.replace_symbol_tip = "ادمج هذا الرمز في رمز آخر: تتبع كل المثيلات ذلك ويُزال هذا التعريف." # mt
 docker.edit_with_text_tool = "حرّر بأداة النص (F8)"

@@ -1012,7 +1012,6 @@ docker.duplicate_symbol_tip = "Bu sembolün nesnelerinin bir kopyasını çizen,
 docker.symbol_copy_name = "{name} kopyası" # mt
 docker.symbolize_similar = "Benzerliğe göre" # mt
 docker.symbolize_similar_tip = "Seçili grubu kopyalayan her grubu, her grubun bulunduğu yerde tek bir sembolün örneğine dönüştürür; etiketler düzenlenebilir metin olarak kalır." # mt
-docker.symbol_search = "Sembol ara" # mt
 docker.replace_symbol = "Değiştir" # mt
 docker.replace_symbol_tip = "Bu sembolü başka bir sembolle birleştirir: tüm örnekler onu izler ve bu tanım kaldırılır." # mt
 docker.edit_with_text_tool = "Metin aracıyla düzenle (F8)"

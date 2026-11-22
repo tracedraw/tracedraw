@@ -2024,8 +2024,6 @@ pub struct App {
     /// The last Symbolize Similar / Replace Symbol result, shown under
     /// the Symbols list.
     pub symbolize_report: Option<String>,
-    /// The Symbols list's search text.
-    pub symbol_filter: String,
     /// The Replace Symbol pick: the source symbol whose instances will
     /// move; the next press on another symbol's Replace button merges.
     pub symbol_replace_source: Option<usize>,
@@ -3615,7 +3613,6 @@ impl App {
             object_thumbs: Default::default(),
             symbol_thumbs: Default::default(),
             symbolize_report: None,
-            symbol_filter: String::new(),
             symbol_replace_source: None,
             symbol_rename: None,
             objects_master_closed: false,

@@ -1012,7 +1012,6 @@ docker.duplicate_symbol_tip = "一個繪製此符號物件副本的新符號，�
 docker.symbol_copy_name = "{name} 副本" # mt
 docker.symbolize_similar = "依相似性" # mt
 docker.symbolize_similar_tip = "將每個複製所選群組的群組轉換為同一符號的實例，保留在各群組原來的位置；標籤仍是可編輯文字。" # mt
-docker.symbol_search = "搜尋符號" # mt
 docker.replace_symbol = "取代" # mt
 docker.replace_symbol_tip = "將此符號合併到另一個符號：所有實例隨之變更，此定義將被移除。" # mt
 docker.edit_with_text_tool = "使用文字工具編輯 (F8)"

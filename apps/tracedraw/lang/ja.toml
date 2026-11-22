@@ -1012,7 +1012,6 @@ docker.duplicate_symbol_tip = "このシンボルのオブジェクトのコピ�
 docker.symbol_copy_name = "{name} のコピー" # mt
 docker.symbolize_similar = "類似性で" # mt
 docker.symbolize_similar_tip = "選択したグループをコピーしているすべてのグループを、それぞれの位置で 1 つのシンボルのインスタンスに変えます。ラベルは編集可能なテキストのままです。" # mt
-docker.symbol_search = "シンボルを検索" # mt
 docker.replace_symbol = "置換" # mt
 docker.replace_symbol_tip = "このシンボルを別のシンボルに統合します: すべてのインスタンスが追従し、この定義は削除されます。" # mt
 docker.edit_with_text_tool = "テキストツールで編集 (F8)"

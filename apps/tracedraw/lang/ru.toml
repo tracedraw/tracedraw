@@ -1012,7 +1012,6 @@ docker.duplicate_symbol_tip = "Новый символ, рисующий коп�
 docker.symbol_copy_name = "{name} копия" # mt
 docker.symbolize_similar = "По подобию" # mt
 docker.symbolize_similar_tip = "Превратить каждую группу, копирующую выделенную, в экземпляр одного символа на месте группы; надписи остаются редактируемым текстом." # mt
-docker.symbol_search = "Поиск символов" # mt
 docker.replace_symbol = "Заменить" # mt
 docker.replace_symbol_tip = "Слить этот символ с другим: все экземпляры перейдут, это определение удалится." # mt
 docker.edit_with_text_tool = "Редактируйте инструментом Текст (F8)"

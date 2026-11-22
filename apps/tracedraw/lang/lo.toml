@@ -1014,7 +1014,6 @@ docker.duplicate_symbol_tip = "ສັນຍາລັກໃໝ່ທີ່ແຕ�
 docker.symbol_copy_name = "ສຳເນົາ {name}" # mt
 docker.symbolize_similar = "ຕາມຄວາມຄ້າຍຄື" # mt
 docker.symbolize_similar_tip = "ປ່ຽນທຸກກຸ່ມທີ່ສຳເນົາກຸ່ມທີ່ເລືອກ ໃຫ້ເປັນສຳເນົາຂອງສັນຍະລັກດຽວກັນ, ຢູ່ບ່ອນຂອງແຕ່ລະກຸ່ມ; ປ້າຍຊື່ຍັງເປັນຂໍ້ຄວາມທີ່ແກ້ໄຂໄດ້." # mt
-docker.symbol_search = "ຄົ້ນຫາສັນຍະລັກ" # mt
 docker.replace_symbol = "ປ່ຽນແທນ" # mt
 docker.replace_symbol_tip = "ລວມສັນຍະລັກນີ້ເຂົ້າກັບອັນອື່ນ: ທຸກສຳເນົາຈະປ່ຽນຕາມ ແລະ ຄຳນິຍາມນີ້ຈະຖືກລຶບ." # mt
 docker.edit_with_text_tool = "ແກ້ໄຂດ້ວຍເຄື່ອງມືຂໍ້ຄວາມ (F8)"

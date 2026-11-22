@@ -1012,7 +1012,6 @@ docker.duplicate_symbol_tip = "Um novo símbolo que desenha uma cópia dos objet
 docker.symbol_copy_name = "Cópia de {name}" # mt
 docker.symbolize_similar = "Por similaridade" # mt
 docker.symbolize_similar_tip = "Transforma cada grupo que copia o grupo selecionado em uma instância de um mesmo símbolo, onde cada grupo estiver; os rótulos continuam texto editável." # mt
-docker.symbol_search = "Pesquisar símbolos" # mt
 docker.replace_symbol = "Substituir" # mt
 docker.replace_symbol_tip = "Mescla este símbolo em outro: todas as instâncias acompanham e esta definição é removida." # mt
 docker.edit_with_text_tool = "Edite com a ferramenta Texto (F8)"

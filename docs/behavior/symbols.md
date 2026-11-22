@@ -30,16 +30,16 @@ Finish while editing, and the panel carries Duplicate (#3437,
 
 ## Layout
 
-The toolbar holds three buttons: New symbol from selection (enabled
-when something is selected), By similarity (enabled when the selection
-holds a group) and Revert to objects. Under them a search field filters
-the list by name, case apart.
+The row at the top holds three buttons: New symbol from selection
+(enabled when something is selected), By similarity (enabled when the
+selection holds a group) and Revert to objects.
 
-Each symbol is a two-line card. The first line shows the small picture
-of what the symbol draws, its name and its instance count, counted on
-every page and master layer, inside groups and clip frames too. The
-second line holds Insert, Edit, Replace and Duplicate. While the symbol
-is being edited, its Edit button becomes Finish and Cancel. Replace is
+Each symbol takes one row, as before: the small picture of what the
+symbol draws, its name (a double click renames it in place; Enter or a
+click elsewhere keeps the new name, Esc leaves it), Insert, Edit,
+Duplicate, Replace and its instance count, counted on every page and
+master layer, inside groups and clip frames too. While the symbol is
+being edited, its Edit button becomes Finish and Cancel. Replace is
 enabled only when the drawing holds more than one symbol and no symbol
 or clip frame edit is going on; Edit and Duplicate wait for the edit to
 end too. The last By similarity or Replace result stays under the list
@@ -95,9 +95,9 @@ The status bar tells when no group is selected
 ## Replace: merge one symbol into another
 
 Replace works without a window, in two presses. The first press on a
-card's Replace picks that symbol as the source: its own button turns
-into Cancel, and every other card's Replace turns into "Merge into this
-symbol" (`docker.replace_target`). A press on another card's button
+row's Replace picks that symbol as the source: its own button turns
+into Cancel, and every other row's Replace turns into "Merge into this
+symbol" (`docker.replace_target`). A press on another row's button
 merges the source into it; a press on the source's own button, or Esc,
 cancels the pick (`docker.replace_pick` hints the state).
 

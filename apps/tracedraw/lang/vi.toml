@@ -10877,7 +10877,6 @@ docker.replace_pick = "Pick the target symbol, or press Esc to cancel." # mt
 docker.replace_symbol = "Replace" # mt
 docker.replace_symbol_tip = "Merge this symbol into another: every instance follows and this definition is removed." # mt
 docker.replace_target = "Merge into this symbol" # mt
-docker.symbol_search = "Search symbols" # mt
 docker.symbolize_similar = "By similarity" # mt
 docker.symbolize_similar_tip = "Turn every group that copies the selected group into an instance of one symbol, where each group stands; labels stay editable text." # mt
 status.symbol_merge_finish_edit = "Finish or cancel the symbol edit before replacing." # mt
