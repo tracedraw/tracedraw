@@ -55,10 +55,41 @@ fn budget_from(free_physical: usize, free_commit: usize, held: usize, cap: usize
 /// while the cache lock is held: reading the memory of the machine
 /// can block, and the lock is there to be held briefly.
 fn budget() -> usize {
-    match system_budget() {
+    match system_budget_recent() {
         Some((phys, commit, total)) => budget_from(phys, commit, cache().bytes, max_budget(total)),
         None => BUDGET,
     }
+}
+
+/// [`system_budget`], read at most once a second: every draw of every
+/// picture asks for the budget, cache hits included, and reading the
+/// memory of the machine (a file read on Linux) for each of them cost
+/// more than the draw of a picture already decoded.
+#[cfg(target_arch = "wasm32")]
+fn system_budget_recent() -> Option<(usize, usize, usize)> {
+    // No clock in the browser, and nothing to read there anyway.
+    system_budget()
+}
+
+/// See the browser's twin above.
+#[cfg(not(target_arch = "wasm32"))]
+fn system_budget_recent() -> Option<(usize, usize, usize)> {
+    type Read = Option<(std::time::Instant, Option<(usize, usize, usize)>)>;
+    static LAST: Mutex<Read> = Mutex::new(None);
+    let now = std::time::Instant::now();
+    if let Ok(last) = LAST.lock() {
+        if let Some((at, read)) = *last {
+            if now.duration_since(at) < std::time::Duration::from_secs(1) {
+                return read;
+            }
+        }
+    }
+    // Read outside the lock: it can block.
+    let read = system_budget();
+    if let Ok(mut last) = LAST.lock() {
+        *last = Some((now, read));
+    }
+    read
 }
 
 /// The memory of the machine the cache may take, in bytes: the free
