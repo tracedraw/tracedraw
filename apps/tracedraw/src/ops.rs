@@ -393,6 +393,95 @@ impl App {
         }
     }
 
+    /// Object > Align and Distribute > Fill With Copies (#3834): of the
+    /// two selected objects, the smaller goes in a grid of copies, `gap_x`
+    /// by `gap_y` mm apart and centred, over every place inside the larger
+    /// where a whole copy fits; the object itself takes the first place.
+    /// They become the selection, and the status line tells how many
+    /// there are, which this returns (0: none fit).
+    pub fn fill_with_copies(&mut self, gap_x: f64, gap_y: f64) -> usize {
+        use tracedraw_core::geometry::Shape as _;
+        let shapes = self.selected_shapes();
+        let Some(layer) = self.active_layer() else {
+            return 0;
+        };
+        if shapes.len() != 2 {
+            return 0;
+        }
+        let area = |s: &Shape| {
+            let b = s.page_path().bounding_box();
+            b.width() * b.height()
+        };
+        let (frame, item) = if area(&shapes[0]) >= area(&shapes[1]) {
+            (&shapes[0], &shapes[1])
+        } else {
+            (&shapes[1], &shapes[0])
+        };
+        let fp = frame.page_path();
+        let fb = fp.bounding_box();
+        let ib = item.page_path().bounding_box();
+        let (w, h) = (ib.width(), ib.height());
+        let (gx, gy) = (gap_x.max(0.0), gap_y.max(0.0));
+        if !(w > 1e-6 && h > 1e-6 && fb.is_finite() && ib.is_finite()) {
+            return 0;
+        }
+        let cols = ((fb.width() + gx) / (w + gx)).floor() as usize;
+        let rows = ((fb.height() + gy) / (h + gy)).floor() as usize;
+        if cols == 0 || rows == 0 || cols.saturating_mul(rows) > 20_000 {
+            self.status = crate::i18n::trf("status.fill_with_copies", &[("n", "0")]);
+            return 0;
+        }
+        let x0 = fb.x0 + (fb.width() - (cols as f64 * (w + gx) - gx)) / 2.0;
+        let y1 = fb.y1 - (fb.height() - (rows as f64 * (h + gy) - gy)) / 2.0;
+        // A place fits when points all over the copy's box, a hair inside
+        // its edges, are inside the larger object.
+        let fits = |r: Rect| {
+            let e = 1e-6 * (1.0 + w.max(h));
+            let r = Rect::new(r.x0 + e, r.y0 + e, r.x1 - e, r.y1 - e);
+            (0..=4).all(|i| {
+                (0..=4).all(|j| {
+                    fp.contains(Point::new(
+                        r.x0 + r.width() * f64::from(i) / 4.0,
+                        r.y0 + r.height() * f64::from(j) / 4.0,
+                    ))
+                })
+            })
+        };
+        // Top row first, left to right, as text reads.
+        let places: Vec<Vec2> = (0..rows)
+            .flat_map(|row| (0..cols).map(move |col| (row, col)))
+            .filter_map(|(row, col)| {
+                let x = x0 + col as f64 * (w + gx);
+                let y = y1 - row as f64 * (h + gy) - h;
+                let r = Rect::new(x, y, x + w, y + h);
+                fits(r).then(|| Vec2::new(r.x0 - ib.x0, r.y0 - ib.y0))
+            })
+            .collect();
+        let n = places.len();
+        self.status = crate::i18n::trf("status.fill_with_copies", &[("n", &n.to_string())]);
+        let Some(first) = places.first() else {
+            return 0;
+        };
+        let mut cmds = vec![Command::TransformShapes {
+            shapes: vec![item.id],
+            transform: Affine::translate(*first),
+        }];
+        let mut ids = vec![item.id];
+        for d in &places[1..] {
+            let id = self.engine.new_shape_id();
+            let mut copy = crate::app::reid_pub(item.clone(), id, &mut self.engine);
+            copy.transform_by(Affine::translate(*d));
+            ids.push(id);
+            cmds.push(Command::AddShape { layer, shape: copy });
+        }
+        if let Err(e) = self.engine.run_batch("Fill With Copies", &cmds) {
+            self.status = e.to_string();
+            return 0;
+        }
+        self.select(ids);
+        n
+    }
+
     /// Copies of the selection right on top of it, which become the
     /// selection (a transform that leaves the originals).
     pub(crate) fn duplicate_in_place(&mut self) {

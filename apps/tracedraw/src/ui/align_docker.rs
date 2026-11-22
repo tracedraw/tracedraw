@@ -778,6 +778,27 @@ mod tests {
         assert!(ys.iter().any(|y| near(*y, 2.0 * g + 10.0)), "{ys:?}");
     }
 
+    /// Fill With Copies (#3834): the smaller object fills the inside of
+    /// the larger in a grid of whole copies, counted; it takes the first
+    /// place itself.
+    #[test]
+    fn fill_with_copies_fills_the_larger_object_and_counts_the_copies() {
+        let mut app = App::headless();
+        let frame = rect(&mut app, 0.0, 0.0, 100.0, 50.0);
+        let item = rect(&mut app, 200.0, 0.0, 210.0, 10.0);
+        app.select(vec![frame, item]);
+        assert_eq!(app.fill_with_copies(2.0, 2.0), 32);
+        assert_eq!(app.selection.len(), 32);
+        assert!(app.selection.contains(&item) && !app.selection.contains(&frame));
+        let b = bounds(&app, item);
+        assert!(b.x0 > 0.0 && b.x1 < 100.0 && b.y1 < 50.0 && b.y0 > 0.0, "{b:?}");
+        assert!(app.status.contains("32"), "{}", app.status);
+        // With no gap, four fit in a box twice as wide and high.
+        let big = rect(&mut app, 400.0, 0.0, 420.0, 20.0);
+        app.select(vec![big, item]);
+        assert_eq!(app.fill_with_copies(0.0, 0.0), 4);
+    }
+
     /// A set spacing: the first object stays, the others follow it the
     /// spacing apart, as gaps or between left edges (#2005).
     #[test]

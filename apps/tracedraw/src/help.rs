@@ -58,7 +58,9 @@ pub fn dialog_topic(d: &Dialog, options: OptionsPage) -> &'static str {
         Dialog::PageSpacing { .. } => "pages-layout/multipage-view#page-spacing",
         Dialog::OutlineOffset { .. } => "lines-shapes/shaping#outline-offset",
         Dialog::GatherPages { .. } => "pages-layout/pages",
-        Dialog::ArrangeGrid { .. } => "objects/align-distribute#grid",
+        Dialog::ArrangeGrid { .. } | Dialog::FillWithCopies { .. } => {
+            "objects/align-distribute#grid"
+        }
         Dialog::MultipagePages { .. } => "pages-layout/multipage-view#choose-pages",
         Dialog::InsertPage { .. } => "pages-layout/pages#insert-page",
         Dialog::DeletePage { .. } => "pages-layout/pages#delete-page",

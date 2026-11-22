@@ -3954,6 +3954,14 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
                 gap_y: app.units.from_mm(2.0),
             };
         }
+        // The smaller of two objects copied all over the inside of the
+        // larger, the copies counted (#3834).
+        if item(ui, "menu.object.fill_with_copies", "", app.selection.len() == 2) {
+            app.dialog = Dialog::FillWithCopies {
+                gap_x: app.units.from_mm(2.0),
+                gap_y: app.units.from_mm(2.0),
+            };
+        }
         sep(ui);
         if item(ui, "menu.object.align_distribute_docker", "", true) {
             app.show_dockers = true;

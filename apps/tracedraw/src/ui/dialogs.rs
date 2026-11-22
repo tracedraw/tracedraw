@@ -1369,6 +1369,12 @@ pub enum Dialog {
         gap_x: f64,
         gap_y: f64,
     },
+    /// Object > Align and Distribute > Fill With Copies (#3834): the gaps
+    /// between the copies, in the drawing's units.
+    FillWithCopies {
+        gap_x: f64,
+        gap_y: f64,
+    },
     /// Object > Outline Offset (#2622): the distance, in the drawing's
     /// units, and whether the new outline goes outside or inside.
     OutlineOffset {
@@ -2349,6 +2355,37 @@ pub fn show(app: &mut App, ctx: &Context) {
                 }
                 if ok_cancel(ui, &mut close) {
                     app.arrange_in_grid(*columns, u.to_mm(*gap_x), u.to_mm(*gap_y));
+                }
+            });
+        }
+        Dialog::FillWithCopies { gap_x, gap_y } => {
+            let u = app.units;
+            window(ctx, tr("dialog.fill_with_copies")).show(ctx, |ui| {
+                for (label, desc, gap) in [
+                    (
+                        "dialog.arrange_grid_gap_h",
+                        "dialog.fill_with_copies_gap_desc",
+                        &mut *gap_x,
+                    ),
+                    (
+                        "dialog.arrange_grid_gap_v",
+                        "dialog.fill_with_copies_gap_desc",
+                        &mut *gap_y,
+                    ),
+                ] {
+                    ui.horizontal(|ui| {
+                        ui.label(tr(label));
+                        ui.add(
+                            crate::ui::field::NumField::new(gap)
+                                .range(0.0..=u.from_mm(1000.0))
+                                .speed(0.1)
+                                .suffix(format!(" {}", u.short())),
+                        )
+                        .rich_tip(crate::ui::tips::pair(label, desc));
+                    });
+                }
+                if ok_cancel(ui, &mut close) {
+                    app.fill_with_copies(u.to_mm(*gap_x), u.to_mm(*gap_y));
                 }
             });
         }

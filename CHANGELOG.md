@@ -9,6 +9,7 @@ full, row-by-row status.
 - Print Merged Document: the merged drawing is made only to be printed, so once the Print dialog and Print Preview are closed it is gone again and the drawing you merged is back in front, instead of an extra merged drawing staying open after every print or preview. Create Merged Document is the command that keeps the merged drawing (discussion #1610).
 - Cross hair to the window edges: the lines also follow the Shape tool's pointer, crossing at its tip (discussion #3268).
 
+- Object menu: Fill With Copies... lays the smaller of two selected objects in a grid over every place inside the larger one where a whole copy fits, with the gaps typed, and says how many fit (#3834).
 ## 0.51.0 (2026-11-22)
 
 - .cdr import: a TraceDraw drawing embedded in a .cdr file as a packaged file comes in as its own objects, editable and at their real size, centred where the embedded object stands, instead of a grey box (#3600).
