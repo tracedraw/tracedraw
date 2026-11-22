@@ -1100,6 +1100,7 @@ docker.horizontal_settings = "Параметры по горизонтали"
 docker.hyperlink = "Гиперссылка"
 docker.hyphenate = "Расставлять переносы"
 docker.in_front = "Впереди" # mt
+docker.search_layers = "Поиск слоёв"
 docker.insert = "Вставить"
 docker.inside = "Внутрь"
 docker.instances_n = "Экземпляров: {n}"

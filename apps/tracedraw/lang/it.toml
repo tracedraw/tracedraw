@@ -1100,6 +1100,7 @@ docker.horizontal_settings = "Impostazioni orizzontali"
 docker.hyperlink = "Collegamento ipertestuale"
 docker.hyphenate = "Sillabazione"
 docker.in_front = "Davanti" # mt
+docker.search_layers = "Cerca livelli"
 docker.insert = "Inserisci"
 docker.inside = "All'interno"
 docker.instances_n = "Istanze: {n}"

@@ -22,6 +22,8 @@ use tracedraw_core::{
 /// The vertical strip of docker tabs on the right edge of the window.
 /// Height of a docker's title bar (it runs across the tab column too).
 pub const TITLE_H: f32 = 27.0;
+/// Height of the layer search strip above the Objects docker's title bar.
+const SEARCH_H: f32 = 30.0;
 /// The slot at the top of each tab where its close cross shows while
 /// the pointer is over the tab (#docker tabs).
 const CLOSE_SLOT: f32 = 16.0;
@@ -754,6 +756,7 @@ pub fn floating_dockers(app: &mut App, ctx: &egui::Context) {
         }
         let shown = window.show(ctx, |ui| {
             ui.set_min_size(ui.available_size());
+            search_strip(ui, tab);
             docker_title(app, ui, tab, DockerPlace::Floating);
             let content = ui.available_rect_before_wrap();
             let inner = content.shrink2(egui::vec2(8.0, 6.0));
@@ -837,6 +840,7 @@ fn own_window(app: &mut App, ctx: &egui::Context, tab: DockerTab) {
             .frame(egui::Frame::new().fill(Tokens::field()))
             .show(ui, |ui| {
                 ui.set_min_size(ui.available_size());
+                search_strip(ui, tab);
                 docker_title(app, ui, tab, DockerPlace::Floating);
                 let content = ui.available_rect_before_wrap();
                 let inner = content.shrink2(egui::vec2(8.0, 6.0));
@@ -1282,8 +1286,10 @@ pub fn dockers(app: &mut App, ui: &mut Ui, place: DockerPlace) {
 /// its page.
 fn docker_part(app: &mut App, ui: &mut Ui, front: DockerTab, place: DockerPlace) {
     let full = ui.max_rect();
+    let search = search_strip(ui, front);
     docker_title(app, ui, front, place);
-    let content = egui::Rect::from_min_max(egui::pos2(full.left(), full.top() + TITLE_H), full.max);
+    let top = full.top() + search + TITLE_H;
+    let content = egui::Rect::from_min_max(egui::pos2(full.left(), top), full.max);
     ui.painter()
         .rect_filled(content, 0.0, crate::theme::Tokens::field());
     // The docker keeps the width it was given (its default or the one the
@@ -1312,6 +1318,20 @@ fn docker_part(app: &mut App, ui: &mut Ui, front: DockerTab, place: DockerPlace)
         ui.ctx()
             .data_mut(|d| d.insert_temp(egui::Id::new("docker_overflow"), need));
     }
+}
+
+/// The layer search strip above the Objects docker's title bar; the
+/// other dockers have none. Returns the strip's height.
+fn search_strip(ui: &mut Ui, tab: DockerTab) -> f32 {
+    if tab != DockerTab::Objects {
+        return 0.0;
+    }
+    let room = ui.max_rect();
+    let bar = egui::Rect::from_min_size(room.min, egui::vec2(room.width(), SEARCH_H));
+    let mut top = ui.new_child(egui::UiBuilder::new().max_rect(bar.shrink2(egui::vec2(8.0, 3.0))));
+    crate::ui::objects_docker::layer_search(&mut top);
+    ui.advance_cursor_after_rect(bar);
+    SEARCH_H
 }
 
 /// A docker's title bar: its name, then collapse (a column's) and close in

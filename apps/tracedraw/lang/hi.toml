@@ -1100,6 +1100,7 @@ docker.horizontal_settings = "क्षैतिज सेटिंग्स"
 docker.hyperlink = "हाइपरलिंक"
 docker.hyphenate = "हाइफ़नेशन"
 docker.in_front = "आगे" # mt
+docker.search_layers = "परतें खोजें"
 docker.insert = "सम्मिलित करें"
 docker.inside = "अंदर"
 docker.instances_n = "{n} इंस्टेंस"

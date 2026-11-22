@@ -567,6 +567,46 @@ fn square(rect: Rect, x: f32, size: f32) -> Rect {
     )
 }
 
+/// The layer search text kept between frames (see [`layer_search`]).
+const LAYER_FILTER: &str = "objects_layer_filter";
+
+/// The search field above the tree: the layers whose names hold the text
+/// (any case) stay listed, the others are hidden while it is not empty.
+pub(crate) fn layer_search(ui: &mut Ui) {
+    let id = egui::Id::new(LAYER_FILTER);
+    let mut text = ui.data_mut(|d| d.get_temp::<String>(id).unwrap_or_default());
+    ui.horizontal(|ui| {
+        let width = (ui.available_width() - 24.0).max(40.0);
+        ui.add(
+            egui::TextEdit::singleline(&mut text)
+                .hint_text(tr("docker.search_layers"))
+                .desired_width(width),
+        )
+        .rich_tip(tr("docker.search_layers"));
+        if ui
+            .add_enabled(!text.is_empty(), egui::Button::new("×"))
+            .rich_tip(tr("docker.clear"))
+            .clicked()
+        {
+            text.clear();
+        }
+    });
+    ui.data_mut(|d| d.insert_temp(id, text));
+}
+
+/// The search text in lower case, empty when no search is on.
+fn layer_needle(ui: &Ui) -> String {
+    ui.data_mut(|d| d.get_temp::<String>(egui::Id::new(LAYER_FILTER)))
+        .unwrap_or_default()
+        .trim()
+        .to_lowercase()
+}
+
+/// Whether a layer is listed under the search `needle` (empty lists all).
+fn layer_hit(layer: &Layer, needle: &str) -> bool {
+    needle.is_empty() || layer.name.to_lowercase().contains(needle)
+}
+
 /// The docker: the tree above the bar with its buttons.
 pub fn objects_docker(app: &mut App, ui: &mut Ui) {
     let content_h = (ui.available_height() - BAR_H - 4.0).max(40.0);
@@ -636,7 +676,11 @@ pub fn objects(app: &mut App, ui: &mut Ui) {
         let active = app.active_layer();
         ui.spacing_mut().item_spacing.y = 0.0;
         let all = app.settings.objects_all_pages;
-        for page in doc.pages.iter().filter(|p| all || p.id == app.page) {
+        let needle = layer_needle(ui);
+        for page in doc.pages.iter().filter(|p| {
+            (all || p.id == app.page)
+                && (needle.is_empty() || p.layers.iter().any(|l| layer_hit(l, &needle)))
+        }) {
             let current = page.id == app.page;
             let page_open = !app.objects_closed_pages.contains(&page.id);
             let (toggle, resp) = node_row(
@@ -703,7 +747,13 @@ pub fn objects(app: &mut App, ui: &mut Ui) {
             if page_open {
                 act.row_page = Some(page.id);
                 let count = page.layers.len();
-                for (i, layer) in page.layers.iter().enumerate().rev() {
+                for (i, layer) in page
+                    .layers
+                    .iter()
+                    .enumerate()
+                    .rev()
+                    .filter(|(_, l)| layer_hit(l, &needle))
+                {
                     let place = Place {
                         index: i,
                         count,
@@ -714,29 +764,34 @@ pub fn objects(app: &mut App, ui: &mut Ui) {
                     layer_rows(app, ui, layer, place, active, &mut act);
                 }
                 // The page's own guidelines (#1928).
-                guides_row(app, ui, &page.guides, Some(page.id), &mut act);
+                if needle.is_empty() {
+                    guides_row(app, ui, &page.guides, Some(page.id), &mut act);
+                }
             }
         }
         act.row_page = None;
+        let master_hit = doc.master.iter().any(|l| layer_hit(l, &needle));
         let master_open = !app.objects_master_closed;
-        act.toggle_master = node_row(
-            ui,
-            "objects_master",
-            &tr("docker.master_page"),
-            master_open,
-            true,
-            true,
-            "docker.page_row_desc",
-        )
-        .0;
-        if master_open {
+        if needle.is_empty() || master_hit {
+            act.toggle_master = node_row(
+                ui,
+                "objects_master",
+                &tr("docker.master_page"),
+                master_open,
+                true,
+                true,
+                "docker.page_row_desc",
+            )
+            .0;
+        }
+        if master_open && (needle.is_empty() || master_hit) {
             let count = doc.master.len();
             for (i, layer) in doc
                 .master
                 .iter()
                 .enumerate()
                 .rev()
-                .filter(|(_, l)| l.page_range.is_none())
+                .filter(|(_, l)| l.page_range.is_none() && layer_hit(l, &needle))
             {
                 let place = Place {
                     index: i,
@@ -747,8 +802,10 @@ pub fn objects(app: &mut App, ui: &mut Ui) {
                 };
                 layer_rows(app, ui, layer, place, active, &mut act);
             }
-            guides_row(app, ui, &doc.master_guides, None, &mut act);
-            grid_row(app, ui, &mut act);
+            if needle.is_empty() {
+                guides_row(app, ui, &doc.master_guides, None, &mut act);
+                grid_row(app, ui, &mut act);
+            }
         }
         let ranges_open = !app.objects_ranges_closed;
         let (toggle, response) = node_row(
@@ -789,7 +846,7 @@ pub fn objects(app: &mut App, ui: &mut Ui) {
                 .iter()
                 .enumerate()
                 .rev()
-                .filter(|(_, l)| l.page_range.is_some())
+                .filter(|(_, l)| l.page_range.is_some() && layer_hit(l, &needle))
             {
                 layer_rows(
                     app,
@@ -5519,6 +5576,24 @@ pub(crate) mod tests {
         app.objects_collapsed.insert(layer);
         draw(&mut app);
         assert_eq!(app.selection, vec![g]);
+    }
+
+    #[test]
+    fn the_layer_search_matches_names_in_any_case() {
+        crate::i18n::set_language("en");
+        let mut app = without_desktop();
+        new_layer(&mut app);
+        let layers = &app.doc().pages[0].layers;
+        assert!(layer_hit(&layers[1], ""));
+        assert!(layer_hit(&layers[1], &"LAYER 2".to_lowercase()));
+        assert!(!layer_hit(&layers[0], "layer 2"));
+        let mut seen = String::new();
+        with_ui(|ui| {
+            ui.data_mut(|d| d.insert_temp(egui::Id::new(LAYER_FILTER), "  Layer 2 ".to_string()));
+            seen = layer_needle(ui);
+        });
+        assert_eq!(seen, "layer 2");
+        draw(&mut app);
     }
 
     #[test]

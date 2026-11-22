@@ -1100,6 +1100,7 @@ docker.horizontal_settings = "Configurações horizontais"
 docker.hyperlink = "Hiperlink"
 docker.hyphenate = "Hifenizar"
 docker.in_front = "À frente" # mt
+docker.search_layers = "Pesquisar camadas"
 docker.insert = "Inserir"
 docker.inside = "Interno"
 docker.instances_n = "{n} instância(s)"
