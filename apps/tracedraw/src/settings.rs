@@ -433,6 +433,10 @@ pub struct Settings {
     /// in the full-screen preview (F9), white at first (#3930).
     #[serde(default = "default_preview_background")]
     pub preview_background: [u8; 3],
+    /// Document Setup > Layout > Margins: the four page margins linked,
+    /// so changing one sets all four to it (#4030).
+    #[serde(default)]
+    pub page_margins_linked: bool,
     /// The preview's colour was picked: white too is then white, not the
     /// colour round the page in the drawing window, which the unpicked
     /// white stands for (a dark theme's grey, #4027).
@@ -2476,6 +2480,7 @@ impl Default for Settings {
             preview_page_border: true,
             preview_background: default_preview_background(),
             preview_background_custom: false,
+            page_margins_linked: false,
             page_look: PageLook::default(),
             constrain_angle: default_constrain_angle(),
             symmetry_show_lines: true,
