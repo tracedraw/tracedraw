@@ -205,10 +205,16 @@ impl App {
     }
 
     /// Layout of a text object and the transform from layout space to the
-    /// page (the shape's transform after the origin or frame shift).
+    /// page (the groups and clip frames it is in, then the shape's
+    /// transform after the origin or frame shift).
     pub fn text_layout_of(&self, id: ShapeId) -> Option<(TextLayout, Affine)> {
         let s = self.doc().find_shape(id)?;
-        layout_of_text_shape(s, Affine::IDENTITY)
+        // The text as it lies on the page, the groups and clip frames it
+        // is in included: a layout in its own space put the caret, and
+        // the Text tool's click, where a moved group had left the letters
+        // in the file, not where they showed.
+        let parent = self.doc().parent_transform(id).unwrap_or(Affine::IDENTITY);
+        layout_of_text_shape(s, parent)
     }
 
     /// The text objects Vertical Text acts on: the selected ones and the
@@ -1784,6 +1790,66 @@ mod tests {
             te.caret.abs_diff(want) <= 1,
             "caret {} wanted {want}",
             te.caret
+        );
+    }
+
+    /// A text in a group that a move has placed on the page: a Text tool
+    /// click on a middle letter puts the caret there, and the caret is
+    /// drawn where the letters show, not where the group's own space
+    /// still has them.
+    #[test]
+    fn a_click_in_a_moved_grouped_text_puts_the_caret_by_the_letter() {
+        use tracedraw_core::Command;
+        let mut app = App::headless();
+        let id = app
+            .new_shape(ShapeKind::Text {
+                spans: vec![TextSpan::new("ABCDEFGHIJ", "Sans", 36.0)],
+                origin: Point::new(0.0, 100.0),
+                frame: None,
+                align: Default::default(),
+                para: Default::default(),
+                on_path: None,
+            })
+            .expect("text");
+        // Grouping needs two objects: a second one, away from the click.
+        let other = app
+            .new_shape(ShapeKind::Text {
+                spans: vec![TextSpan::new("x", "Sans", 12.0)],
+                origin: Point::new(-500.0, -500.0),
+                frame: None,
+                align: Default::default(),
+                para: Default::default(),
+                on_path: None,
+            })
+            .expect("other");
+        app.select(vec![id, other]);
+        app.group_selection();
+        let g = app.selection[0];
+        assert!(app.doc().find_shape(g).is_some_and(|s| matches!(
+            s.kind,
+            ShapeKind::Group { .. }
+        )));
+        app.run(Command::TransformShapes {
+            shapes: vec![g],
+            transform: Affine::translate((500.0, 400.0)),
+        });
+        // The middle of the word as it shows on the page.
+        let s = app.doc().find_shape(id).expect("text");
+        let local = s.local_bounds();
+        let to_page = app.doc().parent_transform(id).expect("parent") * s.transform;
+        let p = to_page * local.center();
+        assert!(app.edit_text_inside(g, p));
+        let te = app.text_edit.as_ref().expect("editing");
+        assert_eq!(te.shape, id);
+        assert!(
+            te.caret > 2 && te.caret < 8,
+            "caret {} not by the letter clicked",
+            te.caret
+        );
+        let (top, _, _) = app.text_caret_geometry().expect("caret");
+        assert!(
+            (top.x - p.x).abs() < local.width() && (top.y - p.y).abs() < local.height() * 2.0,
+            "caret {top:?} near the click {p:?}"
         );
     }
 

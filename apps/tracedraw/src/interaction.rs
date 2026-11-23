@@ -583,7 +583,10 @@ impl App {
             .enumerate()
             .min_by(|a, b| a.1.distance_squared(p).total_cmp(&b.1.distance_squared(p)))?
             .0;
-        Some(grid[nearest])
+        // The grid point is where the letters lie in the parent's space;
+        // the click that hit_char reads is on the page.
+        let to_page = self.doc().parent_transform(text)?;
+        Some(to_page * grid[nearest])
     }
 
     fn leaf_at(
