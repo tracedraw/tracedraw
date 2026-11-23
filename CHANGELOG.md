@@ -15,6 +15,7 @@ full, row-by-row status.
 - Eyedropper: on a gradient, a pattern, a texture or a see-through object it takes the colour shown under the pointer, and beside objects it takes the colour a drop shadow, a glow or a blend's step shows there; it took the object's first stop or base colour, or nothing (#4051).
 - `.cdr` text with coloured outlines on its letters (version 16 and later): the outline is read with its width and colour and saved again; it was dropped on opening and written with width 0 (#4055).
 - Dark theme: Copy Visible Area and the full-screen preview (F9) keep the grey round the page the drawing window shows, the page white as paper; both turned it white. A colour picked for the preview in Options stays as picked (#4027).
+- Dimensions: the property bar has the Style list beside Precision (it was only in Options), and two styles join Decimal and Fractional: Engineering, in feet and inches with decimals (2' 3.5"), and Architectural, in feet and inches with fractions (2' 3 1/2"), whatever the units chosen (#4056).
 
 ## 0.51.1 (2026-11-23)
 

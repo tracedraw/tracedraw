@@ -5288,22 +5288,25 @@ fn dimension_page(app: &mut App, ui: &mut Ui) {
         style.precision = precision;
         ui.end_row();
         row_label(ui, &tr("options.dimension_style"));
+        let mut notation = style.notation();
         crate::ui::keynav::ComboBox::from_id_salt("options_dimension_style")
-            .selected_text(tr(if style.fractional {
-                "options.fractional"
-            } else {
-                "options.decimal"
-            }))
-            .width(120.0)
+            .selected_text(tr(notation.key()))
+            .width(220.0)
             .show_ui(ui, |ui| {
-                ui.selectable_value(&mut style.fractional, false, tr("options.decimal"));
-                ui.selectable_value(&mut style.fractional, true, tr("options.fractional"));
+                for n in crate::dimensions::Notation::ALL {
+                    ui.selectable_value(
+                        &mut notation,
+                        n,
+                        format!("{}   {}", tr(n.key()), n.sample(style.precision)),
+                    );
+                }
             })
             .response
             .rich_tip(crate::ui::tips::pair(
                 "options.dimension_style",
                 "options.dimension_style_tip",
             ));
+        style.set_notation(notation);
         ui.end_row();
         row_label(ui, &tr("dimension.units"));
         let choices = crate::dimensions::units_choices();

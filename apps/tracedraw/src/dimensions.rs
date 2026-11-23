@@ -195,6 +195,100 @@ pub struct DimensionStyle {
     /// A linear label in fractions (halves, quarters... down to 64ths as
     /// the precision rises) instead of decimals (#1436).
     pub fractional: bool,
+    /// A linear label in feet and inches, 2' 3.5" (with `fractional`,
+    /// 2' 3 1/2"), whatever the units (#4056): see [`Notation`].
+    pub feet_inches: bool,
+}
+
+/// How a linear dimension writes its length (#4056): with decimals, in
+/// fractions, or in feet and inches, the inches with decimals
+/// (engineering) or in fractions (architectural).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Notation {
+    Decimal,
+    Fractional,
+    Engineering,
+    Architectural,
+}
+
+impl Notation {
+    pub const ALL: [Notation; 4] = [
+        Notation::Decimal,
+        Notation::Fractional,
+        Notation::Engineering,
+        Notation::Architectural,
+    ];
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Notation::Decimal => "options.decimal",
+            Notation::Fractional => "options.fractional",
+            Notation::Engineering => "dimension.notation_engineering",
+            Notation::Architectural => "dimension.notation_architectural",
+        }
+    }
+
+    /// A sample of the notation: 1.25 or 1 1/4 at precision 2, and
+    /// 14.5 inches in feet and inches.
+    pub fn sample(self, precision: u8) -> String {
+        let decimals = precision.min(6) as usize;
+        match self {
+            Notation::Decimal => format!("{:.decimals$}", 1.25),
+            Notation::Fractional => fraction_text(1.25, precision.max(2)),
+            Notation::Engineering | Notation::Architectural => {
+                feet_inches_text(14.5, self == Notation::Architectural, precision.max(1))
+            }
+        }
+    }
+}
+
+impl DimensionStyle {
+    /// The style's [`Notation`].
+    pub fn notation(&self) -> Notation {
+        match (self.feet_inches, self.fractional) {
+            (false, false) => Notation::Decimal,
+            (false, true) => Notation::Fractional,
+            (true, false) => Notation::Engineering,
+            (true, true) => Notation::Architectural,
+        }
+    }
+
+    pub fn set_notation(&mut self, n: Notation) {
+        self.fractional = matches!(n, Notation::Fractional | Notation::Architectural);
+        self.feet_inches = matches!(n, Notation::Engineering | Notation::Architectural);
+    }
+}
+
+/// `inches` in feet and inches (#4056): 2' 3.5" with `precision`
+/// decimals, or with `fraction`, 2' 3 1/2" in fractions down to
+/// `2^precision`; a length under a foot is inches alone, and inches
+/// that round up to 12 carry into the feet.
+pub fn feet_inches_text(inches: f64, fraction: bool, precision: u8) -> String {
+    let sign = if inches < 0.0 { "-" } else { "" };
+    let a = inches.abs();
+    // Rounded first, so 11.999 inches read 1' 0".
+    let step = if fraction {
+        1.0 / f64::from(1u32 << precision.min(6))
+    } else {
+        10f64.powi(-i32::from(precision.min(6)))
+    };
+    let a = (a / step).round() * step;
+    let feet = (a / 12.0 + 1e-9).floor();
+    let rest = (a - feet * 12.0).max(0.0);
+    let rest_text = if fraction {
+        fraction_text(rest, precision)
+    } else {
+        let decimals = precision.min(6) as usize;
+        format!("{rest:.decimals$}")
+    };
+    if sign == "-" && a == 0.0 {
+        return "0\"".to_string();
+    }
+    if feet >= 1.0 {
+        format!("{sign}{feet}' {rest_text}\"")
+    } else {
+        format!("{sign}{rest_text}\"")
+    }
 }
 
 /// What new angular dimensions take instead of the linear style's
@@ -289,6 +383,7 @@ impl Default for DimensionStyle {
             joined: false,
             corner_radius: 0.0,
             fractional: false,
+            feet_inches: false,
         }
     }
 }
@@ -604,6 +699,11 @@ impl Dimension {
                 } else {
                     Units::from_id(&s.units)
                 };
+                if s.feet_inches {
+                    // Feet and inches carry their own signs (#4056).
+                    let inches = Units::Inches.world_from_mm(self.value());
+                    return feet_inches_text(inches, s.fractional, s.precision);
+                }
                 let v = units.world_from_mm(self.value());
                 let unit = if s.show_units {
                     format!(" {}", units.short())
@@ -3754,6 +3854,42 @@ mod tests {
             },
         );
         assert_eq!(ang.value_text(Units::Millimeters), "90.0\u{b0}");
+    }
+
+    /// Feet and inches (#4056): engineering with decimal inches,
+    /// architectural with fractional ones, whatever the units; inches
+    /// rounding up to 12 carry into the feet.
+    #[test]
+    fn feet_and_inches_label_lengths() {
+        assert_eq!(feet_inches_text(27.5, false, 1), "2' 3.5\"");
+        assert_eq!(feet_inches_text(27.5, true, 3), "2' 3 1/2\"");
+        assert_eq!(feet_inches_text(9.25, true, 2), "9 1/4\"");
+        assert_eq!(feet_inches_text(23.999, false, 2), "2' 0.00\"");
+        assert_eq!(feet_inches_text(36.0, true, 4), "3' 0\"");
+        assert_eq!(feet_inches_text(-14.0, false, 0), "-1' 2\"");
+        let mut style = DimensionStyle {
+            units: "mm".into(),
+            precision: 3,
+            ..Default::default()
+        };
+        style.set_notation(Notation::Architectural);
+        assert_eq!(style.notation(), Notation::Architectural);
+        let d = Dimension::new(
+            Measure::Linear {
+                a: Point::ZERO,
+                b: Point::new(25.4 * 27.5, 0.0),
+                at: Point::new(0.0, 5.0),
+            },
+            style.clone(),
+        );
+        assert_eq!(d.value_text(Units::Millimeters), "2' 3 1/2\"");
+        style.set_notation(Notation::Engineering);
+        style.precision = 1;
+        let d = Dimension { style, ..d };
+        assert_eq!(d.value_text(Units::Millimeters), "2' 3.5\"");
+        for n in Notation::ALL {
+            assert!(!n.sample(2).is_empty());
+        }
     }
 
     /// Options > Tools > Angular Dimension: new angular dimensions take

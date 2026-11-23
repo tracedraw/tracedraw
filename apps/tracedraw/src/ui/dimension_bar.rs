@@ -337,6 +337,29 @@ pub fn dimension_bar(app: &mut App, ui: &mut Ui) {
     if precision != style.precision.min(6) {
         app.set_dimension_style(|s| s.precision = precision);
     }
+    // Decimal, fractional, or feet and inches (#4056).
+    dim(ui, tr("options.dimension_style"));
+    let mut notation = style.notation();
+    crate::ui::keynav::ComboBox::from_id_salt("dimension_notation")
+        .selected_text(tr(notation.key()))
+        .width(120.0)
+        .show_ui(ui, |ui| {
+            for n in crate::dimensions::Notation::ALL {
+                ui.selectable_value(
+                    &mut notation,
+                    n,
+                    format!("{}   {}", tr(n.key()), n.sample(style.precision)),
+                );
+            }
+        })
+        .response
+        .rich_tip(crate::ui::tips::pair(
+            "options.dimension_style",
+            "options.dimension_style_tip",
+        ));
+    if notation != style.notation() {
+        app.set_dimension_style(|s| s.set_notation(notation));
+    }
     dim(ui, tr("dimension.units"));
     let choices = units_choices();
     let mut units = style.units.clone();
