@@ -1,0 +1,30 @@
+{
+  "source": "Actual production Rust helper through harness/examples/query.rs",
+  "limits": {
+    "memory_mib": 64,
+    "swap": false,
+    "cpus": 1,
+    "network": "none",
+    "pids": 32
+  },
+  "results": {
+    "repeat": {
+      "stdout_bytes": 114,
+      "elapsed_ms": 313,
+      "preserved_description": false,
+      "peak_rss_kib": 2760
+    },
+    "valid": {
+      "stdout_bytes": 172,
+      "elapsed_ms": 21,
+      "preserved_description": true,
+      "peak_rss_kib": 2208
+    },
+    "hang": {
+      "stdout_bytes": 114,
+      "elapsed_ms": 5024,
+      "preserved_description": false,
+      "peak_rss_kib": 2212
+    }
+  }
+}

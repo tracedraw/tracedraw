@@ -1,0 +1,13 @@
+seconds,phase,rss_kib,anon_kib
+0.0,idle-welcome,2384,212
+0.52,idle-welcome,131212,24812
+1.04,idle-welcome,181720,51824
+1.55,idle-welcome,196104,59640
+2.05,idle-welcome,258760,111984
+2.56,idle-welcome,404348,243556
+3.07,idle-welcome,435872,275080
+3.59,idle-welcome,479084,318292
+4.09,idle-welcome,565984,405192
+4.6,idle-welcome,647312,486520
+5.11,idle-welcome,740052,579260
+5.62,idle-welcome,836416,675624

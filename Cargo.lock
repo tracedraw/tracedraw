@@ -4481,6 +4481,7 @@ dependencies = [
  "js-sys",
  "jxl-oxide",
  "kurbo",
+ "libc",
  "log",
  "lopdf",
  "matrixmultiply",

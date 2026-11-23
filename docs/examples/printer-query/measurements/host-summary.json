@@ -1,0 +1,42 @@
+{
+  "runs": [
+    {
+      "label": "host-unbounded-query",
+      "seconds": "5.62",
+      "peak_rss_mib": 816.81,
+      "stop": "protective memory threshold",
+      "exit": 0,
+      "scope": "unmodified official 0.51.0; no compatibility guard"
+    },
+    {
+      "label": "host-compact-guard-profiled",
+      "seconds": "84.5",
+      "peak_rss_mib": 374.82,
+      "stop": "time limit",
+      "exit": 0,
+      "scope": "official 0.51.0 plus compact-query compatibility guard"
+    },
+    {
+      "label": "host-compact-guard-hardware",
+      "seconds": "84.64",
+      "peak_rss_mib": 289.08,
+      "stop": "time limit",
+      "exit": 0,
+      "scope": "official 0.51.0 plus compact-query compatibility guard"
+    },
+    {
+      "label": "host-compact-guard-figures",
+      "seconds": "84.91",
+      "peak_rss_mib": 293.59,
+      "stop": "time limit",
+      "exit": 0,
+      "scope": "official 0.51.0 plus compact-query compatibility guard"
+    }
+  ],
+  "limits": {
+    "memory_max_bytes": 1610612736,
+    "swap_max_bytes": 0,
+    "cpu_quota_percent": 200
+  },
+  "note": "GUI guard runs are not builds of the PR. Production Rust helper regressions are recorded separately."
+}

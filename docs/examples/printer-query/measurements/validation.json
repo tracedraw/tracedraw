@@ -1,0 +1,18 @@
+{
+  "rust_toolchain": "1.97.0",
+  "production_helper_tests": {
+    "passed": 12,
+    "failed": 0,
+    "test_threads": 2
+  },
+  "clippy": "passed for the actual helper, tests, and example with -D warnings",
+  "build_and_test_scope": "Standalone production-helper harness only; no full application build or broad workspace/application suites were run locally.",
+  "test_container": {
+    "memory_mib": 1024,
+    "swap": false,
+    "cpus": 2,
+    "pids": 128,
+    "network": "none"
+  },
+  "gui_measurements_scope": "Official unmodified 0.51.0 plus compatibility/control wrappers; not a GUI build of this PR."
+}

@@ -1,0 +1,16 @@
+{
+  "label": "docker-compact-control",
+  "stop": "time-limit",
+  "seconds": 19.924,
+  "peak_rss_mib": 191.84,
+  "compact_control": true,
+  "synthetic_figures": true,
+  "app_exit": -15,
+  "query_arguments": [
+    [
+      "-p",
+      "-d"
+    ]
+  ],
+  "memory_events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\nsock_throttled 0"
+}

@@ -1,0 +1,14 @@
+[package]
+name = "tracedraw-printer-query-regressions"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# Compile the actual production helper without the rest of the application.
+[lib]
+path = "../../../../apps/tracedraw/src/printer_query.rs"
+
+[dependencies]
+libc = "=0.2.190"
+
+[workspace]
