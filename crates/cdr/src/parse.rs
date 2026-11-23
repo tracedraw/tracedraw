@@ -6299,6 +6299,19 @@ fn bitmap_header(d: &[u8], v: u16) -> Option<BitmapHeader> {
     } else {
         50
     });
+    // From version 7 the u32 at byte 20 is where the image block starts
+    // (counted from byte 8), 32 for most pictures; a picture printed in a
+    // spot ink keeps the ink's description before it, and starts later
+    // (#3996).
+    if v >= 7 {
+        let place = d
+            .get(20..24)
+            .map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]) as usize)
+            .unwrap_or(32);
+        if place > 32 && 8 + place + 14 < d.len() {
+            r.skip(place - 32);
+        }
+    }
     let model = r.u32()?;
     r.skip(4);
     let width = r.u32()?;
@@ -10952,6 +10965,34 @@ pub(crate) mod tests {
                 assert_eq!(&raw[10..14], &[255, 0, 0, 255]);
             }
             other => panic!("{other:?}"),
+        }
+    }
+
+    /// A picture printed in a spot ink keeps the ink's description before
+    /// its image block, whose start the u32 at byte 20 gives; it was read
+    /// at the usual place, found a size of 0 x 0 and the objects showing
+    /// it were left out (#3996).
+    #[test]
+    fn a_bitmap_whose_image_block_starts_later_is_read_where_it_starts() {
+        let mut bmp = u32s(&[34]);
+        bmp.extend_from_slice(&[0; 50]);
+        bmp.extend_from_slice(&u32s(&[5, 0, 2, 2, 0, 24, 0, 16]));
+        bmp.extend_from_slice(&[0; 32]);
+        bmp.extend_from_slice(&[0, 0, 255, 0, 255, 0, 0, 0]);
+        bmp.extend_from_slice(&[255, 0, 0, 255, 255, 255, 0, 0]);
+        // The ink's description, 100 bytes, between byte 40 and the block.
+        let ink: Vec<u8> = (0..100u8).map(|i| i | 1).collect();
+        bmp.splice(40..40, ink);
+        bmp[20..24].copy_from_slice(&(32u32 + 100).to_le_bytes());
+        match decode_bitmap(&bmp, 20, None) {
+            Some(Ok((id, def))) => {
+                assert_eq!(id, 34);
+                assert_eq!((def.width_px, def.height_px), (2, 2));
+                let raw = raw_rows(&def.png);
+                assert_eq!(&raw[1..5], &[0, 0, 255, 255]);
+            }
+            Some(Err(note)) => panic!("{note}"),
+            None => panic!("not read"),
         }
     }
 

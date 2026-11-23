@@ -47,6 +47,7 @@ full, row-by-row status.
 - Snapping to objects: a box moved by the Pick tool snaps to the straight inner edges of an object too, such as the inside of a frame made by combining a rectangle with a smaller one, not only to its outer box (#3970).
 - Right click menu: Paste puts what was copied in its own place, as Ctrl+V does, instead of at the pointer, and it is on the menu of a selected object too (#3993).
 - Color Eyedropper: "Pick tool after applying to the selection" on its bar hands over to the Pick tool once a sampled colour went onto the selected objects, which stay selected (#3995).
+- .cdr import: a grey picture printed in a spot ink (such as a white underprint) opens with the drawing instead of being left out with the objects that show it (#3996).
 - The Import and Export file windows are titled "Import" and "Export" instead of the system's "Open" and "Save As" (#3994).
 - PDF import: a PDF drawn in RGB colours opens as an RGB document, so a .cdr saved from it stays one and other programs no longer show the contents of its clip frames in CMYK (#3917).
 - PDF/X-1a export: a see-through object is flattened into the CMYK inks the drawing's colours blend to, so it no longer comes out duller and a rich black under it no longer turns into black ink alone; a group with a see-through object in it is flattened only where that object is, and its other objects stay vector objects (#3942, #3929).
