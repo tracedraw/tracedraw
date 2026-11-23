@@ -56,9 +56,15 @@ impl App {
     /// Keep `step` in the macro being recorded, after the commands run so
     /// far.
     pub(crate) fn note_view_step(&mut self, step: ViewStep) {
+        self.note_recorded_line(step.script_line());
+    }
+
+    /// Keep the script line `line` in the macro being recorded, after the
+    /// commands run so far.
+    pub(crate) fn note_recorded_line(&mut self, line: &str) {
         if let Some(rec) = &self.recording {
             let at = rec.len();
-            self.recorded_views.push((at, step));
+            self.recorded_lines.push((at, line.to_string()));
         }
     }
 

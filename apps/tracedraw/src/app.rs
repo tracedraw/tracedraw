@@ -2101,9 +2101,10 @@ pub struct App {
     pub text_hyphenation: bool,
     /// Macro recording in progress: the commands run since Record started.
     pub recording: Option<Vec<Command>>,
-    /// The view steps taken while recording (#4020), each after the
-    /// number of commands recorded before it.
-    pub recorded_views: Vec<(usize, crate::view_steps::ViewStep)>,
+    /// Lines of the macro being recorded for steps that are not commands
+    /// of the drawing (Zoom To Fit #4020, a dimension style #4026), each
+    /// after the number of commands recorded before it.
+    pub recorded_lines: Vec<(usize, String)>,
     pub workspace: Workspace,
     pub palettes: Vec<crate::palette::Palette>,
     pub visible_palettes: Vec<usize>,
@@ -3713,7 +3714,7 @@ impl App {
             show_non_printing: false,
             text_hyphenation: false,
             recording: None,
-            recorded_views: Vec::new(),
+            recorded_lines: Vec::new(),
             workspace: Workspace::Default,
             palettes: crate::palette::builtin_palettes(),
             visible_palettes: vec![0],

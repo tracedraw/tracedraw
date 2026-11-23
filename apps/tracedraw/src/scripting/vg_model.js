@@ -387,6 +387,11 @@ class Transparency {
 
 class __Geo {
   _b() { return __call('vg_bounds', { ids: this._ids() }); }
+  // The dimensions among these objects: their label's size in points,
+  // and any setting of their style by the name it is saved with (#4026).
+  get LabelSize() { const ids = this._ids(); const s = ids.length ? __call('dimension_style', { id: ids[0] }) : null; return s ? s.text_size : 0; }
+  set LabelSize(v) { this.SetDimensionStyle({ text_size: Number(v) }); }
+  SetDimensionStyle(style) { return __call('set_dimension_style', { ids: this._ids(), style: style }).count; }
   _rp(ref) { return __refPoint(this._b(), ref); }
   get PositionX() { return __un(this._rp()[0]); }
   get PositionY() { return __un(this._rp()[1]); }

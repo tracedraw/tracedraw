@@ -1513,38 +1513,92 @@ impl App {
                 self.engine.new_shape_id(),
             ],
         };
-        let mut cmds = Vec::new();
-        let t = g.transform;
-        let d = if t != Affine::IDENTITY && t.determinant().abs() > 1e-12 {
-            // The group's transform goes into the points, the group back to
-            // none (in page space: about its parent).
-            let parent = self
-                .doc()
-                .parent_transform(g.id)
-                .unwrap_or(Affine::IDENTITY);
-            cmds.push(Command::TransformShapes {
-                shapes: vec![g.id],
-                transform: parent * t.inverse() * parent.inverse(),
-            });
-            d.transformed(t)
-        } else {
-            d.clone()
-        };
-        let d = d.noting_drawn(&self.text_font, self.units);
-        let children = d.shapes(ids, &self.text_font, self.units);
-        cmds.push(Command::SetShapeKind {
-            shape: g.id,
-            kind: ShapeKind::Group {
-                children: children.to_vec(),
-            },
-        });
-        cmds.push(Command::SetObjectData {
-            shape: g.id,
-            data: with_data(g.data.clone(), &d),
-        });
-        cmds
+        redraw_with(self.doc(), g, d, ids, &self.text_font, self.units)
     }
+}
 
+/// The settings of a dimension style that `after` changes from `before`,
+/// by the names the style is saved with.
+fn style_changes(
+    before: &DimensionStyle,
+    after: &DimensionStyle,
+) -> serde_json::Map<String, serde_json::Value> {
+    let (Ok(serde_json::Value::Object(b)), Ok(serde_json::Value::Object(a))) =
+        (serde_json::to_value(before), serde_json::to_value(after))
+    else {
+        return serde_json::Map::new();
+    };
+    a.into_iter().filter(|(k, v)| b.get(k) != Some(v)).collect()
+}
+
+/// `style` with the settings `changes` names (by the names the style is
+/// saved with) set as it gives them; an unknown name or a value of the
+/// wrong kind is an error.
+pub(crate) fn style_with(
+    style: &DimensionStyle,
+    changes: &serde_json::Map<String, serde_json::Value>,
+) -> Result<DimensionStyle, String> {
+    let serde_json::Value::Object(mut s) = serde_json::to_value(style).map_err(|e| e.to_string())?
+    else {
+        return Err("no style".into());
+    };
+    let known: Vec<String> = match serde_json::to_value(DimensionStyle {
+        text_background: Some(Fill::Solid(Color::BLACK)),
+        ..DimensionStyle::default()
+    }) {
+        Ok(serde_json::Value::Object(m)) => m.keys().cloned().collect(),
+        _ => Vec::new(),
+    };
+    for (k, v) in changes {
+        if !known.contains(k) {
+            return Err(format!("no dimension style setting {k:?}"));
+        }
+        s.insert(k.clone(), v.clone());
+    }
+    serde_json::from_value(serde_json::Value::Object(s)).map_err(|e| e.to_string())
+}
+
+/// The commands drawing the dimension group `g` again as `d` says, its
+/// parts taking `ids`; a script's dimension style goes the same way as
+/// the bar's (#4026).
+pub(crate) fn redraw_with(
+    doc: &tracedraw_core::Document,
+    g: &Shape,
+    d: &Dimension,
+    ids: [ShapeId; 3],
+    font: &str,
+    units: Units,
+) -> Vec<Command> {
+    let mut cmds = Vec::new();
+    let t = g.transform;
+    let d = if t != Affine::IDENTITY && t.determinant().abs() > 1e-12 {
+        // The group's transform goes into the points, the group back to
+        // none (in page space: about its parent).
+        let parent = doc.parent_transform(g.id).unwrap_or(Affine::IDENTITY);
+        cmds.push(Command::TransformShapes {
+            shapes: vec![g.id],
+            transform: parent * t.inverse() * parent.inverse(),
+        });
+        d.transformed(t)
+    } else {
+        d.clone()
+    };
+    let d = d.noting_drawn(font, units);
+    let children = d.shapes(ids, font, units);
+    cmds.push(Command::SetShapeKind {
+        shape: g.id,
+        kind: ShapeKind::Group {
+            children: children.to_vec(),
+        },
+    });
+    cmds.push(Command::SetObjectData {
+        shape: g.id,
+        data: with_data(g.data.clone(), &d),
+    });
+    cmds
+}
+
+impl App {
     /// The selected dimensions.
     pub fn selected_dimensions(&self) -> Vec<(ShapeId, Dimension)> {
         self.selection
@@ -1596,12 +1650,14 @@ impl App {
             f(&mut self.dimension_style);
         }
         let mut cmds = Vec::new();
+        let mut changed = serde_json::Map::new();
         for (id, mut d) in self.selected_dimensions() {
             let before = d.style.clone();
             f(&mut d.style);
             if d.style == before {
                 continue;
             }
+            changed.extend(style_changes(&before, &d.style));
             let Some(g) = self.doc().find_shape(id).cloned() else {
                 continue;
             };
@@ -1612,6 +1668,13 @@ impl App {
         }
         if let Err(e) = self.engine.run_batch("Dimension Style", &cmds) {
             self.status = e.to_string();
+            return;
+        }
+        // A macro being recorded sets the same on the dimensions selected
+        // when it plays back (#4026).
+        if !changed.is_empty() {
+            let style = serde_json::Value::Object(changed).to_string();
+            self.note_recorded_line(&format!("ActiveSelection.SetDimensionStyle({style});\n"));
         }
     }
 

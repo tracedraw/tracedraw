@@ -4691,7 +4691,7 @@ impl App {
     pub fn toggle_recording(&mut self) {
         match self.recording.take() {
             Some(cmds) => {
-                let views = std::mem::take(&mut self.recorded_views);
+                let views = std::mem::take(&mut self.recorded_lines);
                 let script = crate::scripting::commands_and_views_to_script(&cmds, &views);
                 self.script_source = script;
                 self.show_dockers = true;
@@ -4700,7 +4700,7 @@ impl App {
             }
             None => {
                 self.recording = Some(Vec::new());
-                self.recorded_views.clear();
+                self.recorded_lines.clear();
                 self.status = tr("status.recording");
             }
         }

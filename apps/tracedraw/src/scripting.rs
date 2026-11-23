@@ -200,6 +200,12 @@ class Shape {
   // A dimension's kind, value (mm or degrees), label and points; null
   // for other objects.
   get Dimension() { try { return __call('dimension_info', {id:this.id}); } catch (e) { return null; } }
+  // A dimension's style: the settings named as a style is saved
+  // (text_size in points, font, precision...), as the Dimension bar
+  // sets them; LabelSize is the label's size in points (#4026).
+  SetDimensionStyle(style) { return __call('set_dimension_style', {ids:[this.id], style:style}).count; }
+  get LabelSize() { const s = __call('dimension_style', {id:this.id}); return s ? s.text_size : null; }
+  set LabelSize(v) { this.SetDimensionStyle({text_size:Number(v)}); }
   get Children() { return __call('shape_children', {id:this.id}).children.map(c => Object.assign(new Shape(c.id), {IsText:c.is_text, ChildType:c.type, Box:c.bbox})); }
   CreateSymbol(name) { return __call('create_symbol', {ids:[this.id], name:name||''}); }
   // Every group that draws the same as this one (text aside) becomes an
@@ -282,6 +288,9 @@ class ShapeRange {
   DistributeSpacingHorizontally() { this.Distribute('spacing_h'); }
   DistributeSpacingVertically() { this.Distribute('spacing_v'); }
   CreateSelection() { __call('select', {ids:this.ids, add:false}); }
+  // The dimensions among these objects take the style's settings (#4026).
+  SetDimensionStyle(style) { return __call('set_dimension_style', {ids:this.ids, style:style}).count; }
+  set LabelSize(v) { this.SetDimensionStyle({text_size:Number(v)}); }
   CreateSymbol(name) { return __call('create_symbol', {ids:this.ids, name:name||''}); }
   ReplaceText(needle, replacement, options) {
     const o = options || {};
@@ -2746,17 +2755,15 @@ pub fn commands_to_script(cmds: &[Command]) -> String {
     commands_and_views_to_script(cmds, &[])
 }
 
-/// Turn recorded commands and the view steps taken among them (each after
-/// the number of commands before it, #4020) into a script.
-pub fn commands_and_views_to_script(
-    cmds: &[Command],
-    views: &[(usize, crate::view_steps::ViewStep)],
-) -> String {
+/// Turn recorded commands and the lines recorded among them for other
+/// steps (each after the number of commands before it: Zoom To Fit #4020,
+/// a dimension style #4026) into a script.
+pub fn commands_and_views_to_script(cmds: &[Command], views: &[(usize, String)]) -> String {
     let mut out = String::from("// Recorded macro\nconst doc = Application.ActiveDocument;\nconst layer = doc.ActiveLayer;\n");
     let mut views = views.iter().peekable();
     for (i, c) in cmds.iter().enumerate() {
-        while let Some((_, step)) = views.next_if(|(at, _)| *at <= i) {
-            out.push_str(step.script_line());
+        while let Some((_, line)) = views.next_if(|(at, _)| *at <= i) {
+            out.push_str(line);
         }
         match c {
             Command::AddShape { shape, .. } => {
@@ -2869,8 +2876,8 @@ pub fn commands_and_views_to_script(
             other => out.push_str(&format!("// {}\n", other.label())),
         }
     }
-    for (_, step) in views {
-        out.push_str(step.script_line());
+    for (_, line) in views {
+        out.push_str(line);
     }
     out
 }

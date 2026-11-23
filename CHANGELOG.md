@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Dimensions in scripts and macros: a label size or another style setting changed on the Dimension bar while a macro is recorded is recorded and plays back on the dimension the macro draws; scripts and VBA macros read and set it with `LabelSize` and `SetDimensionStyle` (#4026).
 - Blends: a double click on a group bent by an envelope or a perspective that holds a blend brings the group into focus with the blend selected and the Blend panel open, so the blend's steps, acceleration and colours change in place, the envelope and the group kept (#3968).
 - Objects docker: Ctrl+click adds or removes a layer, Shift+click picks a range of layers and Ctrl+Shift+click adds the range; the eye, printer and padlock, Delete, Select Layer Objects, Cut and Copy and Move to Master or Page then act on every picked layer in one undo step, a page keeping at least one layer (#3966; PR #3967 by ratmanz0000).
 - Scripts and macros: Zoom To Fit, Zoom To Page, Zoom To Selection and Copy Visible Area can be called from scripts (`Application.ZoomToFit()`, `Application.CopyVisibleArea()`…) and from VBA macros (`ActiveWindow.ActiveView.ToFitAllObjects` and the others, which did nothing), and the macro recorder records them in their place among the other steps (#4020).

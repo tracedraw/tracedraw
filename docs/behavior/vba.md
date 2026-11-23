@@ -281,6 +281,9 @@ Creatable with `New`.
   puts what the window shows on the clipboard as a picture, as Edit >
   Copy Visible Area does. They take effect once the objects the macro
   made so far are in the drawing (#4020).
+- **`LabelSize`** of a shape, a range or `ActiveSelection`: the label size
+  of the dimensions among them, in points; `SetDimensionStyle` sets any
+  setting of their style by the name it is saved with (#4026).
 - **`Document.PDFSettings`:** `PublishRange` (`pdfWholeDocument` 0,
   `pdfCurrentPage` 1) chooses what `PublishToPDF` writes; `Load`, `Save`
   and `ShowDialog` of a named style succeed without changing anything, as
