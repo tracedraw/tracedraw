@@ -541,3 +541,15 @@ fn ctrl_c_in_a_size_field_copies_the_number() {
     assert_eq!(shape_count(&app), 1);
     assert_eq!(app.selection, vec![id]);
 }
+
+/// #3931: F4 with a property bar field holding the keyboard fits the
+/// drawing in the window, as from the drawing: a field types nothing
+/// with the function keys, and F4 did nothing.
+#[test]
+fn f4_with_a_bar_field_holding_the_keyboard_zooms_to_fit() {
+    let (ctx, mut app, _id) = typed_in_the_width_field();
+    app.view.zoom = 20.0;
+    let before = app.view.zoom;
+    tap(&ctx, &mut app, egui::Key::F4, Modifiers::NONE);
+    assert!(app.view.zoom < before, "zoom {} after F4", app.view.zoom);
+}
