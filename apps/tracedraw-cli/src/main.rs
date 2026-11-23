@@ -177,6 +177,22 @@ fn load(
     for line in stand_ins(tracedraw_text::fonts(), &loaded.0) {
         eprintln!("{path}: {line}");
     }
+    // The app set to take the automatic fonts and keep them in the
+    // drawing (Missing Fonts > Always, #3725): the CLI writes the
+    // drawing with them too, so the files it makes name fonts that are
+    // installed (#3965).
+    static KEEP_STAND_INS: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    let keep = *KEEP_STAND_INS.get_or_init(|| {
+        app_settings_path()
+            .map(|s| keeps_stand_ins(&s.join("settings.json")) || keeps_stand_ins(&s))
+            .unwrap_or(false)
+    });
+    if keep {
+        let n = replace_missing_fonts(tracedraw_text::fonts(), &mut loaded.0);
+        if n > 0 {
+            eprintln!("{path}: {n} missing font(s) replaced in the drawing by their stand-ins");
+        }
+    }
     // Paragraph text flows around the objects marked to wrap it.
     loaded.0.refresh_text_flow();
     // CMYK colours render through the profile the drawing carries.
@@ -274,6 +290,39 @@ fn stand_ins(fonts: &tracedraw_text::FontSystem, doc: &tracedraw_core::Document)
             ))
         })
         .collect()
+}
+
+/// Whether the app's settings file `settings` says to take the automatic
+/// font for each missing one and keep it in the drawing (#3725).
+fn keeps_stand_ins(settings: &std::path::Path) -> bool {
+    let Ok(text) = std::fs::read_to_string(settings) else {
+        return false;
+    };
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return false;
+    };
+    let w = &v["warnings"];
+    w["accept_missing_fonts"].as_bool() == Some(true)
+        && w["accept_missing_fonts_keep"].as_bool() == Some(true)
+}
+
+/// Each font of `doc` that is not installed replaced in the drawing by
+/// the installed font that draws its text instead, as the app's Missing
+/// Fonts dialog does with Always and Replace in the drawing (#3965);
+/// how many families were replaced.
+fn replace_missing_fonts(
+    fonts: &tracedraw_text::FontSystem,
+    doc: &mut tracedraw_core::Document,
+) -> usize {
+    let mut n = 0;
+    for family in doc.font_families_used() {
+        if let Some(with) = fonts.substitute(&family) {
+            if with != family && doc.replace_font_family(&family, &with) > 0 {
+                n += 1;
+            }
+        }
+    }
+    n
 }
 
 fn read_document(
@@ -1196,12 +1245,26 @@ mod tests {
         }
         assert_eq!(texts, 2);
         let lines = stand_ins(&fonts, &doc);
-        let _ = std::fs::remove_dir_all(&dir);
         assert_eq!(lines.len(), 1, "{lines:?}");
         assert!(
             lines[0].contains("\"Nowhere Grotesk 3818\"") && lines[0].contains("\"Selawik\""),
             "{lines:?}"
         );
+        // Set to keep the stand-ins (#3965): the drawing names them.
+        let keep = dir.join("keep.json");
+        std::fs::write(
+            &keep,
+            r#"{"warnings":{"accept_missing_fonts":true,"accept_missing_fonts_keep":true}}"#,
+        )
+        .expect("settings");
+        assert!(keeps_stand_ins(&keep));
+        assert!(!keeps_stand_ins(&settings));
+        assert_eq!(replace_missing_fonts(&fonts, &mut doc), 1);
+        assert!(!doc
+            .font_families_used()
+            .contains(&"Nowhere Grotesk 3818".to_string()));
+        assert!(stand_ins(&fonts, &doc).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
