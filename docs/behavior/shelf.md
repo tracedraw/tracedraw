@@ -18,7 +18,7 @@ restarts. Code: `shelf.rs` (items, file, placing, pictures) and
   Shelf: name".
 - The name: one object's own name (Object Properties), else the kind the
   Objects docker shows ("Rectangle", "Curve with 5 nodes"); several
-  objects are "n objects". Names are one line of at most 120 characters;
+  objects are "n objects". Names are one line of at most 255 characters;
   control characters become spaces; an empty name is refused.
 - An item stands on its own:
   - every symbol instance in it (inside groups and clip frames too)
@@ -111,7 +111,7 @@ restarts. Code: `shelf.rs` (items, file, placing, pictures) and
 - Given a saved shelf, when it is read again, then the items and names
   are the same; damaged, foreign, empty and missing files give an empty
   shelf (`the_shelf_is_kept_between_sessions`).
-- Names are cleaned and cut to 120 characters; the 501st item is refused;
+- Names are cleaned and cut to 255 characters; the 501st item is refused;
   a file with more items is cut to 500
   (`names_are_cleaned_and_the_shelf_has_a_limit`).
 - Given a 40 x 20 mm red rectangle, then its picture is 64 pixels wide,

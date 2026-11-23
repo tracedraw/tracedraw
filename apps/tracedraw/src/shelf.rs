@@ -29,7 +29,7 @@ pub const MAX_ITEMS: usize = 500;
 /// Larger shelf files are not read.
 const MAX_FILE: u64 = 64 * 1024 * 1024;
 /// Item names are cut to this many characters.
-const MAX_NAME: usize = 120;
+const MAX_NAME: usize = 255;
 /// Symbols inside symbols are followed this deep.
 const MAX_DEPTH: usize = 16;
 /// The browser build's key: in the page's kept database (`web::kept`),

@@ -28,7 +28,7 @@ pub const MAX_ELEMENTS: usize = 5_000;
 /// Larger files are not read.
 const MAX_FILE: u64 = 16 * 1024 * 1024;
 /// Names are cut to this many characters.
-pub const MAX_NAME: usize = 120;
+pub const MAX_NAME: usize = 255;
 /// The browser build's key in local storage.
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 const WEB_KEY: &str = "tracedraw-my-shapes";
