@@ -4,7 +4,7 @@ Versions follow the tags of this repository; every push to `main` also
 publishes a nightly build. [`docs/features.md`](docs/features.md) has the
 full, row-by-row status.
 
-## Unreleased
+## 0.51.0 (2026-11-23)
 
 - Shape Generator tool, with the shape tools in the toolbox: drag a box on the page and the panel's pattern follows it while you drag and fills it when you let go, as one group in one undo step. The property bar has the generator, the seed, New and Options, which opens the Shape Generator panel.
 - Property bar: with two or more objects selected, the buttons to group, combine, weld, trim and align them come right after the position and size fields instead of at the end of the bar, where a long bar pushed them out of the window (#3973).
@@ -119,6 +119,14 @@ full, row-by-row status.
 - Merging overlapping parts with a drag: selected open curves cut objects into parts, and the cells a grid of lines closes in become parts of their own (#3814).
 - Options > Display: Outline over the objects while transforming; turned off, with Show objects while transforming on, only the objects are drawn while they are moved, scaled or turned (#3704).
 - Insert Formula: a formula fills as text does, so overlapping letter contours no longer leave holes, and a space typed between words (`\text{...}`) and the formula is kept (#3793).
+- Edit Inside: layer masks painted with the brush, clip to the layer below, quick mask (Q), selection by tone and by channel, border, smooth and saved selections.
+- Edit Inside: Stretch repeats the selection's edge row or column out to the picture's edge on a new layer, and the Warp tool bends a layer with a grid of points, previewed live.
+- Edit Inside: Restore, Tint and Replace Colour brushes, brush tip spacing, scatter, angle and roundness, a Shape tool (rectangle, ellipse, polygon, line, with fill and outline) and linear, reflected, radial, conical and square gradients.
+- Edit Inside: a Liquify brush (push, twirl, pinch, bloat) and Smart Resize (the least noticed seams of pixels taken away or added, the selection kept). Effects > Camera: Lens Correction (distortion, colour fringes, corner light, scale) and Tilt Shift.
+- Edit Inside: adjustment layers (any bitmap effect as a layer that stays changeable, with its mask, opacity and merge mode) and a histogram of the selection.
+- Edit Inside: the brush and the clone stamp can follow the surface of the photo (bent along its folds and lit by its light and shadow, as on cloth or skin), Fit to Surface lays a whole layer onto the photo beneath it, and a Remove brush fills the painted place, a little wider to take in edges and shadows, from what is around it.
+- Shape Generator: backgrounds in a palette of up to six colours: layered waves, organic blobs and a soft mesh gradient.
+- Edit Inside opens the picture in an image editing mode: the whole window becomes an image editor with its own menus, a toolbox of image tools with icons and flyouts, a standard bar whose buttons can be moved, added and taken off, the tool's options in the property bar, image panels docked or floating like the drawing's, the picture alone with its own zoom and pan, and a status bar of the picture; palette colours set the brush colour.
 
 ## 0.50.3 (2026-11-22)
 
