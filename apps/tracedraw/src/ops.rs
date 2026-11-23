@@ -1260,7 +1260,11 @@ impl App {
         };
         // Print-size pictures too (#2000); a CMYK JPEG or TIFF keeps its
         // inks and shows them as the drawing's CMYK colours show (#2163).
-        let picture = match crate::bitmap_file::read(&bytes) {
+        // A plain JPEG is taken apart once, its pixels the JPEG's own
+        // (#3914: it was taken apart a second time to see that they were).
+        let plain = plain_jpeg(&bytes);
+        let jpeg_pixels = plain.is_some();
+        let picture = match plain.map_or_else(|| crate::bitmap_file::read(&bytes), Ok) {
             Ok(p) => p,
             Err(e) => {
                 self.status = crate::i18n::trf(
@@ -1292,8 +1296,9 @@ impl App {
         // orientation, not CMYK) is kept, so a packed .tdraw saves the
         // JPEG instead of a PNG two to three times its size (#2849).
         let (w, h) = picture.rgba.dimensions();
-        let keep_jpeg = planes.is_none()
-            && tracedraw_core::jpeg_source::decodes_to(&bytes, w, h, picture.rgba.as_raw());
+        let keep_jpeg = jpeg_pixels
+            || (planes.is_none()
+                && tracedraw_core::jpeg_source::decodes_to(&bytes, w, h, picture.rgba.as_raw()));
         // A 1-bit, grayscale or indexed file keeps its colour mode; all
         // came in as RGB (#3025).
         let placed = if planes.is_none() && picture.mode != crate::bitmap_file::FileMode::Rgb {
@@ -2478,6 +2483,29 @@ impl App {
         };
         self.select(vec![ids[next]]);
     }
+}
+
+/// A JPEG that is not CMYK and that its Exif orientation leaves as
+/// stored, read once with the decoder a kept JPEG is read with, so its
+/// pixels are the JPEG's own (#3914). `None` for any other file, and
+/// for one larger than pictures may be.
+fn plain_jpeg(bytes: &[u8]) -> Option<crate::bitmap_file::ReadPicture> {
+    use image::metadata::Orientation;
+    if !tracedraw_core::jpeg_source::is_jpeg(bytes) {
+        return None;
+    }
+    let (orientation, w, h) = crate::files::picture_header(bytes)?;
+    if orientation != Orientation::NoTransforms
+        || u64::from(w) * u64::from(h) * 4 > crate::files::picture_decode_limit()
+    {
+        return None;
+    }
+    let (w, h, px) = tracedraw_core::jpeg_source::decode_rgba(bytes)?;
+    Some(crate::bitmap_file::ReadPicture {
+        rgba: image::RgbaImage::from_raw(w, h, px)?,
+        planes: None,
+        mode: crate::bitmap_file::file_mode(bytes),
+    })
 }
 
 #[cfg(test)]

@@ -1217,7 +1217,9 @@ pub fn spin_field(
             Pos2::new(col.left(), col.top() + i as f32 * half),
             Vec2::new(col.width(), half),
         );
-        let a = ui.interact(r, egui::Id::new((id, "spin", i)), Sense::click());
+        // Clicks but no focus: Tab from the box goes to the next box,
+        // not to the arrows beside it (#3886, as the bars' boxes, #1537).
+        let a = ui.interact(r, egui::Id::new((id, "spin", i)), Sense::CLICK);
         if a.hovered() {
             ui.painter()
                 .rect_filled(r.shrink(1.0), 0.0, crate::theme::Tokens::tool_hover());
@@ -1263,11 +1265,19 @@ pub fn number_field(
 ) -> Option<f64> {
     let edit_id = egui::Id::new((id, "number_text"));
     let shown = format_number(value, decimals, suffix);
-    let mut text = ui
-        .ctx()
-        .data(|d| d.get_temp::<String>(edit_id))
-        .unwrap_or_else(|| shown.clone());
-    let resp = text_field(ui, rect, &mut text);
+    let stored = ui.ctx().data(|d| d.get_temp::<String>(edit_id));
+    let fresh = stored.is_none();
+    let mut text = stored.unwrap_or_else(|| shown.clone());
+    let resp = ui.put(
+        rect,
+        egui::TextEdit::singleline(&mut text)
+            .id(number_edit_id(id))
+            .vertical_align(egui::Align::Center)
+            .margin(Margin::symmetric(4, 0))
+            .min_size(rect.size()),
+    );
+    // Just focused, its number is selected to be typed over (#3886).
+    crate::ui::field::select_all_when_focused(ui, &resp, fresh, &text);
     let mut out = None;
     if resp.has_focus() {
         ui.ctx().data_mut(|d| d.insert_temp(edit_id, text.clone()));
@@ -1283,6 +1293,12 @@ pub fn number_field(
         ui.ctx().data_mut(|d| d.remove::<String>(edit_id));
     }
     out
+}
+
+/// The id of the text box of [`number_field`] (and [`spin_field`]) `id`,
+/// to give it the keyboard.
+pub fn number_edit_id(id: &str) -> egui::Id {
+    egui::Id::new((id, "number_edit"))
 }
 
 /// A number as the fields show it: `decimals` places, the suffix after a

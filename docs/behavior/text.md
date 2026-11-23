@@ -901,6 +901,18 @@ every text holds the whole text.
     style change as the Text docker's indent fields). A click on a
     marker adds no stop
     (`pick_drag_tests::the_tab_ruler_drags_the_left_and_right_indents`).
+  - First-line and hanging indent (#3911): the first line's indent has
+    a triangle of its own hanging from the outer edge at the left indent
+    plus the first-line indent, and the left indent's triangle sits
+    below it, pointing up at it. A press in the outer quarter takes the
+    first line's, in the quarter below it the left indent's. Dragging
+    the first line's sets the first-line indent (counted from the left
+    indent; left of it is a hanging indent), the first line staying
+    between the frame's left edge and 1 mm short of the right indent.
+    Dragging the left one moves every line, the first line keeping its
+    place from it. The text flows while it moves and each drag is one
+    undo step
+    (`pick_drag_tests::the_tab_ruler_drags_the_first_line_indent`).
 - `.cdr` (#1852, see `docs/cdr-format.md`): opening reads each
   paragraph's stops, from the style table's tab entries (versions 7 to
   15) or the `tabs` member of the paragraph style string (16 on); the
