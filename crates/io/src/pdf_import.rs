@@ -3798,7 +3798,7 @@ impl<'a> Importer<'a> {
             }
         }
         let glyphs = if self.curves && type3_matrix.is_none() {
-            self.glyph_source(&desc_font, descriptor.as_ref(), two_byte, one_byte)
+            self.glyph_source(fd, &desc_font, descriptor.as_ref(), two_byte, one_byte)
         } else {
             None
         };
@@ -3821,6 +3821,7 @@ impl<'a> Importer<'a> {
     /// descendant font's `CIDToGIDMap` for a two-byte font.
     fn glyph_source(
         &self,
+        font_dict: &Dictionary,
         desc_font: &Dictionary,
         descriptor: Option<&Dictionary>,
         two_byte: bool,
@@ -3861,7 +3862,12 @@ impl<'a> Importer<'a> {
         } else {
             None
         };
-        crate::pdf_glyphs::GlyphSource::new(data, cff, two_byte, cid_to_gid, encoding)
+        let names = if two_byte {
+            None
+        } else {
+            self.encoding_glyph_names(font_dict)
+        };
+        crate::pdf_glyphs::GlyphSource::new(data, cff, two_byte, cid_to_gid, encoding, names)
     }
 
     /// Correct a two-byte font's ToUnicode map that gives Indic glyphs
@@ -4176,6 +4182,36 @@ impl<'a> Importer<'a> {
         }
         units.retain(|u| !u.is_empty());
         units
+    }
+
+    /// The glyph names a simple font's `/Encoding` gives codes in its
+    /// `Differences`, by code; `None` for a font that names no encoding
+    /// (its program's own applies).
+    fn encoding_glyph_names(&self, fd: &Dictionary) -> Option<Vec<Option<String>>> {
+        let mut names = vec![None; 256];
+        match self.get(fd, b"Encoding")? {
+            Object::Name(_) => {}
+            Object::Dictionary(ed) => {
+                if let Some(Object::Array(diff)) = self.get(ed, b"Differences") {
+                    let mut code = 0usize;
+                    for item in diff {
+                        match self.deref(item) {
+                            Object::Integer(i) => code = (*i).max(0) as usize,
+                            Object::Real(r) => code = (*r).max(0.0) as usize,
+                            Object::Name(g) => {
+                                if let Some(slot) = names.get_mut(code) {
+                                    *slot = Some(String::from_utf8_lossy(g).into_owned());
+                                }
+                                code += 1;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            _ => return None,
+        }
+        Some(names)
     }
 
     fn simple_encoding(
@@ -5629,6 +5665,30 @@ fn glyph_name_to_char(name: &[u8]) -> Option<char> {
         return n.chars().next();
     }
     // gXX / cidXX / GXX are glyph indices with no Unicode meaning.
+    let table = glyph_name_table();
+    table.iter().find(|(k, _)| *k == n).map(|(_, c)| *c)
+}
+
+/// The glyph names a font may give the character `c`, likeliest first:
+/// its names in [`glyph_name_table`] (a letter of ASCII by itself), then
+/// the `uniXXXX` form.
+pub(crate) fn char_glyph_names(c: char) -> Vec<String> {
+    let mut out: Vec<String> = glyph_name_table()
+        .iter()
+        .filter(|(_, k)| *k == c)
+        .map(|(n, _)| (*n).to_string())
+        .collect();
+    if c.is_ascii_alphabetic() {
+        out.insert(0, c.to_string());
+    }
+    if let Ok(v) = u16::try_from(u32::from(c)) {
+        out.push(format!("uni{v:04X}"));
+    }
+    out
+}
+
+/// Glyph names and their characters, for [`glyph_name_to_char`].
+fn glyph_name_table() -> &'static [(&'static str, char)] {
     let table: &[(&str, char)] = &[
         ("space", ' '),
         ("exclam", '!'),
@@ -5844,7 +5904,7 @@ fn glyph_name_to_char(name: &[u8]) -> Option<char> {
         ("Scedilla", '\u{15e}'),
         ("scedilla", '\u{15f}'),
     ];
-    table.iter().find(|(k, _)| *k == n).map(|(_, c)| *c)
+    table
 }
 
 /// Most pixels on a side of a picture as it comes into the drawing when
@@ -8335,18 +8395,37 @@ mod tests {
     }
 
     fn type1_pdf_with(encoding: Option<lopdf::Object>, program: Vec<u8>) -> Vec<u8> {
+        embedded_font_pdf(encoding, program, false, b"<ECF89A41>")
+    }
+
+    /// A one-page PDF showing `shown` (a string operand) in a simple font
+    /// that embeds `program`: a Type 1 program (`FontFile`), or a bare
+    /// CFF one (`FontFile3` of subtype `Type1C`) with `cff`.
+    fn embedded_font_pdf(
+        encoding: Option<lopdf::Object>,
+        program: Vec<u8>,
+        cff: bool,
+        shown: &[u8],
+    ) -> Vec<u8> {
         use lopdf::{dictionary, Object, Stream};
         let mut doc = lopdf::Document::with_version("1.4");
         let file = doc.add_object(Stream::new(
-            dictionary! { "Length1" => 300, "Length2" => 4, "Length3" => 0 },
+            if cff {
+                dictionary! { "Subtype" => "Type1C" }
+            } else {
+                dictionary! { "Length1" => 300, "Length2" => 4, "Length3" => 0 }
+            },
             program,
         ));
         let descriptor = doc.add_object(dictionary! {
             "Type" => "FontDescriptor", "FontName" => "ABCDEF+Liberec", "Flags" => 32,
             "FontBBox" => vec![0.into(), (-200).into(), 1000.into(), 900.into()],
             "ItalicAngle" => 0, "Ascent" => 800, "Descent" => -200, "CapHeight" => 700,
-            "StemV" => 80, "FontFile" => file,
+            "StemV" => 80,
         });
+        if let Ok(d) = doc.get_object_mut(descriptor).and_then(Object::as_dict_mut) {
+            d.set(if cff { "FontFile3" } else { "FontFile" }, file);
+        }
         let mut font = dictionary! {
             "Type" => "Font", "Subtype" => "Type1", "BaseFont" => "ABCDEF+Liberec",
             "FirstChar" => 0, "LastChar" => 255, "FontDescriptor" => descriptor,
@@ -8355,7 +8434,9 @@ mod tests {
             font.set("Encoding", e);
         }
         let font = doc.add_object(font);
-        let content = b"BT /F1 12 Tf 1 0 0 1 20 800 Tm <ECF89A41> Tj ET\n".to_vec();
+        let mut content = b"BT /F1 12 Tf 1 0 0 1 20 800 Tm ".to_vec();
+        content.extend_from_slice(shown);
+        content.extend_from_slice(b" Tj ET\n");
         let contents = doc.add_object(Stream::new(dictionary! {}, content));
         let pages_id = doc.new_object_id();
         let page = doc.add_object(dictionary! {
@@ -8483,6 +8564,72 @@ mod tests {
             .count();
         // Three letters with an accent each, and the A.
         assert_eq!(moves, 7);
+    }
+
+    /// The bare CFF program (the `CFF ` table) of the Type 1 `font`
+    /// converted.
+    fn cff_program(font: &[u8]) -> Vec<u8> {
+        let sfnt = tracedraw_text::type1::convert(font, None).expect("converts");
+        let raw = ttf_parser::RawFace::parse(&sfnt, 0).expect("sfnt");
+        raw.table(ttf_parser::Tag::from_bytes(b"CFF "))
+            .expect("CFF table")
+            .to_vec()
+    }
+
+    fn curve_moves(bytes: &[u8]) -> usize {
+        let mut ids = IdSource::default();
+        let options = ImportOptions {
+            text_as_curves: true,
+            ..ImportOptions::default()
+        };
+        let imp = parse_with_options(bytes, &mut ids, "", options).expect("parse");
+        imp.pages[0]
+            .shapes
+            .iter()
+            .map(|s| match &s.kind {
+                ShapeKind::Path { path, .. } => path
+                    .elements()
+                    .iter()
+                    .filter(|e| matches!(e, tracedraw_core::geometry::PathEl::MoveTo(_)))
+                    .count(),
+                other => panic!("curves expected: {other:?}"),
+            })
+            .sum()
+    }
+
+    /// Text in an embedded CFF font whose codes the PDF names in
+    /// `Differences` comes in as curves by those glyph names: accented
+    /// letters and other glyphs with no code in the program's own
+    /// encoding were left out, leaving gaps in the words (#3810).
+    #[test]
+    fn cff_text_as_curves_follows_the_pdf_s_glyph_names() {
+        use lopdf::{dictionary, Object};
+        let font = cff_program(&program(
+            &[
+                ("ecaron", square()),
+                ("rcaron", square()),
+                ("m.sc", square()),
+                ("uni00A0", square()),
+            ],
+            &[],
+        ));
+        let name = |n: &str| Object::Name(n.as_bytes().to_vec());
+        let diff = dictionary! {
+            "Type" => "Encoding",
+            "BaseEncoding" => "WinAnsiEncoding",
+            "Differences" => vec![
+                Object::Integer(1), name("ecaron"), name("m.sc"),
+                Object::Integer(127), name("rcaron"),
+            ],
+        };
+        let encoding = Some(Object::Dictionary(diff));
+        let bytes = embedded_font_pdf(encoding, font.clone(), true, b"<01027F>");
+        assert_eq!(curve_moves(&bytes), 3);
+        // A code of the base encoding finds its glyph by the name of its
+        // character (0xA0 of the Windows code page).
+        let named = Object::Name(b"WinAnsiEncoding".to_vec());
+        let bytes = embedded_font_pdf(Some(named), font, true, b"<A0>");
+        assert_eq!(curve_moves(&bytes), 1);
     }
 
     #[test]

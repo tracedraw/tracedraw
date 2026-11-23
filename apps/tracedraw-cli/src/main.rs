@@ -294,10 +294,17 @@ fn read_document(
         let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
         // TRACEDRAW_PASSWORD opens a protected file.
         let password = std::env::var("TRACEDRAW_PASSWORD").unwrap_or_default();
-        let imported = tracedraw_io::pdf_import::parse_with_password(
+        // TRACEDRAW_PDF_IMPORT_TEXT=curves reads the text as curves from
+        // the fonts the file embeds.
+        let options = tracedraw_io::pdf_import::ImportOptions {
+            text_as_curves: std::env::var("TRACEDRAW_PDF_IMPORT_TEXT").is_ok_and(|v| v == "curves"),
+            ..Default::default()
+        };
+        let imported = tracedraw_io::pdf_import::parse_with_options(
             &bytes,
             &mut tracedraw_core::id::IdSource::default(),
             &password,
+            options,
         )
         .map_err(|e| e.to_string())?;
         for w in &imported.warnings {
