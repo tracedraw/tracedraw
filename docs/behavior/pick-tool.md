@@ -48,7 +48,15 @@ rectangle is hit before it). Treat all objects as filled (Options >
 Tools > Pick, and the property bar) is on by default, so an empty
 rectangle over a text takes a click inside it; Alt+click reaches the
 text beneath, or the option switched off leaves an empty object to
-clicks on its outline.
+clicks on its outline. An open curve (a line, a segment) is picked
+along itself, not in the empty part of its box, with the option on or
+off: its inside, if it has one drawn, is the fill across its open
+ends.
+Checks: `pick_drag_tests::text_over_a_rectangle_read_from_cdr_is_hit_first`,
+`pick_drag_tests::an_unfilled_rectangle_over_text_takes_the_click_and_alt_reaches_the_text`,
+`pick_drag_tests::an_open_line_is_picked_along_itself_not_in_its_box`,
+`pick_drag_tests::ctrl_click_on_a_clip_frame_edits_its_contents`,
+`pick_drag_tests::clipped_away_contents_are_not_hit`.
 Checks: `pick_drag_tests::text_over_a_rectangle_read_from_cdr_is_hit_first`,
 `pick_drag_tests::an_unfilled_rectangle_over_text_takes_the_click_and_alt_reaches_the_text`,
 `pick_drag_tests::ctrl_click_on_a_clip_frame_edits_its_contents`,

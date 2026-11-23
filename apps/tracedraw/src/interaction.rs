@@ -870,15 +870,18 @@ impl App {
         let open = s.kind.is_open_curve();
         let filled =
             !matches!(s.fill, Fill::None) && (!open || self.doc().metadata.fill_open_curves);
-        // The fill of an open curve shown runs across its open ends, as
-        // drawn.
-        let in_fill = filled
-            && if open {
-                tracedraw_core::command::close_subpaths(&path).contains(p)
+        // The fill of an open curve shown, and its inside when "Treat all
+        // objects as filled" is on, runs across its open ends, as drawn.
+        // The raw path's winding of an open line reads one side of its
+        // box as inside, which picked the line there.
+        let contains = |path: &tracedraw_core::BezPath| {
+            if open {
+                tracedraw_core::command::close_subpaths(path).contains(p)
             } else {
                 path.contains(p)
-            };
-        if in_fill || (self.settings.treat_all_filled && path.contains(p)) {
+            }
+        };
+        if (filled || self.settings.treat_all_filled) && contains(&path) {
             return true;
         }
         crate::canvas::distance_to_path(&path, p) <= (tol * 1.5).max(half + tol)

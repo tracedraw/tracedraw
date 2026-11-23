@@ -308,8 +308,20 @@ pub fn takes_how(
             }
         }
     }
-    // The whole region lies inside the object.
-    (inside && region.sample().is_some_and(|p| outline.contains(p))).then_some(Take::Within)
+    // The whole region lies inside the object. An open curve's inside
+    // is the fill it shows, across its open ends: the raw path's
+    // winding of a line reads one side of its box as inside, which
+    // took the line from a marquee that lay there and never crossed
+    // it. The closing chord is not an outline: a touching marquee
+    // takes the curve where it crosses the drawn path, not the chord.
+    let holds = |p: Point| {
+        if s.kind.is_open_curve() {
+            tracedraw_core::command::close_subpaths(&outline).contains(p)
+        } else {
+            outline.contains(p)
+        }
+    };
+    (inside && region.sample().is_some_and(holds)).then_some(Take::Within)
 }
 
 #[cfg(test)]

@@ -28433,6 +28433,66 @@ fn a_clip_frame_is_picked_on_its_frame_and_its_contents_only() {
 }
 
 #[test]
+fn an_open_line_is_picked_along_itself_not_in_its_box() {
+    // A diagonal unfilled line, "Treat all objects as filled" on (the
+    // default): a click in the empty part of its box did not take the
+    // line, one on the line did. The raw path's winding of an open
+    // segment read one side of the box as inside.
+    let mut app = App::headless();
+    app.view.zoom = 1.0;
+    app.settings.treat_all_filled = true;
+    let mut path = tracedraw_core::BezPath::new();
+    path.move_to((10.0, 10.0));
+    path.line_to((50.0, 50.0));
+    let id = app
+        .new_shape(ShapeKind::Path {
+            path,
+            closed: false,
+        })
+        .expect("line");
+    app.select(Vec::new());
+    // On the line.
+    assert_eq!(app.hit_test(Point::new(30.0, 30.0)), Some(id));
+    // In the box, off the line, either side of it. Kurbo's winding ray
+    // of the raw open segment reads (40, 20) as inside.
+    assert_eq!(app.hit_test(Point::new(20.0, 40.0)), None);
+    assert_eq!(app.hit_test(Point::new(40.0, 20.0)), None);
+    // A marquee in the empty part of the box, on the side the raw path's
+    // winding read as inside, does not take the line; one that crosses
+    // the line does.
+    let empty = crate::select_region::Region::Rect(Rect::new(35.0, 15.0, 45.0, 25.0));
+    let crossing = crate::select_region::Region::Rect(Rect::new(20.0, 20.0, 40.0, 40.0));
+    app.select_in_region(empty, true, false);
+    assert!(!app.selection.contains(&id), "{:?}", app.selection);
+    app.select(Vec::new());
+    app.select_in_region(crossing, true, false);
+    assert!(app.selection.contains(&id), "{:?}", app.selection);
+    // An unfilled zigzag, objects not treated as filled: a marquee that
+    // crosses only the closing chord (not a drawn edge) does not take
+    // it; one that crosses a drawn edge does.
+    app.settings.treat_all_filled = false;
+    let mut zig = tracedraw_core::BezPath::new();
+    zig.move_to((10.0, 10.0));
+    zig.line_to((50.0, 10.0));
+    zig.line_to((50.0, 50.0));
+    zig.line_to((10.0, 50.0));
+    let zid = app
+        .new_shape(ShapeKind::Path {
+            path: zig,
+            closed: false,
+        })
+        .expect("zigzag");
+    app.select(Vec::new());
+    let chord = crate::select_region::Region::Rect(Rect::new(6.0, 20.0, 14.0, 30.0));
+    app.select_in_region(chord, true, false);
+    assert!(!app.selection.contains(&zid), "{:?}", app.selection);
+    app.select(Vec::new());
+    let drawn = crate::select_region::Region::Rect(Rect::new(20.0, 45.0, 40.0, 55.0));
+    app.select_in_region(drawn, true, false);
+    assert!(app.selection.contains(&zid), "{:?}", app.selection);
+}
+
+#[test]
 fn an_object_dropped_on_another_page_of_the_multipage_view_becomes_that_page_s() {
     // #2055: in the Multipage View an object moved onto another page's
     // paper stayed the current page's, off its paper, and vanished from
