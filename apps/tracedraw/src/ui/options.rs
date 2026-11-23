@@ -1327,7 +1327,22 @@ fn display_page(app: &mut App, ui: &mut Ui) {
                     "options.preview_background_tip",
                 ),
                 |ui| {
-                    rgb_button(ui, &mut app.settings.preview_background);
+                    // The colour shown is the one round the page, the
+                    // drawing window's until one is picked (#4027).
+                    let [r, g, b, _] = app.preview_background_color().to_array();
+                    let mut rgb = [r, g, b];
+                    if rgb_button(ui, &mut rgb) {
+                        app.settings.preview_background = rgb;
+                        app.settings.preview_background_custom = true;
+                    }
+                    if ui
+                        .button(tr("options.reset"))
+                        .rich_tip(crate::ui::tips::pair("options.reset", "dialog.reset_desc"))
+                        .clicked()
+                    {
+                        app.settings.preview_background = [255, 255, 255];
+                        app.settings.preview_background_custom = false;
+                    }
                 },
             );
         });

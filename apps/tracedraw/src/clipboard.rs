@@ -729,8 +729,9 @@ impl App {
 
     /// What the drawing window shows of the current page and the desktop
     /// around it, as a picture at the screen's size (one pixel a screen
-    /// point), white where nothing is drawn: for Edit > Copy Visible
-    /// Area (#3527). `None` before the window has a size.
+    /// point): the page white as paper and the desktop in the colour the
+    /// window shows round it, a dark theme's grey too (#4027), for Edit >
+    /// Copy Visible Area (#3527). `None` before the window has a size.
     pub fn visible_area_image(&self) -> Option<image::RgbaImage> {
         let r = self.canvas_rect;
         if !(r.width() >= 1.0 && r.height() >= 1.0) || !r.is_finite() {
@@ -738,7 +739,8 @@ impl App {
         }
         let area = self.view.visible_page_rect(r);
         let dpi = r.width() as f64 / area.width().max(1e-9) * 25.4;
-        let pm = tracedraw_render::render_area_image(self.doc(), self.page, area, dpi)?;
+        let [r, g, b, _] = self.desktop_color().to_array();
+        let pm = tracedraw_render::render_area_image_on_desk(self.doc(), self.page, area, dpi, Some([r, g, b]))?;
         let mut img = image::RgbaImage::new(pm.width(), pm.height());
         for (px, out) in pm.pixels().iter().zip(img.pixels_mut()) {
             let c = px.demultiply();
@@ -1713,6 +1715,24 @@ mod tests {
         assert!(img.pixels().any(|p| p.0[3] == 255 && p.0[0] < 20), "the rectangle shows");
         app.canvas_rect = egui::Rect::NOTHING;
         assert!(app.visible_area_image().is_none());
+    }
+
+    /// Copy Visible Area keeps the colour round the page (#4027): a dark
+    /// desktop stays dark in the picture, the page white as paper.
+    #[test]
+    fn the_visible_area_keeps_the_desktop_colour() {
+        let mut app = App::headless();
+        app.settings.desktop_rgb = [61, 61, 61];
+        app.settings.desktop_custom = true;
+        app.canvas_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(400.0, 300.0));
+        let page = app.page_rect();
+        // The page in the middle, small: desktop all round it.
+        app.view.fit(page.inflate(page.width(), page.height()), app.canvas_rect);
+        let img = app.visible_area_image().expect("a picture");
+        let (w, h) = img.dimensions();
+        assert_eq!(img.get_pixel(1, 1).0, [61, 61, 61, 255], "the desktop");
+        assert_eq!(img.get_pixel(w - 2, h - 2).0, [61, 61, 61, 255], "the desktop");
+        assert_eq!(img.get_pixel(w / 2, h / 2).0, [255, 255, 255, 255], "the paper");
     }
 
     /// Text another program copied pastes as one step to undo: the text,

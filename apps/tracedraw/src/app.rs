@@ -4090,6 +4090,17 @@ impl App {
 
     /// The colour around the page (Options > Customization): the theme's
     /// until one is picked (white included, #530).
+    /// The colour round the page in the full-screen preview (F9): the
+    /// one picked in Options, or, while none is, the drawing window's
+    /// colour round the page, so a dark theme's grey stays (#4027).
+    pub fn preview_background_color(&self) -> egui::Color32 {
+        if !self.settings.preview_background_custom && self.settings.preview_background == [255, 255, 255] {
+            return self.desktop_color();
+        }
+        let [r, g, b] = self.settings.preview_background;
+        egui::Color32::from_rgb(r, g, b)
+    }
+
     pub fn desktop_color(&self) -> egui::Color32 {
         // The default white desktop follows the theme.
         if !self.settings.desktop_custom && self.settings.desktop_rgb == [255, 255, 255] {

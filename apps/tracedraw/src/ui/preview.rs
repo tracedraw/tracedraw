@@ -288,8 +288,7 @@ pub fn fullscreen(app: &mut App, ui: &mut Ui) {
         let size = ctx.content_rect().size();
         apply_preview_keys(app, &keys, size);
     }
-    let [r, g, b] = app.settings.preview_background;
-    let background = egui::Color32::from_rgb(r, g, b);
+    let background = app.preview_background_color();
     egui::CentralPanel::default()
         .frame(
             egui::Frame::new()

@@ -566,3 +566,18 @@ fn preview_keys_zoom_and_turn_the_pages() {
     assert!(out.shapes.iter().any(|s| matches!(&s.shape,
         egui::Shape::Rect(r) if r.fill == dark && r.rect.width() > 1000.0)));
 }
+
+/// The full-screen preview's colour round the page follows the drawing
+/// window's while none is picked (#4027: a dark theme's grey turned
+/// white); a picked colour, white too, stays.
+#[test]
+fn the_preview_background_follows_the_desktop_until_one_is_picked() {
+    let (_ctx, mut app) = setup();
+    app.settings.desktop_rgb = [61, 61, 61];
+    app.settings.desktop_custom = true;
+    assert_eq!(app.preview_background_color(), egui::Color32::from_rgb(61, 61, 61));
+    app.settings.preview_background_custom = true;
+    assert_eq!(app.preview_background_color(), egui::Color32::WHITE);
+    app.settings.preview_background = [30, 30, 30];
+    assert_eq!(app.preview_background_color(), egui::Color32::from_rgb(30, 30, 30));
+}

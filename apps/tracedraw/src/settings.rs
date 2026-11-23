@@ -433,6 +433,11 @@ pub struct Settings {
     /// in the full-screen preview (F9), white at first (#3930).
     #[serde(default = "default_preview_background")]
     pub preview_background: [u8; 3],
+    /// The preview's colour was picked: white too is then white, not the
+    /// colour round the page in the drawing window, which the unpicked
+    /// white stands for (a dark theme's grey, #4027).
+    #[serde(default)]
+    pub preview_background_custom: bool,
     /// Options > Document > Page size: how the page's shadow and border
     /// look on screen (#3078).
     #[serde(default, skip_serializing_if = "PageLook::is_default")]
@@ -2470,6 +2475,7 @@ impl Default for Settings {
             selection_bar_mouse: false,
             preview_page_border: true,
             preview_background: default_preview_background(),
+            preview_background_custom: false,
             page_look: PageLook::default(),
             constrain_angle: default_constrain_angle(),
             symmetry_show_lines: true,
