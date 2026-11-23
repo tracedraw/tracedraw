@@ -1410,6 +1410,9 @@ pub struct App {
     pub shape_gen: crate::shape_gen::ShapeGenSettings,
     /// The Shape Generator's live differential growth.
     pub shape_gen_growth: Option<crate::shape_gen_growth::GrowthLive>,
+    /// The Shape Generator tool's preview, kept between the frames of a
+    /// drag.
+    pub shape_gen_tool_cache: std::cell::RefCell<Option<crate::shape_gen_tool::ToolPreview>>,
     /// Speech Balloon tool (#2179): the style, the tail's width (percent
     /// of the body's smaller side) and bend for new balloons, and the
     /// balloon whose tail tip is being dragged.
@@ -3381,6 +3384,7 @@ impl App {
             action_lines: Default::default(),
             shape_gen: Default::default(),
             shape_gen_growth: None,
+            shape_gen_tool_cache: Default::default(),
             balloon_style: Default::default(),
             balloon_width: 30.0,
             balloon_bend: 0.0,
@@ -6709,6 +6713,10 @@ impl App {
             },
             Tool::GraphPaper => {
                 self.create_graph_paper(rect);
+                return;
+            }
+            Tool::ShapeGenerator => {
+                self.create_shape_gen_in(rect);
                 return;
             }
             Tool::ActionLines => {

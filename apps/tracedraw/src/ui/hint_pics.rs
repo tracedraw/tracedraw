@@ -85,6 +85,7 @@ pub fn steps(tool: Tool) -> &'static [Option<Pic>] {
         Tool::ActionLines => &[p!(action_kinds), p!(action_drag)],
         Tool::Balloon => &[p!(balloon_drag), p!(balloon_tail), None],
         Tool::GraphPaper => &[p!(graph_rows), p!(graph_drag), p!(graph_cells)],
+        Tool::ShapeGenerator => &[p!(gen_kinds), p!(gen_drag), p!(gen_group)],
         Tool::Text => &[p!(text_artistic), p!(text_paragraph), None],
         Tool::Table => &[p!(table_drag), p!(table_type), None],
         Tool::ParallelDimension => &[p!(pdim_points), p!(pdim_place), None],
@@ -2103,6 +2104,54 @@ fn graph_cells(k: &K) {
     grid(k, 50.0, 18.0, 150.0, 82.0, 4, 3);
     k.shape(&rect_pts(75.0, 39.33, 100.0, 60.67), Paint::Solid(ORANGE));
     k.handles((75.0, 39.33), (100.0, 60.67));
+}
+
+/// A generated pattern in a box: dots that shrink towards its edges.
+fn gen_dots(k: &K, x0: f32, y0: f32, x1: f32, y1: f32, cols: usize, rows: usize) {
+    let (cw, ch) = ((x1 - x0) / cols as f32, (y1 - y0) / rows as f32);
+    let (mx, my) = ((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+    let far = ((x1 - x0) / 2.0).hypot((y1 - y0) / 2.0);
+    for j in 0..rows {
+        for i in 0..cols {
+            let c = (x0 + cw * (i as f32 + 0.5), y0 + ch * (j as f32 + 0.5));
+            let t = 1.0 - (c.0 - mx).hypot(c.1 - my) / far;
+            let r = cw.min(ch) * (0.12 + 0.34 * t);
+            k.p.circle_filled(k.pt(c), k.px(r), INK);
+        }
+    }
+}
+
+/// A generated pattern in a box: wavy lines one under the other.
+fn gen_waves(k: &K, x0: f32, y0: f32, x1: f32, y1: f32, lines: usize) {
+    for j in 0..lines {
+        let y = y0 + (y1 - y0) * (j as f32 + 0.5) / lines as f32;
+        let pts: Vec<P> = (0..=24)
+            .map(|i| {
+                let t = i as f32 / 24.0;
+                let bump = (-((t - 0.5) * 4.0).powi(2)).exp();
+                let a = (t * 9.0 + j as f32 * 0.7).sin() * 3.2 * bump;
+                (x0 + (x1 - x0) * t, y + a)
+            })
+            .collect();
+        k.line(&pts, 1.0, INK);
+    }
+}
+
+fn gen_kinds(k: &K) {
+    gen_dots(k, 28.0, 20.0, 92.0, 80.0, 8, 7);
+    gen_waves(k, 110.0, 20.0, 190.0, 80.0, 9);
+}
+
+fn gen_drag(k: &K) {
+    k.dashed_closed(&rect_pts(50.0, 16.0, 150.0, 84.0), GHOST);
+    gen_dots(k, 50.0, 16.0, 150.0, 84.0, 11, 8);
+    k.drag((50.0, 16.0), (148.0, 82.0));
+    k.tool_cursor((150.0, 84.0), Tool::ShapeGenerator);
+}
+
+fn gen_group(k: &K) {
+    gen_waves(k, 50.0, 18.0, 150.0, 82.0, 10);
+    k.handles((50.0, 18.0), (150.0, 82.0));
 }
 
 // ---- Text and tables ----

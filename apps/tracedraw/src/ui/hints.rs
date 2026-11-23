@@ -311,6 +311,7 @@ impl Topic {
                 Tool::Spiral,
                 Tool::CommonShapes,
                 Tool::GraphPaper,
+                Tool::ShapeGenerator,
                 Tool::ActionLines,
                 Tool::Balloon,
             ],

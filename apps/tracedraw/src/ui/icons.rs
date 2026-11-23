@@ -474,6 +474,14 @@ pub fn draw_on(painter: &Painter, r: Rect, tool: Tool, color: Color32, bg: Color
             pen.thin("M9 3v18M15 3v18M3 9h18M3 15h18", ink);
             pen.node(21.0, 21.0, true);
         }
+        Tool::ShapeGenerator => {
+            // A pattern of quarter circles filling a box, the node on
+            // its corner.
+            pen.body(&rrect(3.0, 3.0, 18.0, 18.0, 2.0));
+            pen.thin("M3 12a9 9 0 0 0 9-9M12 21a9 9 0 0 1 9-9", acc);
+            pen.thin("M3 7.5a4.5 4.5 0 0 0 4.5-4.5M16.5 21a4.5 4.5 0 0 1 4.5-4.5", ink);
+            pen.node(21.0, 21.0, true);
+        }
 
         // Text group.
         Tool::Text => {

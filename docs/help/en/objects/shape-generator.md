@@ -41,6 +41,26 @@ shows them before Update.
 
 ![The group selected, Cell shape changed to Diamond, the pointer on Update selected](../../img/objects-shape-generator-use-5.png)
 
+## The tool {#tool}
+
+The [[tool.shape_generator]] tool, with the shape tools in the toolbox,
+draws the panel's pattern where you want it and at the size you want:
+
+- Choose the tool. The property bar has the [[shapegen.kind]] list, the
+  [[shapegen.seed]] with [[shapegen.new_seed]] for another variation, and
+  [[toolbar.shape_gen_options]], which opens the panel with every
+  setting of the pattern.
+- Drag on the page. The pattern itself follows the box while you drag,
+  so you see what you get before letting go. <kbd>Ctrl</kbd> keeps the
+  box square, <kbd>Shift</kbd> draws from the center.
+- Let go: the pattern fills the box as one selected group, in one undo
+  step. The panel takes the box's width and height, so changing a
+  setting and clicking [[shapegen.update]] makes it again in place.
+
+The tool always fills the dragged box: a selection picked in the panel
+with [[shapegen.use_selection]] is used by [[shapegen.create]] only. A
+cone template keeps its own size and is centered in the box.
+
 ## Generators {#generators}
 
 Each picture shows the panel with the generator's first settings and, in the
