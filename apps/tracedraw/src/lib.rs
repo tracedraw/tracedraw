@@ -184,6 +184,7 @@ mod offset_shadow_handle;
 mod ops;
 mod ops2;
 mod opening;
+mod saving;
 mod package;
 mod page_drop;
 mod page_names;
@@ -1037,6 +1038,11 @@ impl eframe::App for Shell {
         // A text box's right-click menu picked last frame (#3798).
         ui::text_field_menu::raw_input(raw_input);
         interaction::release_chorded_left(ctx, raw_input);
+        // While a large drawing is written off the interface's thread
+        // nothing typed, clicked or dropped reaches it (#4011).
+        if self.app.as_ref().is_some_and(|app| app.saving.is_some()) {
+            saving::hold_input(raw_input);
+        }
         // The screen's safe area on Android (#1917).
         if let Some(app) = self.app.as_ref() {
             ui::screen_margins::apply(ctx, &app.settings, raw_input);
@@ -1185,6 +1191,15 @@ impl eframe::App for Shell {
             ui.ctx()
                 .request_repaint_after(std::time::Duration::from_millis(100));
         }
+        // A large drawing being saved off the interface's thread (#4011):
+        // a window closed meanwhile waits for the file.
+        if app.saving.is_some() && ui.ctx().input(|i| i.viewport().close_requested()) {
+            app.wait_for_saving();
+        }
+        if app.poll_saving() {
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(50));
+        }
         // A large drawing being opened off the interface's thread (#2849).
         if app.poll_opening() {
             ui.ctx()
@@ -1303,6 +1318,7 @@ impl eframe::App for Shell {
     /// session; drawings left unsaved stay backed up for it.
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         if let Some(app) = self.app.as_mut() {
+            app.wait_for_saving();
             app.save_settings();
             app.leave_session();
             // Restart after an update: the new version starts last, when

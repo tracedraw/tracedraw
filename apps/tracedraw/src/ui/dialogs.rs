@@ -2190,6 +2190,7 @@ pub fn show(app: &mut App, ctx: &Context) {
     duplex_backs_prompt(app, ctx);
     // A large drawing being opened: how far it got, and Cancel (#2849).
     crate::opening::window(app, ctx);
+    crate::saving::window(app, ctx);
     // A shape of My shapes asks for its name (#2360).
     crate::ui::toolbar::my_shape_name_dialog(app, ctx);
     crate::ui::chrome::set_center_dialogs(ctx, app.settings.center_dialogs);

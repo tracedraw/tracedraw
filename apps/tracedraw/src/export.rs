@@ -1208,8 +1208,14 @@ fn print_doc(app: &mut App, st: &PrintState, mut doc: Document) -> Result<String
                 // that resolution, sent as they are.
                 let bitmap_dpi = st.as_bitmap.then(|| st.bitmap_dpi.clamp(36.0, 1200.0));
                 let msg = trf("status.printing_to", &[("name", &printer)]);
+                let progress = app.print_progress.clone();
+                progress.clear();
                 app.start_print_job(move || {
-                    print_on(&printer, &name, &doc, copies, collate, &stem, bitmap_dpi)
+                    let r = print_on(
+                        &printer, &name, &doc, copies, collate, &stem, bitmap_dpi, &progress,
+                    );
+                    progress.clear();
+                    r
                 });
                 return Ok(msg);
             }
@@ -1391,6 +1397,7 @@ pub fn with_screens(ps: &str, screens: &[Option<(f64, f64)>]) -> String {
 /// The print PDF sent to the system printer `printer` (`lp`), with the
 /// copies the dialog asked for.
 #[cfg(not(target_os = "windows"))]
+#[allow(clippy::too_many_arguments)]
 fn print_on(
     printer: &str,
     name: &str,
@@ -1399,6 +1406,7 @@ fn print_on(
     collate: bool,
     title: &str,
     _bitmap_dpi: Option<f64>,
+    _progress: &crate::printers::PrintProgress,
 ) -> Result<String, String> {
     let pdf = tracedraw_io::pdf::document_to_pdf(doc);
     let dir = std::env::temp_dir().join("tracedraw-print");
@@ -1417,6 +1425,7 @@ fn print_on(
 /// the job (#1404); `bitmap_dpi` (Print as bitmap) sends that resolution
 /// instead.
 #[cfg(target_os = "windows")]
+#[allow(clippy::too_many_arguments)]
 fn print_on(
     printer: &str,
     _name: &str,
@@ -1425,20 +1434,104 @@ fn print_on(
     collate: bool,
     title: &str,
     bitmap_dpi: Option<f64>,
+    progress: &crate::printers::PrintProgress,
 ) -> Result<String, String> {
     let dpi = bitmap_dpi
         .unwrap_or_else(|| windows_print_dpi(crate::printers::printer_resolution_windows(printer)));
-    let sheets: Vec<crate::printers::Sheet> = doc
-        .pages
-        .iter()
-        .map(|p| crate::printers::Sheet {
-            width: p.size.width,
-            height: p.size.height,
-            tiles: sheet_tiles(doc, p.id, dpi, PRINT_TILE_PIXELS).unwrap_or_default(),
-        })
-        .collect();
-    crate::printers::print_sheets_windows(printer, &sheets, dpi, copies, collate, title)?;
+    let dir = std::env::temp_dir().join("tracedraw-print");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let sheets = draw_sheets_to(&dir, doc, dpi, PRINT_TILE_PIXELS, progress)?;
+    crate::printers::print_sheets_windows(
+        printer, &dir, &sheets, dpi, copies, collate, title, progress,
+    )?;
     Ok(trf("status.print_sent_printer", &[("name", printer)]))
+}
+
+/// Every sheet of `doc` drawn at `dpi` into picture files in `dir`
+/// ([`sheet_tiles`]), in sheet order: each sheet's width and height in mm
+/// and its files. Each sheet's pictures are written as soon as it is
+/// drawn, so only the sheets being drawn are in memory however many
+/// there are (a print merge of 2000 sheets held them all), and several
+/// sheets are drawn at a time, sharing the `max_pixels` drawn at once.
+/// `progress` is told of each sheet drawn. On an error the files written
+/// are removed.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+fn draw_sheets_to(
+    dir: &std::path::Path,
+    doc: &Document,
+    dpi: f64,
+    max_pixels: u64,
+    progress: &crate::printers::PrintProgress,
+) -> Result<Vec<(f64, f64, Vec<crate::printers::TileFile>)>, String> {
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    type Drawn = Option<(f64, f64, Vec<crate::printers::TileFile>)>;
+    let n = doc.pages.len();
+    progress.start(crate::printers::PrintProgress::DRAWING, n);
+    let workers = std::thread::available_parallelism()
+        .map(|c| c.get())
+        .unwrap_or(1)
+        .clamp(1, 4)
+        .min(n.max(1));
+    let each = (max_pixels / workers as u64).max(1);
+    let next = AtomicUsize::new(0);
+    let failed = AtomicBool::new(false);
+    let drawn: std::sync::Mutex<Vec<Drawn>> = std::sync::Mutex::new((0..n).map(|_| None).collect());
+    let error: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+    let work = || {
+        while !failed.load(Ordering::Relaxed) {
+            let k = next.fetch_add(1, Ordering::Relaxed);
+            let Some(page) = doc.pages.get(k) else {
+                break;
+            };
+            let mut files = Vec::new();
+            let mut wrote = Ok(());
+            for (t, tile) in sheet_tiles(doc, page.id, dpi, each)
+                .unwrap_or_default()
+                .into_iter()
+                .enumerate()
+            {
+                let path = dir.join(format!("sheet-{}-{}.png", k + 1, t + 1));
+                wrote = std::fs::write(&path, &tile.png);
+                files.push(crate::printers::TileFile {
+                    path,
+                    x: tile.x,
+                    y: tile.y,
+                    width: tile.width,
+                    height: tile.height,
+                });
+                if wrote.is_err() {
+                    break;
+                }
+            }
+            if let Ok(mut d) = drawn.lock() {
+                d[k] = Some((page.size.width, page.size.height, files));
+            }
+            if let Err(e) = wrote {
+                failed.store(true, Ordering::Relaxed);
+                if let Ok(mut slot) = error.lock() {
+                    slot.get_or_insert(e.to_string());
+                }
+                break;
+            }
+            progress.one_more();
+        }
+    };
+    std::thread::scope(|s| {
+        for _ in 1..workers {
+            s.spawn(work);
+        }
+        work();
+    });
+    let drawn = drawn.into_inner().map_err(|e| e.to_string())?;
+    if let Some(e) = error.into_inner().ok().flatten() {
+        for (_, _, files) in drawn.iter().flatten() {
+            for f in files {
+                let _ = std::fs::remove_file(&f.path);
+            }
+        }
+        return Err(e);
+    }
+    Ok(drawn.into_iter().flatten().collect())
 }
 
 /// The resolution sheets are drawn at for a Windows printer that says
@@ -4166,6 +4259,70 @@ mod tests {
         let blank = Document::new("b", tracedraw_core::Size::new(50.0, 40.0));
         let tiles = sheet_tiles(&blank, blank.pages[0].id, 300.0, 1 << 24).expect("blank");
         assert!(tiles.is_empty());
+    }
+
+    /// A print of many sheets: each sheet's pictures are written to files
+    /// as it is drawn (none kept in memory), several sheets at a time, and
+    /// come back in sheet order with the progress told of each; a blank
+    /// sheet has no file.
+    #[test]
+    fn many_sheets_are_drawn_into_files_in_their_order() {
+        use tracedraw_core::Fill;
+        let size = tracedraw_core::Size::new(50.0, 40.0);
+        let mut doc = Document::new("many", size);
+        for _ in 1..9 {
+            let _ = tracedraw_core::Command::AddPage {
+                name: None,
+                size,
+                layer: None,
+            }
+            .apply(&mut doc);
+        }
+        assert_eq!(doc.pages.len(), 9);
+        // Sheet k (but the blank sixth) holds a square k+1 mm wide.
+        for k in 0..9 {
+            if k == 5 {
+                continue;
+            }
+            let layer = doc.pages[k].layers[0].id;
+            let id = doc.ids_mut().shape();
+            let mut s = tracedraw_core::Shape::new(
+                id,
+                ShapeKind::Rect {
+                    rect: tracedraw_core::Rect::new(5.0, 5.0, 6.0 + k as f64, 15.0),
+                    radius: 0.0,
+                    corners: None,
+                },
+            );
+            s.fill = Fill::Solid(tracedraw_core::Color::rgb8(0, 0, 0));
+            doc.layer_mut(layer).expect("layer").shapes.push(s);
+        }
+        let dir = std::env::temp_dir().join(format!("tracedraw-print-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("dir");
+        let progress = crate::printers::PrintProgress::default();
+        let sheets = draw_sheets_to(&dir, &doc, 100.0, 1 << 20, &progress).expect("drawn");
+        assert_eq!(sheets.len(), 9);
+        assert_eq!(
+            progress.get(),
+            Some((crate::printers::PrintProgress::DRAWING, 9, 9))
+        );
+        for (k, (w, h, files)) in sheets.iter().enumerate() {
+            assert_eq!((*w, *h), (50.0, 40.0));
+            if k == 5 {
+                assert!(files.is_empty(), "a blank sheet sends only the paper");
+                continue;
+            }
+            assert_eq!(files.len(), 1, "sheet {k}");
+            let f = &files[0];
+            assert!(f.path.ends_with(format!("sheet-{}-1.png", k + 1)));
+            assert!((f.width - (1.0 + k as f64)).abs() < 0.6, "sheet {k}: {}", f.width);
+            let png = std::fs::read(&f.path).expect("file");
+            assert!(tiny_skia::Pixmap::decode_png(&png).is_ok());
+        }
+        // A folder that cannot be written to: the error, and no sheet.
+        let gone = dir.join("no").join("such").join("folder");
+        assert!(draw_sheets_to(&gone, &doc, 100.0, 1 << 20, &progress).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// The printer's own resolution, kept within reason (#1404).

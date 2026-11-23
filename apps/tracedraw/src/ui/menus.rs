@@ -2831,10 +2831,10 @@ fn file_menu(app: &mut App, ui: &mut Ui) {
     }
     sep(ui);
     if item(ui, "menu.file.save", "Ctrl+S", doc) {
-        app.save(false);
+        app.save_showing_progress(false);
     }
     if item(ui, "menu.file.save_as", "Ctrl+Shift+S", doc) {
-        app.save(true);
+        app.save_showing_progress(true);
     }
     if item(ui, "menu.file.save_as_template", "", doc) {
         app.save_as_template();

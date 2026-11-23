@@ -66,9 +66,25 @@ the printer's paper of its size when the printer has one (either way
 round, within 2 mm), a wide sheet turns the paper, and the sheet is
 drawn at its size from the paper's corner; the copies and their
 collation go to the printer, the drawing's name is the job title. The
-script runs without a window and shows no "Printing page" box, and gives
-up after five minutes; what came of each print (the sheets sent, or the
-error) is written to `tracedraw.log`. A one-sheet print used to fail
+script runs without a window and shows no "Printing page" box. A print
+of any number of sheets goes through (#4053, #4054): each sheet's
+pictures are written to files as it is drawn, up to four sheets at a
+time sharing the 16 million pixels, so only the sheets being drawn are
+in memory (`draw_sheets_to`); the script says a line for each sheet the
+queue takes, read while it runs (`run_watched`), and is given up only
+when it says nothing for five minutes, however long the whole job
+takes. The status bar counts both steps, "Drawing sheet 12 of 2000 for
+the printer…" then "Sending sheet 12 of 2000 to the printer…"
+(`PrintProgress`). Before, all the sheets were drawn into memory first,
+what the script said was read only at its end (so a job of some hundred
+sheets waited for ever to say its next line) and the whole job had five
+minutes, so a print merge of 2000 sheets never printed. What came of
+each print (the last lines the script said, or the error) is written to
+`tracedraw.log`
+(`printers::tests::a_job_that_says_much_is_read_while_it_runs`,
+`printers::tests::only_a_job_gone_silent_is_stopped`,
+`printers::tests::the_print_script_says_each_sheet_sent`,
+`export::tests::many_sheets_are_drawn_into_files_in_their_order`). A one-sheet print used to fail
 before it reached the printer, on every printer: the list of sheet sizes
 flattened in PowerShell when it held one sheet (#614; checked on a
 Windows machine with a printer writing to a file: one and two sheets

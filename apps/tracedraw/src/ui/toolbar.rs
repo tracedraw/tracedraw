@@ -480,7 +480,7 @@ pub(crate) fn draw_item(app: &mut App, ui: &mut Ui, bar: &str, id: &str) {
             )
             .clicked()
             {
-                app.save(false);
+                app.save_showing_progress(false);
             }
         }
         // The drawing's Git repository: open a file from it, or save the

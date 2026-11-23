@@ -1808,9 +1808,18 @@ pub struct App {
     /// a printer's spooler can take minutes and the window stays usable
     /// meanwhile (#810). The status it ends with.
     pub print_job: Option<std::sync::mpsc::Receiver<Result<String, String>>>,
+    /// How far the print on its way has come, for the status bar.
+    pub print_progress: std::sync::Arc<crate::printers::PrintProgress>,
     /// A large `.tdraw` being read off the interface's thread, with its
     /// progress window (#2849).
     pub opening: Option<crate::opening::Opening>,
+    /// A large drawing being written off the interface's thread (#4011):
+    /// while it is, nothing typed or clicked reaches the drawing.
+    pub saving: Option<crate::saving::Saving>,
+    /// Save, Save As and their shortcuts write a large drawing on a
+    /// worker thread (never in a browser, nor in the tests unless one
+    /// asks for it, which save at once).
+    pub save_on_worker: bool,
     /// What that read gave, for the open it finishes.
     pub opened_read: Option<(PathBuf, crate::opening::OpenRead)>,
     /// Manual two-sided printing: the settings of a print whose fronts
@@ -3561,7 +3570,10 @@ impl App {
             print_preview: None,
             printer_fetch: None,
             print_job: None,
+            print_progress: Default::default(),
             opening: None,
+            saving: None,
+            save_on_worker: !crate::files::WEB && !cfg!(test),
             opened_read: None,
             duplex_backs: None,
             printers_seen: Vec::new(),
@@ -9548,6 +9560,18 @@ impl App {
     }
 
     pub fn save(&mut self, save_as: bool) {
+        self.save_with(save_as, false);
+    }
+
+    /// File > Save and Save As from the menus, the toolbar and the
+    /// keyboard: as [`App::save`], a large drawing written off the
+    /// interface's thread with a window saying so, so the program does
+    /// not stand still with nothing on screen while it is saved (#4011).
+    pub fn save_showing_progress(&mut self, save_as: bool) {
+        self.save_with(save_as, true);
+    }
+
+    fn save_with(&mut self, save_as: bool, progress: bool) {
         // A drawing from GitHub saves back as a commit (Save As saves a
         // file as usual).
         if !save_as && self.remote.is_some() {
@@ -9567,7 +9591,7 @@ impl App {
         // write back to.
         if !save_as && !crate::files::WEB {
             if let Some(path) = self.file.clone() {
-                self.save_to(path);
+                self.save_to_with(path, progress);
                 return;
             }
         }
@@ -9601,6 +9625,18 @@ impl App {
     }
 
     pub(crate) fn save_to(&mut self, path: PathBuf) {
+        self.save_to_with(path, false);
+    }
+
+    /// As [`App::save_to`], a large `.tdraw` drawing written off the
+    /// interface's thread (see [`App::save_showing_progress`]).
+    pub(crate) fn save_to_showing_progress(&mut self, path: PathBuf) {
+        self.save_to_with(path, true);
+    }
+
+    fn save_to_with(&mut self, path: PathBuf, progress: bool) {
+        // A save still being written ends first: two never write at once.
+        self.wait_for_saving();
         // Time counted for the active task goes into the file too.
         self.flush_tracked_time();
         // Mesh fills a `.cdr` file gets as one colour each: the status
@@ -9659,6 +9695,23 @@ impl App {
             } else {
                 std::borrow::Cow::Borrowed(&*carried)
             };
+            if progress && self.save_on_worker && crate::saving::is_large(&path, &doc) {
+                let state = (self.engine.instance(), self.engine.revision());
+                let copy = doc.into_owned();
+                match crate::saving::Saving::start(path.clone(), copy, version, state) {
+                    Ok(job) => {
+                        self.status = crate::i18n::trf(
+                            "status.saving",
+                            &[("p", &path.display().to_string())],
+                        );
+                        self.saving = Some(job);
+                        return;
+                    }
+                    Err(e) => {
+                        return self.saved_to(path, Err(e));
+                    }
+                }
+            }
             // Written to the file as it is made: the JSON of a large
             // drawing is several times its size.
             let result = crate::files::write_with(&path, |w| {
@@ -9678,6 +9731,53 @@ impl App {
                 self.status,
                 crate::i18n::trf("status.saved_mesh_as_colour", &[("n", &meshes.to_string())])
             );
+        }
+    }
+
+    /// The large drawing being written off the interface's thread, once
+    /// its file is written: its state, the status line and the recent
+    /// files, as after any save. Whether it is still being written.
+    pub fn poll_saving(&mut self) -> bool {
+        let Some(job) = &self.saving else {
+            return false;
+        };
+        let Some(result) = job.poll() else {
+            return true;
+        };
+        if let Some(job) = self.saving.take() {
+            self.finish_saving(job, result);
+        }
+        false
+    }
+
+    /// Wait for the drawing being written off the interface's thread, if
+    /// one is (the program closes, or the drawing is saved again).
+    pub fn wait_for_saving(&mut self) {
+        if let Some(job) = self.saving.take() {
+            let result = job.wait();
+            self.finish_saving(job, result);
+        }
+    }
+
+    fn finish_saving(&mut self, job: crate::saving::Saving, result: Result<(), String>) {
+        // Another drawing is the active one now: the file is written,
+        // and that is all there is to say here.
+        if self.engine.instance() != job.state.0 {
+            self.status = match result {
+                Ok(()) => {
+                    crate::i18n::trf("status.saved", &[("p", &job.path.display().to_string())])
+                }
+                Err(e) => crate::i18n::trf("status.save_failed", &[("e", &e)]),
+            };
+            return;
+        }
+        let changed_since = self.engine.revision() != job.state.1;
+        let saved = result.is_ok();
+        self.saved_to(job.path, result);
+        // Changed while it was written (a macro, an agent): the file holds
+        // the drawing as it was, so it still has unsaved changes.
+        if saved && changed_since {
+            self.engine.mark_unsaved();
         }
     }
 
@@ -10555,7 +10655,22 @@ impl App {
         };
         let done = match rx.try_recv() {
             Ok(r) => r,
-            Err(std::sync::mpsc::TryRecvError::Empty) => return true,
+            Err(std::sync::mpsc::TryRecvError::Empty) => {
+                // A long print says how far it is: the sheets drawn,
+                // then the sheets the printer's queue took.
+                if let Some((stage, done, total)) = self.print_progress.get() {
+                    let key = if stage == crate::printers::PrintProgress::DRAWING {
+                        "status.print_drawing"
+                    } else {
+                        "status.print_sending"
+                    };
+                    self.status = crate::i18n::trf(
+                        key,
+                        &[("n", &done.to_string()), ("total", &total.to_string())],
+                    );
+                }
+                return true;
+            }
             Err(std::sync::mpsc::TryRecvError::Disconnected) => {
                 Err(crate::i18n::tr("dialog.print_failed"))
             }

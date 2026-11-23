@@ -4846,9 +4846,9 @@ impl App {
                 // Text > Bullets On/Off at the caret (#3593).
                 self.toggle_bullets();
             } else if is(Key::S, cmd) {
-                self.save(false);
+                self.save_showing_progress(false);
             } else if is(Key::S, cmd | Modifiers::SHIFT) {
-                self.save(true);
+                self.save_showing_progress(true);
             } else {
                 continue;
             }
@@ -5299,10 +5299,10 @@ impl App {
             self.redo();
         }
         if pressed(Key::S, cmd) {
-            self.save(false);
+            self.save_showing_progress(false);
         }
         if pressed(Key::S, cmd | Modifiers::SHIFT) {
-            self.save(true);
+            self.save_showing_progress(true);
         }
         if pressed(Key::S, Modifiers::ALT) && self.symmetry_edit.is_none() {
             self.create_symmetry();

@@ -7162,6 +7162,38 @@ impl Document {
             .chain(self.pages.iter().flat_map(|p| &p.layers))
     }
 
+    /// The layer number `k` of [`Document::all_layers`], without walking
+    /// the layers before it: only the pages are counted (each lookup of
+    /// an object walked every layer of a drawing of thousands of pages,
+    /// which made filling a large print merge slow).
+    fn nth_layer(&self, mut k: usize) -> Option<&Layer> {
+        if k < self.master.len() {
+            return self.master.get(k);
+        }
+        k -= self.master.len();
+        for p in &self.pages {
+            if k < p.layers.len() {
+                return p.layers.get(k);
+            }
+            k -= p.layers.len();
+        }
+        None
+    }
+
+    fn nth_layer_mut(&mut self, mut k: usize) -> Option<&mut Layer> {
+        if k < self.master.len() {
+            return self.master.get_mut(k);
+        }
+        k -= self.master.len();
+        for p in &mut self.pages {
+            if k < p.layers.len() {
+                return p.layers.get_mut(k);
+            }
+            k -= p.layers.len();
+        }
+        None
+    }
+
     pub fn all_layers_mut(&mut self) -> impl Iterator<Item = &mut Layer> {
         self.master
             .iter_mut()
@@ -7376,14 +7408,13 @@ impl Document {
     /// Find a top-level shape and the layer holding it.
     pub fn shape(&self, id: ShapeId) -> Result<(&Layer, &Shape)> {
         let (k, i) = self.locate_on_layer(id).ok_or(Error::ShapeNotFound(id))?;
-        let layer = self.all_layers().nth(k).ok_or(Error::ShapeNotFound(id))?;
+        let layer = self.nth_layer(k).ok_or(Error::ShapeNotFound(id))?;
         Ok((layer, &layer.shapes[i]))
     }
 
     pub fn shape_mut(&mut self, id: ShapeId) -> Result<&mut Shape> {
         let (k, i) = self.locate_on_layer(id).ok_or(Error::ShapeNotFound(id))?;
-        self.all_layers_mut()
-            .nth(k)
+        self.nth_layer_mut(k)
             .and_then(|l| l.shapes.get_mut(i))
             .ok_or(Error::ShapeNotFound(id))
     }
@@ -7393,7 +7424,7 @@ impl Document {
     /// and the places next to it, first (see [`FindHint`]).
     fn locate_on_layer(&self, id: ShapeId) -> Option<(usize, usize)> {
         let (k, i) = self.find_hint.get();
-        if let Some(layer) = self.all_layers().nth(k) {
+        if let Some(layer) = self.nth_layer(k) {
             for j in [i, i + 1, i.wrapping_sub(1)] {
                 if layer.shapes.get(j).is_some_and(|s| s.id == id) {
                     self.find_hint.set(k, j);
@@ -7413,14 +7444,14 @@ impl Document {
     /// Position of a shape: (layer id, index inside the layer).
     pub fn locate(&self, id: ShapeId) -> Result<(LayerId, usize)> {
         let (k, i) = self.locate_on_layer(id).ok_or(Error::ShapeNotFound(id))?;
-        let layer = self.all_layers().nth(k).ok_or(Error::ShapeNotFound(id))?;
+        let layer = self.nth_layer(k).ok_or(Error::ShapeNotFound(id))?;
         Ok((layer.id, i))
     }
 
     /// Find any shape, including children of groups and clip frames.
     pub fn find_shape(&self, id: ShapeId) -> Option<&Shape> {
         let (k, i) = self.locate_top(id)?;
-        let top = self.all_layers().nth(k)?.shapes.get(i)?;
+        let top = self.nth_layer(k)?.shapes.get(i)?;
         find_in(top, id)
     }
 
@@ -7429,8 +7460,7 @@ impl Document {
         let Some((k, i)) = self.locate_top(id) else {
             return false;
         };
-        self.all_layers()
-            .nth(k)
+        self.nth_layer(k)
             .and_then(|l| l.shapes.get(i))
             .and_then(|top| wraps_along_path(top, id))
             .unwrap_or(false)
@@ -7443,7 +7473,7 @@ impl Document {
     /// whole drawing to be found, so moving them all took seconds).
     fn locate_top(&self, id: ShapeId) -> Option<(usize, usize)> {
         let (k, i) = self.find_hint.get();
-        if let Some(layer) = self.all_layers().nth(k) {
+        if let Some(layer) = self.nth_layer(k) {
             if layer
                 .shapes
                 .get(i)
@@ -7462,8 +7492,7 @@ impl Document {
         // there.
         if let Some((k, i)) = self.find_hint.top(id) {
             if self
-                .all_layers()
-                .nth(k)
+                .nth_layer(k)
                 .and_then(|l| l.shapes.get(i))
                 .is_some_and(|s| s.id == id)
             {
@@ -7540,7 +7569,7 @@ impl Document {
             }
         }
         let (k, i) = self.locate_top(id)?;
-        let top = self.all_layers_mut().nth(k)?.shapes.get_mut(i)?;
+        let top = self.nth_layer_mut(k)?.shapes.get_mut(i)?;
         walk(top, id)
     }
 
@@ -7562,7 +7591,7 @@ impl Document {
             }
         }
         let (k, i) = self.locate_top(id)?;
-        let top = self.all_layers().nth(k)?.shapes.get(i)?;
+        let top = self.nth_layer(k)?.shapes.get(i)?;
         walk(top, id, Affine::IDENTITY)
     }
 
@@ -7607,7 +7636,7 @@ impl Document {
             return Vec::new();
         };
         let mut path = Vec::new();
-        match self.all_layers().nth(k).and_then(|l| l.shapes.get(i)) {
+        match self.nth_layer(k).and_then(|l| l.shapes.get(i)) {
             Some(top) if walk(top, id, &mut path) => path,
             _ => Vec::new(),
         }
@@ -7622,7 +7651,7 @@ impl Document {
     /// layer).
     pub fn top_level_of(&self, id: ShapeId) -> Option<ShapeId> {
         let (k, i) = self.locate_top(id)?;
-        self.all_layers().nth(k)?.shapes.get(i).map(|s| s.id)
+        self.nth_layer(k)?.shapes.get(i).map(|s| s.id)
     }
 
     /// Union of all shape bounds on a page, or None when the page is empty.
@@ -11915,5 +11944,53 @@ mod tests {
             on_path: None,
         };
         assert!(s.text_parts().is_none());
+    }
+
+    /// The layer of a number is reached by counting pages, not layers
+    /// (each lookup of an object walked every layer before its own,
+    /// which made filling a print merge of thousands of pages slow): the
+    /// same layer as walking them all, master layers first, on pages
+    /// with any number of layers, and none past the last.
+    #[test]
+    fn a_layer_is_reached_by_its_number_without_walking_the_others() {
+        let mut doc = Document::new("d", crate::geometry::Size::new(100.0, 100.0));
+        for name in ["m1", "m2"] {
+            let id = doc.ids_mut().layer();
+            doc.master.push(Layer::new(id, name));
+        }
+        for extra in [0usize, 3, 0, 1, 2] {
+            let id = doc.ids_mut().page();
+            let mut page = doc.pages[0].clone();
+            page.id = id;
+            page.layers.clear();
+            for _ in 0..extra {
+                let l = doc.ids_mut().layer();
+                page.layers.push(Layer::new(l, "L"));
+            }
+            doc.pages.push(page);
+        }
+        let all: Vec<LayerId> = doc.all_layers().map(|l| l.id).collect();
+        assert_eq!(all.len(), 2 + 1 + 6);
+        for (k, id) in all.iter().enumerate() {
+            assert_eq!(doc.nth_layer(k).map(|l| l.id), Some(*id), "layer {k}");
+            assert_eq!(doc.nth_layer_mut(k).map(|l| l.id), Some(*id), "layer {k}");
+        }
+        assert!(doc.nth_layer(all.len()).is_none());
+        assert!(doc.nth_layer_mut(all.len() + 7).is_none());
+        // An object on the last page's last layer is found, and changed,
+        // where it is.
+        let shape = doc.ids_mut().shape();
+        let last = *all.last().expect("layers");
+        doc.layer_mut(last).expect("layer").shapes.push(Shape::new(
+            shape,
+            ShapeKind::Rect {
+                rect: crate::geometry::Rect::new(0.0, 0.0, 1.0, 1.0),
+                radius: 0.0,
+                corners: None,
+            },
+        ));
+        assert_eq!(doc.locate(shape).expect("found"), (last, 0));
+        doc.shape_mut(shape).expect("found").name = Some("x".into());
+        assert_eq!(doc.find_shape(shape).and_then(|s| s.name.clone()).as_deref(), Some("x"));
     }
 }

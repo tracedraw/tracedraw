@@ -775,6 +775,84 @@ mod tests {
         d
     }
 
+    /// Save from the menus, the toolbar and the keyboard writes a large
+    /// drawing off the interface's thread (#4011): the drawing stays
+    /// unsaved, with what is typed and clicked held back, until its file
+    /// is written, and is then saved as after any save. A drawing changed
+    /// meanwhile keeps its unsaved changes; a small one, and every other
+    /// save (the question on closing), is written at once.
+    #[test]
+    fn a_large_drawing_is_saved_off_the_interfaces_thread() {
+        let dir = temp_dir("saving-worker");
+        let mut app = App::headless();
+        assert!(!app.save_on_worker, "the tests save at once");
+        app.save_on_worker = true;
+        app.open_document(
+            tracedraw_core::Document::new("Big", Size::new(100.0, 100.0)),
+            None,
+        );
+        add_rect(&mut app);
+        // A small drawing: written at once.
+        let small = dir.join("small.tdraw");
+        app.save_to_showing_progress(small.clone());
+        assert!(app.saving.is_none() && !app.engine.is_dirty());
+        assert!(small.exists());
+        // A file already large is the sign of a large drawing.
+        let big = dir.join("big.tdraw");
+        std::fs::write(&big, vec![0u8; crate::saving::BACKGROUND_FROM as usize]).expect("file");
+        add_rect(&mut app);
+        // Any other save writes at once.
+        app.save_to(big.clone());
+        assert!(app.saving.is_none() && !app.engine.is_dirty());
+        std::fs::write(&big, vec![0u8; crate::saving::BACKGROUND_FROM as usize]).expect("file");
+        add_rect(&mut app);
+        app.save_showing_progress(false);
+        assert!(app.saving.is_some(), "being written");
+        assert!(app.engine.is_dirty(), "not saved until the file is written");
+        // What is typed, clicked or dropped meanwhile is left out.
+        let mut raw = egui::RawInput {
+            events: vec![
+                egui::Event::Text("x".into()),
+                egui::Event::PointerMoved(egui::pos2(3.0, 4.0)),
+                egui::Event::PointerButton {
+                    pos: egui::pos2(3.0, 4.0),
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: Default::default(),
+                },
+            ],
+            ..Default::default()
+        };
+        crate::saving::hold_input(&mut raw);
+        assert_eq!(raw.events.len(), 1);
+        let t = web_time::Instant::now();
+        while app.poll_saving() {
+            assert!(t.elapsed() < std::time::Duration::from_secs(30));
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        assert!(app.saving.is_none() && !app.engine.is_dirty());
+        assert_eq!(app.file.as_deref(), Some(big.as_path()));
+        let bytes = std::fs::read(&big).expect("file");
+        assert_eq!(&bytes[..2], &[0x1f, 0x8b], "the packed drawing");
+        assert!(app.status.contains("big.tdraw"));
+        // Changed while its file was written: the file holds the drawing
+        // as it was, and the drawing keeps its unsaved change.
+        std::fs::write(&big, vec![0u8; crate::saving::BACKGROUND_FROM as usize]).expect("file");
+        app.save_showing_progress(false);
+        assert!(app.saving.is_some());
+        add_rect(&mut app);
+        app.wait_for_saving();
+        assert!(app.saving.is_none());
+        assert!(app.engine.is_dirty(), "changed since its copy was taken");
+        // Saved again while one is being written: the first ends first.
+        std::fs::write(&big, vec![0u8; crate::saving::BACKGROUND_FROM as usize]).expect("file");
+        app.save_showing_progress(false);
+        app.save_to(big.clone());
+        assert!(app.saving.is_none() && !app.engine.is_dirty());
+        assert_eq!(&std::fs::read(&big).expect("file")[..2], &[0x1f, 0x8b]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// Open drawings keep their files (#2130): the file of every open
     /// drawing, in the front tab or another, is held from the frame after
     /// it is opened or saved until the drawing is closed or saved under

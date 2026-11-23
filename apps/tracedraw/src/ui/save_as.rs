@@ -674,7 +674,7 @@ impl App {
                     } else {
                         app.tdraw_embed_fonts = tdraw_embed_fonts;
                         app.tdraw_version = Some(tdraw_version);
-                        app.save_to(path);
+                        app.save_to_showing_progress(path);
                     }
                 });
             return true;
@@ -711,7 +711,7 @@ impl App {
             if st.packaged() {
                 self.save_package(path, st.package_pdf);
             } else {
-                self.save_to(path);
+                self.save_to_showing_progress(path);
             }
         }
         true
