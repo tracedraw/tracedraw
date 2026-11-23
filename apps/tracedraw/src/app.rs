@@ -10628,6 +10628,7 @@ impl App {
             dialog = dialog.add_filter(f.label(), &exts);
         }
         dialog
+            .set_title(crate::files::Dialog::command_title("menu.file.import"))
             .add_filter("HPGL plotter (*.plt, *.hpgl)", &["plt", "hpgl", "hgl"])
             .add_filter("Text (*.txt, *.rtf, *.docx)", &["txt", "rtf", "docx"])
             .add_filter(

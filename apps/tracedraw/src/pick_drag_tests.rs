@@ -13541,6 +13541,7 @@ fn export_asks_for_the_file_then_shows_the_options_of_its_format() {
         .iter()
         .any(|(_, e)| e.contains(&"jpg".to_string()) && e.contains(&"jpeg".to_string())));
     assert_eq!(asked[0].file_name(), Some("Graphic1.svg"));
+    assert_eq!(asked[0].title(), Some("Export"), "#3994");
     // Then the options of PNG, the format the name chose, for that file.
     let Dialog::Export(st) = &app.dialog else {
         panic!("no options after the Save dialog: {:?}", app.dialog);

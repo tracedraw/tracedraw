@@ -5018,7 +5018,9 @@ pub fn export_format_of(path: &std::path::Path) -> Option<usize> {
 fn export_save_dialog(app: &App, st: &ExportState) -> crate::files::Dialog {
     let (name, ext) = EXPORT_FORMATS[st.format.min(EXPORT_FORMATS.len() - 1)];
     let stem = app.export_stem();
-    let mut dialog = crate::files::Dialog::new().add_filter(name, &export_extensions(ext));
+    let mut dialog = crate::files::Dialog::new()
+        .set_title(crate::files::Dialog::command_title("menu.file.export"))
+        .add_filter(name, &export_extensions(ext));
     for (other, e) in EXPORT_FORMATS.iter() {
         if *e != ext {
             dialog = dialog.add_filter(*other, &export_extensions(e));

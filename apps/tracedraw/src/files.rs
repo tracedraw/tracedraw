@@ -1873,6 +1873,7 @@ pub struct Dialog {
     filters: Vec<(String, Vec<String>)>,
     file_name: Option<String>,
     directory: Option<PathBuf>,
+    title: Option<String>,
 }
 
 impl Dialog {
@@ -1891,6 +1892,20 @@ impl Dialog {
     pub fn set_file_name(mut self, name: impl Into<String>) -> Self {
         self.file_name = Some(name.into());
         self
+    }
+
+    /// The window title of the desktop dialog, such as "Export" (#3994).
+    pub fn set_title(mut self, title: impl Into<String>) -> Self {
+        self.title = Some(title.into());
+        self
+    }
+
+    /// A menu command's name without its trailing dots, for a dialog's
+    /// title: "Import..." titles the Import window "Import".
+    pub fn command_title(key: &str) -> String {
+        crate::i18n::tr(key)
+            .trim_end_matches(['.', '…', ' '])
+            .to_string()
     }
 
     /// The folder the desktop dialog opens in (ignored in a browser and
@@ -2101,6 +2116,12 @@ impl Dialog {
         self.file_name.as_deref()
     }
 
+    /// The dialog window's title.
+    #[cfg(test)]
+    pub fn title(&self) -> Option<&str> {
+        self.title.as_deref()
+    }
+
     /// The folder the dialog opens in.
     #[cfg(test)]
     pub fn directory(&self) -> Option<&Path> {
@@ -2118,6 +2139,9 @@ impl Dialog {
         }
         if let Some(dir) = self.directory.as_ref().filter(|d| d.is_dir()) {
             d = d.set_directory(dir);
+        }
+        if let Some(title) = &self.title {
+            d = d.set_title(title);
         }
         d
     }
@@ -2462,14 +2486,24 @@ mod tests {
             .add_filter("PDF", &["pdf"])
             .add_filter("Images", &["png", "jpg"])
             .set_file_name("drawing.pdf")
-            .set_directory(&dir);
+            .set_directory(&dir)
+            .set_title("Export");
         let config = format!("{:?}", dialog.native_dialog());
         for expected in ["PDF", "pdf", "Images", "png", "jpg", "drawing.pdf"] {
             assert!(config.contains(expected), "{config}");
         }
+        assert!(config.contains("Export"), "{config}");
         assert!(config.contains(&format!("{:?}", dir)));
         let invalid = Dialog::new().set_directory(dir.join("missing-tracedraw-dialog-dir"));
         assert!(format!("{:?}", invalid.native_dialog()).contains("starting_directory: None"));
+    }
+
+    /// The Import and Export windows are titled after their commands,
+    /// not with the system's "Open" and "Save As" (#3994).
+    #[test]
+    fn import_and_export_dialogs_are_titled_after_their_commands() {
+        assert_eq!(Dialog::command_title("menu.file.import"), "Import");
+        assert_eq!(Dialog::command_title("menu.file.export"), "Export");
     }
 
     #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
