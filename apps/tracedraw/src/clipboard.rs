@@ -1386,7 +1386,10 @@ impl App {
             return;
         };
         // A portable copy keeps them in its own folder (#3908).
+        #[cfg(not(target_arch = "wasm32"))]
         let dir = crate::settings::work_dir("tracedraw-edit");
+        #[cfg(target_arch = "wasm32")]
+        let dir = std::path::PathBuf::from("tracedraw-edit");
         let path = match self.write_bitmap_for_editing(id, &dir) {
             Ok(p) => p,
             Err(e) => {
