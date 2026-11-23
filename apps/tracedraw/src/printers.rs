@@ -1589,20 +1589,22 @@ mod tests {
             c.args(["-c", script]);
             c
         };
-        let idle = std::time::Duration::from_millis(900);
+        // The gaps between the sheets are a tenth of the limit, so that a
+        // machine busy with other tests never makes one look like silence.
+        let idle = std::time::Duration::from_secs(3);
         let start = web_time::Instant::now();
         let said = run_watched(
-            sh("for i in 1 2 3 4 5 6; do echo sheet $i; sleep 0.3; done"),
+            sh("for i in 1 2 3 4 5 6 7 8 9 10 11 12; do echo sheet $i; sleep 0.3; done"),
             idle,
             |_| {},
         )
         .expect("longer than the limit, never silent that long");
         assert!(start.elapsed() > idle);
-        assert!(said.ends_with("sheet 6"));
+        assert!(said.ends_with("sheet 12"));
         let start = web_time::Instant::now();
         let err = run_watched(sh("echo sheet 1; sleep 30"), idle, |_| {}).unwrap_err();
         assert!(err.contains("took nothing more"), "{err}");
-        assert!(start.elapsed() < std::time::Duration::from_secs(10));
+        assert!(start.elapsed() < std::time::Duration::from_secs(20));
         let err = run_watched(sh("echo no such printer >&2; exit 2"), idle, |_| {}).unwrap_err();
         assert_eq!(err, "no such printer");
     }
