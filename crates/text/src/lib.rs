@@ -25,6 +25,7 @@ pub mod catalog;
 pub mod hyphen;
 #[cfg(any(windows, all(test, not(target_arch = "wasm32"))))]
 mod installed;
+mod kashida;
 pub mod traits;
 pub mod type1;
 
@@ -1805,6 +1806,10 @@ struct Glyph {
     /// puts before the next letter, left out at the end of a line when
     /// the line is centred or set right (#2586).
     spacing: f64,
+    /// On a cluster's first glyph, the rank of stretching the join after
+    /// the cluster with a kashida (1 the best place, see
+    /// [`kashida::rank`]); 0 when its letter does not join the next.
+    kashida: u8,
 }
 
 /// Where a shaped glyph's outline comes from.
@@ -4442,6 +4447,12 @@ impl FontSystem {
                                 .and_then(|t| t.chars().next())
                                 .is_some_and(|c| continues_syllable(p, c))
                         });
+            // The join after the cluster, on its first glyph (#3827).
+            let kashida = if further || !rtl {
+                0
+            } else {
+                kashida::rank_after_cluster(text, start, cluster_end).unwrap_or(0)
+            };
             let cluster_text = if further {
                 String::new()
             } else {
@@ -4496,6 +4507,7 @@ impl FontSystem {
                 hyphen_after: hyphen_glyph.clone(),
                 spacing,
                 src: Some(src),
+                kashida,
             });
         }
         // Right to left the glyphs come as they are seen: back to text
@@ -4979,6 +4991,7 @@ impl FontSystem {
                                 hyphen_after: None,
                                 src: None,
                                 spacing: 0.0,
+                                kashida: 0,
                             })
                         }
                         char_idx += 1;
@@ -5587,6 +5600,9 @@ impl FontSystem {
                 p
             }
         };
+        // The kashida of each span's face (#3827), shaped when a line
+        // first stretches a join in it; `None` when the face has none.
+        let mut tatweels: HashMap<usize, Option<Glyph>> = HashMap::new();
         for (li, line) in lines.iter().enumerate() {
             let m = line.metrics;
             let (align, ps) = style_of(line.para);
@@ -5735,6 +5751,9 @@ impl FontSystem {
                 }
                 _ => total_w,
             };
+            // The joins stretched on this line: (the character of the
+            // cluster before the join, width), see [`kashida_widths`].
+            let mut kash: Vec<(usize, f64)> = Vec::new();
             let (dx, extras) = match align {
                 TextAlign::Left | TextAlign::None => (0.0, Vec::new()),
                 TextAlign::Center => (((avail.min(1e9)) - total_w).max(0.0) / 2.0, Vec::new()),
@@ -5758,8 +5777,33 @@ impl FontSystem {
                         ((avail - total_w).max(0.0), Vec::new())
                     } else if last || !avail.is_finite() {
                         (0.0, Vec::new())
-                    } else {
+                    } else if ps.kashida.is_off() {
                         (0.0, justify_extras(glyphs, avail - total_w))
+                    } else {
+                        // Arabic-script words take their share by
+                        // stretching a join; the spaces take the rest.
+                        for g in glyphs.iter().filter(|g| g.kashida > 0) {
+                            tatweels.entry(g.span).or_insert_with(|| {
+                                spans.get(g.span).and_then(|span| {
+                                    self.shape_run(span, g.span, "\u{0640}", size_scale, 0, ps, &[])
+                                        .into_iter()
+                                        .next()
+                                        .filter(|t| {
+                                            t.advance > 1e-6
+                                                && t.src.as_ref().is_some_and(|s| s.gid != 0)
+                                        })
+                                })
+                            });
+                        }
+                        kash = kashida_widths(
+                            glyphs,
+                            avail - total_w,
+                            ps.kashida,
+                            |si| metrics.get(si).map_or(0.0, |m| m.size),
+                            |si| tatweels.get(&si).is_some_and(Option::is_some),
+                        );
+                        let used: f64 = kash.iter().map(|k| k.1).sum();
+                        (0.0, justify_extras(glyphs, avail - total_w - used))
                     }
                 }
             };
@@ -5895,6 +5939,43 @@ impl FontSystem {
                     record(g.char_idx, next_idx, before, pen, false);
                     continue;
                 }
+                // A stretched join: the kashida drawn, widened, on the
+                // left of the cluster before it (that cluster's first
+                // glyph seen), where its next letter ends (#3827).
+                let lead = match kash.iter().position(|(c, _)| *c == g.char_idx) {
+                    Some(p) => {
+                        let (_, w) = kash.swap_remove(p);
+                        if let Some(Some(t)) = tatweels.get(&g.span).filter(|_| span_drawn(g.span))
+                        {
+                            let stretched = Glyph {
+                                char_idx: g.char_idx,
+                                char_end: g.char_idx,
+                                span: g.span,
+                                src: t.src.as_ref().map(|s| {
+                                    Arc::new(GlyphSource {
+                                        font: s.font.clone(),
+                                        gid: s.gid,
+                                        local: s.local,
+                                        text: String::new(),
+                                        exact: s.exact,
+                                    })
+                                }),
+                                ..t.clone()
+                            };
+                            let a = orient(
+                                Affine::translate((pen, y + t.y_offset)),
+                                &stretched,
+                                metrics[g.span].ascent,
+                            ) * Affine::scale_non_uniform(w / t.advance, 1.0);
+                            place_glyph(collect, a, &stretched, &mut line_glyphs);
+                            let gp = a * t.path.as_ref().clone();
+                            line_path.extend(gp.elements().iter().copied());
+                        }
+                        pen += w;
+                        w
+                    }
+                    None => 0.0,
+                };
                 if span_drawn(g.span) {
                     let a = Affine::translate((pen + g.x_offset, y + g.y_offset));
                     let a = orient(a, g, metrics[g.span].ascent);
@@ -5911,11 +5992,13 @@ impl FontSystem {
                         if !style.is_on() || (space && style.word_only()) {
                             return;
                         }
+                        // From before the kashida, which the line runs under too.
+                        let from = pen - lead;
                         match runs.last_mut() {
-                            Some((s, _, end)) if *s == g.span && (*end - pen).abs() < 1e-6 => {
+                            Some((s, _, end)) if *s == g.span && (*end - from).abs() < 1e-6 => {
                                 *end = pen + adv
                             }
-                            _ => runs.push((g.span, pen, pen + adv)),
+                            _ => runs.push((g.span, from, pen + adv)),
                         }
                     };
                     extend(&mut underline_runs, span.underline);
@@ -6297,6 +6380,76 @@ fn tabbed_width(glyphs: &[Glyph], tabs: &[TabStop], step: f64, start: f64) -> f6
         }
     }
     x - start
+}
+
+/// The joins a justified line stretches with a kashida (#3827), as (the
+/// character that starts the cluster before the join, width), and so
+/// the share of `room` they take; the line's spaces take the rest.
+///
+/// Each word of connected Arabic-script letters stretches one join: the
+/// best-ranked one (see [`kashida::rank`]), the last of equal ones. The
+/// joins share the part of `room` that `setting` gives them equally,
+/// none by more than its most (in ems of the letters' size), the rest
+/// going back to the spaces; a line without spaces gives the joins all
+/// of it. `size` is a span's font size (mm), and `has_kashida` whether
+/// its face has a kashida to draw.
+fn kashida_widths(
+    glyphs: &[Glyph],
+    room: f64,
+    setting: tracedraw_core::document::Kashida,
+    size: impl Fn(usize) -> f64,
+    has_kashida: impl Fn(usize) -> bool,
+) -> Vec<(usize, f64)> {
+    let (share, cap_em) = setting.share_and_cap();
+    if room <= 1e-9 || !room.is_finite() || share <= 0.0 {
+        return Vec::new();
+    }
+    let last = glyphs
+        .iter()
+        .rposition(|g| !g.ch.is_whitespace())
+        .unwrap_or(0);
+    let spaces = glyphs[..last]
+        .iter()
+        .any(|g| g.ch == ' ' || g.ch == '\u{3000}');
+    // The best join of each word: (rank, cluster character, span).
+    let mut chosen: Vec<(u8, usize, usize)> = Vec::new();
+    let mut best: Option<(u8, usize, usize)> = None;
+    for (i, g) in glyphs.iter().enumerate().take(last + 1) {
+        if g.ch.is_whitespace() || !g.rtl {
+            chosen.extend(best.take());
+            continue;
+        }
+        if g.kashida == 0 || !has_kashida(g.span) {
+            continue;
+        }
+        // The next cluster must follow on this line, joined to this one.
+        let next = glyphs[i + 1..].iter().find(|n| n.char_idx != g.char_idx);
+        if !next.is_some_and(|n| {
+            n.rtl && n.char_idx == g.char_end && n.char_idx <= glyphs[last].char_idx
+        }) {
+            continue;
+        }
+        if best.is_none_or(|(r, _, _)| g.kashida <= r) {
+            best = Some((g.kashida, g.char_idx, g.span));
+        }
+    }
+    chosen.extend(best);
+    if chosen.is_empty() {
+        return Vec::new();
+    }
+    let (share, capped) = if spaces { (share, true) } else { (1.0, false) };
+    let each = room * share / chosen.len() as f64;
+    chosen
+        .into_iter()
+        .map(|(_, c, si)| {
+            let w = if capped {
+                each.min(cap_em * size(si))
+            } else {
+                each
+            };
+            (c, w)
+        })
+        .collect()
 }
 
 /// The width added after each glyph of a justified line (indexed like
@@ -7138,6 +7291,7 @@ mod tests {
                 hyphen_after: None,
                 src: None,
                 spacing: 0.0,
+                kashida: 0,
             })
             .collect();
         let metrics = [Metrics::default()];
@@ -7594,6 +7748,7 @@ mod tests {
             hyphen_after: None,
             src: None,
             spacing: 0.0,
+            kashida: 0,
             joins: false,
         };
         let order = |v: &[(u8, char)]| {
@@ -8689,6 +8844,7 @@ mod tests {
                 hyphen_after: None,
                 src: None,
                 spacing: 0.0,
+                kashida: 0,
             })
             .collect()
     }
@@ -8768,6 +8924,133 @@ mod tests {
             lines(&far, 10.0),
             vec!["ab\t".to_string(), "cd".to_string()]
         );
+    }
+
+    /// Kashida (#3827): each word stretches its best-ranked join, the
+    /// last of equal ones; the joins share the setting's part of the room
+    /// up to their most, the spaces taking the rest, and a line without
+    /// spaces gives them all of it. A face without a kashida stretches
+    /// nothing.
+    #[test]
+    fn a_justified_line_stretches_the_best_join_of_each_word() {
+        use tracedraw_core::document::Kashida;
+        // Two words of four letters, ranks after each letter.
+        let mut g = cells("abcd efgh");
+        for x in &mut g {
+            x.rtl = true;
+            x.level = 1;
+        }
+        for (i, r) in [(0, 8), (1, 2), (2, 8), (5, 4), (6, 4)] {
+            g[i].kashida = r;
+        }
+        let size = |_| 4.0;
+        let w = kashida_widths(&g, 9.0, Kashida::High, size, |_| true);
+        assert_eq!(w.iter().map(|k| k.0).collect::<Vec<_>>(), [1, 6]);
+        // High: all the room, up to 2.5 ems (10 mm) each.
+        assert!(w.iter().all(|k| (k.1 - 4.5).abs() < 1e-9), "{w:?}");
+        let w = kashida_widths(&g, 100.0, Kashida::High, size, |_| true);
+        assert!(w.iter().all(|k| (k.1 - 10.0).abs() < 1e-9), "{w:?}");
+        // Low: about a third, up to half an em.
+        let w = kashida_widths(&g, 3.0, Kashida::Low, size, |_| true);
+        let low: f64 = w.iter().map(|k| k.1).sum();
+        assert!(low > 0.0 && low < 3.0 * 0.5, "{w:?}");
+        assert!(kashida_widths(&g, 9.0, Kashida::Off, size, |_| true).is_empty());
+        assert!(kashida_widths(&g, 9.0, Kashida::High, size, |_| false).is_empty());
+        // No spaces: the one word takes the whole room, past its most.
+        let one: Vec<Glyph> = g[..4].to_vec();
+        let w = kashida_widths(&one, 30.0, Kashida::Low, size, |_| true);
+        assert_eq!(w.len(), 1);
+        assert!((w[0].1 - 30.0).abs() < 1e-9, "{w:?}");
+        // Never after a word's last letter, nor joining the next line.
+        let mut end = g.clone();
+        end[3].kashida = 1;
+        let w = kashida_widths(&end[..4], 4.0, Kashida::High, size, |_| true);
+        assert_eq!(w.iter().map(|k| k.0).collect::<Vec<_>>(), [1]);
+    }
+
+    /// Kashida (#3827) in a justified Arabic paragraph: the lines break
+    /// where they did, still fill the width, and each line but the last
+    /// stretches joins of connected letters with the face's kashida,
+    /// more for High than for Low; with it off nothing is stretched.
+    #[test]
+    fn justified_arabic_stretches_joins_with_kashida() {
+        if !has_fonts() {
+            return;
+        }
+        use tracedraw_core::document::Kashida;
+        let text = "كتب الطالب درسه في المدرسة الكبيرة ".repeat(6);
+        let width = 45.0;
+        let req = |para: &ParagraphStyle| -> (TextLayout, GlyphLayout) {
+            let spans = [span(&text)];
+            let r = TextRequest {
+                spans: &spans,
+                frame: Some(Size::new(width, 200.0)),
+                align: TextAlign::Justify,
+                para,
+                on_path: None,
+            };
+            (fonts().layout(&r), fonts().glyph_layout(&r))
+        };
+        let style = |k: Kashida| ParagraphStyle {
+            kashida: k,
+            ..ParagraphStyle::default()
+        };
+        let (off, off_g) = req(&style(Kashida::Off));
+        // A face with the letters and the kashida is needed.
+        let tatweel = fonts().glyph_layout(&TextRequest {
+            spans: &[span("\u{0640}")],
+            frame: None,
+            align: TextAlign::Left,
+            para: &ParagraphStyle::default(),
+            on_path: None,
+        });
+        let Some(t_id) = tatweel
+            .glyphs
+            .first()
+            .map(|g| g.glyph_id)
+            .filter(|id| *id != 0)
+        else {
+            return;
+        };
+        if off.lines.len() < 3 || off_g.glyphs.iter().any(|g| g.glyph_id == 0) {
+            return;
+        }
+        let chars: Vec<char> = text.chars().collect();
+        let stretched = |g: &GlyphLayout| -> Vec<(usize, f64)> {
+            g.glyphs
+                .iter()
+                .filter(|p| p.glyph_id == t_id && p.text.is_empty())
+                .map(|p| (p.char_idx, p.path.bounding_box().width()))
+                .collect()
+        };
+        assert!(stretched(&off_g).is_empty());
+        let mut total = Vec::new();
+        for k in [Kashida::Low, Kashida::High] {
+            let (lay, g) = req(&style(k));
+            let ranges = |l: &TextLayout| -> Vec<(usize, usize)> {
+                l.lines.iter().map(|b| (b.start_char, b.end_char)).collect()
+            };
+            assert_eq!(ranges(&lay), ranges(&off), "{k:?}");
+            for b in &lay.lines[..lay.lines.len() - 1] {
+                let lo = b.edges.iter().copied().fold(f64::INFINITY, f64::min);
+                let hi = b.edges.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+                assert!(
+                    lo.abs() < 0.05 && (hi - width).abs() < 0.05,
+                    "{k:?} {lo} {hi}"
+                );
+            }
+            let s = stretched(&g);
+            assert!(s.len() >= lay.lines.len() - 1, "{k:?} {s:?}");
+            for (c, _) in &s {
+                let (a, b) = (chars[*c], chars[*c + 1]);
+                assert!(
+                    kashida::rank(a, b, false).is_some() || kashida::rank(a, b, true).is_some(),
+                    "{k:?}: no join between {a} and {b}"
+                );
+            }
+            total.push(s.iter().map(|x| x.1).sum::<f64>());
+        }
+        assert!(total[1] > total[0] && total[0] > 0.0, "{total:?}");
     }
 
     /// Chinese text has no spaces: justification spreads the room between

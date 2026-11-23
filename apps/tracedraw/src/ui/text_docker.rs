@@ -500,6 +500,14 @@ pub(crate) fn edit_paragraphs(app: &mut App, f: impl Fn(&mut ParagraphStyle)) {
     }
 }
 
+/// A letter of the Arabic script (Arabic, Persian, Urdu and the other
+/// languages written in it).
+fn arabic_script(c: char) -> bool {
+    // As code points: the panel's icon check reads every character
+    // written in this file as one it draws.
+    matches!(c as u32, 0x0600..=0x06FF | 0x0750..=0x077F | 0x08A0..=0x08FF)
+}
+
 /// Set the alignment of the selected text.
 fn set_align(app: &mut App, a: TextAlign) {
     app.apply_text_align(a);
@@ -1603,6 +1611,38 @@ fn paragraph(app: &mut App, ui: &mut Ui, first: Option<&tracedraw_core::Shape>) 
             }
         }
     });
+    // Kashida in justified Arabic-script lines (#3827), for right-to-left
+    // paragraphs and text written in Arabic script.
+    let arabic = matches!(&t.kind, ShapeKind::Text { spans, .. }
+        if spans.iter().any(|sp| sp.text.chars().any(arabic_script)));
+    if p.direction.is_right_to_left() || arabic {
+        use tracedraw_core::Kashida as K;
+        ui.horizontal(|ui| {
+            let tip = crate::ui::tips::pair("docker.kashida", "docker.kashida_desc");
+            ui.label(tr("docker.kashida")).rich_tip(&tip);
+            let name = |k: K| {
+                tr(match k {
+                    K::Off => "docker.kashida_off",
+                    K::Low => "docker.kashida_low",
+                    K::Medium => "docker.kashida_medium",
+                    K::High => "docker.kashida_high",
+                })
+            };
+            crate::ui::keynav::ComboBox::from_id_salt("docker_kashida")
+                .width(120.0)
+                .selected_text(name(p.kashida))
+                .show_ui(ui, |ui| {
+                    for k in K::ALL {
+                        if ui.selectable_label(p.kashida == k, name(k)).clicked() && p.kashida != k
+                        {
+                            edit_paragraphs(app, move |q| q.kashida = k);
+                        }
+                    }
+                })
+                .response
+                .rich_tip(&tip);
+        });
+    }
     let before = p.clone();
     let mut pc = false;
     let line_icon = |ui: &mut Ui, icon: ParaIcon, key: &str| {
