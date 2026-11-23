@@ -2462,7 +2462,7 @@ impl crate::app::App {
         self.shape_gen_add(&s, &g, center, Some(old), "Shape Generator")
     }
 
-    fn shape_gen_add(
+    pub(crate) fn shape_gen_add(
         &mut self,
         s: &ShapeGenSettings,
         g: &Generated,

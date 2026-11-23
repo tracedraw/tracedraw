@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Shape Generator tool, with the shape tools in the toolbox: drag a box on the page and the panel's pattern follows it while you drag and fills it when you let go, as one group in one undo step. The property bar has the generator, the seed, New and Options, which opens the Shape Generator panel.
 - Property bar: with two or more objects selected, the buttons to group, combine, weld, trim and align them come right after the position and size fields instead of at the end of the bar, where a long bar pushed them out of the window (#3973).
 - Properties panel, Outline: the choices of Caps, Corners, Dash and Position are pictures, as in the Outline Pen dialog, with the name and what it does in the tip, where they were words in a row; the width has a label, and the labels of the rows stand in one column so the controls line up.
 - Object > Combine Shapes > Cut into Grid: the rows and the columns each have their number, height or width, gap and total, where there was one number each and one gap; Keep the object's shape cuts the object itself instead of making boxes, Add guidelines puts guidelines on the edges of the rows and columns, Group the pieces can be turned off, and the drawing shows the pieces before OK while the window says how many there are and their size.

@@ -407,6 +407,7 @@ impl App {
                 radial_grid_path(r, self.graph_rings, self.graph_spokes)
             }
             Tool::GraphPaper => grid_path(r, self.graph_rows, self.graph_cols),
+            Tool::ShapeGenerator => self.shape_gen_tool_preview(r),
             Tool::ActionLines => self.action_lines.path(r),
             Tool::Balloon => crate::balloons::Balloon::new(
                 r,

@@ -41,6 +41,28 @@ mostra antes de Atualizar.
 
 ![O grupo selecionado, Forma da célula mudada para Losango, com o ponteiro em Atualizar selecionado](../../img/objects-shape-generator-use-5.png)
 
+## A ferramenta {#tool}
+
+A ferramenta [[tool.shape_generator]], junto das ferramentas de formas na
+caixa de ferramentas, desenha o padrão do painel onde você quer e no
+tamanho que você quer:
+
+- Escolha a ferramenta. A barra de propriedades tem a lista
+  [[shapegen.kind]], a [[shapegen.seed]] com [[shapegen.new_seed]] para
+  outra variação, e [[toolbar.shape_gen_options]], que abre o painel com
+  todas as configurações do padrão.
+- Arraste na página. O próprio padrão acompanha a área enquanto você
+  arrasta, então você vê o resultado antes de soltar. <kbd>Ctrl</kbd>
+  mantém a área quadrada, <kbd>Shift</kbd> desenha a partir do centro.
+- Solte: o padrão preenche a área como um grupo selecionado, em um passo
+  de desfazer. O painel recebe a largura e a altura da área, então mudar
+  uma configuração e clicar em [[shapegen.update]] refaz o padrão no
+  mesmo lugar.
+
+A ferramenta sempre preenche a área arrastada: uma seleção escolhida no
+painel com [[shapegen.use_selection]] é usada só por [[shapegen.create]].
+Um molde de cone mantém o próprio tamanho e fica centralizado na área.
+
 ## Geradores {#generators}
 
 Cada imagem mostra o painel com as primeiras configurações do gerador e, na

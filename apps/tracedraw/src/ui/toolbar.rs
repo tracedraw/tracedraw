@@ -1856,6 +1856,7 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
                     });
                 }
             }
+            Tool::ShapeGenerator => crate::shape_gen_tool::shape_gen_bar(app, ui),
             Tool::ActionLines => action_lines_bar(app, ui),
             Tool::CommonShapes => common_shapes_bar(app, ui),
             Tool::Balloon => balloon_bar(app, ui),

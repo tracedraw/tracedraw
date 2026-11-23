@@ -56,6 +56,7 @@ pub enum Tool {
     ActionLines,
     Balloon,
     GraphPaper,
+    ShapeGenerator,
     // Text group
     Text,
     Table,
@@ -177,6 +178,7 @@ pub const GROUPS: &[ToolGroup] = &[
             Tool::ActionLines,
             Tool::Balloon,
             Tool::GraphPaper,
+            Tool::ShapeGenerator,
         ],
         hidden: false,
     },
@@ -235,7 +237,7 @@ pub const GROUPS: &[ToolGroup] = &[
 ];
 
 impl Tool {
-    pub const ALL: [Tool; 69] = [
+    pub const ALL: [Tool; 70] = [
         Tool::Pick,
         Tool::FreeformPick,
         Tool::FreeTransform,
@@ -278,6 +280,7 @@ impl Tool {
         Tool::ActionLines,
         Tool::Balloon,
         Tool::GraphPaper,
+        Tool::ShapeGenerator,
         Tool::Text,
         Tool::Table,
         Tool::ParallelDimension,
@@ -352,6 +355,7 @@ impl Tool {
             Tool::ActionLines => "action_lines",
             Tool::Balloon => "balloon",
             Tool::GraphPaper => "graph_paper",
+            Tool::ShapeGenerator => "shape_generator",
             Tool::Text => "text",
             Tool::Table => "table",
             Tool::ParallelDimension => "parallel_dimension",
@@ -525,6 +529,7 @@ impl Tool {
                 | Tool::Polygon
                 | Tool::Star
                 | Tool::GraphPaper
+                | Tool::ShapeGenerator
                 | Tool::ActionLines
                 | Tool::Balloon
         )
