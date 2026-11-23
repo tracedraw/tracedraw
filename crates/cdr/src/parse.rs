@@ -2294,6 +2294,11 @@ impl<'a> Ctx<'a> {
             span.offset_x_pct = c.x_pct;
             span.baseline_shift_pt = c.y_pct / 100.0 * size_pt;
         }
+        // The characters' own outline (version 16+ style strings,
+        // #4055); width 0 leaves the object's outline on them.
+        if let Some(Some(st)) = &style.outline {
+            span.outline = Some(st.clone());
+        }
         if let Some(inline) = style.fill_color {
             // Version 16+ files describe the run's colour inline.
             let fill = inline.map(Fill::Solid).unwrap_or(Fill::None);
@@ -2497,6 +2502,7 @@ impl<'a> Ctx<'a> {
                                 && last.underline == span.underline
                                 && last.strikethrough == span.strikethrough
                                 && last.fill == span.fill
+                                && last.outline == span.outline
                                 && last.angle_deg == span.angle_deg
                                 && last.offset_x_pct == span.offset_x_pct
                                 && last.baseline_shift_pt == span.baseline_shift_pt =>

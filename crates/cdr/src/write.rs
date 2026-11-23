@@ -3685,7 +3685,7 @@ fn run_style_json(v: Ver, sp: &TextSpan, fill: Option<&Fill>, tech: &fonts::Face
     format!(
         r#"{{"character":{{{}"angle":"0","outline":{},"RTL":{},"latin":{},"h_shift":"0","v_shift":"0","farEast":{}}}}}"#,
         fill,
-        character_outline_json(v),
+        character_outline_json(v, sp.outline.as_ref()),
         font_json(v, Some(sp), 178, tech),
         font_json(v, Some(sp), 0, tech),
         font_json(v, Some(sp), 128, tech)
@@ -3700,15 +3700,43 @@ const BLACK_SPEC: &str = "CMYK,USER,0,0,0,100,100,00000000-0000-0000-0000-000000
 /// every text of the files of versions 19 and 22 to 27 the program's
 /// recent releases save holds it (#1698; its 2019 release leaves it out
 /// up to 21).
-fn character_outline_json(v: Ver) -> String {
+///
+/// A run with an outline of its own (`outline`, #4055) writes its
+/// width, colour, joins, ends, mitre limit and whether it is drawn
+/// behind the fill; one without writes width 0, which leaves the
+/// object's outline on its characters.
+fn character_outline_json(v: Ver, outline: Option<&Stroke>) -> String {
+    use tracedraw_core::{LineCap, LineJoin};
     let screen = "0,0,45000000,60,0";
     let variable = if v.0 >= 19 {
         r#""variableAttributes":"0|0","#
     } else {
         ""
     };
+    let own = outline.filter(|s| s.width.is_finite() && s.width > 0.0);
+    let flag = |on: bool| if on { "1" } else { "0" };
+    let (color, width, behind, scale, caps, join, mitre) = match own {
+        Some(s) => (
+            colour_spec(s.color),
+            units(s.width).max(1),
+            flag(s.behind_fill),
+            flag(s.scale_with_object),
+            match s.cap {
+                LineCap::Butt => 0,
+                LineCap::Round => 1,
+                LineCap::Square => 2,
+            },
+            match s.join {
+                LineJoin::Miter => 0,
+                LineJoin::Round => 1,
+                LineJoin::Bevel => 2,
+            },
+            Stroke::miter_angle_from_ratio(s.miter_ratio()).to_string(),
+        ),
+        None => (BLACK_SPEC.to_string(), 0, "0", "0", 0, 0, "5".to_string()),
+    };
     format!(
-        r#"{{"overprint":"0","angle":"0","aspect":"100","dashDotSpec":"0","behindFill":"0","miterLimit":"5","justification":"0","dashAdjust":"0","rightArrow":"|0","screenSpec":"{screen}","overlapArrow":"0","shareArrow":"0","dotLength":"0","scaleWithObject":"0","matrix":"1,0,0,0,1,0","color":"{BLACK_SPEC}","leftArrow":"|0","projectMatrix":"1,0,0,0,1,0","leftArrowAttributes":"0|0|0|0|0|0|0","endCaps":"0","rightArrowAttributes":"0|0|0|0|0|0|0","joinType":"0",{variable}"width":"0"}}"#
+        r#"{{"overprint":"0","angle":"0","aspect":"100","dashDotSpec":"0","behindFill":"{behind}","miterLimit":"{mitre}","justification":"0","dashAdjust":"0","rightArrow":"|0","screenSpec":"{screen}","overlapArrow":"0","shareArrow":"0","dotLength":"0","scaleWithObject":"{scale}","matrix":"1,0,0,0,1,0","color":"{color}","leftArrow":"|0","projectMatrix":"1,0,0,0,1,0","leftArrowAttributes":"0|0|0|0|0|0|0","endCaps":"{caps}","rightArrowAttributes":"0|0|0|0|0|0|0","joinType":"{join}",{variable}"width":"{width}"}}"#
     )
 }
 
@@ -3887,7 +3915,7 @@ fn full_text_style(
         ),
         tabs = tabs,
         fill = fill_json(&colour),
-        outline = character_outline_json(v),
+        outline = character_outline_json(v, sp.and_then(|s| s.outline.as_ref())),
         rtl = font_json(v, sp, 178, tech),
         latin = font_json(v, sp, 0, tech),
         far = font_json(v, sp, 128, tech),

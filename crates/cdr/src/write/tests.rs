@@ -5684,6 +5684,57 @@ fn single_run_colours_round_trip() {
     }
 }
 
+/// A text whose letters have an outline of their own (orange, 0.5 mm)
+/// and one whose second run has one keep them through a version 16+
+/// save (#4055: the outline was written with width 0 and lost); a run
+/// without one leaves the object's outline on its letters.
+#[test]
+fn character_outlines_round_trip() {
+    use tracedraw_core::{LineJoin, Stroke};
+    let mut doc = doc_with(Vec::new());
+    let mut ids = doc.ids().clone();
+    let orange = Color::cmyk_pct(0.0, 60.0, 100.0, 0.0);
+    let mut rim = Stroke::new(orange, 0.5);
+    rim.join = LineJoin::Round;
+    let mut whole = TextSpan::new("Gh bdorln", "Arial", 40.0);
+    whole.outline = Some(rim.clone());
+    let plain = TextSpan::new("Plain ", "Arial", 24.0);
+    let mut rimmed = TextSpan::new("rimmed", "Arial", 24.0);
+    rimmed.outline = Some(rim.clone());
+    doc.pages[0].layers[0].shapes = vec![
+        text_shape(&mut ids, vec![whole], TextAlign::Left),
+        text_shape(&mut ids, vec![plain, rimmed], TextAlign::Left),
+    ];
+    doc.set_ids(ids);
+    let outline_at = |s: &Shape, i: usize| {
+        let ShapeKind::Text { spans, .. } = &s.kind else {
+            panic!("{:?}", s.kind);
+        };
+        let mut at = 0;
+        for sp in spans {
+            let n = sp.text.chars().count();
+            if i < at + n {
+                return sp.outline.clone();
+            }
+            at += n;
+        }
+        panic!("letter {i} past {spans:?}");
+    };
+    for v in versions().into_iter().filter(|v| *v >= 16) {
+        let (back, rep) =
+            crate::open_bytes(&document_to_cdr_version(&doc, v), "back").expect("reads back");
+        let read = &back.pages[0].layers[0].shapes;
+        assert_eq!(read.len(), 2, "{v}: {:?}", rep.warnings);
+        for (s, i) in [(&read[0], 0), (&read[0], 8), (&read[1], 8)] {
+            let got = outline_at(s, i).unwrap_or_else(|| panic!("{v}: letter {i} has no outline {:?}", s.kind));
+            assert!((got.width - 0.5).abs() < 1e-3, "{v}: {got:?}");
+            assert_eq!(got.color.to_rgb8(), orange.to_rgb8(), "{v}");
+            assert_eq!(got.join, LineJoin::Round, "{v}");
+        }
+        assert_eq!(outline_at(&read[1], 0), None, "{v}: the plain run");
+    }
+}
+
 /// A text of two colours in one line (two runs, each with a colour of
 /// its own) names its font in each run's style the way the paragraph's
 /// default style does, every member included (character set, technology,
@@ -5736,7 +5787,7 @@ fn runs_of_their_own_colour_name_their_font_as_the_paragraph_does() {
     let run = |v: u16, colour: &str| {
         format!(
             r#"{{"character":{{"fill":{{"type":"1","overprint":"0","secondaryColor":"CMYK,USER,0,0,0,0,100,00000000-0000-0000-0000-000000000000","primaryColor":"{colour}","screenSpec":"0,0,45000000,60,0"}},"angle":"0","outline":{},"RTL":{},"latin":{},"h_shift":"0","v_shift":"0","farEast":{}}}}}"#,
-            character_outline_json(Ver(v)),
+            character_outline_json(Ver(v), None),
             font(v, 178),
             font(v, 0),
             font(v, 128)

@@ -13,6 +13,7 @@ full, row-by-row status.
 - A slanted line is no longer picked in the empty half of its box: a click or a marquee there takes the objects above or under it. An open curve is taken along itself and inside the shape its fill shows (#4032).
 - DXF export: curves go out as arcs that meet without a corner, within a hundredth of a millimetre, so a machine cuts them smooth instead of in facets; the Export dialog also offers the exact curves as splines, or the short straight segments of earlier versions (#4012).
 - Eyedropper: on a gradient, a pattern, a texture or a see-through object it takes the colour shown under the pointer, and beside objects it takes the colour a drop shadow, a glow or a blend's step shows there; it took the object's first stop or base colour, or nothing (#4051).
+- `.cdr` text with coloured outlines on its letters (version 16 and later): the outline is read with its width and colour and saved again; it was dropped on opening and written with width 0 (#4055).
 
 ## 0.51.1 (2026-11-23)
 
