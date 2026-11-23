@@ -48,6 +48,20 @@ fn painted_average(img: &image::RgbaImage, fx: f64, fy: f64, n: u32) -> Option<C
     Some(Color::rgb8(ch(r)?, ch(g)?, ch(b)?))
 }
 
+/// Whether object `s` shows other colours than its fill's one colour:
+/// a gradient or other fill of several colours, a transparency, a merge
+/// mode or a live effect (a lens reads its own colour). Those are read
+/// as shown (#4051); a plain solid fill keeps its own colour, in its own
+/// model (a CMYK colour stays CMYK).
+fn shows_other_than_its_fill(s: &tracedraw_core::Shape) -> bool {
+    let several = !matches!(s.fill, Fill::Solid(_) | Fill::None);
+    let effects = s
+        .effects
+        .iter()
+        .any(|e| !matches!(e, tracedraw_core::live::Effect::Lens(_)));
+    (several && !matches!(s.kind, ShapeKind::Bitmap { .. })) || s.opacity < 1.0 || effects
+}
+
 /// The CMYK inks of the pixels around (`fx`, `fy`) of a `w` x `h` picture
 /// in `planes` (its cyan, magenta, yellow and black channels one under
 /// the other, 255 full ink), averaged over a box of `n` x `n` pixels.
@@ -361,6 +375,32 @@ impl App {
         })
     }
 
+    /// The colour the drawing shows at `p`, all objects and their effects
+    /// drawn over the paper, averaged over the eyedropper's sample size
+    /// in pixels of the window (#4051).
+    pub fn shown_color_at(&self, p: Point) -> Option<Color> {
+        let px_per_mm = f64::from(self.view.zoom);
+        let px_per_mm = if px_per_mm.is_finite() && px_per_mm > 0.0 {
+            px_per_mm
+        } else {
+            96.0 / 25.4
+        };
+        let n = f64::from(self.eyedropper_sample.max(1));
+        let half = n / px_per_mm / 2.0;
+        let area = tracedraw_core::geometry::Rect::new(p.x - half, p.y - half, p.x + half, p.y + half);
+        let pm = tracedraw_render::render_area_image(self.doc(), self.page, area, px_per_mm * 25.4)?;
+        let (mut r, mut g, mut b, mut cnt) = (0u64, 0u64, 0u64, 0u64);
+        for px in pm.pixels() {
+            let c = px.demultiply();
+            r += u64::from(c.red());
+            g += u64::from(c.green());
+            b += u64::from(c.blue());
+            cnt += 1;
+        }
+        let ch = |v: u64| v.checked_div(cnt).map(|v| v.min(255) as u8);
+        Some(Color::rgb8(ch(r)?, ch(g)?, ch(b)?))
+    }
+
     /// [`App::sample_color_at`] with the pictures decoded by `decode`
     /// (the hover readout keeps the last one decoded).
     fn sample_color_with(
@@ -372,12 +412,25 @@ impl App {
         let s = if outline {
             self.leaf_to_read(p)?
         } else {
-            self.leaf_to_read_color(p)?
+            match self.leaf_to_read_color(p) {
+                Some(s) => s,
+                // No object here: a drop shadow, a glow, a blend's step
+                // or the paper may still show; its colour is read as
+                // shown (#4051).
+                None => return self.shown_color_at(p).filter(|c| *c != Color::WHITE),
+            }
         };
         let s = &s;
         if outline {
             if let Some(st) = &s.stroke {
                 return Some(st.color);
+            }
+        } else if shows_other_than_its_fill(s) {
+            // A gradient, a transparency, a merge mode or an effect: the
+            // colour is read as the drawing shows it there, with what
+            // shows through, not as the object's first colour (#4051).
+            if let Some(c) = self.shown_color_at(p) {
+                return Some(c);
             }
         }
         if let ShapeKind::Bitmap {
@@ -826,6 +879,70 @@ mod tests {
             corners: None,
         })
         .expect("shape")
+    }
+
+    /// #4051: a gradient is read where it is sampled, a half transparent
+    /// object with what shows through it; a plain fill keeps its colour.
+    #[test]
+    fn gradients_and_transparency_are_read_as_shown() {
+        use tracedraw_core::style::{Fountain, FountainKind};
+        let mut app = App::headless();
+        let ramp = rect(&mut app, Rect::new(0.0, 0.0, 100.0, 20.0));
+        app.run(Command::SetFill {
+            shapes: vec![ramp],
+            fill: Fill::Fountain(Fountain::two(
+                FountainKind::Linear,
+                Color::rgb8(0, 0, 0),
+                Color::rgb8(255, 255, 255),
+                0.0,
+            )),
+        });
+        app.select(Vec::new());
+        let grey = |c: Color| c.to_rgb8()[0];
+        let left = app.sample_color_at(Point::new(10.0, 10.0), false).expect("left");
+        let right = app.sample_color_at(Point::new(90.0, 10.0), false).expect("right");
+        assert!(grey(left) < 60 && grey(right) > 195, "{left:?} {right:?}");
+        // Blue at half opacity over red reads as their mix.
+        let red = rect(&mut app, Rect::new(0.0, 30.0, 40.0, 60.0));
+        app.run(Command::SetFill {
+            shapes: vec![red],
+            fill: Fill::Solid(Color::rgb8(255, 0, 0)),
+        });
+        let blue = rect(&mut app, Rect::new(20.0, 30.0, 60.0, 60.0));
+        app.run(Command::SetFill {
+            shapes: vec![blue],
+            fill: Fill::Solid(Color::rgb8(0, 0, 255)),
+        });
+        app.run(Command::SetOpacity {
+            shapes: vec![blue],
+            opacity: 0.5,
+        });
+        app.select(Vec::new());
+        let [r, g, b] = app
+            .sample_color_at(Point::new(30.0, 45.0), false)
+            .expect("mix")
+            .to_rgb8();
+        assert!(r > 90 && r < 170 && b > 90 && b < 170 && g < 40, "{r} {g} {b}");
+        // Over the paper, half blue reads light blue.
+        let [r, _, b] = app
+            .sample_color_at(Point::new(50.0, 45.0), false)
+            .expect("light")
+            .to_rgb8();
+        assert!(r > 90 && b > 240, "{r} {b}");
+        // A plain fill keeps its own colour, in its own model.
+        let cmyk = rect(&mut app, Rect::new(70.0, 30.0, 90.0, 60.0));
+        let c = Color::Cmyk {
+            c: 1.0,
+            m: 0.0,
+            y: 0.0,
+            k: 0.0,
+        };
+        app.run(Command::SetFill {
+            shapes: vec![cmyk],
+            fill: Fill::Solid(c),
+        });
+        app.select(Vec::new());
+        assert_eq!(app.sample_color_at(Point::new(80.0, 45.0), false), Some(c));
     }
 
     /// An object with a Hue/Saturation/Lightness effect gives the colour

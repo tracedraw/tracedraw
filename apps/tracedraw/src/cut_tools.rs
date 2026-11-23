@@ -546,7 +546,7 @@ fn grid_axis_fields(
             .spacing([8.0, 6.0])
             .show(ui, |ui| {
                 ui.label(tr("grid_cut.number"));
-                ui.add(NumField::new(n).range(1..=GRID_CUT_MAX).speed(0.1))
+                ui.add(NumField::new(n).range(1..=GRID_CUT_MAX))
                     .rich_tip(pair("grid_cut.number", tips[0]));
                 ui.end_row();
 

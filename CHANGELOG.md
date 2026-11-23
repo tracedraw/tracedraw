@@ -4,6 +4,16 @@ Versions follow the tags of this repository; every push to `main` also
 publishes a nightly build. [`docs/features.md`](docs/features.md) has the
 full, row-by-row status.
 
+## Unreleased
+
+- Large TIFF pictures open: a TIFF the picture reader turned away with "Memory limit exceeded" (10000 x 21000 pixels and up), or whose extra channels it took no colours from (a saved selection beside the alpha), is read again one strip or tile at a time, so it takes only the memory of its pixels; grey, RGB and CMYK files of 1 to 16 bits or 32-bit floating point, chunky or planar, with their alpha (#4036).
+- Cut into Grid: the arrows of the rows' and columns' Number step it by one, and a drag on them steps it evenly; they did nothing and a drag jumped. Any whole-number field given a step under one now steps by one (#4043, #4044).
+- Text in a moved group: the caret, a click on the letters and the selection sit where the group shows the text; they sat where the group's own space had it, often far outside the frame, though typing still went into the text (#4015, #4037).
+- Paragraph text: a space typed at the end of a line moves the caret at once; it stayed put until the next letter came (#4014).
+- A slanted line is no longer picked in the empty half of its box: a click or a marquee there takes the objects above or under it. An open curve is taken along itself and inside the shape its fill shows (#4032).
+- DXF export: curves go out as arcs that meet without a corner, within a hundredth of a millimetre, so a machine cuts them smooth instead of in facets; the Export dialog also offers the exact curves as splines, or the short straight segments of earlier versions (#4012).
+- Eyedropper: on a gradient, a pattern, a texture or a see-through object it takes the colour shown under the pointer, and beside objects it takes the colour a drop shadow, a glow or a blend's step shows there; it took the object's first stop or base colour, or nothing (#4051).
+
 ## 0.51.1 (2026-11-23)
 
 - No more "TraceDraw stopped responding" message: since 0.50.3 a step that took more than 10 seconds (a big file saved, a heavy effect) brought a message offering a report, in that run or at the next start, which read as a crash and came at every save of a large drawing. A long step now only leaves a note in `hang.log` in the settings folder and never interrupts; a report is offered only when TraceDraw really closed with an error, and only for an error of the version in use (#4011, #4018, #4025, #4035, #4048).

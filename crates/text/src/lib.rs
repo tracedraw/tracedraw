@@ -1864,6 +1864,9 @@ struct Line {
     /// Where the paragraph's drop cap and bullet go, on its first line.
     cap_x: Option<f64>,
     bullet_x: Option<f64>,
+    /// The spaces that ended the line, left out of its width and its
+    /// alignment; the caret still steps over them (#4014).
+    trailing: Vec<Glyph>,
 }
 
 pub struct TextLayout {
@@ -5280,6 +5283,7 @@ impl FontSystem {
                         col_x: 0.0,
                         cap_x: None,
                         bullet_x: None,
+                        trailing: Vec::new(),
                     });
                 }
                 prev_para = Some(pi);
@@ -5892,7 +5896,11 @@ impl FontSystem {
                 let next_idx = match glyphs.get(gi + 1) {
                     Some(n) if n.char_idx > g.char_idx => n.char_idx,
                     Some(_) => g.char_end,
-                    None => end_char,
+                    // The spaces ending the line follow it (#4014).
+                    None => match line.trailing.first() {
+                        Some(t) if !g.rtl && t.char_idx > g.char_idx => t.char_idx,
+                        _ => end_char,
+                    },
                 }
                 .max(g.char_idx + 1);
                 if g.ch == '\t' {
@@ -6017,6 +6025,25 @@ impl FontSystem {
                 }
                 pen += adv;
                 glyph_count += 1;
+            }
+            // The spaces that ended the line: no room in it. At the end
+            // of a paragraph, where the text is being typed, the caret
+            // after each stands a space further on, so a space typed
+            // there moves the caret at once; it stayed put until the next
+            // letter came (#4014). Where a line wraps, they stay at its
+            // end, the line's width as before.
+            if glyphs.last().is_none_or(|g| !g.rtl) {
+                let mut x = pen;
+                for (k, t) in line.trailing.iter().enumerate() {
+                    let next = line
+                        .trailing
+                        .get(k + 1)
+                        .map_or(end_char, |n| n.char_idx)
+                        .max(t.char_idx + 1);
+                    let adv = if line.last_in_para { t.advance } else { 0.0 };
+                    record(t.char_idx, next, x, x + adv, false);
+                    x += adv;
+                }
             }
             let starts: Vec<f64> = starts
                 .iter()
@@ -6790,9 +6817,11 @@ impl<'a> Breaker<'a> {
             .or(self.after_break)
             .unwrap_or(self.para_start);
         // Trailing spaces do not count toward alignment: strip them.
+        let mut trailing = Vec::new();
         while glyphs.last().map(|g| g.ch == ' ').unwrap_or(false) {
-            glyphs.pop();
+            trailing.extend(glyphs.pop());
         }
+        trailing.reverse();
         let fallback = self.metrics.first().copied().unwrap_or_default();
         Line {
             metrics: line_metrics(&glyphs, self.metrics, fallback),
@@ -6807,6 +6836,7 @@ impl<'a> Breaker<'a> {
             col_x: 0.0,
             cap_x: None,
             bullet_x: None,
+            trailing,
         }
     }
 
@@ -7901,6 +7931,37 @@ mod tests {
         a.angle_deg = 90.0;
         let turned = f.outline(&[a, span("B")]);
         assert!(turned.path.bounding_box().x0 < -1.0);
+    }
+
+    /// Spaces typed at the end of a line of paragraph text move the
+    /// caret a space each, though they take no room in the line's
+    /// alignment (#4014); in centred text the letters stay centred.
+    #[test]
+    fn spaces_ending_a_paragraph_line_move_the_caret() {
+        if !has_fonts() {
+            return;
+        }
+        let f = fonts();
+        for align in [TextAlign::Left, TextAlign::Center] {
+            let lay = |text: &str| {
+                f.layout(&TextRequest {
+                    spans: &[span(text)],
+                    frame: Some(Size::new(100.0, 40.0)),
+                    align,
+                    para: &ParagraphStyle::default(),
+                    on_path: None,
+                })
+            };
+            let bare = lay("ab");
+            let spaced = lay("ab   ");
+            let x = |l: &TextLayout, i: usize| l.caret(i).expect("caret").0;
+            assert!((x(&spaced, 2) - x(&bare, 2)).abs() < 1e-6, "{align:?}");
+            assert!(x(&spaced, 3) > x(&spaced, 2) + 0.1, "{align:?}");
+            assert!(x(&spaced, 4) > x(&spaced, 3) + 0.1, "{align:?}");
+            assert!(x(&spaced, 5) > x(&spaced, 4) + 0.1, "{align:?}");
+            // The letters themselves sit where they did without the spaces.
+            assert_eq!(spaced.lines[0].starts[..2], bare.lines[0].starts[..2]);
+        }
     }
 
     /// Character width (#2190): at 50 % the letters and their advances

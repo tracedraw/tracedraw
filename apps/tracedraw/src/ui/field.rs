@@ -475,6 +475,15 @@ impl<N: Numeric> NumField<'_, N> {
             ui.data_mut(|d| d.remove::<f32>(id.with("wheel")));
         }
         if let Some((dir, mods)) = stepped {
+            // A whole-number field steps at least one: a step below one
+            // rounded back to the value held, so the arrows of Cut into
+            // Grid's rows and columns (step 0.1) did nothing and a drag
+            // on them jumped (#4043, #4044).
+            let base = if N::INTEGRAL {
+                self.step.max(1.0)
+            } else {
+                self.step
+            };
             let fine = self.fine_step.unwrap_or(self.step / 10.0);
             let span = self.range.map(|(lo, hi)| (hi - lo).abs());
             let step = if by_wheel && !N::INTEGRAL {
@@ -482,9 +491,9 @@ impl<N: Numeric> NumField<'_, N> {
             } else if mods.command {
                 fine
             } else if mods.shift {
-                self.step * 10.0
+                base * 10.0
             } else {
-                self.step
+                base
             };
             let mut v = self.value.to_f64() + dir * step;
             if let Some((lo, hi)) = self.range {
@@ -1477,7 +1486,9 @@ mod tests {
                             .show(ui.ctx(), |ui| {
                                 ui.horizontal(|ui| {
                                     let a = ui.add(NumField::new(v).range(0.0..=12.0).step(0.5));
-                                    let b = ui.add(NumField::new(n).range(0..=100));
+                                    // A whole-number field given a step below one
+                                    // steps whole units (#4043).
+                                    let b = ui.add(NumField::new(n).range(0..=100).speed(0.1));
                                     rects = (a.rect, b.rect);
                                 });
                             });

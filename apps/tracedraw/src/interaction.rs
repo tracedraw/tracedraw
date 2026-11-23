@@ -583,7 +583,10 @@ impl App {
             .enumerate()
             .min_by(|a, b| a.1.distance_squared(p).total_cmp(&b.1.distance_squared(p)))?
             .0;
-        Some(grid[nearest])
+        // The grid is in the space of the groups around the text; the
+        // letters are found on the page (#4037).
+        let parent = self.doc().parent_transform(text).unwrap_or(Affine::IDENTITY);
+        Some(parent * grid[nearest])
     }
 
     fn leaf_at(
@@ -872,13 +875,19 @@ impl App {
             !matches!(s.fill, Fill::None) && (!open || self.doc().metadata.fill_open_curves);
         // The fill of an open curve shown runs across its open ends, as
         // drawn.
-        let in_fill = filled
-            && if open {
+        // The inside of an open curve is that of the curve closed across
+        // its open ends, as its fill is drawn: the raw path took one side
+        // of a slanted line's box as inside, so a click in the empty half
+        // of that box picked the line over the objects there (#4032). A
+        // straight line closed has no inside.
+        let inside = || {
+            if open {
                 tracedraw_core::command::close_subpaths(&path).contains(p)
             } else {
                 path.contains(p)
-            };
-        if in_fill || (self.settings.treat_all_filled && path.contains(p)) {
+            }
+        };
+        if (filled || self.settings.treat_all_filled) && inside() {
             return true;
         }
         crate::canvas::distance_to_path(&path, p) <= (tol * 1.5).max(half + tol)

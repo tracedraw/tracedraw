@@ -121,6 +121,9 @@ pub struct ExportState {
     /// DXF: the drawing unit, an index into
     /// [`tracedraw_io::dxf::DxfUnits::ALL`] (#3583).
     pub dxf_units: usize,
+    /// DXF: how curves are written, an index into
+    /// [`tracedraw_io::dxf::DxfCurves::ALL`] (#4012).
+    pub dxf_curves: usize,
     /// WMF: dashed outlines written as solid lines (#3819).
     pub wmf_solid_dashes: bool,
 }
@@ -166,6 +169,7 @@ impl Default for ExportState {
             plt_one_pen: false,
             plt_resolution: 0.02,
             dxf_units: 0,
+            dxf_curves: 0,
             wmf_solid_dashes: false,
         }
     }
@@ -347,10 +351,14 @@ impl ExportState {
 
     /// The DXF export's choices (#3583).
     pub fn dxf_options(&self) -> tracedraw_io::dxf::DxfOptions {
-        use tracedraw_io::dxf::DxfUnits;
+        use tracedraw_io::dxf::{DxfCurves, DxfUnits};
         tracedraw_io::dxf::DxfOptions {
             units: DxfUnits::ALL
                 .get(self.dxf_units)
+                .copied()
+                .unwrap_or_default(),
+            curves: DxfCurves::ALL
+                .get(self.dxf_curves)
                 .copied()
                 .unwrap_or_default(),
         }
@@ -5995,9 +6003,19 @@ pub const DXF_UNIT_KEYS: [&str; 5] = [
     "units.feet",
 ];
 
-/// The DXF export's choice in the Export dialog (#3583): the drawing
-/// unit the file's lengths are written in (millimetres unless chosen).
+/// The names of the DXF export's ways to write curves, in the order of
+/// [`tracedraw_io::dxf::DxfCurves::ALL`] (#4012).
+pub const DXF_CURVE_KEYS: [&str; 3] = [
+    "export.dxf_curves_arcs",
+    "export.dxf_curves_splines",
+    "export.dxf_curves_lines",
+];
+
+/// The DXF export's choices in the Export dialog: the drawing unit the
+/// file's lengths are written in (millimetres unless chosen, #3583) and
+/// how curves are written (smooth arcs unless chosen, #4012).
 fn dxf_export_fields(ui: &mut Ui, st: &mut ExportState) {
+    use crate::ui::tips::RichTip;
     ui.horizontal(|ui| {
         ui.label(tr("options.units"));
         let k = st.dxf_units.min(DXF_UNIT_KEYS.len() - 1);
@@ -6008,6 +6026,20 @@ fn dxf_export_fields(ui: &mut Ui, st: &mut ExportState) {
                     ui.selectable_value(&mut st.dxf_units, i, tr(key));
                 }
             });
+    });
+    ui.horizontal(|ui| {
+        ui.label(tr("export.dxf_curves"));
+        let k = st.dxf_curves.min(DXF_CURVE_KEYS.len() - 1);
+        crate::ui::keynav::ComboBox::from_id_salt("exp_dxf_curves")
+            .selected_text(tr(DXF_CURVE_KEYS[k]))
+            .show_ui(ui, |ui| {
+                for (i, key) in DXF_CURVE_KEYS.iter().enumerate() {
+                    ui.selectable_value(&mut st.dxf_curves, i, tr(key))
+                        .rich_tip(crate::ui::tips::keyed(key));
+                }
+            })
+            .response
+            .rich_tip(crate::ui::tips::keyed("export.dxf_curves"));
     });
 }
 
