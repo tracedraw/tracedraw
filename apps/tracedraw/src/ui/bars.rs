@@ -999,7 +999,7 @@ pub fn size_menu(with_default: bool) -> Vec<(&'static str, Option<crate::setting
 }
 
 fn menu_body(app: &mut App, ui: &mut Ui, bar: Bar) {
-    use crate::ui::menus::{check, item, radio, radio_if, sep, sub};
+    use crate::ui::menus::{radio_if, sep};
     ui.set_min_width(200.0);
     let current = app.settings.bars.dock(bar);
     let free = !app.settings.bars.locked;
@@ -1022,6 +1022,27 @@ fn menu_body(app: &mut App, ui: &mut Ui, bar: Bar) {
         }
     }
     sep(ui);
+    common_body(app, ui);
+}
+
+/// The menu bar's context menu (discussion #3918): the part of the bars'
+/// menu that is not about one bar's place, every bar to show or hide,
+/// Customize, Lock Toolbars and Reset Toolbars.
+pub fn menu_bar_menu(app: &mut App, resp: &egui::Response) {
+    egui::Popup::context_menu(resp)
+        .id(resp.id.with("bar_menu"))
+        .style(crate::ui::menus::menu_popup_style)
+        .show(|ui| {
+            crate::ui::menus::body(ui, |ui| {
+                ui.set_min_width(200.0);
+                common_body(app, ui)
+            })
+        });
+}
+
+/// The entries of the bars' menu shared by every bar and the menu bar.
+fn common_body(app: &mut App, ui: &mut Ui) {
+    use crate::ui::menus::{check, item, radio, sep, sub};
     // Every bar, as Window > Toolbars lists them.
     crate::ui::menus::toolbars_list(app, ui);
     sep(ui);

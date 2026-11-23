@@ -1018,8 +1018,17 @@ fn layer_rows(
         // them), so a content can still be dragged out of it.
         let contents = app.clip_edit_contents();
         let frame = app.clip_frame_edit.as_ref().map(|(f, _)| *f);
+        // Objects of the facing page selected with the current page's are
+        // brought onto it only while selected (#3488, #3817): with every
+        // page listed they stay under their own page and layer, where
+        // they go back, instead of all showing under the current page as
+        // if selecting had moved them there (#3935).
+        let (away, here) = spread_borrowed(app, at.page, layer.id);
+        for s in here.iter().filter_map(|id| app.doc().find_shape(*id)) {
+            object_rows(app, ui, s, LAYER_OBJECT_DEPTH, act);
+        }
         for s in layer.shapes.iter().rev() {
-            if contents.contains(&s.id) {
+            if contents.contains(&s.id) || away.contains(&s.id) {
                 continue;
             }
             object_rows(app, ui, s, LAYER_OBJECT_DEPTH, act);
@@ -1035,6 +1044,34 @@ fn layer_rows(
             }
         }
     }
+}
+
+/// With every page listed, the objects of the facing page brought onto
+/// the page `page` to be selected with its own (#3488): the ones listed
+/// on `layer` of `page` that belong elsewhere, and the ones whose own
+/// page and layer these are, to list here (#3935).
+fn spread_borrowed(
+    app: &App,
+    page: Option<PageId>,
+    layer: LayerId,
+) -> (Vec<ShapeId>, Vec<ShapeId>) {
+    let Some(page) = page.filter(|_| app.settings.objects_all_pages) else {
+        return (Vec::new(), Vec::new());
+    };
+    let away = app
+        .spread_adopted
+        .iter()
+        .filter(|a| a.host == page)
+        .map(|a| a.shape)
+        .collect();
+    let here = app
+        .spread_adopted
+        .iter()
+        .rev()
+        .filter(|a| a.home == page && a.layer == layer && a.host != page)
+        .map(|a| a.shape)
+        .collect();
+    (away, here)
 }
 
 /// Opens the context menu of the object `id` from its Objects docker
@@ -5228,5 +5265,35 @@ mod drag_tests {
         app2.run(Command::SetLocked { shapes: vec![x], locked: true });
         assert!(!can_clip_into(&app2, &[y], x));
         assert!(!can_clip_into(&app2, &[y], y), "not into itself");
+    }
+
+    /// #3935: an object of the facing page selected with the current
+    /// page's is brought onto the current page while selected (#3488),
+    /// but with every page listed the docker keeps it under its own page
+    /// and layer, not under the current page as if it had moved there.
+    #[test]
+    fn objects_selected_across_the_spine_stay_listed_on_their_page() {
+        let mut app = App::headless();
+        app.show_welcome = false;
+        for _ in 0..3 {
+            app.add_page();
+        }
+        app.set_facing_pages(true, tracedraw_core::spreads::PageSide::Right);
+        let (p2, p3) = (app.doc().pages[1].id, app.doc().pages[2].id);
+        app.page = p3;
+        let b = app.new_shape(rect_kind()).expect("b");
+        let home = app.doc().page(p3).expect("p3").layers[0].id;
+        app.page = p2;
+        let a = app.new_shape(rect_kind()).expect("a");
+        let host = app.doc().page(p2).expect("p2").layers[0].id;
+        assert_eq!(app.adopt_spread_objects(&[b]), vec![b]);
+        app.select(vec![a, b]);
+        app.settings.objects_all_pages = true;
+        assert_eq!(spread_borrowed(&app, Some(p2), host).0, vec![b]);
+        assert_eq!(spread_borrowed(&app, Some(p3), home).1, vec![b]);
+        assert!(spread_borrowed(&app, Some(p3), home).0.is_empty());
+        // The current page alone listed: it shows there, being selected.
+        app.settings.objects_all_pages = false;
+        assert!(spread_borrowed(&app, Some(p2), host).0.is_empty());
     }
 }

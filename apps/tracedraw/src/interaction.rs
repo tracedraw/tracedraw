@@ -5014,7 +5014,11 @@ impl App {
                             modifiers,
                             ..
                         } => {
-                            modifiers.command
+                            // A function key types nothing in a field
+                            // either: F4 with the zoom box or a docker's
+                            // number field holding the keyboard did
+                            // nothing (#3931). It goes to the drawing.
+                            (modifiers.command || function_key(*key))
                                 && !modifiers.alt
                                 && !field_editing_key(*key)
                                 && !crate::shortcuts::is_modifier(*key)
@@ -6135,6 +6139,25 @@ fn text_command_key(key: Key, mods: Modifiers) -> bool {
 /// select all, copy, cut, paste, undo, redo, and the moves and deletes by
 /// word. A field with the keyboard keeps these; other Ctrl shortcuts are
 /// commands for the drawing.
+/// F1 to F12, which no field types or edits with (#3931).
+fn function_key(key: Key) -> bool {
+    matches!(
+        key,
+        Key::F1
+            | Key::F2
+            | Key::F3
+            | Key::F4
+            | Key::F5
+            | Key::F6
+            | Key::F7
+            | Key::F8
+            | Key::F9
+            | Key::F10
+            | Key::F11
+            | Key::F12
+    )
+}
+
 fn field_editing_key(key: Key) -> bool {
     matches!(
         key,

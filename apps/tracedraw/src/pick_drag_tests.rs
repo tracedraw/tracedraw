@@ -31555,3 +31555,20 @@ fn freehand_with_the_second_click_ending_draws_one_segment_and_stops() {
     }
     assert_eq!(shape_count(&app), before + 2);
 }
+
+/// Discussion #3918: a right click on the menu bar's empty part opens the
+/// toolbars' menu, as on the other bars; a click away closes it. A right
+/// click on a menu title still leaves the titles alone.
+#[test]
+fn a_right_click_on_the_menu_bar_opens_the_toolbars_menu() {
+    let (ctx, mut app, _) = setup();
+    let bar = ctx
+        .read_response(egui::Id::new("menu_bar_background"))
+        .map(|r| r.rect)
+        .expect("the menu bar");
+    let at = egui::pos2(bar.right() - 60.0, bar.center().y);
+    let shown = right_click_menu(&ctx, &mut app, at, false);
+    assert!(shown.iter().all(|s| *s), "{shown:?}");
+    click_menu_away(&ctx, &mut app);
+    assert!(!bar_menu_shown(&ctx, &mut app, Vec::new()));
+}

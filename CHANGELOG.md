@@ -39,6 +39,10 @@ full, row-by-row status.
 - Guidelines: a guideline dragged with a finger on a touch screen moves and stays where it is let go, instead of being deleted (#3867).
 - Freehand: a new option in Options > Tools > Freehand/Bézier, "Second click ends the line", draws one straight segment with two clicks and stops, instead of going on from the second click (#3848).
 - Show Full Preview: the mirrored copies of a symmetry group show at once at every zoom, instead of partly missing until a zoom out (#3821).
+- Facing pages: with every page listed in the Objects docker, objects of the facing page selected with the current page's stay listed under their own page while selected, instead of all showing under the current page as if selecting had moved them there (#3935).
+- Glyphs docker: a glyph reaching beyond its cell, as the vowel signs of legacy Indic fonts drawn before the letter, shows whole and smaller instead of cut, and ink left of a character's start is no longer cut from font pictures (#3906).
+- Menu bar: a right click on its empty part opens the toolbars' menu, every bar to show or hide, Customize, Lock Toolbars and Reset Toolbars, as on the other bars (discussion #3918).
+- F2, F3, F4 and the other function keys work while a box of a bar or docker holds the keyboard (the zoom box, a size field): F4 did nothing until the drawing was clicked (#3931).
 - PDF import: a PDF drawn in RGB colours opens as an RGB document, so a .cdr saved from it stays one and other programs no longer show the contents of its clip frames in CMYK (#3917).
 - PDF/X-1a export: a see-through object is flattened into the CMYK inks the drawing's colours blend to, so it no longer comes out duller and a rich black under it no longer turns into black ink alone; a group with a see-through object in it is flattened only where that object is, and its other objects stay vector objects (#3942, #3929).
 - Print Preview: turning on Bleed, or widening it, no longer makes the pages smaller on the paper; the pages keep their size and the bleed runs out past their edges, with the crop marks starting beyond it (#3919).

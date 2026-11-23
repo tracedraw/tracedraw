@@ -589,6 +589,15 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
         .resizable(false)
         .show_separator_line(false)
         .show(ui, |ui| {
+            // A right click on the bar's empty part opens the toolbars'
+            // menu, as on the other bars (discussion #3918). Under the
+            // titles, which take their own clicks.
+            let empty = ui.interact(
+                ui.max_rect(),
+                egui::Id::new("menu_bar_background"),
+                egui::Sense::click(),
+            );
+            crate::ui::bars::menu_bar_menu(app, &empty);
             // Minimize, Maximize and Close at the right end, and the empty
             // part of the bar as a title bar, when turned on (#2574).
             let menus = |app: &mut App, ui: &mut Ui| {
