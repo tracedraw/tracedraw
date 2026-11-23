@@ -97,7 +97,7 @@ pub(crate) fn menu_items(app: &mut App, ui: &mut Ui, close: &mut bool) {
     } else if on_guide {
         guide_menu(app, ui, close);
     } else if app.selection.is_empty() {
-        page_menu(app, ui, p, close);
+        page_menu(app, ui, close);
     } else {
         object_menu(app, ui, close);
     }
@@ -537,6 +537,10 @@ pub(crate) fn object_menu(app: &mut App, ui: &mut Ui, close: &mut bool) {
     if ci(ui, close, "menu.edit.copy", "Ctrl+C", true) {
         app.copy_with_system();
     }
+    // Paste on an object's menu too, landing where Ctrl+V puts it (#3993).
+    if ci(ui, close, "menu.edit.paste", "Ctrl+V", true) {
+        app.paste_any();
+    }
     if ci(ui, close, "menu.edit.duplicate", "Ctrl+D", true) {
         app.duplicate();
     }
@@ -864,16 +868,17 @@ fn finish_clip_edit_row(app: &mut App, ui: &mut Ui, close: &mut bool) {
     }
 }
 
-fn page_menu(app: &mut App, ui: &mut Ui, p: tracedraw_core::Point, close: &mut bool) {
+fn page_menu(app: &mut App, ui: &mut Ui, close: &mut bool) {
     // Inside a clip frame, a click on the empty page finishes too.
     if app.editing_clip_contents() {
         finish_clip_edit_row(app, ui, close);
         sep(ui);
     }
     // Offered like Edit > Paste: a copy made in another program pastes
-    // too, not only one made here.
+    // too, not only one made here, and in its own place as Ctrl+V puts
+    // it, not at the pointer (#3993; Paste in View centres it).
     if ci(ui, close, "menu.edit.paste", "Ctrl+V", true) {
-        app.paste_any_at(Some(p));
+        app.paste_any();
     }
     if ci(ui, close, "menu.edit.select_all_objects", "Ctrl+A", true) {
         app.select_all();
