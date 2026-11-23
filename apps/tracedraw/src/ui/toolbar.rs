@@ -1615,6 +1615,14 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
             }
             Tool::Pick | Tool::FreeformPick => {
                 object_properties(app, ui);
+                // Several objects: grouping, combining and shaping them
+                // come right after the object fields, before the fields
+                // of single objects, so they stay in view when the bar
+                // is longer than the window (#3973).
+                let many = shapes.len() >= 2;
+                if many {
+                    crate::ui::propbar::arrange_part(app, ui);
+                }
                 crate::ui::propbar::sep(ui);
                 if crate::ui::propbar::kind_part(app, ui) {
                     crate::ui::propbar::sep(ui);
@@ -1622,9 +1630,11 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
                 crate::ui::propbar::outline_part(app, ui);
                 crate::ui::propbar::sep(ui);
                 crate::ui::propbar::order_part(app, ui);
-                // Several objects, a group or a curve of several parts:
-                // group, combine and shape them.
-                crate::ui::propbar::arrange_part(app, ui);
+                // A group or a curve of several parts: ungroup it or
+                // break it apart.
+                if !many {
+                    crate::ui::propbar::arrange_part(app, ui);
+                }
             }
             Tool::Zoom | Tool::Pan => crate::ui::propbar::zoom_bar(app, ui),
             Tool::Rectangle | Tool::ThreePointRectangle => {
