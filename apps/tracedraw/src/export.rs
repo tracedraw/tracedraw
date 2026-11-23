@@ -1207,12 +1207,28 @@ fn print_doc(app: &mut App, st: &PrintState, mut doc: Document) -> Result<String
                 // Print as bitmap: the sheets are already pictures of
                 // that resolution, sent as they are.
                 let bitmap_dpi = st.as_bitmap.then(|| st.bitmap_dpi.clamp(36.0, 1200.0));
+                // A PostScript printer on Windows can take the sheets as
+                // PostScript, its colours as written in CMYK (#4052); the
+                // job then holds its copies.
+                let postscript = (cfg!(target_os = "windows") && st.ps_to_printer && !st.as_bitmap)
+                    .then(|| {
+                        let mut ps_doc = doc.clone();
+                        if copies > 1 {
+                            repeat_copies(&mut ps_doc, copies.min(999) as usize, collate);
+                        }
+                        let mut out = tracedraw_io::eps::document_to_ps(&ps_doc);
+                        if st.separations && st.screens {
+                            out = with_screens(&out, &page_screens(&ps_doc, &plate_names, st));
+                        }
+                        postscript_level(out, st.ps_level).into_bytes()
+                    });
                 let msg = trf("status.printing_to", &[("name", &printer)]);
                 let progress = app.print_progress.clone();
                 progress.clear();
                 app.start_print_job(move || {
                     let r = print_on(
                         &printer, &name, &doc, copies, collate, &stem, bitmap_dpi, &progress,
+                        postscript,
                     );
                     progress.clear();
                     r
@@ -1407,6 +1423,7 @@ fn print_on(
     title: &str,
     _bitmap_dpi: Option<f64>,
     _progress: &crate::printers::PrintProgress,
+    _postscript: Option<Vec<u8>>,
 ) -> Result<String, String> {
     let pdf = tracedraw_io::pdf::document_to_pdf(doc);
     let dir = std::env::temp_dir().join("tracedraw-print");
@@ -1435,7 +1452,15 @@ fn print_on(
     title: &str,
     bitmap_dpi: Option<f64>,
     progress: &crate::printers::PrintProgress,
+    postscript: Option<Vec<u8>>,
 ) -> Result<String, String> {
+    // PostScript to a PostScript printer (#4052); any other printer
+    // takes the pictures below.
+    if let Some(ps) = postscript {
+        if crate::printers::print_postscript_windows(printer, &ps, title)? {
+            return Ok(trf("status.print_sent_printer", &[("name", printer)]));
+        }
+    }
     let dpi = bitmap_dpi
         .unwrap_or_else(|| windows_print_dpi(crate::printers::printer_resolution_windows(printer)));
     let dir = std::env::temp_dir().join("tracedraw-print");

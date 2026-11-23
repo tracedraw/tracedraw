@@ -24,6 +24,7 @@ full, row-by-row status.
 - Export as PDF: the file name and folder can be typed in the dialog, and the Browse button stays in view however long the folder is (#4059).
 - New Document: Color settings opens as it was left last time (#4058).
 - Image editing mode (a double click on a picture) made complete: scrollbars along the picture's window; Pick first in the toolbox with Zoom and Pan beside it; a key for every tool, shown in its flyout and tip; new freehand, edge, brush and band masks with Normal, Add, Subtract and Exclusive Or buttons and a fixed size; smear, twirl, attract and repel tools; a scatter brush (dots, stars, bubbles, leaves, confetti, sparkles); layer fade, colour to clear and a transparency brush; Pick's X, Y, width, height, scale, rotation and flips on the property bar; an Image menu with auto crop, greyscale, black and white, rotate and canvas size; an Adjust menu with a picture for each adjustment and keys for the tone curve, brightness, hue/saturation and colour balance; a Hints panel for the tool in use.
+- Print on Windows: Print > PostScript has Send PostScript to a PostScript printer. Ticked, a printer with a PostScript driver, such as most PDF printers, is sent PostScript instead of RGB pictures of the sheets, so CMYK colours arrive with the values set (100 C 100 M stayed 100 C 100 M, where the driver made it 98 C 98 M 2 Y) (#4052).
 
 ## 0.51.1 (2026-11-23)
 

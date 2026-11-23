@@ -696,6 +696,11 @@ pub struct PrintState {
     pub page_numbers: bool,
     /// PostScript language level of a PostScript file (2 or 3).
     pub ps_level: u8,
+    /// Printing on a PostScript printer (Windows) sends it PostScript,
+    /// whose colours keep their CMYK values, instead of pictures of the
+    /// sheets in RGB, which its driver turns back into other CMYK values
+    /// (#4052).
+    pub ps_to_printer: bool,
     /// Separations to a PostScript file set each plate's halftone screen:
     /// `screen_lpi` lines per inch at the plate's angle.
     pub screens: bool,
@@ -1038,6 +1043,7 @@ impl Default for PrintState {
             info_text: String::new(),
             page_numbers: false,
             ps_level: 2,
+            ps_to_printer: false,
             screens: false,
             screen_lpi: 150.0,
             screen_angles: Vec::new(),
@@ -7709,6 +7715,20 @@ fn print_tab_prepress(app: &App, ui: &mut Ui, st: &mut PrintState) {
 }
 
 fn print_tab_postscript(app: &App, ui: &mut Ui, st: &mut PrintState) {
+    // Windows hands a printer pictures of the sheets in RGB; a PostScript
+    // printer can take PostScript instead, its colours kept in CMYK
+    // (#4052). Elsewhere the printer takes the print PDF as it is.
+    if cfg!(target_os = "windows") || st.ps_to_printer {
+        print_group(ui, &tr("print.ps_to_printer_group"), |ui| {
+            ui.add_enabled(
+                st.destination == 0 && !st.as_bitmap,
+                egui::Checkbox::new(&mut st.ps_to_printer, tr("print.ps_to_printer")),
+            )
+            .rich_tip(crate::ui::tips::keyed("print.ps_to_printer"))
+            .rich_disabled_tip(crate::ui::tips::keyed("print.ps_to_printer"));
+        });
+        ui.add_space(6.0);
+    }
     if st.destination != 2 {
         ui.label(egui::RichText::new(tr("print.postscript_hint")).color(Tokens::text_dim()));
         ui.add_space(6.0);

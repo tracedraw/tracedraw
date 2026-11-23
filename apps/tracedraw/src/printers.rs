@@ -695,6 +695,119 @@ fn last_lines(text: &str, n: usize) -> String {
     lines[lines.len().saturating_sub(n)..].join(" | ")
 }
 
+/// What the raw PostScript script says on stderr when the printer's
+/// driver is not a PostScript one; the sheets then go as pictures.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+pub const NOT_POSTSCRIPT: &str = "TRACEDRAW-NOT-POSTSCRIPT";
+
+/// The PowerShell script that sends the PostScript file `file` as it is
+/// (the spooler's RAW data type) to the Windows printer `printer`, under
+/// `title` in the queue, when its driver is a PostScript one: the
+/// colours keep the CMYK values written, where pictures of the sheets
+/// went in RGB and the driver turned them into other CMYK values
+/// (#4052). A printer whose driver is not PostScript is left alone: the
+/// script says [`NOT_POSTSCRIPT`] and exits with 3.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+pub fn windows_raw_print_script(printer: &str, file: &Path, title: &str) -> String {
+    let printer = ps_quote(printer);
+    let file = ps_quote(&file.display().to_string());
+    let title = ps_quote(title);
+    format!(
+        r#"$ErrorActionPreference = 'Stop'
+$p = {printer}
+$driver = (Get-Printer -Name $p).DriverName
+$dll = (Get-PrinterDriver -Name $driver).DriverPath
+if ("$dll" -notmatch 'PSCRIPT') {{
+  [Console]::Error.WriteLine('{NOT_POSTSCRIPT} ' + $driver)
+  exit 3
+}}
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class TraceDrawRaw {{
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+  public class DocInfo {{ public string Name; public string Output; public string Datatype; }}
+  [DllImport("winspool.drv", CharSet = CharSet.Unicode, SetLastError = true)]
+  static extern bool OpenPrinter(string name, out IntPtr h, IntPtr defaults);
+  [DllImport("winspool.drv", SetLastError = true)]
+  static extern bool ClosePrinter(IntPtr h);
+  [DllImport("winspool.drv", CharSet = CharSet.Unicode, SetLastError = true)]
+  static extern int StartDocPrinter(IntPtr h, int level, [In] DocInfo info);
+  [DllImport("winspool.drv", SetLastError = true)]
+  static extern bool EndDocPrinter(IntPtr h);
+  [DllImport("winspool.drv", SetLastError = true)]
+  static extern bool StartPagePrinter(IntPtr h);
+  [DllImport("winspool.drv", SetLastError = true)]
+  static extern bool EndPagePrinter(IntPtr h);
+  [DllImport("winspool.drv", SetLastError = true)]
+  static extern bool WritePrinter(IntPtr h, byte[] data, int count, out int written);
+  public static string Send(string printer, string file, string title) {{
+    byte[] data = System.IO.File.ReadAllBytes(file);
+    IntPtr h;
+    if (!OpenPrinter(printer, out h, IntPtr.Zero)) {{
+      throw new Exception("OpenPrinter: " + Marshal.GetLastWin32Error());
+    }}
+    try {{
+      DocInfo info = new DocInfo();
+      info.Name = title;
+      info.Datatype = "RAW";
+      if (StartDocPrinter(h, 1, info) == 0) {{
+        throw new Exception("StartDocPrinter: " + Marshal.GetLastWin32Error());
+      }}
+      StartPagePrinter(h);
+      int written;
+      bool ok = WritePrinter(h, data, data.Length, out written);
+      EndPagePrinter(h);
+      EndDocPrinter(h);
+      if (!ok || written != data.Length) {{
+        throw new Exception("WritePrinter: " + Marshal.GetLastWin32Error());
+      }}
+      return "sent " + written + " bytes of PostScript";
+    }} finally {{
+      ClosePrinter(h);
+    }}
+  }}
+}}
+'@
+Write-Output ([TraceDrawRaw]::Send($p, {file}, {title}))
+"#
+    )
+}
+
+/// Send the PostScript `ps` to the Windows printer `printer` through
+/// [`windows_raw_print_script`]. `Ok(true)` when Windows took the job,
+/// `Ok(false)` when the printer's driver is not a PostScript one (nothing
+/// was sent), Err with what went wrong.
+#[cfg(target_os = "windows")]
+pub fn print_postscript_windows(printer: &str, ps: &[u8], title: &str) -> Result<bool, String> {
+    let dir = std::env::temp_dir().join("tracedraw-print");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let file = dir.join("print.ps");
+    std::fs::write(&file, ps).map_err(|e| e.to_string())?;
+    let script = dir.join("print-ps.ps1");
+    let mut bytes = vec![0xef, 0xbb, 0xbf];
+    bytes.extend_from_slice(windows_raw_print_script(printer, &file, title).as_bytes());
+    std::fs::write(&script, bytes).map_err(|e| e.to_string())?;
+    let mut c = powershell();
+    c.arg("-File").arg(&script);
+    let result = run_watched(c, PRINT_IDLE, |_| {});
+    let _ = std::fs::remove_file(&file);
+    match result {
+        Ok(said) => {
+            log::info!("PostScript print on {printer}: {said}");
+            Ok(true)
+        }
+        Err(e) if e.contains(NOT_POSTSCRIPT) => {
+            log::info!("{printer} is not a PostScript printer ({e}); sending pictures");
+            Ok(false)
+        }
+        Err(e) => {
+            log::warn!("PostScript print on {printer} failed: {e}");
+            Err(e)
+        }
+    }
+}
+
 /// The PowerShell lines that say the resolution of the printer `printer`:
 /// "X Y" of its current setting, then of each it offers.
 #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
@@ -1205,6 +1318,26 @@ mod tests {
             width: w,
             height: h,
         }
+    }
+
+    /// PostScript goes to a PostScript printer as it is, the RAW data
+    /// type, so its CMYK values reach the driver (#4052); another
+    /// printer is left alone with a word the program knows.
+    #[test]
+    fn postscript_goes_raw_to_postscript_printers_only() {
+        let s = windows_raw_print_script("Office 'PDF'", Path::new("C:\\Temp\\print.ps"), "Poster");
+        assert!(s.contains("$p = 'Office ''PDF'''"), "{s}");
+        assert!(s.contains("-notmatch 'PSCRIPT'"));
+        assert!(s.contains(NOT_POSTSCRIPT));
+        assert!(s.contains("exit 3"));
+        assert!(s.contains("info.Datatype = \"RAW\";"));
+        assert!(s.contains("WritePrinter(h, data, data.Length, out written)"));
+        assert!(
+            s.contains("[TraceDrawRaw]::Send($p, 'C:\\Temp\\print.ps', 'Poster')"),
+            "{s}"
+        );
+        // The here-string's closing mark starts its line.
+        assert!(s.contains("\n'@\n"));
     }
 
     /// The Windows print script names the printer, the copies and the

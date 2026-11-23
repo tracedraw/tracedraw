@@ -63,6 +63,8 @@ pub struct PrintPrefs {
     pub bleed_limit: f64,
     pub page_numbers: bool,
     pub ps_level: u8,
+    /// PostScript to a PostScript printer (#4052).
+    pub ps_to_printer: bool,
     /// Pages keep their size on a fixed sheet when marks need room (#388).
     pub keep_size: bool,
     /// Custom sheet sizes saved with a name in Print (#591), and the
@@ -109,6 +111,7 @@ impl Default for PrintPrefs {
             bleed_limit: st.bleed_limit,
             page_numbers: st.page_numbers,
             ps_level: st.ps_level,
+            ps_to_printer: st.ps_to_printer,
             keep_size: st.keep_size,
             output_profile: None,
             output_intent: st.output_intent.name().to_string(),
@@ -157,6 +160,7 @@ impl PrintPrefs {
             },
             page_numbers: self.page_numbers,
             ps_level: self.ps_level.clamp(2, 3),
+            ps_to_printer: self.ps_to_printer,
             keep_size: self.keep_size,
             gutter: gap_or(self.gutter, PrintState::default().gutter),
             gutter_y: gap_or(
@@ -200,6 +204,7 @@ impl PrintPrefs {
         self.bleed_limit = st.bleed_limit;
         self.page_numbers = st.page_numbers;
         self.ps_level = st.ps_level;
+        self.ps_to_printer = st.ps_to_printer;
         self.keep_size = st.keep_size;
         self.output_profile = st.output_profile.clone();
         self.output_intent = st.output_intent.name().to_string();
