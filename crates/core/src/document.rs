@@ -3470,6 +3470,14 @@ pub struct Shape {
     /// of [`Shape::spline`] (#1758).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub spline_fixed: Vec<bool>,
+    /// The settings of a curve drawn with the Common Shapes tool (#4045):
+    /// which shape it is, the box it was drawn into and its adjustments,
+    /// so the Shape tool shows its handles and dragging one draws the
+    /// shape again ([`Command::SetCommonShape`]). Any other change to the
+    /// curve's outline, and Convert To Curves, drops them and leaves an
+    /// ordinary curve.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub common_shape: Option<Box<CommonShapeParams>>,
     /// The object's identity across saves, undo and moves between
     /// drawings (see [`Uid`]); the engine gives one to every object.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -3778,6 +3786,20 @@ impl ScaleGrid {
     }
 }
 
+/// The settings of a shape of the Common Shapes tool (see
+/// [`Shape::common_shape`]). The application draws the outline from
+/// them; the document only keeps them with the curve.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CommonShapeParams {
+    /// The shape, by the key of its name (such as `shape.arrow`).
+    pub shape: String,
+    /// The box it is drawn into, in local space.
+    pub rect: Rect,
+    /// Its adjustments, in the order the shape defines them.
+    #[serde(default)]
+    pub values: Vec<f64>,
+}
+
 /// How a clip frame masks its contents (see `Shape::opacity_mask`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct OpacityMask {
@@ -3887,6 +3909,7 @@ impl Shape {
             node_types: std::collections::BTreeMap::new(),
             spline: None,
             spline_fixed: Vec::new(),
+            common_shape: None,
             uid: None,
             opacity_mask: None,
             group_look: None,
@@ -4724,7 +4747,7 @@ impl Shape {
         match &self.kind {
             // A B-spline becomes an ordinary curve: its nodes instead of
             // its control points.
-            ShapeKind::Path { .. } => self.spline.is_some(),
+            ShapeKind::Path { .. } => self.spline.is_some() || self.common_shape.is_some(),
             ShapeKind::Bitmap { .. } => false,
             ShapeKind::Group { children } => {
                 let warps = !self.outline_stays_live();
@@ -4787,6 +4810,7 @@ impl Shape {
             out.node_types.clear();
             out.spline = None;
             out.spline_fixed.clear();
+            out.common_shape = None;
             changed = true;
         }
         if !container {
@@ -4931,6 +4955,7 @@ impl Shape {
                     self.node_types.clear();
                     self.spline = None;
                     self.spline_fixed.clear();
+                    self.common_shape = None;
                 }
                 if bake && !container {
                     if let Some(b) = crate::live::bake_outline_warps(self) {
@@ -4990,6 +5015,7 @@ impl Shape {
                     self.node_types.clear();
                     self.spline = None;
                     self.spline_fixed.clear();
+                    self.common_shape = None;
                 }
                 if bake && !container {
                     if let Some(b) = crate::live::bake_outline_warps(self) {

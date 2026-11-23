@@ -321,6 +321,33 @@ impl App {
     }
 
     pub(crate) fn box_like_input(&mut self, response: &Response, p: Point, mods: Modifiers) {
+        // The Common Shapes tool drags the handles of the selected shape
+        // it drew, as the Shape tool does, so a shape is adjusted right
+        // after it is drawn (#4045).
+        if self.tool == Tool::CommonShapes {
+            if response.drag_started_by(PointerButton::Primary) {
+                if let Some((s, node @ crate::kind_nodes::KindNode::Adjust { .. })) =
+                    self.kind_node_at(p)
+                {
+                    self.drag = Drag::KindNode {
+                        shape: s.id,
+                        node,
+                        start: Box::new(s),
+                        single: false,
+                        chosen: [false; 4],
+                        begun: false,
+                        turn: 0.0,
+                    };
+                    return;
+                }
+            }
+            if matches!(self.drag, Drag::KindNode { .. }) {
+                if response.dragged_by(PointerButton::Primary) {
+                    self.kind_node_drag_step(p, mods);
+                }
+                return;
+            }
+        }
         let p = self.snap_point(p);
         if response.drag_started_by(PointerButton::Primary) {
             self.drag = Drag::Box {
@@ -456,11 +483,19 @@ impl App {
                 if rect.width() > 0.1 && rect.height() > 0.1 {
                     // A shape of My shapes is filled when its outline was
                     // closed, as the objects it was made from.
-                    let (path, closed) = match self.picked_my_shape() {
+                    let mine = self.picked_my_shape();
+                    let (path, closed) = match &mine {
                         Some(mine) => (mine.path(rect), mine.closed),
                         None => (self.common_shape.path(rect), true),
                     };
-                    if let Some(id) = self.new_shape(ShapeKind::Path { path, closed }) {
+                    // A common shape keeps what it is and its settings, so
+                    // the Shape tool shows its handles (#4045).
+                    let params = mine.is_none().then(|| {
+                        let shape = self.common_shape;
+                        Box::new(crate::common_shapes::params(shape, rect, &shape.defaults()))
+                    });
+                    let kind = ShapeKind::Path { path, closed };
+                    if let Some(id) = self.new_shape_styled(kind, |s| s.common_shape = params) {
                         self.select(vec![id]);
                     }
                 }

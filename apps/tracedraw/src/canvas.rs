@@ -2605,6 +2605,18 @@ fn draw_selection(app: &App, painter: &Painter, preview: Option<Affine>) {
         draw_nodes(app, painter);
         return;
     }
+    // The Common Shapes tool shows the handles of the selected shapes it
+    // drew, which it drags as the Shape tool does (#4045).
+    if app.tool == Tool::CommonShapes && app.text_edit.is_none() {
+        let prefs = app.settings.nodes;
+        let [r, g, b] = prefs.main_rgb;
+        let main = Color32::from_rgb(r, g, b);
+        for s in app.shape_tool_shapes() {
+            if crate::shape_tool::shows_handles(&s) {
+                draw_adjust_handles(painter, view, &s, prefs.size.px(), main, main);
+            }
+        }
+    }
     // The Mesh Fill tool's box or freehand loop over mesh nodes.
     if matches!(app.tool, Tool::MeshFill | Tool::Envelope) {
         draw_node_marquees(app, painter);
@@ -3549,6 +3561,37 @@ fn spacing_arrow_shapes(c: Pos2, horizontal: bool, color: Color32) -> Vec<epaint
 /// The outline of a rectangle, ellipse or polygon the Shape tool edits,
 /// on screen: one line of points for each of its outlines, a closed one
 /// ending where it starts. Drawn dashed in the node colour (#670).
+/// A common shape's adjustment handles (#4045) over its outline: each a
+/// diamond filled in the node colour, told apart from nodes (squares)
+/// and from a rectangle's edge handles (white diamonds).
+fn draw_adjust_handles(
+    painter: &Painter,
+    view: &View,
+    s: &tracedraw_core::Shape,
+    size: f32,
+    main: Color32,
+    outline: Color32,
+) {
+    for (pts, _) in flatten(&s.page_path(), view) {
+        painter.add(egui::Shape::line(pts, EStroke::new(1.0, outline)));
+    }
+    let h = size / 2.0 + 1.5;
+    for (_, p) in crate::kind_nodes::nodes(s) {
+        let c = view.to_screen(p);
+        let diamond = vec![
+            c + egui::vec2(0.0, -h),
+            c + egui::vec2(h, 0.0),
+            c + egui::vec2(0.0, h),
+            c + egui::vec2(-h, 0.0),
+        ];
+        painter.add(egui::Shape::convex_polygon(
+            diamond,
+            main,
+            EStroke::new(1.0, Color32::WHITE),
+        ));
+    }
+}
+
 pub(crate) fn kind_outline(s: &tracedraw_core::Shape, view: &View) -> Vec<Vec<Pos2>> {
     flatten(&s.page_path(), view)
         .into_iter()
@@ -3740,6 +3783,12 @@ fn draw_nodes(app: &App, painter: &Painter) {
                     node_marker(painter, p, size + 6.0, prefs.cusp, None, main);
                 }
             }
+            continue;
+        }
+        // A common shape: its outline and its adjustment handles; the
+        // curve's own nodes do not show (#4045).
+        if crate::shape_tool::shows_handles(&s) {
+            draw_adjust_handles(painter, view, &s, size, main, outline_of(s.id));
             continue;
         }
         let ShapeKind::Path { path, .. } = &s.kind else {

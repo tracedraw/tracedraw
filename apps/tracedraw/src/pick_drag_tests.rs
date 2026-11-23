@@ -31661,3 +31661,101 @@ fn the_zoom_marquee_zooms_into_the_area_dragged() {
         assert!(w > app.canvas_rect.width() * 0.5, "{one_shot} {reverse}: {w} {:?}", app.canvas_rect);
     }
 }
+
+/// #4045: a shape drawn with the Common Shapes tool keeps what it is and
+/// its settings; its handle is dragged right after it is drawn (with the
+/// tool still in hand) and with the Shape tool, which shows the handles
+/// instead of the curve's nodes, each drag one undo step; Convert to
+/// Curves leaves an ordinary curve with its nodes.
+#[test]
+fn a_common_shape_is_adjusted_by_its_handles() {
+    let (ctx, mut app, rect) = setup();
+    app.select(vec![rect]);
+    app.delete_selection();
+    app.set_tool(Tool::CommonShapes);
+    app.common_shape = crate::common_shapes::CommonShape::RightArrow;
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let a = app.view.to_screen(Point::new(100.0, 100.0));
+    let b = app.view.to_screen(Point::new(200.0, 150.0));
+    drag(&ctx, &mut app, a, b, Modifiers::NONE, Vec::new());
+    let id = *app.selection.first().expect("drawn and selected");
+    let shape = |app: &App| app.doc().find_shape(id).cloned().expect("arrow");
+    let values = |app: &App| {
+        crate::common_shapes::live(&shape(app))
+            .map(|(_, _, v)| v)
+            .expect("still the arrow")
+    };
+    assert_eq!(values(&app), vec![0.4, 0.4]);
+    // The status bar and the Objects docker name it.
+    assert_eq!(
+        crate::ui::dockers::tagged_kind(&shape(&app), "Curve".into()),
+        crate::common_shapes::CommonShape::RightArrow.name()
+    );
+    let adjust_handle = |app: &App| {
+        let s = shape(app);
+        let nodes = crate::kind_nodes::nodes(&s);
+        assert_eq!(nodes.len(), 1, "{nodes:?}");
+        assert!(matches!(nodes[0].0, crate::kind_nodes::KindNode::Adjust { index: 0 }));
+        app.view.to_screen(nodes[0].1)
+    };
+    // With the Common Shapes tool: the head made longer (the handle
+    // dragged toward the tail), no new shape drawn.
+    let count = app.doc().pages[0].layers.iter().map(|l| l.shapes.len()).sum::<usize>();
+    let h = adjust_handle(&app);
+    drag(&ctx, &mut app, h, h - egui::vec2(40.0, 0.0), Modifiers::NONE, Vec::new());
+    let after = app.doc().pages[0].layers.iter().map(|l| l.shapes.len()).sum::<usize>();
+    assert_eq!(after, count, "the drag adjusted the arrow, it drew none");
+    let v = values(&app);
+    assert!(v[0] > 0.45 && (v[1] - 0.4).abs() < 0.02, "{v:?}");
+    // One undo takes the whole drag back, the arrow stays.
+    app.undo();
+    assert_eq!(values(&app), vec![0.4, 0.4]);
+    // With the Shape tool: no curve nodes, the handle thins the shaft.
+    app.set_tool(Tool::Shape);
+    app.select(vec![id]);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let tip = app.view.to_screen(Point::new(200.0, 125.0));
+    assert!(app.node_at(app.view.to_page(tip)).is_none(), "nodes hidden");
+    let h = adjust_handle(&app);
+    let down = app.view.to_screen(Point::new(0.0, 125.0)).y - h.y;
+    drag(
+        &ctx,
+        &mut app,
+        h,
+        h + egui::vec2(0.0, down * 0.5),
+        Modifiers::NONE,
+        Vec::new(),
+    );
+    let v = values(&app);
+    assert!((v[0] - 0.4).abs() < 0.02 && v[1] < 0.3, "{v:?}");
+    assert_eq!(app.engine.undo_label(), Some("Edit Shape"));
+    let s = shape(&app);
+    let (cs, r, vals) = crate::common_shapes::live(&s).expect("live");
+    assert_eq!(
+        s.kind,
+        ShapeKind::Path {
+            path: cs.path_with(r, &vals),
+            closed: true
+        }
+    );
+    // Stretched with the Pick tool: still the arrow, its handle on it.
+    app.set_tool(Tool::Pick);
+    app.select(vec![id]);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let e = handle(&app, Handle::E);
+    drag(&ctx, &mut app, e, e + egui::vec2(60.0, 0.0), Modifiers::NONE, Vec::new());
+    let s = shape(&app);
+    assert!(bounds(&app, id).width() > 110.0, "{:?}", bounds(&app, id));
+    assert_eq!(crate::common_shapes::live(&s).map(|(_, _, v)| v), Some(vals.clone()));
+    app.set_tool(Tool::Shape);
+    app.select(vec![id]);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let tip = app.view.to_screen(s.transform * Point::new(200.0, 125.0));
+    // Convert to Curves: an ordinary curve, its nodes back.
+    app.convert_to_curves();
+    let s = shape(&app);
+    assert!(s.common_shape.is_none());
+    assert!(crate::kind_nodes::nodes(&s).is_empty());
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    assert!(app.node_at(app.view.to_page(tip)).is_some(), "nodes back");
+}

@@ -4801,9 +4801,16 @@ pub fn kind_id(k: &ShapeKind) -> &'static str {
 }
 
 /// What an object is, with what makes it more than its kind: a
-/// symmetry (#2997) or an object clone (#2877).
+/// symmetry (#2997) or an object clone (#2877); a common shape is named
+/// as the shape it is (#4045).
 pub fn tagged_kind(s: &tracedraw_core::document::Shape, kind: String) -> String {
     let mut kind = kind;
+    // A common shape goes by its own name, as long as it is one (#4045).
+    if s.common_shape.is_some() {
+        if let Some((shape, _, _)) = crate::common_shapes::live(s) {
+            kind = shape.name();
+        }
+    }
     if s
         .effects
         .iter()

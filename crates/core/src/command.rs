@@ -293,6 +293,15 @@ pub enum Command {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         fixed: Option<Vec<bool>>,
     },
+    /// A shape of the Common Shapes tool drawn again (#4045): the curve's
+    /// outline becomes `path` (local space, closed) and it keeps `params`
+    /// (see [`Shape::common_shape`]), so its handles show where the new
+    /// settings put them.
+    SetCommonShape {
+        shape: ShapeId,
+        params: Box<crate::document::CommonShapeParams>,
+        path: crate::geometry::BezPath,
+    },
     /// A QR code object's settings (its children are set with
     /// [`Command::SetShapeKind`] in the same step).
     SetQrCode {
@@ -703,6 +712,7 @@ impl Command {
             Command::SetShapeName { .. } => "Rename Object",
             Command::SetTocLevel { .. } => "Table of Contents Heading",
             Command::SetSpline { .. } => "Edit B-Spline",
+            Command::SetCommonShape { .. } => "Edit Shape",
             Command::SetQrCode { .. } => "QR Code",
             Command::Reorder { .. } => "Order",
             Command::Group { .. } => "Group",
@@ -1240,6 +1250,7 @@ impl Command {
                 // A B-spline given any other outline is an ordinary curve.
                 s.spline = None;
                 s.spline_fixed.clear();
+                s.common_shape = None;
                 s.kind = kind.clone();
                 if let Some(before) = before {
                     let after = crate::geometry::Shape::bounding_box(&(parent * s.page_path()));
@@ -1291,7 +1302,39 @@ impl Command {
                 let after = crate::geometry::Shape::bounding_box(&(parent * s.page_path()));
                 s.keep_paint_in_place(before, after);
                 s.node_types.clear();
+                s.common_shape = None;
                 s.spline = Some(points.clone());
+                keep_clip_frame_paint(doc, holder);
+            }
+            Command::SetCommonShape {
+                shape,
+                params,
+                path,
+            } => {
+                let finite = crate::geometry::Shape::bounding_box(path).is_finite()
+                    && params.rect.is_finite()
+                    && params.values.iter().all(|v| v.is_finite());
+                if !finite || path.elements().is_empty() {
+                    return Err(Error::BadShape);
+                }
+                let parent = doc.parent_transform(*shape).unwrap_or(Affine::IDENTITY);
+                let holder = clip_frame_of_frame(doc, *shape);
+                let s = any_mut(doc, *shape)?;
+                if !matches!(s.kind, ShapeKind::Path { .. }) {
+                    return Err(Error::BadShape);
+                }
+                let before = crate::geometry::Shape::bounding_box(&(parent * s.page_path()));
+                s.kind = ShapeKind::Path {
+                    path: path.clone(),
+                    closed: true,
+                };
+                // Its gradients stay in place, as for any new outline.
+                let after = crate::geometry::Shape::bounding_box(&(parent * s.page_path()));
+                s.keep_paint_in_place(before, after);
+                s.node_types.clear();
+                s.spline = None;
+                s.spline_fixed.clear();
+                s.common_shape = Some(params.clone());
                 keep_clip_frame_paint(doc, holder);
             }
             Command::SetNodeTypes { shape, types } => {
@@ -1761,6 +1804,7 @@ impl Command {
                                 f.node_types.clear();
                                 f.spline = None;
                                 f.spline_fixed.clear();
+                                f.common_shape = None;
                                 f
                             })
                             .collect();
@@ -3119,6 +3163,93 @@ mod tests {
                 assert!((g - w).abs() < 1e-9, "over {over}: {got:?} vs {want:?}");
             }
         }
+    }
+
+    /// #4045: a common shape keeps its settings with its outline, one
+    /// undo step each time; any other outline, a B-spline or Convert To
+    /// Curves makes it an ordinary curve; broken input is refused.
+    #[test]
+    fn a_common_shape_keeps_its_settings_until_the_outline_is_changed_otherwise() {
+        use crate::document::CommonShapeParams;
+        use crate::geometry::{Point, Rect};
+        let mut doc = Document::default();
+        let page = doc.pages[0].id;
+        let layer = doc.page(page).expect("page").layers[0].id;
+        let id = doc.ids_mut().shape();
+        let square = |w: f64| {
+            let mut p = BezPath::new();
+            p.move_to(Point::new(0.0, 0.0));
+            p.line_to(Point::new(w, 0.0));
+            p.line_to(Point::new(w, 10.0));
+            p.close_path();
+            p
+        };
+        let shape = Shape::new(
+            id,
+            ShapeKind::Path {
+                path: square(10.0),
+                closed: true,
+            },
+        );
+        let mut eng = crate::Engine::new(doc);
+        eng.run(&Command::AddShape { layer, shape }).expect("added");
+        let params = Box::new(CommonShapeParams {
+            shape: "shape.trapezoid".into(),
+            rect: Rect::new(0.0, 0.0, 20.0, 10.0),
+            values: vec![0.3],
+        });
+        eng.run(&Command::SetCommonShape {
+            shape: id,
+            params: params.clone(),
+            path: square(20.0),
+        })
+        .expect("set");
+        assert_eq!(eng.undo_label(), Some("Edit Shape"));
+        let s = eng.document().find_shape(id).expect("shape").clone();
+        assert_eq!(s.common_shape.as_ref(), Some(&params));
+        assert_eq!(
+            s.kind,
+            ShapeKind::Path {
+                path: square(20.0),
+                closed: true
+            }
+        );
+        // Kept in the file.
+        let back: Shape = serde_json::from_str(&serde_json::to_string(&s).expect("save"))
+            .expect("open");
+        assert_eq!(back.common_shape, s.common_shape);
+        // Undone in one step.
+        eng.undo().expect("undo");
+        assert!(eng.document().find_shape(id).expect("shape").common_shape.is_none());
+        eng.redo().expect("redo");
+        // Another outline: an ordinary curve.
+        eng.run(&Command::SetShapeKind {
+            shape: id,
+            kind: ShapeKind::Path {
+                path: square(30.0),
+                closed: true,
+            },
+        })
+        .expect("kind");
+        assert!(eng.document().find_shape(id).expect("shape").common_shape.is_none());
+        eng.undo().expect("undo");
+        let s = eng.document().find_shape(id).expect("shape").clone();
+        assert!(s.converts_to_curves());
+        let mut ids = || ShapeId(999);
+        let curve = s.converted_to_curves(&[], &mut ids).expect("converted");
+        assert!(curve.common_shape.is_none());
+        assert_eq!(curve.kind, s.kind);
+        // Broken input changes nothing.
+        let mut bad = params.clone();
+        bad.values = vec![f64::NAN];
+        assert!(eng
+            .run(&Command::SetCommonShape {
+                shape: id,
+                params: bad,
+                path: square(5.0),
+            })
+            .is_err());
+        assert_eq!(eng.document().find_shape(id).expect("shape").common_shape, Some(params));
     }
 
     #[test]

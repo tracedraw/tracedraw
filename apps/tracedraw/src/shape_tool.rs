@@ -159,8 +159,9 @@ impl App {
         let s = self.doc().find_shape(id)?;
         let parent = self.doc().parent_transform(id)?;
         match &s.kind {
-            // A B-spline shows its control points, not its nodes.
-            ShapeKind::Path { .. } if s.spline.is_some() => None,
+            // A B-spline shows its control points, not its nodes, and a
+            // common shape its handles (#4045).
+            ShapeKind::Path { .. } if s.spline.is_some() || shows_handles(s) => None,
             ShapeKind::Path { path, closed } => Some((path.clone(), *closed, parent * s.transform)),
             _ => None,
         }
@@ -490,6 +491,79 @@ impl App {
             }
         }
         best.map(|b| b.0)
+    }
+
+    /// A step of dragging a rectangle, ellipse, polygon or B-spline node,
+    /// or a common shape's handle (#4045): the object drawn again from
+    /// where the drag began, one undo step for the whole drag. The Shape
+    /// tool and the Common Shapes tool drag them alike.
+    pub(crate) fn kind_node_drag_step(&mut self, p: Point, mods: Modifiers) {
+        let Drag::KindNode {
+            shape,
+            node,
+            start,
+            single,
+            chosen,
+            begun,
+            mut turn,
+        } = self.drag.clone()
+        else {
+            return;
+        };
+        // Ctrl as it is held now, not only at the press: one
+        // corner of a rectangle, an ellipse's angle in steps of
+        // the constrain angle, a star's points keeping their
+        // turn, from the first drag on (#1325, #1331, #1340).
+        let ctrl = mods.ctrl || mods.command;
+        let q = self.snap_point_excluding(p, &[shape]);
+        let step = self.settings.constrain_angle;
+        let cmd = match node {
+            crate::kind_nodes::KindNode::Spline { index } => {
+                let chosen: Vec<usize> = self
+                    .node_selection
+                    .iter()
+                    .filter(|(id, _)| *id == shape)
+                    .map(|(_, i)| *i)
+                    .collect();
+                if chosen.contains(&index) {
+                    crate::kind_nodes::spline_moved_many(&start, &chosen, index, q)
+                } else {
+                    crate::kind_nodes::spline_moved(&start, index, q)
+                }
+                .map(|points| Command::SetSpline {
+                    shape,
+                    points,
+                    fixed: None,
+                })
+            }
+            crate::kind_nodes::KindNode::Adjust { index } => {
+                crate::common_shapes::adjust_command(&start, index, q)
+            }
+            _ => crate::kind_nodes::drag_constrained(
+                &start, node, q, ctrl, chosen, &mut turn, step,
+            )
+            .map(|kind| Command::SetShapeKind { shape, kind }),
+        };
+        // One undo step for the whole drag, begun by the first step that
+        // changes something (a step that changed nothing must not fold
+        // the drag into the step before it).
+        let ran = match cmd {
+            Some(cmd) if begun => self.engine.amend(&cmd).is_ok(),
+            Some(cmd) => self
+                .engine
+                .run_with_label(&cmd, crate::kind_nodes::label_for(&start, Some(node)))
+                .is_ok(),
+            None => false,
+        };
+        self.drag = Drag::KindNode {
+            shape,
+            node,
+            start,
+            single,
+            chosen,
+            begun: begun || ran,
+            turn,
+        };
     }
 
     pub fn shape_tool_input(&mut self, response: &Response, p: Point, mods: Modifiers) {
@@ -1042,67 +1116,7 @@ impl App {
                         begun: true,
                     };
                 }
-                Drag::KindNode {
-                    shape,
-                    node,
-                    start,
-                    single,
-                    chosen,
-                    begun,
-                    mut turn,
-                } => {
-                    // Ctrl as it is held now, not only at the press: one
-                    // corner of a rectangle, an ellipse's angle in steps of
-                    // the constrain angle, a star's points keeping their
-                    // turn, from the first drag on (#1325, #1331, #1340).
-                    let ctrl = mods.ctrl || mods.command;
-                    let q = self.snap_point_excluding(p, &[shape]);
-                    let step = self.settings.constrain_angle;
-                    let cmd = match node {
-                        crate::kind_nodes::KindNode::Spline { index } => {
-                            let chosen: Vec<usize> = self
-                                .node_selection
-                                .iter()
-                                .filter(|(id, _)| *id == shape)
-                                .map(|(_, i)| *i)
-                                .collect();
-                            if chosen.contains(&index) {
-                                crate::kind_nodes::spline_moved_many(&start, &chosen, index, q)
-                            } else {
-                                crate::kind_nodes::spline_moved(&start, index, q)
-                            }
-                            .map(|points| Command::SetSpline {
-                                shape,
-                                points,
-                                fixed: None,
-                            })
-                        }
-                        _ => crate::kind_nodes::drag_constrained(
-                            &start, node, q, ctrl, chosen, &mut turn, step,
-                        )
-                        .map(|kind| Command::SetShapeKind { shape, kind }),
-                    };
-                    if let Some(cmd) = cmd {
-                        // One undo step for the whole drag.
-                        let _ = if begun {
-                            self.engine.amend(&cmd)
-                        } else {
-                            self.engine.run_with_label(
-                                &cmd,
-                                crate::kind_nodes::label_for(&start, Some(node)),
-                            )
-                        };
-                    }
-                    self.drag = Drag::KindNode {
-                        shape,
-                        node,
-                        start,
-                        single,
-                        chosen,
-                        begun: true,
-                        turn,
-                    };
-                }
+                Drag::KindNode { .. } => self.kind_node_drag_step(p, mods),
                 _ => {}
             }
         }
@@ -2692,7 +2706,14 @@ fn erase_frame(
     f.node_types.clear();
     f.spline = None;
     f.spline_fixed.clear();
+    f.common_shape = None;
     Erased::Into(Box::new(f))
+}
+
+/// Whether the curve `s` shows a common shape's handles instead of its
+/// nodes (#4045).
+pub(crate) fn shows_handles(s: &Shape) -> bool {
+    s.common_shape.is_some() && crate::common_shapes::live(s).is_some()
 }
 
 #[cfg(test)]

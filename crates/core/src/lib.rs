@@ -68,7 +68,7 @@ pub use document::{
     TableCell, TextAlign, TextDirection, Kashida, TextOnPath, CurvePreset, TextPosition, TextSpan, TimeTracker,
     TrackedTask, VerticalAlign, VerticalColumns, DEFAULT_TAB_STEP,
 };
-pub use document::{BulletPart, MAX_LIST_LEVEL};
+pub use document::{BulletPart, CommonShapeParams, MAX_LIST_LEVEL};
 pub use engine::Engine;
 pub use geometry::{Affine, BezPath, Point, Rect, Size, Vec2};
 pub use icc::{Intent as RenderingIntent, Profile as IccProfile, Transform as IccTransform};
@@ -116,6 +116,8 @@ pub enum Error {
     NotText(ShapeId),
     #[error("a B-spline needs two finite control points or more")]
     BadSpline,
+    #[error("a shape needs a finite outline and settings on a curve")]
+    BadShape,
     #[error("symbol {0} not found")]
     SymbolNotFound(usize),
     #[error("symbol {0} cannot hold an instance of itself")]
