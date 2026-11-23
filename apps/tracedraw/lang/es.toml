@@ -11120,3 +11120,5 @@ docker.kashida_off = "Desactivado" # mt
 docker.kashida_low = "Bajo" # mt
 docker.kashida_medium = "Medio" # mt
 docker.kashida_high = "Alto" # mt
+options.corners_follow_edits = "Las esquinas redondeadas siguen la edición de nodos" # mt
+options.corners_follow_edits_tip = "Activado: mover nodos o curvar un segmento junto a una esquina redondeada la redondea de nuevo con su radio donde ahora pasan sus lados, y sigue siendo una esquina redondeada con su anillo. Desactivado: el arco queda como se dibujó." # mt

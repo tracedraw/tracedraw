@@ -11120,3 +11120,5 @@ docker.kashida_off = "Désactivé" # mt
 docker.kashida_low = "Faible" # mt
 docker.kashida_medium = "Moyen" # mt
 docker.kashida_high = "Élevé" # mt
+options.corners_follow_edits = "Les coins arrondis suivent l'édition des nœuds" # mt
+options.corners_follow_edits_tip = "Activé : déplacer des nœuds ou courber un segment à côté d'un coin arrondi l'arrondit à nouveau avec son rayon là où passent maintenant ses côtés, et il reste un coin arrondi avec son anneau. Désactivé : l'arc reste tel qu'il a été dessiné." # mt

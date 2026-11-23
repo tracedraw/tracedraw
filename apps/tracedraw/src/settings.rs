@@ -1331,6 +1331,11 @@ pub struct NodePrefs {
     /// corner. Off: a drag rounds every corner, or the chosen nodes'
     /// corners, as before.
     pub corner_one_at_a_time: bool,
+    /// Rounded corners follow node edits (#3265): moving nodes, or
+    /// bending a segment, beside a rounded corner rounds it again with
+    /// its radius where its sides now run, so it stays a rounded corner
+    /// with its widget. Off: the arc stays as it was drawn, as before.
+    pub corners_follow_edits: bool,
     /// Nodes are outlined in a colour for their type, cusp, smooth or
     /// symmetrical, besides their shape (#3000). Off by default.
     pub color_by_type: bool,
@@ -1355,6 +1360,7 @@ impl Default for NodePrefs {
             object_pick_distance: 3.0,
             corner_widgets: true,
             corner_one_at_a_time: true,
+            corners_follow_edits: true,
             color_by_type: false,
             cusp_rgb: [0xE0, 0x60, 0x00],
             smooth_rgb: [0x10, 0x9A, 0x30],

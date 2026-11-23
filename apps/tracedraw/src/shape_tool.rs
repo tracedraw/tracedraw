@@ -1000,7 +1000,26 @@ impl App {
                                 Ok((_, s)) => s.node_types.clone(),
                                 Err(_) => Default::default(),
                             };
-                            let bent = nodes::bend_segment_with(&path, index, t, d, &chosen);
+                            // Rounded corners beside the segment stay
+                            // round (#3265).
+                            let bent = if self.keeps_rounded_corners()(&path) {
+                                tracedraw_core::corner_cut::bend_keeping_fillets(
+                                    &path,
+                                    index,
+                                    t,
+                                    |p, i, t, map| {
+                                        let chosen = chosen
+                                            .iter()
+                                            .filter_map(|(k, v)| {
+                                                Some((map.get(*k).copied().flatten()?, *v))
+                                            })
+                                            .collect();
+                                        nodes::bend_segment_with(p, i, t, d, &chosen)
+                                    },
+                                )
+                            } else {
+                                nodes::bend_segment_with(&path, index, t, d, &chosen)
+                            };
                             let cmd = Command::SetShapeKind {
                                 shape,
                                 kind: ShapeKind::Path { path: bent, closed },

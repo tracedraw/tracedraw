@@ -4,6 +4,10 @@ Versions follow the tags of this repository; every push to `main` also
 publishes a nightly build. [`docs/features.md`](docs/features.md) has the
 full, row-by-row status.
 
+## Unreleased
+
+- Shape tool: rounded corners follow node edits: moving nodes or bending a segment beside a rounded corner rounds it again with its radius where its sides now run, so it stays a rounded corner with its ring (Options > Nodes and Handles, on by default) (#3265).
+
 ## 0.51.0 (2026-11-23)
 
 - Shape Generator tool, with the shape tools in the toolbox: drag a box on the page and the panel's pattern follows it while you drag and fills it when you let go, as one group in one undo step. The property bar has the generator, the seed, New and Options, which opens the Shape Generator panel.

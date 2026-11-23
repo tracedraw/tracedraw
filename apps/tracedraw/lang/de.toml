@@ -11120,3 +11120,5 @@ docker.kashida_off = "Aus" # mt
 docker.kashida_low = "Niedrig" # mt
 docker.kashida_medium = "Mittel" # mt
 docker.kashida_high = "Hoch" # mt
+options.corners_follow_edits = "Abgerundete Ecken folgen der Knotenbearbeitung" # mt
+options.corners_follow_edits_tip = "Ein: Wenn Knoten verschoben oder ein Segment neben einer abgerundeten Ecke gebogen wird, wird sie mit ihrem Radius dort neu abgerundet, wo ihre Seiten jetzt verlaufen, und bleibt eine abgerundete Ecke mit ihrem Ring. Aus: Der Bogen bleibt, wie er gezeichnet wurde." # mt

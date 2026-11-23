@@ -1702,6 +1702,11 @@ fn nodes_page(app: &mut App, ui: &mut Ui) {
                 tr("options.corner_one_at_a_time"),
             )
             .rich_tip(tr("options.corner_one_at_a_time_tip"));
+            ui.checkbox(
+                &mut n.corners_follow_edits,
+                tr("options.corners_follow_edits"),
+            )
+            .rich_tip(tr("options.corners_follow_edits_tip"));
         });
     });
     ui.horizontal(|ui| {

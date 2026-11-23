@@ -11120,3 +11120,5 @@ docker.kashida_off = "Wyłączone" # mt
 docker.kashida_low = "Niski" # mt
 docker.kashida_medium = "Średni" # mt
 docker.kashida_high = "Wysoki" # mt
+options.corners_follow_edits = "Rounded corners follow node edits"
+options.corners_follow_edits_tip = "On: moving nodes or bending a segment beside a rounded corner rounds it again with its radius where its sides now run, so it stays a rounded corner with its ring. Off: the arc stays as it was drawn."

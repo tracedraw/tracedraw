@@ -12503,6 +12503,66 @@ fn corner_widgets_follow_their_preference_on_by_default() {
     assert!(old.corner_widgets);
 }
 
+/// Rounded corners follow node edits (#3265): dragging the node in the
+/// middle of a side of a rounded square, or bending that side, leaves
+/// the corners beside it rounded with their radius (and their widgets);
+/// with the preference off the arcs stay as they were drawn.
+#[test]
+fn rounded_corners_stay_round_when_a_node_beside_them_moves() {
+    use tracedraw_core::corner_cut::{cut_corners, fillets, CornerCut};
+    use tracedraw_core::geometry::BezPath;
+    let (ctx, mut app, rect) = setup();
+    app.select(vec![rect]);
+    app.delete_selection();
+    let mut square = BezPath::new();
+    square.move_to((20.0, 20.0));
+    square.line_to((40.0, 20.0));
+    square.line_to((60.0, 20.0));
+    square.line_to((60.0, 60.0));
+    square.line_to((20.0, 60.0));
+    square.close_path();
+    let (round, _) = cut_corners(&square, CornerCut::Fillet(5.0), None);
+    let id = app
+        .new_shape(ShapeKind::Path {
+            path: round.clone(),
+            closed: true,
+        })
+        .expect("square");
+    app.select(vec![id]);
+    app.set_tool(Tool::Shape);
+    app.settings.nodes.corner_widgets = true;
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let path_of = |app: &App| match &app.doc().find_shape(id).expect("curve").kind {
+        ShapeKind::Path { path, .. } => path.clone(),
+        _ => panic!("a curve"),
+    };
+    let radii = |app: &App| -> Vec<f64> { fillets(&path_of(app)).iter().map(|f| f.radius).collect() };
+    assert_eq!(radii(&app).len(), 4);
+    let mid = app.view.to_screen(Point::new(40.0, 20.0));
+    let zoom = app.view.zoom;
+    let down = egui::vec2(0.0, 6.0 * zoom);
+    // The page's y may run either way on screen: pull the node off its
+    // side, whichever way that is.
+    drag(&ctx, &mut app, mid, mid + down, Modifiers::NONE, Vec::new());
+    let moved = path_of(&app);
+    assert_ne!(moved, round, "the node moved");
+    let r = radii(&app);
+    assert_eq!(r.len(), 4, "{r:?}");
+    assert!(r.iter().all(|r| (r - 5.0).abs() < 1e-3), "{r:?}");
+    // Their widgets, and one for the sharp corner the node now makes.
+    assert_eq!(app.corner_widgets().len(), 5);
+    // Off: the arcs beside the node stay as drawn and lose their sides.
+    let _ = app.engine.undo();
+    assert_eq!(path_of(&app), round);
+    app.settings.nodes.corners_follow_edits = false;
+    app.select(Vec::new());
+    app.select(vec![id]);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    drag(&ctx, &mut app, mid, mid + down, Modifiers::NONE, Vec::new());
+    assert_ne!(path_of(&app), round, "the node moved");
+    assert!(radii(&app).len() < 4, "{:?}", radii(&app));
+}
+
 /// A corner rounded with a widget can be rounded again (#872): the curve
 /// selected later shows a widget off the middle of each arc, and
 /// dragging it changes the radius from where it was, further in or back
