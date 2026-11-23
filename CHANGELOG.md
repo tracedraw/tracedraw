@@ -7,6 +7,7 @@ full, row-by-row status.
 ## Unreleased
 
 - Property bar: with two or more objects selected, the buttons to group, combine, weld, trim and align them come right after the position and size fields instead of at the end of the bar, where a long bar pushed them out of the window (#3973).
+- Properties panel, Outline: the choices of Caps, Corners, Dash and Position are pictures, as in the Outline Pen dialog, with the name and what it does in the tip, where they were words in a row; the width has a label, and the labels of the rows stand in one column so the controls line up.
 - Print: Selection can keep the objects in their place on the page, with a new box under it in the Print dialog and in Print Preview; left unticked, the selection prints on a page the size of the area it covers as before (#3806).
 - Open, Save and the other file and folder dialogs no longer freeze the program while they are open: the system's dialog runs on its own and the program goes on drawing (#3940; PR #3941 by vegegoku).
 - Text fitted to a path: the Shape tool shows a node at each letter, and dragging letters moves them along the path (their horizontal offset now carries a letter along the path, turned with it, instead of off to the side) (#3252).

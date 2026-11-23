@@ -1373,7 +1373,13 @@ fn color_row(ui: &mut Ui, label: &str, c: &mut Color) -> bool {
 /// is shown, and the one picked goes to all of them.
 fn color_row_mixed(ui: &mut Ui, label: &str, c: &mut Color, mixed: bool) -> bool {
     ui.horizontal(|ui| {
-        ui.label(label);
+        // The label in the sections' label column, as the other rows.
+        let before = ui.cursor().min.x;
+        ui.label(egui::RichText::new(label).color(Tokens::text_dim()));
+        let used = ui.cursor().min.x - before;
+        if used < PROP_LABEL_W {
+            ui.add_space(PROP_LABEL_W - used);
+        }
         // The picker opens beside the swatch and keeps the colour's
         // model.
         let before = ui.cursor().min;
@@ -2707,6 +2713,39 @@ fn group_heading(ui: &mut Ui, key: &str) {
             egui::Stroke::new(1.0, Tokens::border()),
         );
     }
+}
+
+/// The width of the label column in the Properties sections: every row
+/// of a section starts its controls at the same place.
+const PROP_LABEL_W: f32 = 62.0;
+
+/// A row's label in the Properties sections: the text of `key` (without
+/// the colon some have) in the dimmer text colour, in a column
+/// [`PROP_LABEL_W`] wide so the controls after it line up from row to
+/// row. A longer label takes the room it needs.
+fn prop_label(ui: &mut Ui, key: &str) {
+    let text = tr(key);
+    let text = text.trim_end_matches([':', '\u{ff1a}']).to_owned();
+    let before = ui.cursor().min.x;
+    ui.label(egui::RichText::new(text).color(Tokens::text_dim()));
+    let used = ui.cursor().min.x - before;
+    if used < PROP_LABEL_W {
+        ui.add_space(PROP_LABEL_W - used);
+    }
+}
+
+/// A button showing a line drawn with the dash pattern `dash`, for the
+/// Properties panel's Dash row: true when clicked.
+fn dash_button(ui: &mut Ui, dash: &[f64], on: bool, tip: &str) -> bool {
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(38.0, 24.0), egui::Sense::click());
+    let resp = resp.rich_tip(tip);
+    crate::theme::paint_icon_button(ui.painter(), rect, resp.hovered(), on);
+    crate::ui::line_style::paint_dash(
+        ui.painter(),
+        egui::Rect::from_center_size(rect.center(), egui::vec2(28.0, 10.0)),
+        dash,
+    );
+    resp.clicked()
 }
 
 /// A Properties section's header: a bar with the open or closed triangle
@@ -4313,7 +4352,6 @@ fn outline_editor_mixed(
         // same editors: none takes the outline away, uniform is its
         // colour, the others its own fill.
         group_heading(ui, "docker.group_appearance");
-        ui.label(tr("docker.outline_fill"));
         let mut paint = outline_paint_of(s);
         let paint_mix = if mix.has(StrokeField::Paint) {
             FillMix {
@@ -4368,9 +4406,10 @@ fn outline_editor_mixed(
         if !hair || width_mixed {
             // The slider applies as it is dragged, one undo step (#3823);
             // the box takes any width typed (Enter or leaving it applies).
-            ui.horizontal_wrapped(|ui| {
+            ui.horizontal(|ui| {
                 let width_tip =
                     crate::ui::tips::pair("toolbar.outline_width", "docker.outline_width_desc");
+                prop_label(ui, "fxp.width");
                 let r = ui
                     .add(
                         crate::ui::Slider::new(&mut s.width, 0.1..=25.0)
@@ -4411,44 +4450,43 @@ fn outline_editor_mixed(
             });
         }
         group_heading(ui, "docker.group_caps_corners");
-        ui.horizontal_wrapped(|ui| {
-            ui.label(tr("docker.caps"));
+        // The choices of a row are pictures, as in the Outline Pen
+        // dialog, each named and described by its tip.
+        use crate::ui::outline_pen::{pic_button_tipped, Pic};
+        let choice_tip = |n: &str| {
+            format!(
+                "{}\n{}. {}",
+                tr(n),
+                tr(&format!("{n}_tip")),
+                tr(&format!("{n}_desc"))
+            )
+        };
+        ui.horizontal(|ui| {
+            prop_label(ui, "docker.caps");
+            ui.spacing_mut().item_spacing.x = 2.0;
             let mixed = mix.has(StrokeField::Cap);
-            for (c, n) in [
-                (tracedraw_core::LineCap::Butt, "docker.cap_butt"),
-                (tracedraw_core::LineCap::Round, "docker.cap_round"),
-                (tracedraw_core::LineCap::Square, "docker.cap_square"),
+            for (c, pic, n) in [
+                (tracedraw_core::LineCap::Butt, Pic::CapButt, "docker.cap_butt"),
+                (tracedraw_core::LineCap::Round, Pic::CapRound, "docker.cap_round"),
+                (tracedraw_core::LineCap::Square, Pic::CapSquare, "docker.cap_square"),
             ] {
-                if ui
-                    .selectable_label(!mixed && s.cap == c, tr(n))
-                    .rich_tip(crate::ui::tips::pair(
-                        &format!("{n}_tip"),
-                        &format!("{n}_desc"),
-                    ))
-                    .clicked()
-                {
+                if pic_button_tipped(ui, pic, !mixed && s.cap == c, true, &choice_tip(n)) {
                     s.cap = c;
                     touched.push(StrokeField::Cap);
                     changed = true;
                 }
             }
         });
-        ui.horizontal_wrapped(|ui| {
-            ui.label(tr("docker.corners"));
+        ui.horizontal(|ui| {
+            prop_label(ui, "docker.corners");
+            ui.spacing_mut().item_spacing.x = 2.0;
             let mixed = mix.has(StrokeField::Join);
-            for (j, n) in [
-                (tracedraw_core::LineJoin::Miter, "docker.join_miter"),
-                (tracedraw_core::LineJoin::Round, "docker.join_round"),
-                (tracedraw_core::LineJoin::Bevel, "docker.join_bevel"),
+            for (j, pic, n) in [
+                (tracedraw_core::LineJoin::Miter, Pic::JoinMiter, "docker.join_miter"),
+                (tracedraw_core::LineJoin::Round, Pic::JoinRound, "docker.join_round"),
+                (tracedraw_core::LineJoin::Bevel, Pic::JoinBevel, "docker.join_bevel"),
             ] {
-                if ui
-                    .selectable_label(!mixed && s.join == j, tr(n))
-                    .rich_tip(crate::ui::tips::pair(
-                        &format!("{n}_tip"),
-                        &format!("{n}_desc"),
-                    ))
-                    .clicked()
-                {
+                if pic_button_tipped(ui, pic, !mixed && s.join == j, true, &choice_tip(n)) {
                     s.join = j;
                     touched.push(StrokeField::Join);
                     changed = true;
@@ -4526,7 +4564,8 @@ fn outline_editor_mixed(
         });
         group_heading(ui, "docker.group_line_style");
         ui.horizontal_wrapped(|ui| {
-            ui.label(tr("docker.dash"));
+            prop_label(ui, "docker.dash");
+            ui.spacing_mut().item_spacing.x = 2.0;
             let mixed = mix.has(StrokeField::Dash);
             for (d, n) in [
                 (vec![], "docker.dash_solid"),
@@ -4538,14 +4577,7 @@ fn outline_editor_mixed(
                     "docker.dash_round_dots",
                 ),
             ] {
-                if ui
-                    .selectable_label(!mixed && s.dash == d, tr(n))
-                    .rich_tip(crate::ui::tips::pair(
-                        &format!("{n}_tip"),
-                        &format!("{n}_desc"),
-                    ))
-                    .clicked()
-                {
+                if dash_button(ui, &d, !mixed && s.dash == d, &choice_tip(n)) {
                     // Round dots take round caps (#3404).
                     if s.set_dash(&d) {
                         touched.push(StrokeField::Cap);
@@ -4558,7 +4590,7 @@ fn outline_editor_mixed(
         if !lib.dashes.is_empty() {
             // Custom dash patterns from Edit Line Style.
             ui.horizontal_wrapped(|ui| {
-                ui.label(tr("docker.dash_custom"));
+                prop_label(ui, "docker.dash_custom");
                 for d in &lib.dashes {
                     let r = ui
                         .push_id(
@@ -4606,31 +4638,28 @@ fn outline_editor_mixed(
             }
         });
         group_heading(ui, "docker.group_position");
-        ui.horizontal_wrapped(|ui| {
-            ui.label(tr("docker.outline_position"));
-            for (pos, n) in [
+        ui.horizontal(|ui| {
+            prop_label(ui, "docker.outline_position");
+            ui.spacing_mut().item_spacing.x = 2.0;
+            for (pos, pic, n) in [
                 (
                     tracedraw_core::OutlinePosition::Outside,
+                    Pic::Outside,
                     "docker.position_outside",
                 ),
                 (
                     tracedraw_core::OutlinePosition::Center,
+                    Pic::Center,
                     "docker.position_center",
                 ),
                 (
                     tracedraw_core::OutlinePosition::Inside,
+                    Pic::Inside,
                     "docker.position_inside",
                 ),
             ] {
                 let shown = !mix.has(StrokeField::Position) && s.position == pos;
-                if ui
-                    .selectable_label(shown, tr(n))
-                    .rich_tip(crate::ui::tips::pair(
-                        &format!("{n}_tip"),
-                        &format!("{n}_desc"),
-                    ))
-                    .clicked()
-                {
+                if pic_button_tipped(ui, pic, shown, true, &choice_tip(n)) {
                     s.position = pos;
                     touched.push(StrokeField::Position);
                     changed = true;
@@ -6593,28 +6622,19 @@ pub(crate) mod tests {
             out.shapes.iter().for_each(|c| walk(&c.shape, &mut texts));
             texts
         };
+        // The choices of Caps, Corners, Dash and Position are pictures
+        // (their names are in the tips), so only the rows' labels are
+        // text.
         let common = [
             "docker.hairline",
+            "fxp.width",
             "docker.caps",
-            "docker.cap_butt",
-            "docker.cap_round",
-            "docker.cap_square",
             "docker.corners",
-            "docker.join_miter",
-            "docker.join_round",
-            "docker.join_bevel",
             "docker.miter_limit",
             "docker.dash",
-            "docker.dash_solid",
-            "docker.dash_dashed",
-            "docker.dash_dotted",
-            "docker.dash_dash_dot",
             "docker.align_dashes",
             "docker.edit_line_style",
             "docker.outline_position",
-            "docker.position_outside",
-            "docker.position_center",
-            "docker.position_inside",
             "docker.behind_fill",
             "docker.scale_with_object",
             "docker.outline_advanced",
