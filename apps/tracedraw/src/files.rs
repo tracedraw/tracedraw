@@ -1549,21 +1549,31 @@ fn decode_jxl(bytes: &[u8], limit: u64) -> image::ImageResult<image::DynamicImag
 /// across and down) change places.
 pub fn picture_turns_sideways(bytes: &[u8]) -> bool {
     use image::metadata::Orientation;
-    use image::ImageDecoder;
-    let Ok(reader) = image::ImageReader::new(std::io::Cursor::new(bytes)).with_guessed_format()
-    else {
-        return false;
-    };
-    let Ok(mut decoder) = reader.into_decoder() else {
-        return false;
-    };
     matches!(
-        decoder.orientation(),
-        Ok(Orientation::Rotate90
-            | Orientation::Rotate270
-            | Orientation::Rotate90FlipH
-            | Orientation::Rotate270FlipH)
+        picture_orientation(bytes),
+        Some(
+            Orientation::Rotate90
+                | Orientation::Rotate270
+                | Orientation::Rotate90FlipH
+                | Orientation::Rotate270FlipH
+        )
     )
+}
+
+/// The Exif orientation of picture file `bytes`, and its width and
+/// height as stored, from its header; `None` when it cannot be read.
+pub fn picture_header(bytes: &[u8]) -> Option<(image::metadata::Orientation, u32, u32)> {
+    use image::ImageDecoder;
+    let reader = image::ImageReader::new(std::io::Cursor::new(bytes))
+        .with_guessed_format()
+        .ok()?;
+    let mut decoder = reader.into_decoder().ok()?;
+    let (w, h) = decoder.dimensions();
+    Some((decoder.orientation().ok()?, w, h))
+}
+
+fn picture_orientation(bytes: &[u8]) -> Option<image::metadata::Orientation> {
+    picture_header(bytes).map(|(o, _, _)| o)
 }
 
 /// Keep bytes under a synthetic path so [`read`] finds them (browser).

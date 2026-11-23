@@ -25586,6 +25586,87 @@ fn the_tab_ruler_drags_the_left_and_right_indents() {
     assert!((para(&app).left_indent - 15.0).abs() < 0.6);
 }
 
+/// The first line's indent has a marker of its own above the left one
+/// (#3911): dragged right it indents the first line, dragged left of the
+/// left indent it makes a hanging indent; the left marker moves every
+/// line, the first line keeping its place from it. Each drag is one undo
+/// step.
+#[test]
+fn the_tab_ruler_drags_the_first_line_indent() {
+    use crate::tab_ruler::IndentSide;
+    let (ctx, mut app, id) = editing_with_ruler(Vec::new());
+    let none = Modifiers::NONE;
+    let para = |app: &App| {
+        let s = app.doc().find_shape(id).expect("text").clone();
+        app.paragraph_style_of(&s).expect("text").1
+    };
+    let r = app.tab_ruler().expect("ruler");
+    assert_eq!(r.first_line_indent, 0.0);
+    // Where the two left markers meet, the outer quarter is the first
+    // line's and the quarter below it the left indent's.
+    assert_eq!(r.indent_at(r.on_first_line(0.0)), Some(IndentSide::FirstLine));
+    assert_eq!(r.indent_at(r.on_indents(0.0)), Some(IndentSide::Left));
+    let undo = app.engine.history_labels().0.len();
+    // The first line indented 10 mm.
+    drag(
+        &ctx,
+        &mut app,
+        r.on_first_line(0.0),
+        r.on_first_line(10.0),
+        none,
+        Vec::new(),
+    );
+    assert!(app.indent_drag.is_none());
+    let p = para(&app);
+    assert!((p.first_line_indent - 10.0).abs() < 0.6, "{}", p.first_line_indent);
+    assert_eq!(p.left_indent, 0.0);
+    assert!(tab_stops_of(&app, id).is_empty(), "no stop added");
+    assert_eq!(app.engine.history_labels().0.len(), undo + 1, "one step");
+    // The left marker moves every line: the first line keeps its 10 mm.
+    let r = app.tab_ruler().expect("ruler");
+    drag(
+        &ctx,
+        &mut app,
+        r.on_indents(0.0),
+        r.on_indents(20.0),
+        none,
+        Vec::new(),
+    );
+    let p = para(&app);
+    assert!((p.left_indent - 20.0).abs() < 0.6, "{}", p.left_indent);
+    assert!((p.first_line_indent - 10.0).abs() < 0.6, "{}", p.first_line_indent);
+    // The first line dragged to 5 mm: a hanging indent of 15 mm.
+    let r = app.tab_ruler().expect("ruler");
+    let at = r.indent_pos(IndentSide::FirstLine);
+    assert!((at - 30.0).abs() < 1.2, "{at}");
+    drag(
+        &ctx,
+        &mut app,
+        r.on_first_line(at),
+        r.on_first_line(5.0),
+        none,
+        Vec::new(),
+    );
+    let p = para(&app);
+    assert!((p.first_line_indent + 15.0).abs() < 0.6, "{}", p.first_line_indent);
+    assert!((p.left_indent - 20.0).abs() < 0.6, "{}", p.left_indent);
+    assert_eq!(app.engine.history_labels().0.len(), undo + 3, "one step each");
+    // Not past the frame's left edge.
+    let r = app.tab_ruler().expect("ruler");
+    drag(
+        &ctx,
+        &mut app,
+        r.on_first_line(r.indent_pos(IndentSide::FirstLine)),
+        r.on_first_line(-30.0),
+        none,
+        Vec::new(),
+    );
+    let p = para(&app);
+    assert!((p.left_indent + p.first_line_indent).abs() < 0.6, "{p:?}");
+    app.undo();
+    assert!((para(&app).first_line_indent + 15.0).abs() < 0.6);
+}
+
 /// While a stop is dragged the text flows to it as it moves, not only
 /// when the button is let go (#1852, #1912); the reflows come at most
 /// `LIVE_EVERY` apart, the stop dragged off the strip shows the text
