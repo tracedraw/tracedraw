@@ -215,10 +215,10 @@ impl App {
                     crate::files::FolderUse::PatternFolder.action()
                 {
                     let start = self.settings.pattern_folder.clone();
-                    if let Some(dir) = crate::files::pick_folder_from(token, start.as_deref()) {
-                        self.settings.pattern_folder = Some(dir);
-                        self.save_settings();
-                    }
+                    crate::files::pick_folder_with(token, start.as_deref(), |app, dir| {
+                        app.settings.pattern_folder = Some(dir);
+                        app.save_settings();
+                    });
                 }
             }
         }
