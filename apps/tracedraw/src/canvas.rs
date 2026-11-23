@@ -1013,6 +1013,7 @@ fn draw_page(app: &App, painter: &Painter, rect: ERect, preview: Option<Affine>)
     draw_pixel_grid(app, painter, rect);
     draw_empty_clip_frames(app, painter);
     crate::cut_tools::paint_grid_preview(app, painter);
+    crate::dialog_preview::paint(app, painter);
 }
 
 /// The part of the page a fill or an outline colour dragged in a colour

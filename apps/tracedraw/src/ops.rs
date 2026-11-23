@@ -122,6 +122,59 @@ fn nearest_line(v: f64, origin: f64, step: f64) -> f64 {
     origin + ((v - origin) / step).round() * step
 }
 
+/// How Object > Align and Distribute > Arrange in Grid lays the selected
+/// objects out.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GridArrange {
+    /// Objects in a row.
+    pub columns: usize,
+    /// The room between the columns and between the rows, mm.
+    pub gap_x: f64,
+    pub gap_y: f64,
+    /// The cells are filled as text reads where the objects are now (top
+    /// row first, left to right) instead of in the order the objects
+    /// were selected.
+    pub by_position: bool,
+    /// Each column is as wide as its widest object and each row as tall
+    /// as its tallest, instead of every cell being the size of the
+    /// largest object.
+    pub compact: bool,
+    /// Where an object sits in its cell: 0 left, 1 centre, 2 right.
+    pub align_x: u8,
+    /// 0 top, 1 middle, 2 bottom.
+    pub align_y: u8,
+}
+
+impl Default for GridArrange {
+    fn default() -> Self {
+        GridArrange {
+            columns: 1,
+            gap_x: 0.0,
+            gap_y: 0.0,
+            by_position: false,
+            compact: false,
+            align_x: 1,
+            align_y: 1,
+        }
+    }
+}
+
+fn gap_x_of(g: &GridArrange) -> f64 {
+    if g.gap_x.is_finite() {
+        g.gap_x.max(0.0)
+    } else {
+        0.0
+    }
+}
+
+fn gap_y_of(g: &GridArrange) -> f64 {
+    if g.gap_y.is_finite() {
+        g.gap_y.max(0.0)
+    } else {
+        0.0
+    }
+}
+
 impl App {
     /// The box Align and Distribute use for `s`: its bounds, grown by
     /// half its outline width with Use Outline.
@@ -357,56 +410,119 @@ impl App {
     /// widest object and as tall as the tallest, `gap_x` and `gap_y` (mm)
     /// apart, and each object sits at its cell's centre. One undo step.
     pub fn arrange_in_grid(&mut self, columns: usize, gap_x: f64, gap_y: f64) {
+        self.arrange_in_grid_with(&GridArrange {
+            columns,
+            gap_x,
+            gap_y,
+            ..GridArrange::default()
+        });
+    }
+
+    /// Where Arrange in Grid set as `g` puts each selected object: its
+    /// id, the box it is laid out by and how far it moves. Empty with
+    /// fewer than two objects. The dialog's preview draws this and
+    /// [`App::arrange_in_grid_with`] carries it out.
+    pub fn arrange_grid_plan(&self, g: &GridArrange) -> Vec<(tracedraw_core::ShapeId, Rect, Vec2)> {
         let shapes = self.selected_shapes();
-        if shapes.len() < 2 || columns == 0 {
-            return;
+        if shapes.len() < 2 || g.columns == 0 {
+            return Vec::new();
         }
-        let boxes: Vec<(tracedraw_core::ShapeId, Rect)> = shapes
+        let mut boxes: Vec<(tracedraw_core::ShapeId, Rect)> = shapes
             .iter()
             .map(|s| (s.id, self.align_box(s)))
             .filter(|(_, b)| b.is_finite())
             .collect();
         if boxes.len() < 2 {
-            return;
+            return Vec::new();
         }
-        let (gap_x, gap_y) = (gap_x.max(0.0), gap_y.max(0.0));
+        let (gap_x, gap_y) = (gap_x_of(g), gap_y_of(g));
         let cell_w = boxes.iter().map(|(_, b)| b.width()).fold(0.0, f64::max);
         let cell_h = boxes.iter().map(|(_, b)| b.height()).fold(0.0, f64::max);
         let all = boxes.iter().skip(1).fold(boxes[0].1, |a, (_, b)| a.union(*b));
-        // y grows upwards: the first row is at the top.
-        let (left, top) = (all.x0, all.y1);
-        let mut cmds = Vec::new();
-        for (i, (id, b)) in boxes.iter().enumerate() {
-            let (col, row) = ((i % columns) as f64, (i / columns) as f64);
-            let cx = left + col * (cell_w + gap_x) + cell_w / 2.0;
-            let cy = top - row * (cell_h + gap_y) - cell_h / 2.0;
-            let d = Vec2::new(cx - b.center().x, cy - b.center().y);
-            if d.hypot() > 1e-9 {
-                cmds.push(Command::TransformShapes {
-                    shapes: vec![*id],
-                    transform: Affine::translate(d),
-                });
+        if g.by_position {
+            // As text reads where the objects are now: bands of objects
+            // about level with each other, top band first, each band
+            // left to right.
+            boxes.sort_by(|a, b| b.1.center().y.total_cmp(&a.1.center().y));
+            let mut bands: Vec<Vec<(tracedraw_core::ShapeId, Rect)>> = Vec::new();
+            for item in boxes {
+                match bands.last_mut() {
+                    Some(band) if (band[0].1.center().y - item.1.center().y) <= cell_h / 2.0 => {
+                        band.push(item)
+                    }
+                    _ => bands.push(vec![item]),
+                }
+            }
+            for band in &mut bands {
+                band.sort_by(|a, b| a.1.center().x.total_cmp(&b.1.center().x));
+            }
+            boxes = bands.into_iter().flatten().collect();
+        }
+        let rows = boxes.len().div_ceil(g.columns);
+        let cols = g.columns.min(boxes.len());
+        // The size of each column and row: all alike, or each its own.
+        let mut widths = vec![cell_w; cols];
+        let mut heights = vec![cell_h; rows];
+        if g.compact {
+            widths = vec![0.0; cols];
+            heights = vec![0.0; rows];
+            for (i, (_, b)) in boxes.iter().enumerate() {
+                let (c, r) = (i % g.columns, i / g.columns);
+                widths[c] = widths[c].max(b.width());
+                heights[r] = heights[r].max(b.height());
             }
         }
+        // y grows upwards: the first row is at the top.
+        let (left, top) = (all.x0, all.y1);
+        let (ax, ay) = (
+            f64::from(g.align_x.min(2)) / 2.0,
+            f64::from(g.align_y.min(2)) / 2.0,
+        );
+        boxes
+            .iter()
+            .enumerate()
+            .map(|(i, (id, b))| {
+                let (c, r) = (i % g.columns, i / g.columns);
+                let x0 = left + widths[..c].iter().sum::<f64>() + gap_x * c as f64;
+                let y1 = top - heights[..r].iter().sum::<f64>() - gap_y * r as f64;
+                let x = x0 + (widths[c] - b.width()) * ax;
+                let y = y1 - (heights[r] - b.height()) * ay;
+                (*id, *b, Vec2::new(x - b.x0, y - b.y1))
+            })
+            .collect()
+    }
+
+    /// Arrange in Grid with every option of its dialog (see
+    /// [`GridArrange`]). One undo step.
+    pub fn arrange_in_grid_with(&mut self, g: &GridArrange) {
+        let cmds: Vec<Command> = self
+            .arrange_grid_plan(g)
+            .into_iter()
+            .filter(|(_, _, d)| d.hypot() > 1e-9)
+            .map(|(id, _, d)| Command::TransformShapes {
+                shapes: vec![id],
+                transform: Affine::translate(d),
+            })
+            .collect();
         if !cmds.is_empty() {
             let _ = self.run_batch_keeping_lines("Arrange in Grid", &cmds);
         }
     }
 
-    /// Object > Align and Distribute > Fill With Copies (#3834): of the
-    /// two selected objects, the smaller goes in a grid of copies, `gap_x`
-    /// by `gap_y` mm apart and centred, over every place inside the larger
-    /// where a whole copy fits; the object itself takes the first place.
-    /// They become the selection, and the status line tells how many
-    /// there are, which this returns (0: none fit).
-    pub fn fill_with_copies(&mut self, gap_x: f64, gap_y: f64) -> usize {
+    /// Where Fill With Copies with these gaps (mm) puts the copies: the
+    /// smaller object's id and box and, for each place where a whole
+    /// copy fits inside the larger, how far the object moves to it (top
+    /// row first, left to right). None unless two objects are selected;
+    /// no places when none fits.
+    pub fn fill_with_copies_plan(
+        &self,
+        gap_x: f64,
+        gap_y: f64,
+    ) -> Option<(tracedraw_core::ShapeId, Rect, Vec<Vec2>)> {
         use tracedraw_core::geometry::Shape as _;
         let shapes = self.selected_shapes();
-        let Some(layer) = self.active_layer() else {
-            return 0;
-        };
         if shapes.len() != 2 {
-            return 0;
+            return None;
         }
         let area = |s: &Shape| {
             let b = s.page_path().bounding_box();
@@ -423,13 +539,12 @@ impl App {
         let (w, h) = (ib.width(), ib.height());
         let (gx, gy) = (gap_x.max(0.0), gap_y.max(0.0));
         if !(w > 1e-6 && h > 1e-6 && fb.is_finite() && ib.is_finite()) {
-            return 0;
+            return None;
         }
         let cols = ((fb.width() + gx) / (w + gx)).floor() as usize;
         let rows = ((fb.height() + gy) / (h + gy)).floor() as usize;
         if cols == 0 || rows == 0 || cols.saturating_mul(rows) > 20_000 {
-            self.status = crate::i18n::trf("status.fill_with_copies", &[("n", "0")]);
-            return 0;
+            return Some((item.id, ib, Vec::new()));
         }
         let x0 = fb.x0 + (fb.width() - (cols as f64 * (w + gx) - gx)) / 2.0;
         let y1 = fb.y1 - (fb.height() - (rows as f64 * (h + gy) - gy)) / 2.0;
@@ -457,9 +572,28 @@ impl App {
                 fits(r).then(|| Vec2::new(r.x0 - ib.x0, r.y0 - ib.y0))
             })
             .collect();
+        Some((item.id, ib, places))
+    }
+
+    /// Object > Align and Distribute > Fill With Copies (#3834): of the
+    /// two selected objects, the smaller goes in a grid of copies, `gap_x`
+    /// by `gap_y` mm apart and centred, over every place inside the larger
+    /// where a whole copy fits; the object itself takes the first place.
+    /// They become the selection, and the status line tells how many
+    /// there are, which this returns (0: none fit).
+    pub fn fill_with_copies(&mut self, gap_x: f64, gap_y: f64) -> usize {
+        let Some(layer) = self.active_layer() else {
+            return 0;
+        };
+        let Some((item_id, _, places)) = self.fill_with_copies_plan(gap_x, gap_y) else {
+            return 0;
+        };
         let n = places.len();
         self.status = crate::i18n::trf("status.fill_with_copies", &[("n", &n.to_string())]);
         let Some(first) = places.first() else {
+            return 0;
+        };
+        let Some(item) = self.selected_shapes().into_iter().find(|s| s.id == item_id) else {
             return 0;
         };
         let mut cmds = vec![Command::TransformShapes {

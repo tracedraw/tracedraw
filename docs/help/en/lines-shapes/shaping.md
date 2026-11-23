@@ -141,12 +141,15 @@ distance from the selected objects, as a curve of its own:
 3. Choose [[dialog.outline_offset_outside]] or [[dialog.outline_offset_inside]]
    and click OK.
 
-Each object gets one new curve with sharp corners and the object's fill and
-outline; the original stays as it is. A curve outside goes behind its object
-and one inside in front of it, and the new curves are selected. An open line
-gets a closed band round both of its sides. The dialog remembers the last
-distance. For several outlines at once, or rounded corners, use the Contour
-tool.
+Each object gets a new curve with the object's fill and outline; the
+original stays as it is. A curve outside goes behind its object and one
+inside in front of it, and the new curves are selected. An open line gets
+a closed band round both of its sides. Corners makes the new outline's
+corners sharp, round or cut off, and Outlines makes several at once, each
+one the distance beyond the one before. With Preview on, the drawing
+shows the new outlines while the window is open. The dialog remembers the
+last distance, corners and number. For outlines that stay linked to
+their object, use the Contour tool.
 
 Related: [[menu.object.combine]] (<kbd>Ctrl+L</kbd>) makes several objects one
 curve without changing their shapes, and [[menu.object.break_apart]] splits a

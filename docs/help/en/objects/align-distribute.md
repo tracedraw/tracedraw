@@ -72,6 +72,16 @@ Every cell is as wide as the widest object and as tall as the tallest, and
 each object sits at the centre of its cell, so objects of different shapes
 and sizes line up. It is one undo step.
 
+The window has more choices. Order fills the cells in the order you
+selected the objects or as they lie now, top row first and left to right.
+Cells makes every cell the same size or fits each column to its widest
+object and each row to its tallest. Place in cell is a square of nine
+places: click a corner, the middle of a side or the centre to say where
+each object sits in its cell. With Preview on, the drawing shows where
+every object will go, as outlined boxes, before you click OK; Fill With
+Copies shows its copies the same way and counts them as you change the
+gaps.
+
 ## Fit objects to a path {#fit-to-path}
 
 The [[docker.fit_to_path]] panel places objects along a line, a curve or the

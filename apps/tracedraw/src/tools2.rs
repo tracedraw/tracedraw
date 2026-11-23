@@ -231,6 +231,9 @@ pub fn radial_grid_path(rect: Rect, rings: u32, spokes: u32) -> BezPath {
     p
 }
 
+/// The most outlines one Outline Offset makes of an object.
+pub const OUTLINE_OFFSET_STEPS: u32 = 50;
+
 impl App {
     pub fn tools2_input(&mut self, response: &Response, p: Point, mods: Modifiers) {
         match self.tool {
@@ -521,52 +524,106 @@ impl App {
     /// open line gets the band round both of its sides; an inner offset
     /// larger than the object leaves nothing for it.
     pub fn outline_offset(&mut self, distance_mm: f64, outside: bool) {
+        self.outline_offset_with(
+            distance_mm,
+            outside,
+            tracedraw_core::shaping::Join::Miter,
+            1,
+        );
+    }
+
+    /// The curves Outline Offset makes of the selection: for each object
+    /// that gets any, the object and its outline offset `steps` times,
+    /// the first by `distance_mm`, the next by twice that and so on,
+    /// outside it or inside, the corners turned as `join` says (page
+    /// space). An open line gets the band round both of its sides; an
+    /// inner offset larger than the object leaves nothing for it.
+    pub fn outline_offset_paths(
+        &self,
+        distance_mm: f64,
+        outside: bool,
+        join: tracedraw_core::shaping::Join,
+        steps: u32,
+    ) -> Vec<(Shape, Vec<BezPath>)> {
         let d = distance_mm.abs();
         if !d.is_finite() || d < 1e-6 {
-            return;
+            return Vec::new();
         }
-        let Some(layer) = self.active_layer() else {
-            return;
-        };
-        let mut cmds = Vec::new();
-        let mut ids = Vec::new();
+        let mut out = Vec::new();
         for s in self.selected_shapes() {
             let base = s.transform * s.local_path();
             if base.elements().is_empty() {
                 continue;
             }
             let open = matches!(s.kind, ShapeKind::Path { closed: false, .. });
-            let join = tracedraw_core::shaping::Join::Miter;
-            let path = if open {
-                tracedraw_core::shaping::open_offset_band(&base, d, join)
-            } else {
-                let signed = if outside { d } else { -d };
-                tracedraw_core::shaping::offset_filled(&base, signed, join, s.fill_rule)
-            };
-            if path.elements().is_empty() {
-                continue;
+            let mut paths = Vec::new();
+            for k in 1..=steps.clamp(1, OUTLINE_OFFSET_STEPS) {
+                let dk = d * f64::from(k);
+                let path = if open {
+                    tracedraw_core::shaping::open_offset_band(&base, dk, join)
+                } else {
+                    let signed = if outside { dk } else { -dk };
+                    tracedraw_core::shaping::offset_filled(&base, signed, join, s.fill_rule)
+                };
+                if path.elements().is_empty() {
+                    // Further in there is nothing left either.
+                    break;
+                }
+                paths.push(path);
             }
-            let id = self.engine.new_shape_id();
-            let mut o = Shape::new(id, ShapeKind::Path { path, closed: true });
-            o.fill = s.fill.clone();
-            o.stroke = s.stroke.clone();
-            if matches!(o.fill, Fill::None) && o.stroke.is_none() {
-                o.stroke = Some(Stroke::new(tracedraw_core::Color::BLACK, Stroke::HAIRLINE));
+            if !paths.is_empty() {
+                out.push((s, paths));
             }
-            o.name = Some("Offset".into());
+        }
+        out
+    }
+
+    /// Outline Offset with every option of its dialog: the corners and
+    /// how many outlines, each `distance_mm` beyond the one before. The
+    /// new curves take the object's fill and outline and are selected;
+    /// those outside go behind their object, the farthest at the back,
+    /// and those inside in front, the innermost on top, so all show. One
+    /// undo step.
+    pub fn outline_offset_with(
+        &mut self,
+        distance_mm: f64,
+        outside: bool,
+        join: tracedraw_core::shaping::Join,
+        steps: u32,
+    ) {
+        let Some(layer) = self.active_layer() else {
+            return;
+        };
+        let mut cmds = Vec::new();
+        let mut ids = Vec::new();
+        for (s, paths) in self.outline_offset_paths(distance_mm, outside, join, steps) {
             let placed = self.doc().locate(s.id).ok();
-            cmds.push(Command::AddShape {
-                layer: placed.map(|(l, _)| l).unwrap_or(layer),
-                shape: o,
-            });
-            if placed.is_some() {
-                cmds.push(Command::OrderRelative {
-                    shapes: vec![id],
-                    reference: s.id,
-                    in_front: !outside,
+            // Each new curve goes right behind (outside) or right in
+            // front of (inside) the one before it.
+            let mut reference = s.id;
+            for path in paths {
+                let id = self.engine.new_shape_id();
+                let mut o = Shape::new(id, ShapeKind::Path { path, closed: true });
+                o.fill = s.fill.clone();
+                o.stroke = s.stroke.clone();
+                if matches!(o.fill, Fill::None) && o.stroke.is_none() {
+                    o.stroke = Some(Stroke::new(tracedraw_core::Color::BLACK, Stroke::HAIRLINE));
+                }
+                o.name = Some("Offset".into());
+                cmds.push(Command::AddShape {
+                    layer: placed.map(|(l, _)| l).unwrap_or(layer),
+                    shape: o,
                 });
+                if placed.is_some() {
+                    cmds.push(Command::OrderRelative {
+                        shapes: vec![id],
+                        reference,
+                        in_front: !outside,
+                    });
+                }
+                reference = id;
+                ids.push(id);
             }
-            ids.push(id);
         }
         if !cmds.is_empty() {
             let _ = self.engine.run_batch("Outline Offset", &cmds);

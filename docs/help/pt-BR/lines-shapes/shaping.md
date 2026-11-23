@@ -146,12 +146,16 @@ distância definida dos objetos selecionados, como uma curva separada:
 3. Escolha [[dialog.outline_offset_outside]] ou [[dialog.outline_offset_inside]]
    e clique em OK.
 
-Cada objeto ganha uma curva nova com cantos vivos e o preenchimento e o
-contorno do objeto; o original fica como está. Uma curva externa vai para
-trás do seu objeto e uma interna, para a frente, e as curvas novas ficam
+Cada objeto ganha uma curva nova com o preenchimento e o contorno do
+objeto; o original fica como está. Uma curva externa vai para trás do seu
+objeto e uma interna, para a frente, e as curvas novas ficam
 selecionadas. Uma linha aberta ganha uma faixa fechada em volta dos dois
-lados. A janela lembra a última distância. Para vários contornos de uma vez,
-ou cantos arredondados, use a ferramenta Contorno.
+lados. Cantos deixa os cantos do novo contorno vivos, arredondados ou
+chanfrados, e Contornos cria vários de uma vez, cada um à distância do
+anterior. Com a prévia ligada, o desenho mostra os novos contornos
+enquanto a janela está aberta. A janela lembra a última distância, os
+cantos e o número. Para contornos que continuam ligados ao objeto, use a
+ferramenta Contorno.
 
 Relacionado: [[menu.object.combine]] (<kbd>Ctrl+L</kbd>) torna vários objetos
 uma única curva sem mudar as formas, e [[menu.object.break_apart]] separa uma

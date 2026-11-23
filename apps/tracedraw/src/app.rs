@@ -1681,6 +1681,14 @@ pub struct App {
     pub show_welcome: bool,
     /// Object > Outline Offset: the distance last used, mm (#2622).
     pub outline_offset_mm: f64,
+    /// The corners and the number of outlines Outline Offset made last.
+    pub outline_offset_join: tracedraw_core::shaping::Join,
+    pub outline_offset_steps: u32,
+    /// Dialogs that change the drawing show their result on the page
+    /// while they are open (their Preview box).
+    pub dialog_preview: bool,
+    /// Outline Offset's preview curves.
+    pub offset_preview: crate::dialog_preview::OffsetCache,
     /// Object > Clip to Frame > Place Inside Frame is waiting for a click on the frame.
     pub pending_clip_frame: bool,
     /// A frame's flow tab was clicked: the next click says where its text
@@ -3504,6 +3512,10 @@ impl App {
             page_numbers: PageNumberSettings::default(),
             show_welcome: false,
             outline_offset_mm: 2.0,
+            outline_offset_join: Default::default(),
+            outline_offset_steps: 1,
+            dialog_preview: true,
+            offset_preview: Default::default(),
             pending_clip_frame: false,
             pending_text_link: None,
             dialog_return: None,

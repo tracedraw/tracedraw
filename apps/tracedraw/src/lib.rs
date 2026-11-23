@@ -97,6 +97,7 @@ mod file_presence;
 mod files;
 mod fill_page;
 mod shape3d;
+mod dialog_preview;
 mod shape_gen;
 mod shape_gen_bg;
 mod shape_gen_cells;

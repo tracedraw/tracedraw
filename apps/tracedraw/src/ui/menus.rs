@@ -3952,6 +3952,10 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
                 columns: (n as f64).sqrt().ceil().max(1.0) as usize,
                 gap_x: app.units.from_mm(2.0),
                 gap_y: app.units.from_mm(2.0),
+                by_position: false,
+                compact: false,
+                align_x: 1,
+                align_y: 1,
             };
         }
         // The smaller of two objects copied all over the inside of the
@@ -4148,6 +4152,8 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
         app.dialog = Dialog::OutlineOffset {
             distance: app.units.from_mm(app.outline_offset_mm),
             outside: true,
+            join: app.outline_offset_join,
+            steps: app.outline_offset_steps.max(1),
         };
     }
     // The outline one step wider or narrower, for a key of one's own
