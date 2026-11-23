@@ -31633,3 +31633,31 @@ fn a_right_click_on_the_menu_bar_opens_the_toolbars_menu() {
     click_menu_away(&ctx, &mut app);
     assert!(!bar_menu_shown(&ctx, &mut app, Vec::new()));
 }
+
+/// The Zoom tool's marquee fills the window with the area dragged over,
+/// its middle in the window's middle, whichever way it is dragged and
+/// whether the tool was picked for good or for one zoom with F2 (#4009).
+#[test]
+fn the_zoom_marquee_zooms_into_the_area_dragged() {
+    for (one_shot, reverse) in [(false, false), (false, true), (true, false), (true, true)] {
+        let (ctx, mut app, _id) = setup();
+        if one_shot {
+            frame(&ctx, &mut app, vec![key(egui::Key::F2, Modifiers::NONE)], Modifiers::NONE);
+        } else {
+            app.set_tool(Tool::Zoom);
+            frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+        }
+        let (a, b) = (Point::new(120.0, 150.0), Point::new(160.0, 180.0));
+        let (sa, sb) = (app.view.to_screen(a), app.view.to_screen(b));
+        let (from, to) = if reverse { (sb, sa) } else { (sa, sb) };
+        drag(&ctx, &mut app, from, to, Modifiers::NONE, Vec::new());
+        for _ in 0..3 {
+            frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+        }
+        let mid = app.view.to_screen(Point::new(140.0, 165.0));
+        let c = app.canvas_rect.center();
+        assert!((mid - c).length() < 3.0, "{one_shot} {reverse}: {mid:?} {c:?}");
+        let w = (app.view.to_screen(b).x - app.view.to_screen(a).x).abs();
+        assert!(w > app.canvas_rect.width() * 0.5, "{one_shot} {reverse}: {w} {:?}", app.canvas_rect);
+    }
+}
