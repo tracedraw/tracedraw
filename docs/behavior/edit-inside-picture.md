@@ -1,10 +1,59 @@
 # Edit a picture inside
 
-Editing the pixels of a picture in place, on the drawing, without an
-outside program (Bitmaps > Edit Inside, or a double click on a picture
-with the Pick tool). Like editing inside a clip frame: the rest of the
-page stays visible, the picture is edited where it lies, and Finish puts
-the result back.
+Editing the pixels of a picture without an outside program (Bitmaps >
+Edit Inside, or a double click on a picture with the Pick tool). The
+window turns into an image editor for it, as Print Preview turns it into
+a view of the printed page, and Finish puts the result back where the
+picture lies.
+
+## Image editing mode
+
+While a picture is edited (`app.pixel_edit` is set) the main window keeps
+its bars, palettes and panels, docked, floating and moved as ever, with
+the picture's content in them (`ui/pixel_mode.rs`):
+
+- Menus: File (Finish, Cancel), Edit (Undo, Redo, Copy or Cut the
+  selection to a layer, Paste as layer, Delete, Fill, Content Fill),
+  View (Zoom In, Zoom Out, Fit in Window, Actual Pixels), Image (Crop,
+  Flip, Red Eye, Smart Resize), Adjust (the adjustment effects), Effects
+  (every other effect group), Selection, Layers, Window (Toolbars:
+  Standard, Property Bar, Toolbox, Palette, Status Bar; Panels; Reset
+  Image Panels) and Help. An effect chosen from a menu opens the Effects
+  panel with its settings, preview and Apply.
+- Toolbox: the image tools as icon buttons in 14 groups; a group of more
+  than one tool has a flyout (the corner arrow, a press held 0.4 s or a
+  right click) listing them with icon and name, and its button shows the
+  tool last picked from it.
+- Standard bar: Finish, Cancel, Undo, Redo, Copy and Cut to layer, Paste
+  as layer, Delete, the zoom (out, a list of the zoom steps, in, Fit,
+  1:1) and the panels' show or hide. Its buttons are kept apart from the
+  drawing's (`bar_items` under `image_standard`): Alt and a drag (or the
+  Customization pages open) moves one or drags it off, and Window >
+  Toolbars > Image Bar Buttons ticks any image command onto the end of
+  the bar or off it, with Reset Image Bar.
+- Property bar: the tool's icon and name and its options.
+- Panels: Layers, Effects, Selection, Retouch, Distort, Picture and
+  Histogram (`DockerTab::PIXEL`, kept apart from the drawing's panels).
+  On entry the drawing's panels are kept and the image panels shown as
+  they were last left (`settings.pixel_dockers`, all of them the first
+  time); on the way out they are remembered and the drawing's put back.
+  The preferences keep the drawing's panels meanwhile.
+- The Text, Zoom, Transform, Time Tracker and user toolbars wait for the
+  drawing; the document tabs are hidden.
+- A palette colour sets the brush colour (a right click, where it sets
+  the outline, the shapes' outline colour).
+- Status bar: the tool's name and hint, the pointer's pixel, the
+  picture's size, the layer in use and the zoom.
+
+The picture shows alone and upright in the middle, on a checkerboard of
+8 point squares, at a zoom of its own (`pixel_view.rs`): fitted with a
+48 point margin and never past 100 % until the user zooms or pans, then
+kept. The wheel (or Ctrl and the wheel, or a pinch) zooms about the
+pointer, Shift and the wheel moves it across; the middle button, Space
+and a drag, or the Pan tool (H) move it; the Zoom tool (Z) zooms in a
+step on a click, out with Alt or a right click. Zoom steps run from 2 %
+to 3200 %, the zoom from 1 % to 6400 %; Ctrl++ and Ctrl+- step, Ctrl+0
+fits and Ctrl+1 shows the actual pixels.
 
 ## Model
 
@@ -61,6 +110,7 @@ pixel y runs down, page y runs up.
 | Restore | | paints back the picture as it was when the editing began (clear where the picture had no pixels then) |
 | Tint | | the brush colour moved to each pixel's lightness (luma), alpha kept |
 | Replace Colour | | pixels within Tolerance of the colour under the first dab take the brush colour plus their difference from it, fading out towards the tolerance |
+| Liquify | | moves the layer's pixels with the brush (Size, Hardness, Strength): Push along the drag, Twirl clockwise or counter-clockwise, Pinch towards the centre, Bloat away from it, held still or dragged; each pixel samples the layer as it was at the press at its own offset (bilinear), changed by every dab a tenth of the brush apart, inside the selection; one undo step a stroke |
 | Shape | | rectangle, ellipse, regular polygon (3 to 24 sides, first corner at the top) or line in the dragged box: filled with the colour, outlined with the outline colour and width (centred on the edge), a line in the colour; anti-aliased, inside the selection, with the opacity; one undo step |
 
 Brush options: Size 1 to 1000 px (default 40), Hardness 0 to 100 %
@@ -144,6 +194,66 @@ the picture's pixels, as they were seen; the drawing keeps no layers.
   by r, then cut at half.
 - Save Selection keeps it for the editing session; Load puts it back
   (only while the picture keeps its size).
+
+## Adjustment layers and histogram
+
+New Adjustment Layer (Layers panel, with an effect chosen under
+Effects) puts above the layer in use a layer with no pixels of its own
+that runs that effect on everything beneath it as it is seen, then
+shows through its mask, opacity and merge mode. While it is the layer in
+use, the Effects section shows its settings first, changed in place (a
+drag is one undo step); painting tools, fill and effects do not change
+it (its mask can be painted). Merge Down runs the effect on the layer
+beneath; Flatten and Finish keep what is seen. The lock box still locks
+its mask.
+
+Histogram (side panel, closed at first): what is seen inside the
+selection (pixels at least half selected), clear pixels left out:
+lightness (luma) filled, red, green and blue as lines, scaled to the
+tallest lightness bar; the mean lightness and the pixels counted under
+it. Pictures over about 250 000 pixels are sampled on an even grid.
+
+## Following the surface and Remove
+
+Surface (a menu in the bar, for the brush and the clone stamp): Follow
+the surface makes each dab read the photo as a relief. What is painted
+on is what is beneath the layer in use (the layer itself when it is the
+bottom one). The relief comes from the photo's lightness, a little
+smoothed, against the lightness of its surroundings (a spread of about
+a fortieth of the picture's longer side, 4 to 40 pixels):
+
+- Depth (0 to 40 px, 6 by default) bends the dab along the slope of the
+  relief, so a stroke crossing a fold is pushed with it.
+- Light (0 to 100 %, 80 by default) lights the paint as the photo is lit:
+  the colour (or the cloned pixel) is multiplied by the photo's lightness
+  over its surroundings' (0 to 2), so the folds' shadows and highlights
+  show through.
+
+A depth map given by the editing mode (its size, 255 nearest) stands for
+the one read from the light; the light still comes from the photo.
+
+Fit to Surface (Layers panel, not for the bottom layer): the layer in
+use laid onto what is beneath it with the same Depth and Light, inside
+the selection; one undo step.
+
+Remove (tool): paint over what should go; the painted place shows in
+red. On release it is widened by Expand (0 to 40 px, 4 by default) to
+take in the edge and the shadow, kept inside the selection when there is
+one, and filled from what is around it as Content Fill does; one undo
+step, and the selection is left as it was. A locked layer is not
+changed.
+
+## Smart Resize
+
+In the Picture section: Width and Height, 10 to 300 % of the picture's,
+then Apply (one undo step). The picture takes away (or doubles) the
+seams of pixels, one pixel a row from top to bottom (or a column from
+left to right), crossing the least change of colour, found on what is
+seen; every layer and mask loses or gains the same seams. Selected
+pixels count as very marked, so they are kept while others remain; the
+selection is then dropped. Widening doubles the seams a shrinking copy
+would take first (more than the width is spread evenly). The picture
+keeps its scale on the page and its top left corner.
 
 ## Stretch and warp
 
@@ -263,6 +373,31 @@ settings with nothing painted.
   `each_gradient_kind_spreads_its_own_way`,
   `a_shape_is_filled_and_outlined_inside_the_selection`,
   `a_line_and_a_polygon_are_drawn`.
+- Following the surface and Remove:
+  `the_shading_follows_the_light_of_the_picture`,
+  `the_relief_pushes_paint_near_the_fold_only`,
+  `a_given_depth_map_takes_the_place_of_the_light`,
+  `a_layer_is_fitted_to_the_surface_beneath` in `pixel_surface::tests`;
+  `a_brush_following_the_surface_is_shaded_by_the_photo`,
+  `the_remove_brush_fills_the_painted_place_and_its_edge`;
+  `the_remove_brush_shows_what_is_painted_then_fills_it_as_one_step`.
+- Adjustment layers and histogram:
+  `an_adjustment_layer_changes_what_is_beneath_until_merged`,
+  `the_histogram_counts_the_selected_pixels` in `pixel_adjust::tests`.
+- Liquify and Smart Resize: `push_moves_pixels_along_with_the_brush`,
+  `pinch_and_bloat_pull_and_push_from_the_centre`,
+  `smart_resize_takes_away_the_plain_columns_first`,
+  `smart_resize_reaches_every_layer_and_keeps_the_selection` in
+  `pixel_liquify::tests`.
+- Image editing mode: `the_image_mode_swaps_the_panels_and_puts_the_drawings_back`,
+  `only_the_main_bars_show_in_the_image_mode`,
+  `toolbox_flyout_picks_are_remembered_per_button`,
+  `the_image_bar_buttons_are_commands_and_can_be_changed`,
+  `commands_run_from_the_menus_change_the_picture`,
+  `every_image_tool_is_on_a_toolbox_button` in `ui::pixel_mode::tests`;
+  `a_fitted_picture_fills_the_view_and_maps_both_ways`,
+  `zooming_keeps_the_pixel_under_the_pointer_and_panning_moves_it` in
+  `pixel_view::tests`; `every_image_tool_draws_an_icon_in_its_box`.
 - Stretch and warp: `stretch_repeats_the_selections_edge_to_the_picture_edge`,
   `an_untouched_warp_leaves_the_layer_as_it_was`,
   `dragging_a_point_moves_the_pixels_with_it` in `pixel_warp::tests`.

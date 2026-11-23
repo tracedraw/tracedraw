@@ -2472,7 +2472,7 @@ fn title_width(ui: &Ui, label: &str) -> f32 {
     text + 2.0 * ui.spacing().button_padding.x
 }
 
-fn menu_bar_style(style: &mut egui::Style) {
+pub(crate) fn menu_bar_style(style: &mut egui::Style) {
     egui::containers::menu::menu_style(style);
     style.override_font_id = Some(egui::FontId::proportional(BAR_FONT));
     // An open or hovered title: light blue with a blue frame, square.

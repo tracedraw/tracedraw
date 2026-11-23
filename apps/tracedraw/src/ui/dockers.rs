@@ -1040,6 +1040,13 @@ pub(crate) fn tab_icon(tab: DockerTab) -> Option<TabIcon> {
         DockerTab::Effects => Some(|p, r| letters(p, r, "fx", 12.0)),
         DockerTab::Macros => Some(|p, r| glyph_pic(p, r, Glyph::Record)),
         DockerTab::PrintMerge => Some(|p, r| action_pic(p, r, crate::ui::icons::Action::Print)),
+        DockerTab::PixelLayers
+        | DockerTab::PixelSelection
+        | DockerTab::PixelRetouch
+        | DockerTab::PixelDistort
+        | DockerTab::PixelEffects
+        | DockerTab::PixelImage
+        | DockerTab::PixelHistogram => crate::ui::pixel_mode::docker_icon(tab),
     }
 }
 

@@ -1156,6 +1156,7 @@ fn swatch(
             app.doc_palette_current = color_index;
         }
         match entry {
+            None if app.pixel_edit.is_some() => {}
             None => app.apply_fill(Fill::None),
             Some((_, c)) => {
                 if ui.input(|i| i.modifiers.ctrl) {
@@ -1234,6 +1235,14 @@ fn swatch(
 /// tenth of the colour into the outline, as Ctrl+click mixes into the
 /// fill; otherwise the outline takes the colour (#2132).
 fn right_click_outline(app: &mut App, ui: &Ui, entry: Option<&(String, Color)>) {
+    // The image editing mode: the outline colour of the shapes.
+    if let Some(pe) = app.pixel_edit.as_mut() {
+        if let Some((_, c)) = entry {
+            let [r, g, b] = c.to_rgb8();
+            pe.opts.outline_color = [r, g, b, 255];
+        }
+        return;
+    }
     match entry {
         Some((_, c)) if ui.input(|i| i.modifiers.ctrl) => app.mix_into_outline(*c),
         _ => app.apply_outline_color(entry.map(|(_, c)| *c)),

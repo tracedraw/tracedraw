@@ -287,6 +287,9 @@ pub fn button_width(app: &App) -> f32 {
 
 /// The width of a docked toolbox column (its buttons and the margins).
 pub fn column_width(app: &App) -> f32 {
+    if app.pixel_edit.is_some() {
+        return crate::ui::pixel_mode::column_width();
+    }
     button_width(app) + 6.0
 }
 
@@ -318,6 +321,11 @@ fn caption_font() -> egui::FontId {
 /// column on a side, or floating as a grid two buttons wide.
 pub fn toolbox(app: &mut App, ui: &mut Ui, dock: crate::ui::bars::Dock) {
     use crate::ui::bars::Dock;
+    // The image editing mode: the image tools.
+    if app.pixel_edit.is_some() {
+        crate::ui::pixel_mode::toolbox(app, ui, dock);
+        return;
+    }
     // Nothing to draw on the Welcome Screen: the tools show pale.
     if !app.drawing_shown() {
         ui.disable();

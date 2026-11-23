@@ -154,7 +154,7 @@ fn std_arrow(ui: &mut Ui, id: &str, enabled: bool) -> egui::Response {
 }
 
 /// A thin vertical separator between button groups.
-fn std_sep(ui: &mut Ui) {
+pub(crate) fn std_sep(ui: &mut Ui) {
     let (rect, _) = ui.allocate_exact_size(Vec2::new(9.0, std_btn()), egui::Sense::hover());
     let x = rect.center().x.round() + 0.5;
     ui.painter().vline(
@@ -294,6 +294,10 @@ fn zoom_box(app: &mut App, ui: &mut Ui, id: &str, width: f32) {
 }
 
 pub fn standard_toolbar(app: &mut App, ui: &mut Ui) {
+    if app.pixel_edit.is_some() {
+        crate::ui::pixel_mode::standard_bar(app, ui);
+        return;
+    }
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 1.0;
         ui.set_min_height(std_btn());
@@ -1509,6 +1513,10 @@ fn unit_value(ui: &mut Ui, app: &App, label: &str, mm: &mut f64, speed: f64) -> 
 }
 
 pub fn property_bar(app: &mut App, ui: &mut Ui) {
+    if app.pixel_edit.is_some() {
+        crate::ui::pixel_mode::property_bar(app, ui);
+        return;
+    }
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 4.0;
         ui.set_min_height(crate::ui::propbar::BAR_H);

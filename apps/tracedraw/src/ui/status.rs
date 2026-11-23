@@ -354,6 +354,10 @@ fn outline_text(app: &App, stroke: &Option<tracedraw_core::Stroke>) -> String {
 }
 
 pub fn status_bar(app: &mut App, ui: &mut Ui) {
+    if app.pixel_edit.is_some() {
+        crate::ui::pixel_mode::status_bar(app, ui);
+        return;
+    }
     let full = ui.available_rect_before_wrap();
     // The separator between the bar and the drawing window, the colour of
     // the palette lines: over the bar at the bottom of the window, under

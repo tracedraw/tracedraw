@@ -20,6 +20,9 @@ pub enum ItemBar {
     Custom(u8),
     /// The commands put on the toolbox, after its tools (#3211).
     Toolbox,
+    /// The standard bar of the image editing mode (Bitmaps > Edit
+    /// Inside): its own buttons, moved and chosen as the others'.
+    Image,
 }
 
 /// A separator between buttons.
@@ -90,6 +93,7 @@ impl ItemBar {
             ItemBar::Zoom => "zoom",
             ItemBar::Custom(n) => crate::ui::bars::Bar::Custom(n).id(),
             ItemBar::Toolbox => "toolbox",
+            ItemBar::Image => "image_standard",
         }
     }
 
@@ -98,6 +102,7 @@ impl ItemBar {
         match self {
             ItemBar::Standard => &STANDARD,
             ItemBar::Zoom => &ZOOM,
+            ItemBar::Image => &crate::ui::pixel_mode::IMAGE_BAR,
             // Made empty: the user drags its buttons onto it. The
             // toolbox's tools are its own; it starts with no commands.
             ItemBar::Custom(_) | ItemBar::Toolbox => &[],

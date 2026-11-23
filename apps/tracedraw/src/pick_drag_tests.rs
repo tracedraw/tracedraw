@@ -31056,8 +31056,13 @@ fn the_middle_button_pans_while_a_picture_is_edited_inside() {
     for _ in 0..2 {
         frame(&ctx, &mut app, Vec::new(), none);
     }
-    let mid = app.view.to_screen(Point::new(50.0, 30.0));
-    let before = app.view.to_screen(Point::new(0.0, 0.0));
+    // The picture shows in the image editing mode's own view.
+    let corner = |app: &App| {
+        let pe = app.pixel_edit.as_ref().expect("editing");
+        pe.ws.to_screen(pe.ws_area, 0.0, 0.0)
+    };
+    let mid = app.pixel_edit.as_ref().expect("editing").ws_area.center();
+    let before = corner(&app);
     frame(&ctx, &mut app, vec![Event::PointerMoved(mid)], none);
     frame(
         &ctx,
@@ -31076,8 +31081,8 @@ fn the_middle_button_pans_while_a_picture_is_edited_inside() {
         vec![button(panned, false, PointerButton::Middle, none)],
         none,
     );
-    let after = app.view.to_screen(Point::new(0.0, 0.0));
     assert!(app.pixel_edit.is_some(), "still editing");
+    let after = corner(&app);
     assert!(
         (after - before).length() > 30.0,
         "the middle drag pans: {before:?} {after:?}"

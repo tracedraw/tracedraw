@@ -2650,9 +2650,29 @@ pub enum DockerTab {
     Effects,
     Macros,
     PrintMerge,
+    /// The image editing mode's panels (Bitmaps > Edit Inside): kept out
+    /// of [`DockerTab::ALL`], shown only in that mode.
+    PixelLayers,
+    PixelSelection,
+    PixelRetouch,
+    PixelDistort,
+    PixelEffects,
+    PixelImage,
+    PixelHistogram,
 }
 
 impl DockerTab {
+    /// The image editing mode's panels, in Window > Panels order there.
+    pub const PIXEL: [DockerTab; 7] = [
+        DockerTab::PixelLayers,
+        DockerTab::PixelEffects,
+        DockerTab::PixelSelection,
+        DockerTab::PixelRetouch,
+        DockerTab::PixelDistort,
+        DockerTab::PixelImage,
+        DockerTab::PixelHistogram,
+    ];
+
     pub const ALL: [DockerTab; 48] = [
         DockerTab::Properties,
         DockerTab::Objects,
@@ -2823,6 +2843,13 @@ impl DockerTab {
             DockerTab::Macros => "docker.macros",
             DockerTab::Effects => "docker.effects",
             DockerTab::PrintMerge => "docker.print_merge",
+            DockerTab::PixelLayers => "pixel.section.layers",
+            DockerTab::PixelSelection => "pixel.section.selection",
+            DockerTab::PixelRetouch => "pixel.section.retouch",
+            DockerTab::PixelDistort => "pixel.section.distort",
+            DockerTab::PixelEffects => "pixel.section.effects",
+            DockerTab::PixelImage => "pixel.section.picture",
+            DockerTab::PixelHistogram => "pixel.section.histogram",
         }
     }
 
@@ -4370,7 +4397,7 @@ impl App {
         // language that came from the installer or the system stays
         // free to follow them (docs/behavior/language.md).
         self.settings.shown_bars = Some(self.shown_bars());
-        self.settings.dockers = Some(self.docker_setup());
+        self.settings.dockers = Some(self.main_docker_setup());
     }
 
     /// The tool settings now (see [`crate::settings::ToolPrefs`]).
@@ -4789,6 +4816,16 @@ impl App {
         }
     }
 
+    /// The drawing's dockers: as they are now, or as they were left when
+    /// the image editing mode put its own in their place.
+    pub fn main_docker_setup(&self) -> crate::settings::DockerSetup {
+        self.pixel_edit
+            .as_ref()
+            .and_then(|pe| pe.main_dockers.as_ref())
+            .map(|m| m.0.clone())
+            .unwrap_or_else(|| self.docker_setup())
+    }
+
     /// Put the dockers back as `setup` says; names of no docker are
     /// skipped, and a docker named in two places keeps the first.
     pub fn set_docker_setup(&mut self, setup: &crate::settings::DockerSetup) {
@@ -4799,7 +4836,11 @@ impl App {
             } else {
                 k
             };
-            DockerTab::ALL.iter().copied().find(|t| t.key() == k)
+            DockerTab::ALL
+                .iter()
+                .chain(DockerTab::PIXEL.iter())
+                .copied()
+                .find(|t| t.key() == k)
         };
         let mut seen: Vec<DockerTab> = Vec::new();
         let mut take = |keys: &[String]| -> Vec<DockerTab> {

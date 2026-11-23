@@ -229,6 +229,13 @@ pub fn docker_topic(t: DockerTab) -> &'static str {
         DockerTab::Scripts => "customize/scripts",
         DockerTab::Macros => "customize/scripts#macros",
         DockerTab::PrintMerge => "printing/print-merge#docker",
+        DockerTab::PixelLayers
+        | DockerTab::PixelSelection
+        | DockerTab::PixelRetouch
+        | DockerTab::PixelDistort
+        | DockerTab::PixelEffects
+        | DockerTab::PixelImage
+        | DockerTab::PixelHistogram => "bitmaps/resample-and-straighten#other",
         DockerTab::Palettes => "color/palettes",
         DockerTab::Lens => "effects/lens",
         DockerTab::Blend => "effects/blend",

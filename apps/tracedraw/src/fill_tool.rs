@@ -765,6 +765,12 @@ impl App {
     /// (#2827: the object took the colour as its fill); otherwise it
     /// fills the selection.
     pub fn palette_fill(&mut self, c: tracedraw_core::Color) {
+        // The image editing mode: the colour the brush paints.
+        if let Some(pe) = self.pixel_edit.as_mut() {
+            let [r, g, b] = c.to_rgb8();
+            pe.opts.color = [r, g, b, 255];
+            return;
+        }
         if self.tool == crate::tools::Tool::InteractiveFill {
             if let Some((_, i)) = self.selected_fill_node() {
                 self.set_fountain_node(i, Some(c), None, None, false);

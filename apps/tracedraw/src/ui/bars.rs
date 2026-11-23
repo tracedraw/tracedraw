@@ -256,6 +256,10 @@ impl Bar {
     }
 
     pub fn visible(self, app: &App) -> bool {
+        // The image editing mode shows its own bars only.
+        if app.pixel_edit.is_some() && !crate::ui::pixel_mode::shows_bar(self) {
+            return false;
+        }
         match self {
             Bar::Toolbox => app.show_toolbox,
             Bar::Palette => app.settings.palette.show_palette,

@@ -650,6 +650,10 @@ pub struct Settings {
     /// (the default dockers then show).
     #[serde(default)]
     pub dockers: Option<DockerSetup>,
+    /// The image editing mode's panels as they were left (Bitmaps > Edit
+    /// Inside); none until it is first used (its default panels show).
+    #[serde(default)]
+    pub pixel_dockers: Option<DockerSetup>,
     /// The font lists' fonts used last, newest first.
     #[serde(default)]
     pub recent_fonts: Vec<String>,
@@ -2544,6 +2548,7 @@ impl Default for Settings {
             defaults: crate::defaults::DefaultsPrefs::default(),
             shown_bars: None,
             dockers: None,
+            pixel_dockers: None,
             recent_fonts: Vec::new(),
             font_filter_open: false,
             font_english_names: true,

@@ -534,7 +534,7 @@ impl App {
                 show_outline_flyout: s.show_outline_flyout,
                 status_info: s.status_info,
                 bar_items: s.bar_items.clone(),
-                dockers: Some(self.docker_setup()),
+                dockers: Some(self.main_docker_setup()),
             }),
             palette: parts.palette.then_some(s.palette),
             palette_bars: parts.palette.then(|| s.palette_bars.clone()),

@@ -33,7 +33,7 @@ const LABEL: &str = "Edit Picture";
 
 /// What the screen holds of the picture being edited.
 #[derive(Default)]
-pub struct PixelView {
+pub struct PixelTextures {
     pub tex: Option<egui::TextureHandle>,
     pub outline: Option<egui::TextureHandle>,
     /// Pixels changed since the picture was last sent to the screen.
@@ -85,6 +85,18 @@ pub struct PixelEdit {
     /// The picture as it was when the editing began (Restore paints it
     /// back).
     pub original: std::rc::Rc<image::RgbaImage>,
+    /// The Liquify stroke under way.
+    pub liquify: Option<crate::pixel_liquify::Liquify>,
+    /// Smart Resize: the new width and height, percent of the picture's.
+    pub smart_size: (f32, f32),
+    /// A depth map of the picture (its size, 255 nearest) that stands for
+    /// the one read from its light when following the surface.
+    pub depth: Option<image::GrayImage>,
+    /// Remove: the place painted so far (0 where painted).
+    pub remove: Option<image::GrayImage>,
+    /// An adjustment layer's setting is being dragged (its undo step is
+    /// already remembered).
+    pub adjust_drag: bool,
     /// Clone and heal: the source set with Alt+click, and the offset
     /// fixed by the first stroke after it (the source follows the brush).
     pub clone_src: Option<(f32, f32)>,
@@ -97,7 +109,19 @@ pub struct PixelEdit {
     pub preview: Option<image::RgbaImage>,
     pub feather_px: u32,
     pub grow_px: i32,
-    pub view: RefCell<PixelView>,
+    pub view: RefCell<PixelTextures>,
+    /// Where the picture lies in the image editing mode's window: its
+    /// own zoom and scroll, apart from the drawing's view.
+    pub ws: crate::pixel_view::PixelView,
+    /// The image window's area on the screen as last drawn.
+    pub ws_area: egui::Rect,
+    /// The pointer over the picture, in its pixels (the brush outline).
+    pub pointer_px: Option<(f32, f32)>,
+    /// The dockers of the drawing and whether their column was open,
+    /// kept while the image dockers show.
+    pub main_dockers: Option<(crate::settings::DockerSetup, bool)>,
+    /// The tool each toolbox button shows last picked from its flyout.
+    pub group_pick: Vec<PixelTool>,
     /// The drawing without the picture, for the page under the edit.
     pub hidden: RefCell<Option<(u64, std::rc::Rc<Document>)>>,
     /// The Light tool's lights (see `pixel_light.rs`).
@@ -267,6 +291,9 @@ impl PixelEdit {
 
     /// The mask being painted, as it is.
     pub fn target_mask(&self) -> Option<&image::GrayImage> {
+        if let Some(m) = &self.remove {
+            return Some(m);
+        }
         match self.target {
             MaskTarget::Pixels => None,
             MaskTarget::QuickMask => self.pi.sel.as_ref(),
@@ -277,6 +304,9 @@ impl PixelEdit {
     /// The mask stroke taken to (x, y).
     fn mask_to(&mut self, x: f32, y: f32) -> Option<Dirty> {
         let ms = self.mask_stroke.as_mut()?;
+        if let Some(m) = self.remove.as_mut() {
+            return ms.to(m, None, x, y);
+        }
         match self.target {
             MaskTarget::Pixels => None,
             MaskTarget::QuickMask => ms.to(self.pi.sel.as_mut()?, None, x, y),
@@ -324,6 +354,17 @@ impl PixelEdit {
     }
 
     /// The warp as it is now shown in place of the layer in use.
+    /// The relief of what is painted on: what is beneath the layer in
+    /// use, or the layer itself when it is the bottom one.
+    pub fn surface_map(&self) -> crate::pixel_surface::SurfaceMap {
+        let seen = if self.pi.active == 0 {
+            self.pi.composite()
+        } else {
+            crate::pixel_surface::seen_beneath(&self.pi)
+        };
+        crate::pixel_surface::SurfaceMap::new(&seen, self.depth.as_ref())
+    }
+
     pub fn refresh_warp(&mut self) {
         if let Some(w) = &self.warp {
             self.preview = Some(w.render(self.warp_box));
@@ -425,6 +466,11 @@ impl App {
             rect: *rect,
             size_px,
             original: std::rc::Rc::new(img.clone()),
+            liquify: None,
+            smart_size: (100.0, 100.0),
+            depth: None,
+            remove: None,
+            adjust_drag: false,
             pi: PixelImage::new(img),
             history: History::default(),
             tool: PixelTool::Brush,
@@ -450,7 +496,12 @@ impl App {
             preview: None,
             feather_px: 4,
             grow_px: 2,
-            view: RefCell::new(PixelView {
+            ws: Default::default(),
+            ws_area: egui::Rect::NOTHING,
+            pointer_px: None,
+            main_dockers: None,
+            group_pick: Vec::new(),
+            view: RefCell::new(PixelTextures {
                 full: true,
                 sel_changed: true,
                 ..Default::default()
@@ -461,6 +512,7 @@ impl App {
         // No selection handles over the pixels being edited.
         self.selection.clear();
         self.status = tr("pixel.status.editing");
+        crate::ui::pixel_mode::enter(self);
         true
     }
 
@@ -470,6 +522,7 @@ impl App {
         let Some(pe) = self.pixel_edit.take() else {
             return;
         };
+        crate::ui::pixel_mode::leave(self, &pe);
         self.pixel_opts = pe.opts;
         if self.doc().find_shape(pe.shape).is_some() {
             self.selection = vec![pe.shape];
@@ -536,6 +589,7 @@ impl App {
     /// Leave the picture as it was.
     pub fn cancel_pixel_edit(&mut self) {
         if let Some(pe) = self.pixel_edit.take() {
+            crate::ui::pixel_mode::leave(self, &pe);
             self.pixel_opts = pe.opts;
             if self.doc().find_shape(pe.shape).is_some() {
                 self.selection = vec![pe.shape];
@@ -569,18 +623,36 @@ impl App {
         pointer: Option<Point>,
         mods: Modifiers,
     ) {
+        let Some(pe) = self.pixel_edit.as_ref() else {
+            return;
+        };
+        let px = pointer.map(|p| pe.to_px(p));
+        let s0 = self.view.to_screen(pe.to_page(0.0, 0.0));
+        let s1 = self.view.to_screen(pe.to_page(1.0, 0.0));
+        self.pixel_px_input(response, px, mods, (s1 - s0).length());
+    }
+
+    /// The pointer over the picture being edited, at (x, y) in its pixels,
+    /// shown `screen_per_px` screen points to a pixel: the picture tools
+    /// take every press.
+    pub fn pixel_px_input(
+        &mut self,
+        response: &Response,
+        px: Option<(f32, f32)>,
+        mods: Modifiers,
+        screen_per_px: f32,
+    ) {
         response.ctx.set_cursor_icon(egui::CursorIcon::Crosshair);
         let Some(pe) = self.pixel_edit.as_mut() else {
             return;
         };
-        let Some(p) = pointer else {
+        let Some((x, y)) = px else {
             if response.drag_stopped() {
                 pe.lights.end_stroke();
                 pixel_release(pe, mods);
             }
             return;
         };
-        let (x, y) = pe.to_px(p);
         let started = response.drag_started_by(PointerButton::Primary);
         let dragged = response.dragged_by(PointerButton::Primary);
         let stopped = response.drag_stopped_by(PointerButton::Primary);
@@ -609,7 +681,11 @@ impl App {
             && (tool.is_brush()
                 || matches!(
                     tool,
-                    PixelTool::Fill | PixelTool::Gradient | PixelTool::Move | PixelTool::Shape
+                    PixelTool::Fill
+                        | PixelTool::Gradient
+                        | PixelTool::Move
+                        | PixelTool::Shape
+                        | PixelTool::Liquify
                 ))
         {
             if !matches!(tool, PixelTool::Brush | PixelTool::Eraser) {
@@ -618,7 +694,7 @@ impl App {
                 }
                 return;
             }
-            if pe.target == MaskTarget::LayerMask && pe.pi.active_locked() {
+            if pe.target == MaskTarget::LayerMask && pe.pi.active_lock_box() {
                 if started || clicked {
                     self.status = tr("pixel.status.layer_locked");
                 }
@@ -662,6 +738,8 @@ impl App {
                     | PixelTool::Move
                     | PixelTool::Warp
                     | PixelTool::Shape
+                    | PixelTool::Liquify
+                    | PixelTool::Remove
             );
         if paints && pe.pi.active_locked() {
             if started || clicked {
@@ -674,9 +752,7 @@ impl App {
                 pe.start_warp();
             }
             // Points within 12 screen pixels of the press are taken.
-            let s0 = self.view.to_screen(pe.to_page(0.0, 0.0));
-            let s1 = self.view.to_screen(pe.to_page(1.0, 0.0));
-            let grab = 12.0 / (s1 - s0).length().max(1e-6);
+            let grab = 12.0 / screen_per_px.max(1e-6);
             if started {
                 let pick = pe.warp.as_ref().and_then(|w| {
                     let near = w
@@ -750,6 +826,47 @@ impl App {
             }
             return;
         }
+        if tool == PixelTool::Remove {
+            if started || (clicked && pe.remove.is_none()) {
+                let (w, h) = pe.pi.img.dimensions();
+                let m = image::GrayImage::from_pixel(w, h, image::Luma([255]));
+                pe.mask_stroke = Some(MaskStroke::new(pe.opts, &m, 0));
+                pe.remove = Some(m);
+            }
+            if started || dragged || clicked {
+                let b = pe.mask_to(x, y);
+                pe.mark(b);
+            }
+            if stopped || clicked {
+                pe.mask_stroke = None;
+                if let Some(m) = pe.remove.take() {
+                    let grow_by = pe.opts.remove_grow.max(0.0).round() as u32;
+                    pe.apply(false, |pi| pixel_edit::remove_painted(pi, &m, grow_by));
+                }
+                pe.view.borrow_mut().sel_changed = true;
+            }
+            return;
+        }
+        if tool == PixelTool::Liquify {
+            if started || (clicked && pe.liquify.is_none()) {
+                pe.step();
+                let mut lq = crate::pixel_liquify::Liquify::new(pe.opts.liquify, pe.opts, &pe.pi);
+                let b = lq.to(&mut pe.pi, x, y);
+                pe.mark(b);
+                pe.liquify = (!clicked).then_some(lq);
+            } else if dragged {
+                let pe = &mut **pe;
+                let b = match pe.liquify.as_mut() {
+                    Some(lq) => lq.to(&mut pe.pi, x, y),
+                    None => None,
+                };
+                pe.mark(b);
+            }
+            if stopped {
+                pe.liquify = None;
+            }
+            return;
+        }
         if tool.is_brush() {
             if started || (clicked && pe.stroke.is_none()) {
                 let offset = if matches!(tool, PixelTool::Clone | PixelTool::Heal) {
@@ -772,6 +889,9 @@ impl App {
                 let mut s = Stroke::new(tool, pe.opts, &pe.pi, offset);
                 if tool == PixelTool::Restore {
                     s = s.with_original(pe.original.clone());
+                }
+                if pe.opts.surface && matches!(tool, PixelTool::Brush | PixelTool::Clone) {
+                    s = s.with_surface(std::rc::Rc::new(pe.surface_map()));
                 }
                 let b = s.to(&mut pe.pi, x, y);
                 pe.mark(b);
@@ -868,6 +988,19 @@ impl App {
             }
             return;
         }
+        // The zoom of the image window.
+        use crate::ui::pixel_cmds::PixelCmd;
+        for (keys, c) in [
+            (&[Key::Plus, Key::Equals][..], PixelCmd::ZoomIn),
+            (&[Key::Minus][..], PixelCmd::ZoomOut),
+            (&[Key::Num0][..], PixelCmd::ZoomFit),
+            (&[Key::Num1][..], PixelCmd::Zoom100),
+        ] {
+            if keys.iter().any(|k| pressed(*k, cmd)) {
+                c.run(self);
+                return;
+            }
+        }
         let Some(pe) = self.pixel_edit.as_mut() else {
             return;
         };
@@ -921,9 +1054,11 @@ impl App {
                 (Key::I, PixelTool::Eyedropper),
                 (Key::R, PixelTool::Blur),
                 (Key::V, PixelTool::Move),
+                (Key::Z, PixelTool::Zoom),
+                (Key::H, PixelTool::Pan),
             ] {
                 if pressed(k, Modifiers::NONE) {
-                    pe.tool = t;
+                    crate::ui::pixel_mode::choose_tool(pe, t);
                 }
             }
         }
@@ -997,6 +1132,18 @@ pub fn draw(app: &App, painter: &egui::Painter) {
     let Some(pe) = app.pixel_edit.as_ref() else {
         return;
     };
+    let map = |x: f32, y: f32| app.view.to_screen(pe.to_page(x, y));
+    draw_mapped(pe, painter, &map, app.pointer_page.map(|p| pe.to_px(p)));
+}
+
+/// Draw the picture being edited with `map` taking its pixels to the
+/// screen, and the brush at `pointer` (in its pixels).
+pub fn draw_mapped(
+    pe: &PixelEdit,
+    painter: &egui::Painter,
+    map: &dyn Fn(f32, f32) -> egui::Pos2,
+    pointer: Option<(f32, f32)>,
+) {
     let ctx = painter.ctx();
     let shown = pe.preview.as_ref().unwrap_or(&pe.pi.img);
     let (w, h) = shown.dimensions();
@@ -1074,7 +1221,7 @@ pub fn draw(app: &App, painter: &egui::Painter) {
         (w as f32, h as f32),
         (0.0, h as f32),
     ]
-    .map(|(x, y)| app.view.to_screen(pe.to_page(x, y)));
+    .map(|(x, y)| map(x, y));
     let quad = |tex: egui::TextureId| {
         let mut mesh = egui::Mesh::with_texture(tex);
         let uvs = [
@@ -1098,7 +1245,7 @@ pub fn draw(app: &App, painter: &egui::Painter) {
     }
     // The mask being painted, in red where it hides or leaves out.
     match pe.target_mask() {
-        Some(m) if pe.target != MaskTarget::Pixels => {
+        Some(m) if pe.target != MaskTarget::Pixels || pe.remove.is_some() => {
             let size = [m.width() as usize, m.height() as usize];
             let whole = full_now || sel_now || v.overlay.as_ref().is_none_or(|t| t.size() != size);
             if whole {
@@ -1140,7 +1287,7 @@ pub fn draw(app: &App, painter: &egui::Painter) {
         painter.line_segment([corners[i], corners[(i + 1) % 4]], edge);
     }
     drop(v);
-    let to_screen = |p: (f32, f32)| app.view.to_screen(pe.to_page(p.0, p.1));
+    let to_screen = |p: (f32, f32)| map(p.0, p.1);
     let ink = egui::Stroke::new(1.0, egui::Color32::from_rgb(0x1E, 0x7C, 0xE8));
     if let (Some(a), Some(b)) = (pe.drag_from, pe.drag_to) {
         match pe.tool {
@@ -1220,8 +1367,7 @@ pub fn draw(app: &App, painter: &egui::Painter) {
     }
     // The brush's size under the pointer, and the clone source.
     if pe.tool.is_brush() || pe.tool == PixelTool::Light {
-        if let Some(pp) = app.pointer_page {
-            let (x, y) = pe.to_px(pp);
+        if let Some((x, y)) = pointer {
             let r = pe.opts.size / 2.0;
             let pts: Vec<_> = (0..=40)
                 .map(|i| {
@@ -1239,11 +1385,8 @@ pub fn draw(app: &App, painter: &egui::Painter) {
             ));
         }
         if matches!(pe.tool, PixelTool::Clone | PixelTool::Heal) {
-            let src = match (pe.clone_offset, app.pointer_page, pe.stroke.is_some()) {
-                (Some(o), Some(pp), _) => {
-                    let (x, y) = pe.to_px(pp);
-                    Some((x + o.0, y + o.1))
-                }
+            let src = match (pe.clone_offset, pointer, pe.stroke.is_some()) {
+                (Some(o), Some((x, y)), _) => Some((x + o.0, y + o.1)),
                 _ => pe.clone_src,
             };
             if let Some(s) = src {
@@ -1531,5 +1674,36 @@ mod tests {
         assert_eq!(*pe.pi.img.get_pixel(16, 5), Rgba([255, 255, 255, 255]));
         pe.undo();
         assert_eq!(*pe.pi.img.get_pixel(6, 5), Rgba([255, 255, 255, 255]));
+    }
+
+    #[test]
+    fn the_remove_brush_shows_what_is_painted_then_fills_it_as_one_step() {
+        let (mut app, id) = app_with_picture();
+        app.edit_bitmap_inside(id);
+        let pe = app.pixel_edit.as_mut().unwrap();
+        pe.pi.img.put_pixel(10, 5, Rgba([0, 0, 0, 255]));
+        pe.opts.size = 4.0;
+        pe.opts.hardness = 1.0;
+        pe.opts.opacity = 1.0;
+        pe.opts.flow = 1.0;
+        let m = image::GrayImage::from_pixel(20, 10, image::Luma([255]));
+        pe.mask_stroke = Some(MaskStroke::new(pe.opts, &m, 0));
+        pe.remove = Some(m);
+        pe.mask_to(10.5, 5.5);
+        assert_eq!(
+            pe.target_mask().unwrap().get_pixel(10, 5)[0],
+            0,
+            "shown in red"
+        );
+        let painted = pe.remove.take().unwrap();
+        pe.mask_stroke = None;
+        let grow_by = pe.opts.remove_grow as u32;
+        assert!(pe.apply(false, |pi| pixel_edit::remove_painted(
+            pi, &painted, grow_by
+        )));
+        assert_eq!(*pe.pi.img.get_pixel(10, 5), Rgba([255, 255, 255, 255]));
+        assert!(pe.target_mask().is_none());
+        pe.undo();
+        assert_eq!(*pe.pi.img.get_pixel(10, 5), Rgba([0, 0, 0, 255]));
     }
 }
