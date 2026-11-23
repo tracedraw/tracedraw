@@ -8598,6 +8598,14 @@ impl App {
     }
 
     pub fn apply_outline_width(&mut self, width: f64) {
+        if self.text_selection_active() {
+            self.text_apply_outline_width(width);
+            return;
+        }
+        if self.chosen_chars_active() {
+            self.chosen_chars_apply_outline_width(width);
+            return;
+        }
         let shapes = self.selected_shapes();
         if shapes.is_empty() {
             self.request_default_change(crate::defaults::DefaultChange::OutlineWidth(width));

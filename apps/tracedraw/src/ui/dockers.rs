@@ -2155,64 +2155,79 @@ fn properties(app: &mut App, ui: &mut Ui) {
                 }
             }
             "character" => {
-                if let ShapeKind::Text { spans, .. } = &first.kind {
-                    // The selected characters' span while text is edited,
-                    // else the first span.
-                    let chosen = app.text_selection_span();
-                    if let Some(sp) = chosen.as_ref().or(spans.first()) {
-                        let u = app.text_units();
-                        // The styles set on the characters, after the
-                        // weight and slant (#1209).
-                        let mut styles: Vec<String> = Vec::new();
-                        if sp.bold {
-                            styles.push(tr("docker.bold"));
-                        }
-                        if sp.italic {
-                            styles.push(tr("docker.italic"));
-                        }
-                        for (style, key) in [
-                            (sp.underline, "docker.underline"),
-                            (sp.strikethrough, "docker.strikethrough"),
-                        ] {
-                            if style.is_on() {
-                                styles.push(format!(
-                                    "{} ({})",
-                                    tr(key),
-                                    crate::ui::text_docker::line_style_name(style)
+                if matches!(first.kind, ShapeKind::Text { .. }) {
+                    let target = first.clone();
+                    app.sync_text_defaults_from(target.id);
+                    ui.push_id("prop_char", |ui| {
+                        crate::ui::text_docker::character_panel(
+                            app,
+                            ui,
+                            Some(&target),
+                            "prop_char",
+                            false,
+                            true,
+                        );
+                        ui.add_space(4.0);
+                        ui.horizontal_wrapped(|ui| {
+                            crate::ui::keynav::ComboBox::from_id_salt("prop_char_case")
+                                .selected_text(tr("edit_text.case"))
+                                .width(110.0)
+                                .show_ui(ui, |ui| {
+                                    use crate::ops2::CaseMode as C;
+                                    for (m, key) in [
+                                        (C::Sentence, "menu.text.case_sentence"),
+                                        (C::Lower, "menu.text.case_lower"),
+                                        (C::Upper, "menu.text.case_upper"),
+                                        (C::Title, "menu.text.case_title"),
+                                        (C::Toggle, "menu.text.case_toggle"),
+                                    ] {
+                                        if ui.selectable_label(false, tr(key)).clicked() {
+                                            app.change_case(m);
+                                        }
+                                    }
+                                })
+                                .response
+                                .rich_tip(crate::ui::tips::pair(
+                                    "edit_text.case",
+                                    "edit_text.case_tip",
                                 ));
+                            if ui
+                                .button(tr("menu.text.edit_text"))
+                                .rich_tip(tr("menu.text.edit_text_desc"))
+                                .clicked()
+                            {
+                                app.open_edit_text_dialog();
                             }
-                        }
-                        if sp.all_caps {
-                            styles.push(tr("docker.all_caps"));
-                        }
-                        if sp.enclosed {
-                            styles.push(tr("docker.enclosed"));
-                        }
-                        if sp.overprint_fill.unwrap_or(first.overprint_fill) {
-                            styles.push(tr("docker.overprint_fill"));
-                        }
-                        if sp.overprint_outline.unwrap_or(first.overprint_outline) {
-                            styles.push(tr("docker.overprint_outline"));
-                        }
-                        let styles = styles.iter().map(|s| format!(" {s}")).collect::<String>();
-                        ui.label(format!(
-                            "{} {} {}{}",
-                            sp.font_family,
-                            crate::ui::field::format_number(
-                                u.from_pt(sp.size_pt),
+                            if !app.editing_text()
+                                && ui.button(tr("docker.edit_with_text_tool")).clicked()
+                            {
+                                app.begin_text_edit(target.id);
+                            }
+                        });
+                        ui.add_space(4.0);
+                        ui.collapsing(tr("docker.paragraph"), |ui| {
+                            crate::ui::text_docker::paragraph_panel(
+                                app,
+                                ui,
+                                Some(&target),
+                                "prop_para",
                                 false,
-                                0,
-                                Some(2)
-                            ),
-                            u.short(),
-                            styles
-                        ));
-                    }
-                    ui.label(
-                        egui::RichText::new(tr("docker.edit_with_text_tool"))
-                            .color(Tokens::text_dim())
-                            .size(11.0),
-                    );
+                                true,
+                            );
+                        });
+                        if matches!(target.kind, ShapeKind::Text { frame: Some(_), .. }) {
+                            ui.collapsing(tr("docker.frame"), |ui| {
+                                crate::ui::text_docker::frame_panel(
+                                    app,
+                                    ui,
+                                    Some(&target),
+                                    "prop_frame",
+                                    false,
+                                    true,
+                                );
+                            });
+                        }
+                    });
                 }
             }
             "summary" => summary_section(app, ui, &shapes),
@@ -7313,5 +7328,67 @@ pub(crate) mod tests {
             },
         );
         assert_eq!(selection_area_mm2(&open), None);
+    }
+
+    /// #4097: Selecting a text shape shows the live character controls in
+    /// the Properties docker, and the controls can edit its font, style
+    /// and alignment.
+    #[test]
+    fn properties_docker_shows_full_text_controls() {
+        use tracedraw_core::geometry::Point;
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        app.show_welcome = false;
+        app.show_dockers = true;
+        app.docker_tab = DockerTab::Properties;
+        app.settings.properties_closed.clear();
+        app.start_text(Point::new(10.0, 20.0), None);
+        app.text_insert("Properties Text");
+        app.finish_text();
+        let text_id = app.selection[0];
+        assert_eq!(app.selection, vec![text_id]);
+
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1400.0, 900.0),
+            )),
+            ..Default::default()
+        };
+        let mut out = ctx.run_ui(input, |ui| properties(&mut app, ui));
+        out.textures_delta.clear();
+
+        let s = app.doc().find_shape(text_id).expect("text");
+        let ShapeKind::Text { spans, .. } = &s.kind else {
+            panic!("text");
+        };
+        assert_eq!(app.text_font, spans[0].font_family);
+        app.change_case(crate::ops2::CaseMode::Upper);
+        let s = app.doc().find_shape(text_id).expect("text");
+        let ShapeKind::Text { spans, .. } = &s.kind else {
+            panic!("text");
+        };
+        assert_eq!(spans[0].text, "PROPERTIES TEXT");
+
+        // Selecting a framed paragraph text also renders paragraph and frame sections.
+        app.start_text(
+            Point::new(10.0, 50.0),
+            Some(tracedraw_core::geometry::Size::new(80.0, 40.0)),
+        );
+        app.text_insert("Frame paragraph text");
+        app.finish_text();
+        let frame_id = app.selection[0];
+        assert_eq!(app.selection, vec![frame_id]);
+        let mut out = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1400.0, 900.0),
+                )),
+                ..Default::default()
+            },
+            |ui| properties(&mut app, ui),
+        );
+        out.textures_delta.clear();
     }
 }

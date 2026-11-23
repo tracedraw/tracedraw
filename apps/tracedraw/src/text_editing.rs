@@ -1269,6 +1269,27 @@ impl App {
         })
     }
 
+    /// The selected characters get their outline's width in mm, keeping
+    /// its colour (the object's outline supplies one when the span has
+    /// none). Width 0 takes the outline off these characters.
+    pub fn text_apply_outline_width(&mut self, width: f64) -> bool {
+        let base = self
+            .text_edit
+            .as_ref()
+            .and_then(|te| self.doc().find_shape(te.shape))
+            .and_then(|s| s.stroke.clone());
+        self.text_style_selection("Character Outline", move |sp| {
+            let mut st = sp
+                .outline
+                .clone()
+                .filter(|o| o.width > 0.0)
+                .or_else(|| base.clone())
+                .unwrap_or_default();
+            st.width = width.max(0.0);
+            sp.outline = Some(st);
+        })
+    }
+
     /// The span the property bar shows while editing: the one of the
     /// character before the caret (the first span at the start).
     pub fn text_span_at_caret(&self) -> Option<TextSpan> {
@@ -2341,6 +2362,42 @@ mod tests {
         app.text_move(CaretMove::LineEnd, false);
         assert_eq!(app.text_selection_fill(), None);
         assert_eq!(app.text_selection_span(), None);
+    }
+
+    #[test]
+    fn an_outline_width_picked_with_characters_selected_keeps_their_colour() {
+        let mut app = text_with_cd_selected();
+        let blue = Color::rgb8(0, 0, 255);
+        app.apply_outline_color(Some(blue));
+        assert!(app.text_apply_outline_width(0.5));
+        let spans = app.edit_spans().expect("spans");
+        let outline = spans[1].outline.clone().expect("outline");
+        assert!((outline.width - 0.5).abs() < 1e-6, "{:?}", outline);
+        assert_eq!(outline.color, blue);
+        assert!(spans[0].outline.is_none() && spans[2].outline.is_none());
+        assert_eq!(app.engine.undo_label(), Some("Character Outline"));
+        // Width zero takes the outline off the selected characters.
+        assert!(app.text_apply_outline_width(0.0));
+        let spans = app.edit_spans().expect("spans");
+        assert_eq!(spans[1].outline.as_ref().map(|o| o.width), Some(0.0));
+    }
+
+    #[test]
+    fn apply_outline_width_routes_to_text_selection_when_active() {
+        let mut app = text_with_cd_selected();
+        assert!(app.text_selection_active());
+        let blue = Color::rgb8(0, 0, 255);
+        app.apply_outline_color(Some(blue));
+        app.apply_outline_width(0.75);
+        let spans = app.edit_spans().expect("spans");
+        let outline = spans[1].outline.clone().expect("outline");
+        assert!((outline.width - 0.75).abs() < 1e-6, "{:?}", outline);
+        assert_eq!(outline.color, blue);
+        assert!(spans[0].outline.is_none() && spans[2].outline.is_none());
+        assert_eq!(app.engine.undo_label(), Some("Character Outline"));
+        app.apply_outline_width(0.0);
+        let spans = app.edit_spans().expect("spans");
+        assert_eq!(spans[1].outline.as_ref().map(|o| o.width), Some(0.0));
     }
 
     #[test]

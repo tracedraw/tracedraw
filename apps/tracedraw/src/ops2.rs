@@ -3511,6 +3511,12 @@ impl App {
                     _ => Default::default(),
                 },
             };
+            // Editing a text puts the properties docker into its text
+            // mode, as the property panel does for the object being
+            // edited, with the character section open.
+            self.show_dockers = true;
+            self.docker_tab = crate::app::DockerTab::Properties;
+            self.settings.properties_closed.retain(|s| s != "character");
         }
     }
 
@@ -10461,6 +10467,19 @@ mod text_dialog_tests {
             .expect("text");
         app.select(vec![id]);
         app.open_edit_text_dialog();
+        assert!(app.show_dockers, "the properties docker is shown");
+        assert_eq!(
+            app.docker_tab,
+            crate::app::DockerTab::Properties,
+            "the docker follows the text being edited"
+        );
+        assert!(
+            !app.settings
+                .properties_closed
+                .iter()
+                .any(|s| s == "character"),
+            "the character section is open"
+        );
         let Dialog::EditText { shape, text, .. } = &app.dialog else {
             panic!("no dialog: {:?}", std::mem::discriminant(&app.dialog));
         };
@@ -10535,5 +10554,32 @@ mod text_dialog_tests {
             ]
         );
         assert_eq!(app.engine.undo_label(), Some("Edit Text"));
+
+        // The character formatting controls of Edit Text applied to a span.
+        let mut spans = spans.clone();
+        tracedraw_core::spans_apply(&mut spans, 0, 5, |s| {
+            s.outline = Some(tracedraw_core::Stroke::new(
+                tracedraw_core::Color::rgb8(0, 0, 255),
+                0.4,
+            ));
+            s.tracking_pct = 10.0;
+            s.width_pct = 110.0;
+            s.position = tracedraw_core::TextPosition::Superscript;
+            s.all_caps = true;
+            s.background = Some(tracedraw_core::Fill::Solid(tracedraw_core::Color::rgb8(
+                255, 255, 0,
+            )));
+        });
+        app.set_text_spans(id, spans);
+        let ShapeKind::Text { spans, .. } = app.doc().find_shape(id).expect("text").kind.clone()
+        else {
+            panic!("text");
+        };
+        assert_eq!(spans[0].outline.as_ref().map(|o| o.width), Some(0.4));
+        assert_eq!(spans[0].tracking_pct, 10.0);
+        assert_eq!(spans[0].width_pct, 110.0);
+        assert_eq!(spans[0].position, tracedraw_core::TextPosition::Superscript);
+        assert!(spans[0].all_caps);
+        assert!(spans[0].background.is_some());
     }
 }

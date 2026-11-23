@@ -11443,7 +11443,7 @@ fn edit_text_box(
     let focused = ui.memory(|m| m.has_focus(id));
     let (from, to) = edit_text_range(ui.ctx(), id, live, focused, total);
     if let Some(first) = span_at(spans, from).cloned() {
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             let b = egui::RichText::new("B").font(crate::theme::bold(15.0));
             if ui
                 .selectable_label(first.bold, b)
@@ -11530,6 +11530,136 @@ fn edit_text_box(
                         s.italic = italic;
                     }
                 });
+            }
+            // The character outline beside the other character settings,
+            // as the property bar of the text being edited has it.
+            ui.separator();
+            let outline = first.outline.clone().filter(|o| o.width > 0.0);
+            let mut pt = outline.as_ref().map_or(0.0, |o| o.width * 72.0 / 25.4);
+            if ui
+                .add(
+                    egui::DragValue::new(&mut pt)
+                        .range(0.0..=40.0)
+                        .speed(0.05)
+                        .max_decimals(2)
+                        .suffix(" pt"),
+                )
+                .on_hover_text(tr("docker.text_outline_width_desc"))
+                .changed()
+            {
+                let mm = pt * 25.4 / 72.0;
+                spans_apply(spans, from, to, |s| {
+                    let mut st = s
+                        .outline
+                        .clone()
+                        .filter(|o| o.width > 0.0)
+                        .unwrap_or_else(|| tracedraw_core::Stroke::new(app.current_colors.1, 0.2));
+                    st.width = mm;
+                    s.outline = Some(st);
+                });
+            }
+            let mut color = outline.as_ref().map_or(app.current_colors.1, |o| o.color);
+            if crate::ui::color_picker::color_button(ui, &mut color) {
+                spans_apply(spans, from, to, |s| {
+                    let mut st = s
+                        .outline
+                        .clone()
+                        .filter(|o| o.width > 0.0)
+                        .unwrap_or_else(|| tracedraw_core::Stroke::new(app.current_colors.1, 0.2));
+                    st.color = color;
+                    s.outline = Some(st);
+                });
+            }
+            ui.separator();
+            let sups = first.position == tracedraw_core::TextPosition::Superscript;
+            if ui
+                .selectable_label(sups, "x\u{00b2}")
+                .on_hover_text(tr("docker.superscript"))
+                .clicked()
+            {
+                let target = if sups {
+                    tracedraw_core::TextPosition::Normal
+                } else {
+                    tracedraw_core::TextPosition::Superscript
+                };
+                spans_apply(spans, from, to, |s| s.position = target);
+            }
+            let subs = first.position == tracedraw_core::TextPosition::Subscript;
+            if ui
+                .selectable_label(subs, "x\u{2082}")
+                .on_hover_text(tr("docker.subscript"))
+                .clicked()
+            {
+                let target = if subs {
+                    tracedraw_core::TextPosition::Normal
+                } else {
+                    tracedraw_core::TextPosition::Subscript
+                };
+                spans_apply(spans, from, to, |s| s.position = target);
+            }
+            if ui
+                .selectable_label(first.all_caps, "AB")
+                .on_hover_text(tr("docker.all_caps"))
+                .clicked()
+            {
+                let on = !first.all_caps;
+                spans_apply(spans, from, to, |s| s.all_caps = on);
+            }
+            ui.separator();
+            let mut tracking = first.tracking_pct;
+            if ui
+                .add(
+                    egui::DragValue::new(&mut tracking)
+                        .range(-50.0..=200.0)
+                        .speed(0.5)
+                        .max_decimals(1)
+                        .suffix(" %"),
+                )
+                .on_hover_text(tr("docker.tracking"))
+                .changed()
+            {
+                spans_apply(spans, from, to, |s| s.tracking_pct = tracking);
+            }
+            let mut width = first.width_pct;
+            if ui
+                .add(
+                    egui::DragValue::new(&mut width)
+                        .range(1.0..=1000.0)
+                        .speed(1.0)
+                        .max_decimals(1)
+                        .suffix(" %"),
+                )
+                .on_hover_text(tr("docker.char_width"))
+                .changed()
+            {
+                spans_apply(spans, from, to, |s| s.width_pct = width);
+            }
+            let has_bg = first.background.is_some();
+            if ui
+                .selectable_label(has_bg, "ab")
+                .on_hover_text(tr("docker.text_background"))
+                .clicked()
+            {
+                let bg = if has_bg {
+                    None
+                } else {
+                    Some(tracedraw_core::Fill::Solid(tracedraw_core::Color::rgb8(
+                        255, 255, 160,
+                    )))
+                };
+                spans_apply(spans, from, to, |s| s.background = bg.clone());
+            }
+            if has_bg {
+                let mut bg_c = first
+                    .background
+                    .as_ref()
+                    .and_then(|f| f.preview_color())
+                    .unwrap_or(tracedraw_core::Color::WHITE);
+                if crate::ui::color_picker::color_button(ui, &mut bg_c) {
+                    spans_apply(spans, from, to, |s| {
+                        s.background = Some(tracedraw_core::Fill::Solid(bg_c));
+                    });
+                }
             }
         });
     }
