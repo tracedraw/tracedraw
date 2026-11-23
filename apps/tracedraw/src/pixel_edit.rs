@@ -56,10 +56,37 @@ pub enum PixelTool {
     Zoom,
     /// Drags the view of the picture (the image editing mode).
     Pan,
+    /// A selection outline of clicked corners and dragged freehand parts,
+    /// closed with a double click, Enter or a click on its first point.
+    FreehandMask,
+    /// A freehand selection whose outline clings to the strongest edge
+    /// near the pointer.
+    EdgeMask,
+    /// Paints the selection with the brush (Alt or Ctrl takes away).
+    MaskBrush,
+    /// A selection band between two parallel lines, dragged across.
+    BandMask,
+    /// Liquify's push, its own tool.
+    Smear,
+    /// Liquify's twirl (Alt turns the other way).
+    Twirl,
+    /// Liquify's pinch: pixels drawn to the brush's centre.
+    Attract,
+    /// Liquify's bloat: pixels pushed from the brush's centre.
+    Repel,
+    /// Sprays scattered dots, stars, bubbles, leaves or confetti.
+    Sprayer,
+    /// A drag fades the layer from its opacity at the press to its
+    /// opacity at the release.
+    LayerFade,
+    /// A click makes the colour clicked (and those near it) see-through.
+    ColorToClear,
+    /// Paints see-through into the layer, to the level chosen.
+    TransparencyBrush,
 }
 
 impl PixelTool {
-    pub const ALL: [PixelTool; 29] = [
+    pub const ALL: [PixelTool; 41] = [
         PixelTool::RectSelect,
         PixelTool::EllipseSelect,
         PixelTool::Lasso,
@@ -89,6 +116,18 @@ impl PixelTool {
         PixelTool::Remove,
         PixelTool::Zoom,
         PixelTool::Pan,
+        PixelTool::FreehandMask,
+        PixelTool::EdgeMask,
+        PixelTool::MaskBrush,
+        PixelTool::BandMask,
+        PixelTool::Smear,
+        PixelTool::Twirl,
+        PixelTool::Attract,
+        PixelTool::Repel,
+        PixelTool::Sprayer,
+        PixelTool::LayerFade,
+        PixelTool::ColorToClear,
+        PixelTool::TransparencyBrush,
     ];
 
     /// The tool's i18n key (`pixel.tool.<name>`).
@@ -123,7 +162,44 @@ impl PixelTool {
             PixelTool::Remove => "pixel.tool.remove",
             PixelTool::Zoom => "pixel.tool.zoom",
             PixelTool::Pan => "pixel.tool.pan",
+            PixelTool::FreehandMask => "pixel.tool.freehand_mask",
+            PixelTool::EdgeMask => "pixel.tool.edge_mask",
+            PixelTool::MaskBrush => "pixel.tool.mask_brush",
+            PixelTool::BandMask => "pixel.tool.band_mask",
+            PixelTool::Smear => "pixel.tool.smear",
+            PixelTool::Twirl => "pixel.tool.twirl",
+            PixelTool::Attract => "pixel.tool.attract",
+            PixelTool::Repel => "pixel.tool.repel",
+            PixelTool::Sprayer => "pixel.tool.sprayer",
+            PixelTool::LayerFade => "pixel.tool.layer_fade",
+            PixelTool::ColorToClear => "pixel.tool.color_to_clear",
+            PixelTool::TransparencyBrush => "pixel.tool.transparency_brush",
         }
+    }
+
+    /// What a Liquify tool does with the pixels (`Liquify` itself takes
+    /// the mode chosen; Alt turns a twirl the other way).
+    pub fn liquify_mode(
+        self,
+        chosen: crate::pixel_liquify::LiquifyMode,
+        alt: bool,
+    ) -> Option<crate::pixel_liquify::LiquifyMode> {
+        use crate::pixel_liquify::LiquifyMode as M;
+        Some(match self {
+            PixelTool::Liquify => chosen,
+            PixelTool::Smear => M::Push,
+            PixelTool::Twirl if alt => M::TwirlLeft,
+            PixelTool::Twirl => M::TwirlRight,
+            PixelTool::Attract => M::Pinch,
+            PixelTool::Repel => M::Bloat,
+            _ => return None,
+        })
+    }
+
+    /// A tool that moves pixels with the brush (Liquify and its kin).
+    pub fn is_liquify(self) -> bool {
+        self.liquify_mode(crate::pixel_liquify::LiquifyMode::Push, false)
+            .is_some()
     }
 
     /// A tool painted with a round brush along a drag.
@@ -144,6 +220,7 @@ impl PixelTool {
                 | PixelTool::Restore
                 | PixelTool::Tint
                 | PixelTool::ReplaceColor
+                | PixelTool::TransparencyBrush
         )
     }
 
@@ -154,6 +231,10 @@ impl PixelTool {
                 | PixelTool::EllipseSelect
                 | PixelTool::Lasso
                 | PixelTool::MagicWand
+                | PixelTool::FreehandMask
+                | PixelTool::EdgeMask
+                | PixelTool::MaskBrush
+                | PixelTool::BandMask
         )
     }
 }
@@ -164,6 +245,26 @@ pub enum SelectMode {
     Replace,
     Add,
     Subtract,
+    /// Kept where only one of the two is.
+    Xor,
+}
+
+impl SelectMode {
+    pub const ALL: [SelectMode; 4] = [
+        SelectMode::Replace,
+        SelectMode::Add,
+        SelectMode::Subtract,
+        SelectMode::Xor,
+    ];
+
+    pub fn key(self) -> &'static str {
+        match self {
+            SelectMode::Replace => "pixel.sel_mode.normal",
+            SelectMode::Add => "pixel.sel_mode.add",
+            SelectMode::Subtract => "pixel.sel_mode.subtract",
+            SelectMode::Xor => "pixel.sel_mode.xor",
+        }
+    }
 }
 
 /// The settings of the brushes, the fill and the magic wand.
@@ -215,6 +316,25 @@ pub struct BrushOpts {
     pub remove_grow: f32,
     /// What the Liquify brush does.
     pub liquify: crate::pixel_liquify::LiquifyMode,
+    /// How a new selection joins the one there is (Shift adds, Ctrl
+    /// takes away, whatever this is).
+    pub sel_mode: SelectMode,
+    /// The rectangle and ellipse selections: a click makes one of this
+    /// width and height (pixels) when on.
+    pub sel_fixed: bool,
+    pub sel_size: (f32, f32),
+    /// The soft edge of the band selection, pixels.
+    pub band_soft: f32,
+    /// How far the edge mask looks for an edge, pixels.
+    pub magnet_reach: f32,
+    /// The transparency brush: how see-through it paints, 0 to 1.
+    pub transparency: f32,
+    /// Layer fade: the layer's opacity where the drag starts and
+    /// where it ends, 0 to 1.
+    pub fade_from: f32,
+    pub fade_to: f32,
+    /// The sprayer.
+    pub spray: crate::pixel_spray::SprayOpts,
 }
 
 impl Default for BrushOpts {
@@ -245,6 +365,15 @@ impl Default for BrushOpts {
             surface_light: 0.8,
             remove_grow: 4.0,
             liquify: crate::pixel_liquify::LiquifyMode::Push,
+            sel_mode: SelectMode::Replace,
+            sel_fixed: false,
+            sel_size: (100.0, 100.0),
+            band_soft: 20.0,
+            magnet_reach: 6.0,
+            transparency: 0.5,
+            fade_from: 1.0,
+            fade_to: 0.0,
+            spray: crate::pixel_spray::SprayOpts::default(),
         }
     }
 }
@@ -494,6 +623,19 @@ pub fn combine(old: Option<&GrayImage>, new: GrayImage, mode: SelectMode) -> Opt
             let mut m = o.clone();
             for (a, b) in m.pixels_mut().zip(new.pixels()) {
                 a[0] = ((a[0] as u16 * (255 - b[0]) as u16) / 255) as u8;
+            }
+            Some(m)
+        }
+        // With nothing selected, "everything" stands for the old one.
+        (SelectMode::Xor, None) => {
+            let mut m = new;
+            m.pixels_mut().for_each(|v| v[0] = 255 - v[0]);
+            Some(m)
+        }
+        (SelectMode::Xor, Some(o)) => {
+            let mut m = o.clone();
+            for (a, b) in m.pixels_mut().zip(new.pixels()) {
+                a[0] = (a[0] as i16 - b[0] as i16).unsigned_abs() as u8;
             }
             Some(m)
         }
@@ -1659,6 +1801,15 @@ impl Stroke {
                 base[2],
                 (base[3] as f32 * (1.0 - t)).round() as u8,
             ]),
+            PixelTool::TransparencyBrush => {
+                let k = self.opts.transparency.clamp(0.0, 1.0);
+                Rgba([
+                    base[0],
+                    base[1],
+                    base[2],
+                    (base[3] as f32 * (1.0 - k * t)).round() as u8,
+                ])
+            }
             PixelTool::Clone => match self.source(x, y) {
                 Some(src) => match &self.surface {
                     Some(s) => mix(

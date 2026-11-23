@@ -1046,7 +1046,8 @@ pub(crate) fn tab_icon(tab: DockerTab) -> Option<TabIcon> {
         | DockerTab::PixelDistort
         | DockerTab::PixelEffects
         | DockerTab::PixelImage
-        | DockerTab::PixelHistogram => crate::ui::pixel_mode::docker_icon(tab),
+        | DockerTab::PixelHistogram
+        | DockerTab::PixelHints => crate::ui::pixel_mode::docker_icon(tab),
     }
 }
 

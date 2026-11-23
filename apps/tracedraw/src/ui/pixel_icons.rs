@@ -17,7 +17,9 @@ pub fn draw(painter: &Painter, r: Rect, tool: PixelTool, color: Color32) {
         PixelTool::Eyedropper => Some(Tool::ColorEyedropper),
         PixelTool::Zoom => Some(Tool::Zoom),
         PixelTool::Pan => Some(Tool::Pan),
-        PixelTool::Liquify => Some(Tool::Twirl),
+        PixelTool::Liquify | PixelTool::Twirl => Some(Tool::Twirl),
+        PixelTool::Smear => Some(Tool::Smear),
+        PixelTool::LayerFade => Some(Tool::Transparency),
         _ => None,
     };
     if let Some(t) = drawing {
@@ -190,12 +192,84 @@ pub fn draw(painter: &Painter, r: Rect, tool: PixelTool, color: Color32) {
             pen.ghost("M3 14a4 4 0 1 0 8 0a4 4 0 1 0-8 0", acc);
             brush(&pen);
         }
+        PixelTool::FreehandMask => {
+            pen.ghost("M4 18L6 5l8 3 6-3-2 14z", ink);
+            pen.node(4.0, 18.0, false);
+            pen.node(6.0, 5.0, false);
+            pen.node(14.0, 8.0, false);
+            pen.node(18.0, 19.0, true);
+        }
+        PixelTool::EdgeMask => {
+            pen.ghost("M5 15c-3-4 0-11 7-11s9 5 6 8", ink);
+            // A magnet: a U in the accent with its ends.
+            pen.stroke("M11 13v4a4 4 0 0 0 8 0v-4", 2.4, acc);
+            pen.line("M10 13h2.5M17.5 13h2.5", ink);
+        }
+        PixelTool::MaskBrush => {
+            pen.ghost("M2.5 2.5h11v11h-11z", ink);
+            brush(&pen);
+        }
+        PixelTool::BandMask => {
+            pen.dashed("M3 15L15 3", LINE, ink, 2.4, 2.2);
+            pen.dashed("M9 21L21 9", LINE, ink, 2.4, 2.2);
+            pen.line("M8 8l8 8", acc);
+            pen.arrow_head(8.0, 8.0, -1.0, -1.0, 2.6, acc);
+            pen.arrow_head(16.0, 16.0, 1.0, 1.0, 2.6, acc);
+        }
+        PixelTool::Attract | PixelTool::Repel => {
+            pen.dashed("M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18z", LINE, ink, 2.4, 2.2);
+            pen.circle(12.0, 12.0, 1.6, acc, 0.0, clear);
+            let inward = tool == PixelTool::Attract;
+            for (dx, dy) in [(0.0_f32, -1.0_f32), (1.0, 0.0), (0.0, 1.0), (-1.0, 0.0)] {
+                let (a, b) = (4.0, 8.0);
+                let d = format!(
+                    "M{:.1} {:.1}L{:.1} {:.1}",
+                    12.0 + dx * a,
+                    12.0 + dy * a,
+                    12.0 + dx * b,
+                    12.0 + dy * b
+                );
+                pen.line(&d, acc);
+                if inward {
+                    pen.arrow_head(12.0 + dx * a, 12.0 + dy * a, -dx, -dy, 2.4, acc);
+                } else {
+                    pen.arrow_head(12.0 + dx * b, 12.0 + dy * b, dx, dy, 2.4, acc);
+                }
+            }
+        }
+        PixelTool::Sprayer => {
+            // A can and its spray.
+            pen.body(&rrect(4.0, 9.0, 8.0, 12.0, 1.5));
+            pen.rect(6.0, 6.0, 4.0, 3.0, 0.5, clear, LINE, ink);
+            for (x, y, r) in [(15.0, 5.0, 1.2), (18.5, 7.5, 1.0), (16.0, 10.0, 1.3), (20.0, 12.0, 1.0), (17.5, 14.0, 1.1), (20.5, 4.0, 0.9)] {
+                pen.circle(x, y, r, acc, 0.0, clear);
+            }
+        }
+        PixelTool::ColorToClear | PixelTool::TransparencyBrush => {
+            // A see-through checkerboard.
+            for (k, (x, y)) in [(3.0, 3.0), (9.0, 9.0), (9.0, 3.0), (3.0, 9.0)].iter().enumerate() {
+                let fill = if k < 2 { Pen::alpha(ink, 0.55) } else { clear };
+                pen.rect(*x, *y, 6.0, 6.0, 0.0, fill, 0.0, clear);
+            }
+            pen.rect(3.0, 3.0, 12.0, 12.0, 0.5, clear, THIN, ink);
+            if tool == PixelTool::TransparencyBrush {
+                brush(&pen);
+            } else {
+                // A dropper on the colour.
+                pen.stroke("M21 7l-8 8", 2.4, ink);
+                pen.circle(13.0, 15.0, 1.8, acc, 0.0, clear);
+                pen.line("M13 15l-4 6", acc);
+            }
+        }
         PixelTool::Eraser
         | PixelTool::Smudge
         | PixelTool::Eyedropper
         | PixelTool::Zoom
         | PixelTool::Pan
-        | PixelTool::Liquify => {}
+        | PixelTool::Liquify
+        | PixelTool::Twirl
+        | PixelTool::Smear
+        | PixelTool::LayerFade => {}
     }
 }
 

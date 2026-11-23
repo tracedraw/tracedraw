@@ -2679,11 +2679,13 @@ pub enum DockerTab {
     PixelEffects,
     PixelImage,
     PixelHistogram,
+    PixelHints,
 }
 
 impl DockerTab {
     /// The image editing mode's panels, in Window > Panels order there.
-    pub const PIXEL: [DockerTab; 7] = [
+    pub const PIXEL: [DockerTab; 8] = [
+        DockerTab::PixelHints,
         DockerTab::PixelLayers,
         DockerTab::PixelEffects,
         DockerTab::PixelSelection,
@@ -2870,6 +2872,7 @@ impl DockerTab {
             DockerTab::PixelEffects => "pixel.section.effects",
             DockerTab::PixelImage => "pixel.section.picture",
             DockerTab::PixelHistogram => "pixel.section.histogram",
+            DockerTab::PixelHints => "pixel.section.hints",
         }
     }
 

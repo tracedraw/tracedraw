@@ -54,23 +54,62 @@ pub(crate) fn tool_options(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app::Pi
         super::pixel_lights::options(ui, pe);
         return;
     }
+    if t == PixelTool::Move {
+        placement_options(ui, pe);
+        return;
+    }
+    if t.is_selection() {
+        selection_options(ui, pe);
+    }
     let o = &mut pe.opts;
-    if t == PixelTool::Liquify {
-        egui::ComboBox::from_id_salt("pixel_liquify_mode")
-            .selected_text(tr(o.liquify.key()))
-            .show_ui(ui, |ui| {
-                for m in crate::pixel_liquify::LiquifyMode::ALL {
-                    ui.selectable_value(&mut o.liquify, m, tr(m.key()));
-                }
-            });
+    if t.is_liquify() || matches!(t, PixelTool::MaskBrush | PixelTool::Sprayer) {
+        if t == PixelTool::Liquify {
+            egui::ComboBox::from_id_salt("pixel_liquify_mode")
+                .selected_text(tr(o.liquify.key()))
+                .show_ui(ui, |ui| {
+                    for m in crate::pixel_liquify::LiquifyMode::ALL {
+                        ui.selectable_value(&mut o.liquify, m, tr(m.key()));
+                    }
+                });
+        }
         ui.add(
             egui::Slider::new(&mut o.size, 1.0..=1000.0)
                 .logarithmic(true)
                 .suffix(" px")
                 .text(tr("pixel.opt.size")),
         );
-        percent(ui, "pixel.opt.hardness", &mut o.hardness);
-        percent(ui, "pixel.opt.strength", &mut o.flow);
+        if t != PixelTool::Sprayer {
+            percent(ui, "pixel.opt.hardness", &mut o.hardness);
+        }
+        if t.is_liquify() {
+            percent(ui, "pixel.opt.strength", &mut o.flow);
+        }
+    }
+    if t == PixelTool::Sprayer {
+        spray_options(ui, o);
+    }
+    if t == PixelTool::TransparencyBrush {
+        percent(ui, "pixel.opt.transparency", &mut o.transparency);
+    }
+    if t == PixelTool::LayerFade {
+        percent(ui, "pixel.opt.fade_from", &mut o.fade_from);
+        percent(ui, "pixel.opt.fade_to", &mut o.fade_to);
+        let mut radial = o.gradient != crate::pixel_paint::GradientKind::Linear;
+        if ui
+            .checkbox(&mut radial, tr("pixel.opt.radial"))
+            .changed()
+        {
+            o.gradient = if radial {
+                crate::pixel_paint::GradientKind::Radial
+            } else {
+                crate::pixel_paint::GradientKind::Linear
+            };
+        }
+    }
+    if t == PixelTool::ColorToClear {
+        ui.add(egui::Slider::new(&mut o.tolerance, 0..=255).text(tr("pixel.opt.tolerance")));
+        ui.checkbox(&mut o.contiguous, tr("pixel.opt.contiguous"));
+        percent(ui, "pixel.opt.strength", &mut o.opacity);
     }
     if t == PixelTool::Remove {
         ui.add(
@@ -174,6 +213,7 @@ pub(crate) fn tool_options(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app::Pi
             | PixelTool::Tint
             | PixelTool::ReplaceColor
             | PixelTool::Shape
+            | PixelTool::Sprayer
     ) {
         let mut c = Color32::from_rgba_unmultiplied(o.color[0], o.color[1], o.color[2], o.color[3]);
         ui.label(tr("pixel.opt.color"));
@@ -188,7 +228,10 @@ pub(crate) fn tool_options(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app::Pi
             o.color = [r, g, b, a];
         }
     }
-    if matches!(t, PixelTool::Fill | PixelTool::Gradient | PixelTool::Shape) {
+    if matches!(
+        t,
+        PixelTool::Fill | PixelTool::Gradient | PixelTool::Shape | PixelTool::Sprayer
+    ) {
         percent(ui, "pixel.opt.opacity", &mut o.opacity);
     }
     if matches!(t, PixelTool::MagicWand | PixelTool::Fill) {
@@ -223,6 +266,241 @@ pub(crate) fn tool_options(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app::Pi
             .color(Tokens::text_dim())
             .small(),
     );
+}
+
+/// The selection tools' settings: how a new selection joins the one
+/// there is (four buttons), a fixed size for the rectangle and the
+/// ellipse, the band's soft edge, the edge mask's reach
+/// and the selection's box.
+fn selection_options(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app::PixelEdit) {
+    use crate::pixel_edit::SelectMode;
+    let o = &mut pe.opts;
+    for m in SelectMode::ALL {
+        let on = o.sel_mode == m;
+        let (r, resp) = ui.allocate_exact_size(
+            egui::Vec2::splat(Tokens::prop_button()),
+            egui::Sense::click(),
+        );
+        crate::theme::paint_icon_button(ui.painter(), r, resp.hovered(), on);
+        mode_icon(ui.painter(), r.shrink(4.0), m);
+        let resp = resp.rich_tip(format!(
+            "{}\n{}",
+            tr(m.key()),
+            tr(&format!("{}_tip", m.key()))
+        ));
+        if resp.clicked() {
+            o.sel_mode = m;
+        }
+    }
+    ui.separator();
+    let t = pe.tool;
+    if matches!(t, PixelTool::RectSelect | PixelTool::EllipseSelect) {
+        ui.checkbox(&mut o.sel_fixed, tr("pixel.opt.fixed_size"))
+            .rich_tip(tr("pixel.opt.fixed_size_tip"));
+        if o.sel_fixed {
+            ui.label(tr("pixel.opt.w"));
+            ui.add(egui::DragValue::new(&mut o.sel_size.0).range(1.0..=20000.0).suffix(" px"));
+            ui.label(tr("pixel.opt.h"));
+            ui.add(egui::DragValue::new(&mut o.sel_size.1).range(1.0..=20000.0).suffix(" px"));
+        }
+    }
+    if t == PixelTool::BandMask {
+        ui.add(
+            egui::Slider::new(&mut o.band_soft, 0.0..=400.0)
+                .logarithmic(true)
+                .suffix(" px")
+                .text(tr("pixel.opt.soft_edge")),
+        );
+    }
+    if t == PixelTool::EdgeMask {
+        ui.add(
+            egui::Slider::new(&mut o.magnet_reach, 1.0..=40.0)
+                .suffix(" px")
+                .text(tr("pixel.opt.reach")),
+        )
+        .rich_tip(tr("pixel.opt.reach_tip"));
+    }
+    if let Some(b) = pe.pi.sel_bounds() {
+        ui.label(
+            RichText::new(format!(
+                "X {} Y {}  {} × {} px",
+                b[0],
+                b[1],
+                b[2] - b[0],
+                b[3] - b[1]
+            ))
+            .color(Tokens::text_dim()),
+        );
+        ui.separator();
+    }
+}
+
+/// The picture on a selection mode's button: two squares joined as the
+/// mode joins them.
+fn mode_icon(p: &egui::Painter, r: egui::Rect, m: crate::pixel_edit::SelectMode) {
+    use crate::pixel_edit::SelectMode;
+    let s = r.width() * 0.62;
+    let a = egui::Rect::from_min_size(r.min, egui::Vec2::splat(s));
+    let b = egui::Rect::from_min_size(r.max - egui::Vec2::splat(s), egui::Vec2::splat(s));
+    let ink = Tokens::icon();
+    let fill = crate::ui::icons::accent();
+    let line = Stroke::new(1.0, ink);
+    let bg = Tokens::panel();
+    let both = a.intersect(b);
+    match m {
+        SelectMode::Replace => {
+            p.rect_filled(
+                egui::Rect::from_center_size(r.center(), egui::Vec2::splat(s + 2.0)),
+                0.0,
+                fill,
+            );
+        }
+        SelectMode::Add => {
+            p.rect_filled(a, 0.0, fill);
+            p.rect_filled(b, 0.0, fill);
+        }
+        SelectMode::Subtract => {
+            p.rect_filled(a, 0.0, fill);
+            p.rect_filled(b, 0.0, bg);
+        }
+        SelectMode::Xor => {
+            p.rect_filled(a, 0.0, fill);
+            p.rect_filled(b, 0.0, fill);
+            p.rect_filled(both, 0.0, bg);
+        }
+    }
+    if m != SelectMode::Replace {
+        p.rect_stroke(a, 0.0, line, egui::StrokeKind::Inside);
+        p.rect_stroke(b, 0.0, line, egui::StrokeKind::Inside);
+    } else {
+        let c = egui::Rect::from_center_size(r.center(), egui::Vec2::splat(s + 2.0));
+        p.rect_stroke(c, 0.0, line, egui::StrokeKind::Inside);
+    }
+}
+
+/// The Pick tool's numbers: where the pixels go (X, Y), their width and
+/// height (or scale), their turn and flips, put in the layer with Apply.
+fn placement_options(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app::PixelEdit) {
+    let b = crate::pixel_ops::pick_box(&pe.pi);
+    let (bw, bh) = ((b[2] - b[0]) as f32, (b[3] - b[1]) as f32);
+    let p = &mut pe.placement;
+    let mut x = b[0] as f32 + p.dx + bw * (1.0 - p.sx) / 2.0;
+    let mut y = b[1] as f32 + p.dy + bh * (1.0 - p.sy) / 2.0;
+    ui.label("X");
+    if ui.add(egui::DragValue::new(&mut x).suffix(" px").speed(1.0)).changed() {
+        p.dx = x - b[0] as f32 - bw * (1.0 - p.sx) / 2.0;
+    }
+    ui.label("Y");
+    if ui.add(egui::DragValue::new(&mut y).suffix(" px").speed(1.0)).changed() {
+        p.dy = y - b[1] as f32 - bh * (1.0 - p.sy) / 2.0;
+    }
+    ui.separator();
+    let mut w = bw * p.sx;
+    let mut h = bh * p.sy;
+    let lock_id = egui::Id::new("pixel_place_lock");
+    let mut lock = ui.ctx().data(|d| d.get_temp::<bool>(lock_id)).unwrap_or(true);
+    ui.label(tr("pixel.opt.w"));
+    if ui.add(egui::DragValue::new(&mut w).range(1.0..=40000.0).suffix(" px")).changed() {
+        p.sx = w / bw.max(1.0);
+        if lock {
+            p.sy = p.sx;
+        }
+    }
+    ui.label(tr("pixel.opt.h"));
+    if ui.add(egui::DragValue::new(&mut h).range(1.0..=40000.0).suffix(" px")).changed() {
+        p.sy = h / bh.max(1.0);
+        if lock {
+            p.sx = p.sy;
+        }
+    }
+    let mut pw = p.sx * 100.0;
+    let mut ph = p.sy * 100.0;
+    if ui.add(egui::DragValue::new(&mut pw).range(1.0..=4000.0).suffix(" %")).changed() {
+        p.sx = pw / 100.0;
+        if lock {
+            p.sy = p.sx;
+        }
+    }
+    if ui.add(egui::DragValue::new(&mut ph).range(1.0..=4000.0).suffix(" %")).changed() {
+        p.sy = ph / 100.0;
+        if lock {
+            p.sx = p.sy;
+        }
+    }
+    if ui
+        .checkbox(&mut lock, tr("pixel.opt.keep_ratio"))
+        .changed()
+    {
+        ui.ctx().data_mut(|d| d.insert_temp(lock_id, lock));
+    }
+    ui.separator();
+    ui.label(tr("pixel.opt.rotate"));
+    ui.add(
+        egui::DragValue::new(&mut p.angle)
+            .range(-360.0..=360.0)
+            .suffix("\u{b0}")
+            .speed(0.5),
+    );
+    for (on, pic, key) in [
+        (&mut p.flip_h, "flip_h", "pixel.flip_h"),
+        (&mut p.flip_v, "flip_v", "pixel.flip_v"),
+    ] {
+        let (r, resp) = ui.allocate_exact_size(
+            egui::Vec2::splat(Tokens::prop_button()),
+            egui::Sense::click(),
+        );
+        crate::theme::paint_icon_button(ui.painter(), r, resp.hovered(), *on);
+        crate::ui::pixel_menu_icons::image(ui.painter(), r.shrink(4.0), pic, Tokens::icon());
+        if resp.rich_tip(tr(key)).clicked() {
+            *on = !*on;
+        }
+    }
+    ui.separator();
+    let ready = !p.is_identity();
+    let place = *p;
+    if ui
+        .add_enabled(ready, egui::Button::new(tr("pixel.apply")))
+        .rich_tip(tr("pixel.opt.place_tip"))
+        .clicked()
+    {
+        pe.apply(true, |pi| crate::pixel_ops::place(pi, &place));
+        pe.placement = Default::default();
+    }
+    if ui
+        .add_enabled(ready, egui::Button::new(tr("pixel.opt.reset")))
+        .clicked()
+    {
+        pe.placement = Default::default();
+    }
+    ui.label(
+        RichText::new(tr("pixel.tool.move_hint"))
+            .color(Tokens::text_dim())
+            .small(),
+    );
+}
+
+/// The sprayer's settings: what it scatters, how big, how many, how
+/// much the sizes and colours differ and whether each is turned.
+fn spray_options(ui: &mut egui::Ui, o: &mut pixel_edit::BrushOpts) {
+    use crate::pixel_spray::SprayShape;
+    let s = &mut o.spray;
+    egui::ComboBox::from_id_salt("pixel_spray_shape")
+        .selected_text(tr(s.shape.key()))
+        .show_ui(ui, |ui| {
+            for k in SprayShape::ALL {
+                ui.selectable_value(&mut s.shape, k, tr(k.key()));
+            }
+        });
+    ui.add(
+        egui::Slider::new(&mut s.item, 1.0..=200.0)
+            .logarithmic(true)
+            .suffix(" px")
+            .text(tr("pixel.opt.item_size")),
+    );
+    ui.add(egui::Slider::new(&mut s.count, 1..=40).text(tr("pixel.opt.count")));
+    percent(ui, "pixel.opt.size_jitter", &mut s.size_jitter);
+    percent(ui, "pixel.opt.color_jitter", &mut s.hue_jitter);
+    ui.checkbox(&mut s.rotate, tr("pixel.opt.turn_each"));
 }
 
 /// The Shape tool's settings: the shape, fill, outline, its colour and
@@ -1022,6 +1300,8 @@ pub(crate) fn picture_section(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app:
             .small()
             .color(Tokens::text_dim()),
     );
+    canvas_size_rows(ui, pe);
+    ui.separator();
     // Smart Resize: the least noticed seams taken away or added.
     ui.label(tr("pixel.smart_resize"))
         .rich_tip(tr("pixel.smart_resize_tip"));
@@ -1051,4 +1331,59 @@ pub(crate) fn picture_section(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app:
             pe.smart_size = (100.0, 100.0);
         }
     });
+}
+
+/// Canvas Size: a new width and height in pixels and where the picture
+/// sits in it (nine anchors), for Apply; the new room is clear.
+fn canvas_size_rows(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app::PixelEdit) {
+    let (w, h) = pe.pi.img.dimensions();
+    let id = egui::Id::new(("pixel_canvas_size", w, h));
+    let (mut nw, mut nh, mut anchor): (u32, u32, usize) = ui
+        .ctx()
+        .data(|d| d.get_temp(id))
+        .unwrap_or((w, h, 4));
+    ui.label(RichText::new(tr("pixel.canvas_size")).strong())
+        .rich_tip(tr("pixel.canvas_size_tip"));
+    ui.horizontal(|ui| {
+        ui.label(tr("pixel.opt.w"));
+        ui.add(egui::DragValue::new(&mut nw).range(1..=30000).suffix(" px"));
+        ui.label(tr("pixel.opt.h"));
+        ui.add(egui::DragValue::new(&mut nh).range(1..=30000).suffix(" px"));
+    });
+    ui.horizontal(|ui| {
+        ui.label(tr("pixel.opt.anchor"));
+        egui::Grid::new("pixel_canvas_anchor")
+            .spacing(egui::vec2(1.0, 1.0))
+            .show(ui, |ui| {
+                for k in 0..9 {
+                    let on = anchor == k;
+                    let (r, resp) =
+                        ui.allocate_exact_size(egui::Vec2::splat(14.0), egui::Sense::click());
+                    crate::theme::paint_icon_button(ui.painter(), r, resp.hovered(), on);
+                    ui.painter().rect_filled(
+                        r.shrink(if on { 3.0 } else { 5.0 }),
+                        0.0,
+                        if on { Tokens::icon() } else { Tokens::text_dim() },
+                    );
+                    if resp.clicked() {
+                        anchor = k;
+                    }
+                    if k % 3 == 2 {
+                        ui.end_row();
+                    }
+                }
+            });
+    });
+    if ui
+        .add_enabled((nw, nh) != (w, h), egui::Button::new(tr("pixel.apply")))
+        .clicked()
+    {
+        let a = ((anchor % 3) as f32 / 2.0, (anchor / 3) as f32 / 2.0);
+        pe.apply_all(true, |pi| crate::pixel_ops::canvas_size(pi, nw, nh, a));
+        let area = pe.ws_area;
+        pe.ws.fit(area, nw, nh, false);
+        ui.ctx().data_mut(|d| d.remove::<(u32, u32, usize)>(id));
+    } else {
+        ui.ctx().data_mut(|d| d.insert_temp(id, (nw, nh, anchor)));
+    }
 }

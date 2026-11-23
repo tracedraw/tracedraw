@@ -20,36 +20,141 @@ use crate::ui::tips::RichTip;
 use egui::{Color32, Rect, Sense, Stroke, Ui, Vec2};
 
 /// The toolbox buttons: each a group of tools, the first shown until
-/// another is picked from its flyout.
-pub const GROUPS: [&[PixelTool]; 14] = [
+/// another is picked from its flyout. Pick first, then the selections,
+/// the view, the retouching, the distortions, the paint, the
+/// transparency and the colours.
+pub const GROUPS: [&[PixelTool]; 13] = [
+    &[PixelTool::Move],
     &[
         PixelTool::RectSelect,
         PixelTool::EllipseSelect,
+        PixelTool::FreehandMask,
         PixelTool::Lasso,
+        PixelTool::EdgeMask,
         PixelTool::MagicWand,
+        PixelTool::MaskBrush,
+        PixelTool::BandMask,
     ],
-    &[PixelTool::Move],
+    &[PixelTool::Zoom, PixelTool::Pan],
+    &[
+        PixelTool::Clone,
+        PixelTool::Heal,
+        PixelTool::Remove,
+        PixelTool::RedEye,
+    ],
+    &[
+        PixelTool::Dodge,
+        PixelTool::Burn,
+        PixelTool::Sponge,
+        PixelTool::Blur,
+        PixelTool::Sharpen,
+        PixelTool::Smudge,
+        PixelTool::Tint,
+    ],
+    &[
+        PixelTool::Smear,
+        PixelTool::Twirl,
+        PixelTool::Attract,
+        PixelTool::Repel,
+        PixelTool::Liquify,
+        PixelTool::Warp,
+    ],
     &[
         PixelTool::Brush,
+        PixelTool::Sprayer,
         PixelTool::Restore,
-        PixelTool::Tint,
         PixelTool::ReplaceColor,
     ],
     &[PixelTool::Eraser],
-    &[PixelTool::Clone, PixelTool::Heal, PixelTool::Remove],
-    &[PixelTool::Dodge, PixelTool::Burn, PixelTool::Sponge],
-    &[PixelTool::Blur, PixelTool::Sharpen, PixelTool::Smudge],
-    &[PixelTool::RedEye],
-    &[PixelTool::Fill, PixelTool::Gradient],
     &[PixelTool::Shape],
-    &[PixelTool::Warp, PixelTool::Liquify],
+    &[
+        PixelTool::LayerFade,
+        PixelTool::ColorToClear,
+        PixelTool::TransparencyBrush,
+    ],
     &[PixelTool::Light],
     &[PixelTool::Eyedropper],
-    &[PixelTool::Zoom, PixelTool::Pan],
+    &[PixelTool::Fill, PixelTool::Gradient],
 ];
 
 /// A line after these groups.
-const BREAKS: [usize; 3] = [1, 7, 12];
+const BREAKS: [usize; 4] = [1, 2, 5, 8];
+
+/// Each tool's key (with Shift when the flag is on), shown in its
+/// flyout and its tip.
+pub const SHORTCUTS: [(PixelTool, egui::Key, bool); 41] = {
+    use egui::Key as K;
+    use PixelTool as T;
+    [
+        (T::Move, K::V, false),
+        (T::RectSelect, K::R, false),
+        (T::EllipseSelect, K::J, false),
+        (T::FreehandMask, K::K, false),
+        (T::Lasso, K::A, false),
+        (T::EdgeMask, K::Num4, false),
+        (T::MagicWand, K::W, false),
+        (T::MaskBrush, K::B, false),
+        (T::BandMask, K::Num8, false),
+        (T::Zoom, K::Z, false),
+        (T::Pan, K::H, false),
+        (T::Clone, K::C, false),
+        (T::Heal, K::C, true),
+        (T::Remove, K::X, true),
+        (T::RedEye, K::Y, false),
+        (T::Dodge, K::O, false),
+        (T::Burn, K::O, true),
+        (T::Sponge, K::P, true),
+        (T::Blur, K::B, true),
+        (T::Sharpen, K::H, true),
+        (T::Smudge, K::U, true),
+        (T::Tint, K::T, true),
+        (T::Smear, K::S, true),
+        (T::Twirl, K::W, true),
+        (T::Attract, K::A, true),
+        (T::Repel, K::R, true),
+        (T::Liquify, K::L, true),
+        (T::Warp, K::D, false),
+        (T::Brush, K::P, false),
+        (T::Sprayer, K::I, false),
+        (T::Restore, K::U, false),
+        (T::ReplaceColor, K::Q, false),
+        (T::Eraser, K::X, false),
+        (T::Shape, K::F6, false),
+        (T::LayerFade, K::Num1, false),
+        (T::ColorToClear, K::Num2, false),
+        (T::TransparencyBrush, K::Num3, false),
+        (T::Light, K::L, false),
+        (T::Eyedropper, K::E, false),
+        (T::Fill, K::F, false),
+        (T::Gradient, K::G, false),
+    ]
+};
+
+/// A tool's key as shown ("Shift+S"), empty when it has none.
+pub fn shortcut(t: PixelTool) -> String {
+    SHORTCUTS
+        .iter()
+        .find(|s| s.0 == t)
+        .map(|(_, k, shift)| {
+            let name = k.symbol_or_name();
+            if *shift {
+                format!("Shift+{name}")
+            } else {
+                name.to_string()
+            }
+        })
+        .unwrap_or_default()
+}
+
+/// A tool's name and its key, for tips.
+pub fn named(t: PixelTool) -> String {
+    let k = shortcut(t);
+    if k.is_empty() {
+        tr(t.key())
+    } else {
+        format!("{} ({k})", tr(t.key()))
+    }
+}
 
 /// The bars the image editing mode shows; the others wait for the
 /// drawing.
@@ -74,11 +179,21 @@ pub fn default_dockers() -> crate::settings::DockerSetup {
 /// image panels shown as they were left.
 pub fn enter(app: &mut App) {
     let main = (app.docker_setup(), app.show_dockers);
-    let setup = app
+    let mut setup = app
         .settings
         .pixel_dockers
         .clone()
         .unwrap_or_else(default_dockers);
+    // The Hints panel came after the panels were first left: it joins
+    // them once.
+    if !app.settings.pixel_hints_added {
+        let key = DockerTab::PixelHints.key().to_string();
+        let lists = [&setup.open, &setup.left, &setup.inner, &setup.left_inner];
+        if !lists.iter().any(|l| l.contains(&key)) {
+            setup.open.insert(0, key);
+        }
+        app.settings.pixel_hints_added = true;
+    }
     app.set_docker_setup(&setup);
     app.show_dockers = !app.open_dockers.is_empty();
     if let Some(pe) = app.pixel_edit.as_mut() {
@@ -168,19 +283,8 @@ pub fn menu_bar(app: &mut App, ui: &mut Ui) {
                 cmd(app, ui, PixelCmd::ZoomFit);
                 cmd(app, ui, PixelCmd::Zoom100);
             });
-            menu(ui, "menu.bitmaps", &mut |ui| {
-                cmd(app, ui, PixelCmd::Crop);
-                cmd(app, ui, PixelCmd::FlipH);
-                cmd(app, ui, PixelCmd::FlipV);
-                cmd(app, ui, PixelCmd::RedEye);
-                sep(ui);
-                if item(ui, "pixel.smart_resize", "", true) {
-                    app.open_docker(DockerTab::PixelImage);
-                }
-            });
-            menu(ui, "menu.effects.adjust", &mut |ui| {
-                effect_items(app, ui, crate::fx::adjust::EFFECTS);
-            });
+            menu(ui, "pixel.menu.image", &mut |ui| image_menu(app, ui));
+            menu(ui, "menu.effects.adjust", &mut |ui| adjust_menu(app, ui));
             menu(ui, "menu.effects", &mut |ui| {
                 for (group, list) in crate::fx::groups() {
                     if group == "menu.effects.adjust" {
@@ -233,11 +337,28 @@ pub fn menu_bar(app: &mut App, ui: &mut Ui) {
     });
 }
 
-/// A command as a menu item (ticked when it is a toggle).
+/// A command as a menu item (ticked when it is a toggle), with its
+/// picture.
 fn cmd(app: &mut App, ui: &mut Ui, c: PixelCmd) {
-    let hit = match c.checked(app) {
-        Some(on) => check(ui, c.key(), c.shortcut(), on),
-        None => item(ui, c.key(), c.shortcut(), c.enabled(app)),
+    let hit = match (c.checked(app), c.picture(), c.action()) {
+        (Some(on), _, _) => check(ui, c.key(), c.shortcut(), on),
+        (None, Some(pic), _) => crate::ui::menus::item_drawn(
+            ui,
+            &tr(c.key()),
+            c.shortcut(),
+            c.enabled(app),
+            c.key(),
+            &|p, r, ink| crate::ui::pixel_menu_icons::image(p, r, pic, ink),
+        ),
+        (None, None, Some(a)) => crate::ui::menus::item_text(
+            ui,
+            &tr(c.key()),
+            c.shortcut(),
+            c.enabled(app),
+            Some(a),
+            c.key(),
+        ),
+        (None, None, None) => item(ui, c.key(), c.shortcut(), c.enabled(app)),
     };
     if hit {
         c.run(app);
@@ -256,6 +377,108 @@ fn effect_items(app: &mut App, ui: &mut Ui, list: &[crate::fx::EffectSpec]) {
             app.open_docker(DockerTab::PixelEffects);
         }
     }
+}
+
+/// The adjustments with keys of their own: the key, with Shift, and the
+/// effect.
+pub const ADJUST_KEYS: [(egui::Key, bool, &str); 4] = [
+    (egui::Key::T, false, "tone_curve"),
+    (egui::Key::B, false, "brightness_contrast_intensity"),
+    (egui::Key::U, true, "hue_saturation_lightness"),
+    (egui::Key::B, true, "color_balance"),
+];
+
+fn adjust_shortcut(id: &str) -> String {
+    ADJUST_KEYS
+        .iter()
+        .find(|k| k.2 == id)
+        .map(|(k, shift, _)| {
+            let s = if *shift { "Shift+" } else { "" };
+            format!("Ctrl+{s}{}", k.symbol_or_name())
+        })
+        .unwrap_or_default()
+}
+
+/// The Adjust menu's rows, in groups with a line between them; the
+/// adjustments not named here follow at the end.
+const ADJUST_ORDER: [&[&str]; 6] = [
+    &["auto_adjust", "image_adjustments"],
+    &["contrast_enhancement", "local_equalization"],
+    &["target_balance", "tone_curve"],
+    &["brightness_contrast_intensity", "gamma"],
+    &["hue_saturation_lightness", "desaturate", "selective_color", "replace_colors"],
+    &["channel_mixer", "color_balance"],
+];
+
+/// Show the effect `id` in the Effects panel with its settings and a
+/// preview, for Apply.
+pub fn open_effect(app: &mut App, id: &str) {
+    if let Some(pe) = app.pixel_edit.as_mut() {
+        pe.effect = Some(crate::fx::new_effect(id));
+        pe.refresh_preview();
+    }
+    app.open_docker(DockerTab::PixelEffects);
+}
+
+/// Adjust: the colour and tone corrections with their pictures and keys,
+/// then greys and black and white.
+fn adjust_menu(app: &mut App, ui: &mut Ui) {
+    let list = crate::fx::adjust::EFFECTS;
+    let row = |app: &mut App, ui: &mut Ui, id: &str| {
+        let key = format!("fx.{id}");
+        if crate::ui::menus::item_drawn(
+            ui,
+            &format!("{}...", tr(&key)),
+            &adjust_shortcut(id),
+            true,
+            &key,
+            &|p, r, ink| crate::ui::pixel_menu_icons::adjust(p, r, id, ink),
+        ) {
+            open_effect(app, id);
+        }
+    };
+    for group in ADJUST_ORDER {
+        for id in group {
+            if list.iter().any(|e| e.id == *id) {
+                row(app, ui, id);
+            }
+        }
+        if group.contains(&"desaturate") {
+            cmd(app, ui, PixelCmd::Grayscale);
+        }
+        sep(ui);
+    }
+    for e in list {
+        if !ADJUST_ORDER.iter().any(|g| g.contains(&e.id)) {
+            row(app, ui, e.id);
+        }
+    }
+}
+
+/// Image: crop, the conversions, mirror and turn, the sizes and the
+/// histogram.
+fn image_menu(app: &mut App, ui: &mut Ui) {
+    cmd(app, ui, PixelCmd::Crop);
+    cmd(app, ui, PixelCmd::AutoCrop);
+    sep(ui);
+    cmd(app, ui, PixelCmd::Grayscale);
+    cmd(app, ui, PixelCmd::BlackWhite);
+    sep(ui);
+    sub(ui, "pixel.menu.mirror", |ui| {
+        cmd(app, ui, PixelCmd::FlipH);
+        cmd(app, ui, PixelCmd::FlipV);
+    });
+    sub(ui, "pixel.menu.rotate", |ui| {
+        cmd(app, ui, PixelCmd::TurnRight);
+        cmd(app, ui, PixelCmd::TurnLeft);
+        cmd(app, ui, PixelCmd::Turn180);
+    });
+    sep(ui);
+    cmd(app, ui, PixelCmd::CanvasSize);
+    cmd(app, ui, PixelCmd::SmartResize);
+    sep(ui);
+    cmd(app, ui, PixelCmd::RedEye);
+    cmd(app, ui, PixelCmd::Histogram);
 }
 
 fn window_menu(app: &mut App, ui: &mut Ui) {
@@ -287,6 +510,7 @@ fn window_menu(app: &mut App, ui: &mut Ui) {
             }
         }
     });
+    cmd(app, ui, PixelCmd::Hints);
     sep(ui);
     if item(ui, "pixel.reset_panels", "", true) {
         app.set_docker_setup(&default_dockers());
@@ -383,7 +607,7 @@ fn tool_button(app: &mut App, ui: &mut Ui, g: usize, side: f32, horizontal: bool
     let open: Option<usize> = ui.ctx().data(|d| d.get_temp(flyout_id())).flatten();
     let key = shown.key();
     let resp = if open.is_none() {
-        resp.rich_tip(format!("{}\n{}", tr(key), tr(&format!("{key}_tip"))))
+        resp.rich_tip(format!("{}\n{}", named(shown), tr(&format!("{key}_tip"))))
     } else {
         resp
     };
@@ -424,7 +648,7 @@ fn flyout_list(app: &mut App, ui: &mut Ui, g: usize, button: Rect, horizontal: b
                 ui.spacing_mut().item_spacing.y = 1.0;
                 for t in GROUPS[g] {
                     let (r, resp) =
-                        ui.allocate_exact_size(Vec2::new(200.0, 28.0), Sense::click());
+                        ui.allocate_exact_size(Vec2::new(240.0, 28.0), Sense::click());
                     let on = app.pixel_edit.as_ref().is_some_and(|pe| pe.tool == *t);
                     crate::theme::paint_icon_button(ui.painter(), r, resp.hovered(), on);
                     crate::ui::pixel_icons::draw(
@@ -443,6 +667,14 @@ fn flyout_list(app: &mut App, ui: &mut Ui, g: usize, button: Rect, horizontal: b
                         egui::FontId::proportional(13.0),
                         Tokens::text(),
                     );
+                    ui.painter().text(
+                        egui::pos2(r.right() - 10.0, r.center().y),
+                        egui::Align2::RIGHT_CENTER,
+                        shortcut(*t),
+                        egui::FontId::proportional(12.0),
+                        Tokens::text_dim(),
+                    );
+                    let resp = resp.rich_tip(tr(&format!("{}_tip", t.key())));
                     if resp.clicked() {
                         chosen = Some(*t);
                     }
@@ -681,7 +913,12 @@ fn checker(ctx: &egui::Context) -> egui::TextureHandle {
 /// The picture alone in the window's middle: zoomed with the wheel about
 /// the pointer (or Ctrl and the wheel, or a pinch), moved with the middle
 /// button, Space and a drag, or the Pan tool, and the image tools on it.
-pub fn canvas(app: &mut App, ui: &mut Ui, area: Rect) {
+pub fn canvas(app: &mut App, ui: &mut Ui, full: Rect) {
+    // Scrollbars along the right and the bottom, the zoom to fit in the
+    // corner between them.
+    let sb = crate::ui::window_bars::BAR;
+    let area = Rect::from_min_max(full.min, full.max - Vec2::splat(sb));
+    scrollbars(app, ui, full, area);
     let resp = ui.allocate_rect(area, Sense::click_and_drag());
     let painter = ui.painter_at(area);
     // A neutral grey round the picture, the same in every theme, so its
@@ -772,6 +1009,136 @@ pub fn canvas(app: &mut App, ui: &mut Ui, area: Rect) {
     crate::pixel_edit_app::draw_mapped(pe, &painter, &map, pe.pointer_px);
 }
 
+/// The part of `[a0, a1]` (screen points along one side) the
+/// scrollbar covers: the picture with half a window round it, and the
+/// window itself.
+pub fn scroll_extent(pic: (f32, f32), view: (f32, f32)) -> (f32, f32) {
+    let half = (view.1 - view.0) * 0.5;
+    ((pic.0 - half).min(view.0), (pic.1 + half).max(view.1))
+}
+
+/// The image window's scrollbars: arrows, a track that pages with a
+/// click and a thumb that drags, like the drawing's.
+fn scrollbars(app: &mut App, ui: &mut Ui, full: Rect, area: Rect) {
+    use crate::ui::window_bars::{arrow_button, Dir, BAR, LINE};
+    let Some(pe) = app.pixel_edit.as_ref() else {
+        return;
+    };
+    let ws = pe.ws;
+    let (w, h) = pe.pi.img.dimensions();
+    let pic = Rect::from_two_pos(ws.to_screen(area, 0.0, 0.0), ws.to_screen(area, w as f32, h as f32));
+    let p = ui.painter_at(full);
+    let hbar = Rect::from_min_max(egui::pos2(full.min.x, area.max.y), egui::pos2(area.max.x, full.max.y));
+    let vbar = Rect::from_min_max(egui::pos2(area.max.x, full.min.y), egui::pos2(full.max.x, area.max.y));
+    let corner = Rect::from_min_max(area.max, full.max);
+    for r in [hbar, vbar, corner] {
+        p.rect_filled(r, 0.0, Tokens::panel());
+    }
+    let mut pan = Vec2::ZERO;
+    for horizontal in [true, false] {
+        let bar = if horizontal { hbar } else { vbar };
+        let len = if horizontal { bar.width() } else { bar.height() };
+        if len < BAR * 3.0 {
+            continue;
+        }
+        let (a, b, dir_a, dir_b) = if horizontal {
+            (
+                Rect::from_min_size(bar.min, Vec2::new(BAR, bar.height())),
+                Rect::from_min_size(egui::pos2(bar.max.x - BAR, bar.min.y), Vec2::new(BAR, bar.height())),
+                Dir::Left,
+                Dir::Right,
+            )
+        } else {
+            (
+                Rect::from_min_size(bar.min, Vec2::new(bar.width(), BAR)),
+                Rect::from_min_size(egui::pos2(bar.min.x, bar.max.y - BAR), Vec2::new(bar.width(), BAR)),
+                Dir::Up,
+                Dir::Down,
+            )
+        };
+        let along = |v: Vec2| if horizontal { v.x } else { v.y };
+        let unit = if horizontal { Vec2::X } else { Vec2::Y };
+        let id = if horizontal { "pixel_hscroll" } else { "pixel_vscroll" };
+        if arrow_button(ui, a, &format!("{id}_a"), dir_a) {
+            pan += unit * LINE;
+        }
+        if arrow_button(ui, b, &format!("{id}_b"), dir_b) {
+            pan -= unit * LINE;
+        }
+        let track = Rect::from_min_max(
+            if horizontal { egui::pos2(a.max.x, bar.min.y) } else { egui::pos2(bar.min.x, a.max.y) },
+            if horizontal { egui::pos2(b.min.x, bar.max.y) } else { egui::pos2(bar.max.x, b.min.y) },
+        );
+        let (p0, p1, v0, v1) = if horizontal {
+            (pic.min.x, pic.max.x, area.min.x, area.max.x)
+        } else {
+            (pic.min.y, pic.max.y, area.min.y, area.max.y)
+        };
+        let (e0, e1) = scroll_extent((p0, p1), (v0, v1));
+        let span = (e1 - e0).max(1e-3);
+        let tlen = along(track.size());
+        let t0 = (v0 - e0) / span;
+        let t1 = ((v1 - e0) / span).max(t0 + 0.03);
+        let start = along(track.min.to_vec2());
+        let thumb = if horizontal {
+            Rect::from_min_max(
+                egui::pos2(start + tlen * t0, track.min.y + 2.0),
+                egui::pos2(start + tlen * t1, track.max.y - 2.0),
+            )
+        } else {
+            Rect::from_min_max(
+                egui::pos2(track.min.x + 2.0, start + tlen * t0),
+                egui::pos2(track.max.x - 2.0, start + tlen * t1),
+            )
+        };
+        let resp = ui.interact(track, egui::Id::new(id), Sense::click_and_drag());
+        let hot = resp.dragged() || resp.hover_pos().is_some_and(|q| thumb.contains(q));
+        p.rect_filled(
+            thumb,
+            0.0,
+            if hot {
+                Tokens::control_border()
+            } else {
+                Tokens::slider_rail()
+            },
+        );
+        if resp.dragged() {
+            pan -= unit * (along(resp.drag_delta()) / tlen.max(1.0) * span);
+        } else if resp.clicked() {
+            if let Some(q) = resp.interact_pointer_pos() {
+                let page = (v1 - v0) * 0.9;
+                let at = along(q.to_vec2());
+                if at < along(thumb.min.to_vec2()) {
+                    pan += unit * page;
+                } else if at > along(thumb.max.to_vec2()) {
+                    pan -= unit * page;
+                }
+            }
+        }
+    }
+    // The corner: fit the picture in the window.
+    let resp = ui
+        .interact(corner, egui::Id::new("pixel_scroll_corner"), Sense::click())
+        .rich_tip(tip_of(PixelCmd::ZoomFit));
+    if resp.hovered() {
+        p.rect_filled(corner, 0.0, Tokens::control_border());
+    }
+    crate::ui::icons::draw(
+        &p,
+        corner.shrink(2.0),
+        crate::tools::Tool::Zoom,
+        Tokens::icon(),
+    );
+    if resp.clicked() {
+        PixelCmd::ZoomFit.run(app);
+    }
+    if pan != Vec2::ZERO {
+        if let Some(pe) = app.pixel_edit.as_mut() {
+            pe.ws.pan(pan);
+        }
+    }
+}
+
 // The status bar.
 
 /// The status bar: the tool's hint, the pointer's pixel, the picture's
@@ -822,7 +1189,55 @@ pub fn docker_body(app: &mut App, ui: &mut Ui, tab: DockerTab) {
         DockerTab::PixelEffects => b::effects_section(ui, pe),
         DockerTab::PixelImage => b::picture_section(ui, pe),
         DockerTab::PixelHistogram => b::histogram_section(ui, pe),
+        DockerTab::PixelHints => hints(ui, pe),
         _ => {}
+    }
+}
+
+/// The Hints panel: the tool in use, what it does, how to use it, its
+/// key and the keys that change it, and the keys of the window.
+fn hints(ui: &mut Ui, pe: &mut crate::pixel_edit_app::PixelEdit) {
+    let t = pe.tool;
+    ui.horizontal(|ui| {
+        let (r, _) = ui.allocate_exact_size(Vec2::splat(32.0), Sense::hover());
+        crate::ui::pixel_icons::draw(ui.painter(), r, t, Tokens::icon());
+        ui.vertical(|ui| {
+            ui.label(egui::RichText::new(tr(t.key())).strong().size(16.0));
+            let k = shortcut(t);
+            if !k.is_empty() {
+                ui.label(dim_text(format!("{} {k}", tr("pixel.hints.key"))));
+            }
+        });
+    });
+    ui.add_space(4.0);
+    ui.label(tr(&format!("{}_tip", t.key())));
+    ui.add_space(4.0);
+    let bullet = |ui: &mut Ui, s: String| {
+        ui.horizontal_wrapped(|ui| {
+            ui.label("\u{2022}");
+            ui.label(s);
+        });
+    };
+    bullet(ui, tr(&format!("{}_hint", t.key())));
+    if t.is_selection() {
+        bullet(ui, tr("pixel.hints.sel_keys"));
+    }
+    if t.is_brush() || t.is_liquify() || matches!(t, PixelTool::MaskBrush | PixelTool::Sprayer) {
+        bullet(ui, tr("pixel.hints.brush_keys"));
+    }
+    if matches!(t, PixelTool::Clone | PixelTool::Heal) {
+        bullet(ui, tr("pixel.status.need_source"));
+    }
+    ui.add_space(8.0);
+    ui.separator();
+    ui.label(egui::RichText::new(tr("pixel.hints.window")).strong());
+    for key in [
+        "pixel.hints.view_keys",
+        "pixel.hints.zoom_keys",
+        "pixel.hints.undo_keys",
+        "pixel.hints.finish_keys",
+    ] {
+        bullet(ui, tr(key));
     }
 }
 
@@ -833,6 +1248,7 @@ fn dim_text(s: String) -> egui::RichText {
 /// The picture on an image panel's tab.
 pub fn docker_icon(tab: DockerTab) -> Option<crate::ui::dockers::TabIcon> {
     Some(match tab {
+        DockerTab::PixelHints => return crate::ui::dockers::tab_icon(DockerTab::Hints),
         DockerTab::PixelLayers => |p, r| {
             let s = Stroke::new(1.2, Tokens::icon());
             for k in 0..3 {
@@ -979,8 +1395,9 @@ mod tests {
         let pe = app.pixel_edit.as_mut().expect("editing");
         choose_tool(pe, PixelTool::Heal);
         choose_tool(pe, PixelTool::Brush);
-        assert_eq!(shown_tool(pe, 4), PixelTool::Heal);
-        assert_eq!(shown_tool(pe, 2), PixelTool::Brush);
+        let g = |t: PixelTool| GROUPS.iter().position(|g| g.contains(&t)).unwrap();
+        assert_eq!(shown_tool(pe, g(PixelTool::Clone)), PixelTool::Heal);
+        assert_eq!(shown_tool(pe, g(PixelTool::Sprayer)), PixelTool::Brush);
     }
 
     #[test]
@@ -998,5 +1415,71 @@ mod tests {
         assert!(app.pixel_edit.as_ref().is_some_and(|pe| pe.changed));
         PixelCmd::Finish.run(&mut app);
         assert!(app.pixel_edit.is_none());
+    }
+
+    #[test]
+    fn pick_and_the_view_tools_lead_the_toolbox_and_every_tool_has_a_key() {
+        assert_eq!(GROUPS[0], &[PixelTool::Move]);
+        assert!(GROUPS[2].contains(&PixelTool::Pan));
+        for t in PixelTool::ALL {
+            assert!(!shortcut(t).is_empty(), "{t:?}");
+        }
+        for (i, a) in SHORTCUTS.iter().enumerate() {
+            for b in &SHORTCUTS[i + 1..] {
+                assert!(a.0 != b.0, "{:?} twice", a.0);
+                assert!((a.1, a.2) != (b.1, b.2), "{:?} and {:?} share a key", a.0, b.0);
+            }
+        }
+        assert_eq!(shortcut(PixelTool::Smear), "Shift+S");
+        assert_eq!(shortcut(PixelTool::LayerFade), "1");
+    }
+
+    #[test]
+    fn the_scrollbars_cover_the_picture_and_half_a_window_round_it() {
+        // A picture wider than the window: the bar covers it and half a
+        // window each side.
+        assert_eq!(scroll_extent((-500.0, 1500.0), (0.0, 1000.0)), (-1000.0, 2000.0));
+        // A small one in the middle: the window itself.
+        assert_eq!(scroll_extent((400.0, 600.0), (0.0, 1000.0)), (-100.0, 1100.0));
+    }
+
+    #[test]
+    fn the_hints_panel_joins_panels_left_from_before_once() {
+        let (mut app, id) = app_with_picture();
+        let mut old = default_dockers();
+        old.open.retain(|k| k != DockerTab::PixelHints.key());
+        app.settings.pixel_dockers = Some(old);
+        assert!(app.edit_bitmap_inside(id));
+        assert!(app.open_dockers.contains(&DockerTab::PixelHints));
+        app.close_docker(DockerTab::PixelHints);
+        app.finish_pixel_edit();
+        assert!(app.edit_bitmap_inside(id));
+        assert!(!app.open_dockers.contains(&DockerTab::PixelHints));
+        PixelCmd::Hints.run(&mut app);
+        assert!(app.open_dockers.contains(&DockerTab::PixelHints));
+    }
+
+    #[test]
+    fn the_image_menu_turns_and_greys_the_picture() {
+        let (mut app, id) = app_with_picture();
+        assert!(app.edit_bitmap_inside(id));
+        PixelCmd::TurnRight.run(&mut app);
+        let dims = |app: &App| app.pixel_edit.as_ref().unwrap().pi.img.dimensions();
+        assert_eq!(dims(&app), (30, 40));
+        PixelCmd::Turn180.run(&mut app);
+        PixelCmd::TurnLeft.run(&mut app);
+        assert_eq!(dims(&app), (40, 30));
+        PixelCmd::Grayscale.run(&mut app);
+        let q = *app.pixel_edit.as_ref().unwrap().pi.img.get_pixel(3, 3);
+        assert!(q[0] == q[1] && q[1] == q[2]);
+        PixelCmd::Undo.run(&mut app);
+        let q = *app.pixel_edit.as_ref().unwrap().pi.img.get_pixel(3, 3);
+        assert_eq!(q[0], 200);
+        open_effect(&mut app, "tone_curve");
+        assert!(app.pixel_edit.as_ref().unwrap().effect.is_some());
+        assert!(app.open_dockers.contains(&DockerTab::PixelEffects));
+        for (_, _, id) in ADJUST_KEYS {
+            assert!(crate::fx::adjust::EFFECTS.iter().any(|e| e.id == id), "{id}");
+        }
     }
 }

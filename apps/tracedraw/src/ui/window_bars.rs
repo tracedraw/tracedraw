@@ -14,7 +14,7 @@ use egui::{Color32, Pos2, Rect, Sense, Stroke, Ui, Vec2};
 /// Height of the bottom row and width of the vertical scrollbar.
 pub const BAR: f32 = 17.0;
 /// One click on a scroll arrow moves the view this many pixels.
-const LINE: f32 = 40.0;
+pub(crate) const LINE: f32 = 40.0;
 
 /// Draw the scrollbars, the navigator row and the corner button around
 /// `canvas` inside `full`.
@@ -217,7 +217,7 @@ fn vertical(app: &mut App, ui: &mut Ui, bar: Rect, canvas: Rect) {
 }
 
 #[derive(Clone, Copy)]
-enum Dir {
+pub(crate) enum Dir {
     Left,
     Right,
     Up,
@@ -225,7 +225,7 @@ enum Dir {
 }
 
 /// A scroll arrow; repeats while held (after a short delay).
-fn arrow_button(ui: &mut Ui, r: Rect, id: &str, dir: Dir) -> bool {
+pub(crate) fn arrow_button(ui: &mut Ui, r: Rect, id: &str, dir: Dir) -> bool {
     let key = match dir {
         Dir::Left => "view.scroll_left",
         Dir::Right => "view.scroll_right",

@@ -14,16 +14,31 @@ the picture's content in them (`ui/pixel_mode.rs`):
 
 - Menus: File (Finish, Cancel), Edit (Undo, Redo, Copy or Cut the
   selection to a layer, Paste as layer, Delete, Fill, Content Fill),
-  View (Zoom In, Zoom Out, Fit in Window, Actual Pixels), Image (Crop,
-  Flip, Red Eye, Smart Resize), Adjust (the adjustment effects), Effects
-  (every other effect group), Selection, Layers, Window (Toolbars:
-  Standard, Property Bar, Toolbox, Palette, Status Bar; Panels; Reset
-  Image Panels) and Help. An effect chosen from a menu opens the Effects
-  panel with its settings, preview and Apply.
-- Toolbox: the image tools as icon buttons in 14 groups; a group of more
-  than one tool has a flyout (the corner arrow, a press held 0.4 s or a
-  right click) listing them with icon and name, and its button shows the
-  tool last picked from it.
+  View (Zoom In, Zoom Out, Fit in Window, Actual Pixels), Image (Crop to
+  Selection, Auto Crop; Convert to Greyscale, Convert to Black and White;
+  Mirror (across, up and down); Rotate (90 degrees clockwise Ctrl+R,
+  counter-clockwise Ctrl+Shift+R, 180 degrees); Canvas Size, Smart
+  Resize; Red Eye; Histogram), Adjust (the adjustment effects in groups,
+  each with a picture: Auto Adjust, Image Adjustments; Contrast
+  Enhancement, Local Equalization; Target Balance, Tone Curve Ctrl+T;
+  Brightness/Contrast/Intensity Ctrl+B, Gamma; Hue/Saturation/Lightness
+  Ctrl+Shift+U, Desaturate, Convert to Greyscale, Selective Colour,
+  Replace Colours; Channel Mixer, Colour Balance Ctrl+Shift+B; then the
+  rest), Effects (every other effect group), Selection, Layers, Window
+  (Toolbars: Standard, Property Bar, Toolbox, Palette, Status Bar;
+  Panels; Hints; Reset Image Panels) and Help. An effect chosen from a
+  menu or its keys opens the Effects panel with its settings, preview and
+  Apply. Image commands keep the picture's middle where it was on the
+  page (a turn) or its pixels where they were (a crop, a canvas grown),
+  as one undo step, every layer, mask and the selection with them.
+- Toolbox: the image tools as icon buttons in 13 groups, Pick first, then
+  the selections, the view (Zoom, Pan), the retouching, the brushes that
+  lighten, darken and soften, the distortions, the paint, the eraser, the
+  shapes, the transparency tools, the light, the eyedropper and the
+  fills; a group of more than one tool has a flyout (the corner arrow, a
+  press held 0.4 s or a right click) listing them with icon, name and
+  key, and its button shows the tool last picked from it. A tool's tip
+  names its key.
 - Standard bar: Finish, Cancel, Undo, Redo, Copy and Cut to layer, Paste
   as layer, Delete, the zoom (out, a list of the zoom steps, in, Fit,
   1:1) and the panels' show or hide. Its buttons are kept apart from the
@@ -31,19 +46,40 @@ the picture's content in them (`ui/pixel_mode.rs`):
   Customization pages open) moves one or drags it off, and Window >
   Toolbars > Image Bar Buttons ticks any image command onto the end of
   the bar or off it, with Reset Image Bar.
-- Property bar: the tool's icon and name and its options.
-- Panels: Layers, Effects, Selection, Retouch, Distort, Picture and
-  Histogram (`DockerTab::PIXEL`, kept apart from the drawing's panels).
-  On entry the drawing's panels are kept and the image panels shown as
-  they were last left (`settings.pixel_dockers`, all of them the first
-  time); on the way out they are remembered and the drawing's put back.
-  The preferences keep the drawing's panels meanwhile.
+- Property bar: the tool's icon and name and its options. The selection
+  tools add four mode buttons (Normal, Add, Subtract, Exclusive Or; Shift
+  adds, Ctrl subtracts and Shift+Ctrl keeps where only one is, whatever
+  the button), the selection's box (X, Y, width, height), and for the
+  rectangle and the ellipse a Fixed size with W and H (a click makes a
+  selection that size). Pick shows X and Y, W and H in pixels and in
+  percent (proportions kept with the lock), Rotate in degrees and the two
+  flips, put in the layer with Apply (Reset clears them): the selected
+  pixels (the whole layer with nothing selected) are lifted, moved,
+  scaled, turned and flipped about the middle of their box (bilinear),
+  laid over what stays, the selection going with them, one undo step.
+- Panels: Hints, Layers, Effects, Selection, Retouch, Distort, Picture
+  and Histogram (`DockerTab::PIXEL`, kept apart from the drawing's
+  panels). On entry the drawing's panels are kept and the image panels
+  shown as they were last left (`settings.pixel_dockers`, all of them the
+  first time); on the way out they are remembered and the drawing's put
+  back. The preferences keep the drawing's panels meanwhile. Hints joins
+  panels left from before it came once (`settings.pixel_hints_added`);
+  closed after, it stays closed. It shows the tool in use (icon, name,
+  key), what it does, how to use it, the keys that change it and the
+  window's keys. Picture adds Canvas Size: a width and height in pixels
+  and one of nine anchors, for Apply; the new room is clear.
 - The Text, Zoom, Transform, Time Tracker and user toolbars wait for the
   drawing; the document tabs are hidden.
 - A palette colour sets the brush colour (a right click, where it sets
   the outline, the shapes' outline colour).
 - Status bar: the tool's name and hint, the pointer's pixel, the
   picture's size, the layer in use and the zoom.
+
+Scrollbars run along the right and the bottom of the picture's window,
+like the drawing's (arrows of 40 points, a click on the track pages 90 %
+of the window, the thumb drags); they cover the picture with half a
+window round it, or the window where that is more, and the corner
+between them fits the picture in the window.
 
 The picture shows alone and upright in the middle, on a checkerboard of
 8 point squares, at a zoom of its own (`pixel_view.rs`): fitted with a
@@ -89,29 +125,43 @@ pixel y runs down, page y runs up.
 
 | Tool | Key | What it does |
 | --- | --- | --- |
-| Rectangle selection | M | drag a box; Shift adds, Ctrl subtracts |
-| Ellipse selection | | drag a box |
-| Lasso | L | freehand outline, closed on release |
+| Pick | V | drags the pixels of the layer in use (what leaves the picture is lost); its numbers move, scale, turn and flip them (see Property bar) |
+| Rectangle mask | R | drag a box; Shift adds, Ctrl subtracts, Shift+Ctrl exclusive or |
+| Ellipse mask | J | drag a box |
+| Freehand mask | K | a click sets a corner, a drag draws freehand; a double click, Enter or a click within 8 points of the first corner closes it; Esc drops it |
+| Lasso | A | freehand outline, closed on release |
+| Edge mask | 4 | freehand outline whose points (2 px apart) go to the strongest edge (Sobel slope of the light, less half a unit a pixel away) within the reach (1 to 40 px, 6), closed on release |
 | Magic wand | W | pixels of like colour (Tolerance, Contiguous) |
-| Brush | B | paints the colour |
-| Eraser | E | soft eraser: fades pixels toward clear |
-| Clone | S | Alt+click sets the source, the offset is fixed at the first stroke |
-| Heal | J | clone that keeps the destination's colour: source detail plus the local blur difference |
-| Dodge / Burn | O | lighten / darken |
-| Sponge | | desaturate or saturate |
-| Blur / Sharpen | R (Blur) | local blur or unsharp |
-| Smudge | | drags colour along the stroke |
-| Red eye brush | | takes red out where painted |
-| Fill bucket | G | fills like-coloured pixels (Tolerance, Contiguous) |
-| Gradient | | from the colour to clear, or to white: linear, reflected, radial, conical or square |
-| Eyedropper | I | picks the colour seen (all layers) |
-| Move | V | drags the pixels of the layer in use; what leaves the picture is lost |
-| Light | | paints light on the layer in use with the active light (see Light tool) |
-| Restore | | paints back the picture as it was when the editing began (clear where the picture had no pixels then) |
-| Tint | | the brush colour moved to each pixel's lightness (luma), alpha kept |
-| Replace Colour | | pixels within Tolerance of the colour under the first dab take the brush colour plus their difference from it, fading out towards the tolerance |
-| Liquify | | moves the layer's pixels with the brush (Size, Hardness, Strength): Push along the drag, Twirl clockwise or counter-clockwise, Pinch towards the centre, Bloat away from it, held still or dragged; each pixel samples the layer as it was at the press at its own offset (bilinear), changed by every dab a tenth of the brush apart, inside the selection; one undo step a stroke |
-| Shape | | rectangle, ellipse, regular polygon (3 to 24 sides, first corner at the top) or line in the dragged box: filled with the colour, outlined with the outline colour and width (centred on the edge), a line in the colour; anti-aliased, inside the selection, with the opacity; one undo step |
+| Brush mask | B | paints the selection with the brush (Size, Hardness); Alt, Ctrl or Subtract takes away; in Normal a new stroke starts a new selection |
+| Band mask | 8 | drag across: the band between the lines through both ends square to the drag, with a soft edge (0 to 400 px, 20, smoothstep) |
+| Zoom / Pan | Z / H | see above |
+| Clone | C | Alt+click sets the source, the offset is fixed at the first stroke |
+| Heal | Shift+C | clone that keeps the destination's colour: source detail plus the local blur difference |
+| Remove | Shift+X | see Following the surface and Remove |
+| Red eye brush | Y | takes red out where painted |
+| Dodge / Burn | O / Shift+O | lighten / darken |
+| Sponge | Shift+P | desaturate or saturate |
+| Blur / Sharpen | Shift+B / Shift+H | local blur or unsharp |
+| Smudge | Shift+U | drags colour along the stroke |
+| Tint | Shift+T | the brush colour moved to each pixel's lightness (luma), alpha kept |
+| Smear / Twirl / Attract / Repel | Shift+S / Shift+W / Shift+A / Shift+R | Liquify's Push, Twirl (Alt the other way), Pinch and Bloat as tools of their own (Size, Hardness, Strength) |
+| Liquify | Shift+L | moves the layer's pixels with the brush (Size, Hardness, Strength): Push along the drag, Twirl clockwise or counter-clockwise, Pinch towards the centre, Bloat away from it, held still or dragged; each pixel samples the layer as it was at the press at its own offset (bilinear), changed by every dab a tenth of the brush apart, inside the selection; one undo step a stroke |
+| Warp | D | see Stretch and warp |
+| Brush | P | paints the colour |
+| Scatter brush | I | a burst every half spray width along the drag: Number (1 to 40, 4) little pictures (dots, stars, bubbles, leaves, confetti, sparkles) spread evenly over the spray (the brush size), each Item size (1 to 200 px, 12) less up to Size variation (50 %), turned at random when Turn each is on, its hue moved by up to Colour variation (15 %; confetti three times, bright), anti-aliased, with the opacity, inside the selection; the same each stroke; one undo step |
+| Restore | U | paints back the picture as it was when the editing began (clear where the picture had no pixels then) |
+| Replace Colour | Q | pixels within Tolerance of the colour under the first dab take the brush colour plus their difference from it, fading out towards the tolerance |
+| Eraser | X | soft eraser: fades pixels toward clear |
+| Shape | F6 | rectangle, ellipse, regular polygon (3 to 24 sides, first corner at the top) or line in the dragged box: filled with the colour, outlined with the outline colour and width (centred on the edge), a line in the colour; anti-aliased, inside the selection, with the opacity; one undo step |
+| Layer fade | 1 | a drag fades the layer: alpha times Start opacity (100 %) at the press to End opacity (0 %) at the release, straight along the drag or Round about the press, inside the selection; one undo step |
+| Colour to clear | 2 | a click: the pixels within Tolerance of the colour clicked (Contiguous or anywhere) lose alpha, fully at the colour, half at the tolerance, times Strength, inside the selection |
+| Transparency brush | 3 | brush (Size, Hardness, Opacity, Flow, Tip) that takes the alpha down to (1 - Transparency) of what it was (50 %) |
+| Light | L | paints light on the layer in use with the active light (see Light tool) |
+| Eyedropper | E | picks the colour seen (all layers) |
+| Fill bucket | F | fills like-coloured pixels (Tolerance, Contiguous) |
+| Gradient | G | from the colour to clear, or to white: linear, reflected, radial, conical or square |
+
+Shift+Q turns the quick mask on and off.
 
 Brush options: Size 1 to 1000 px (default 40), Hardness 0 to 100 %
 (50), Opacity 0 to 100 % (100), Flow 0 to 100 % (60). `[` and `]` change

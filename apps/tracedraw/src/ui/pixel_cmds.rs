@@ -45,11 +45,21 @@ pub enum PixelCmd {
     ZoomOut,
     ZoomFit,
     Zoom100,
+    TurnRight,
+    TurnLeft,
+    Turn180,
+    AutoCrop,
+    Grayscale,
+    BlackWhite,
+    CanvasSize,
+    SmartResize,
+    Histogram,
+    Hints,
 }
 
 impl PixelCmd {
     /// Every command (the image bar's customize menu lists them).
-    pub const ALL: [PixelCmd; 37] = [
+    pub const ALL: [PixelCmd; 47] = [
         PixelCmd::Finish,
         PixelCmd::Cancel,
         PixelCmd::Undo,
@@ -87,6 +97,16 @@ impl PixelCmd {
         PixelCmd::ZoomOut,
         PixelCmd::ZoomFit,
         PixelCmd::Zoom100,
+        PixelCmd::TurnRight,
+        PixelCmd::TurnLeft,
+        PixelCmd::Turn180,
+        PixelCmd::AutoCrop,
+        PixelCmd::Grayscale,
+        PixelCmd::BlackWhite,
+        PixelCmd::CanvasSize,
+        PixelCmd::SmartResize,
+        PixelCmd::Histogram,
+        PixelCmd::Hints,
     ];
 
     /// Its button's id on the image bar ("pixel:" and its name).
@@ -154,7 +174,36 @@ impl PixelCmd {
             PixelCmd::ZoomOut => "menu.view.zoom_out",
             PixelCmd::ZoomFit => "pixel.zoom_fit",
             PixelCmd::Zoom100 => "pixel.zoom_100",
+            PixelCmd::TurnRight => "pixel.turn_right",
+            PixelCmd::TurnLeft => "pixel.turn_left",
+            PixelCmd::Turn180 => "pixel.turn_180",
+            PixelCmd::AutoCrop => "pixel.auto_crop",
+            PixelCmd::Grayscale => "pixel.grayscale",
+            PixelCmd::BlackWhite => "pixel.black_white",
+            PixelCmd::CanvasSize => "pixel.canvas_size",
+            PixelCmd::SmartResize => "pixel.smart_resize_cmd",
+            PixelCmd::Histogram => "pixel.section.histogram",
+            PixelCmd::Hints => "pixel.section.hints",
         }
+    }
+
+    /// The picture of its menu row (see `pixel_menu_icons.rs`), when it
+    /// has one.
+    pub fn picture(self) -> Option<&'static str> {
+        Some(match self {
+            PixelCmd::TurnRight => "turn_right",
+            PixelCmd::TurnLeft => "turn_left",
+            PixelCmd::Turn180 => "turn_180",
+            PixelCmd::AutoCrop => "auto_crop",
+            PixelCmd::Grayscale => "grayscale",
+            PixelCmd::BlackWhite => "black_white",
+            PixelCmd::CanvasSize => "canvas_size",
+            PixelCmd::SmartResize => "smart_resize",
+            PixelCmd::Histogram => "histogram",
+            PixelCmd::FlipH => "flip_h",
+            PixelCmd::FlipV => "flip_v",
+            _ => return None,
+        })
     }
 
     /// Its keys, as the menus show them.
@@ -167,11 +216,13 @@ impl PixelCmd {
             PixelCmd::SelectAll => "Ctrl+A",
             PixelCmd::SelectNone => "Ctrl+D",
             PixelCmd::InvertSelection => "Ctrl+Shift+I",
-            PixelCmd::QuickMask => "Q",
+            PixelCmd::QuickMask => "Shift+Q",
             PixelCmd::ZoomIn => "Ctrl++",
             PixelCmd::ZoomOut => "Ctrl+-",
             PixelCmd::ZoomFit => "Ctrl+0",
             PixelCmd::Zoom100 => "Ctrl+1",
+            PixelCmd::TurnRight => "Ctrl+R",
+            PixelCmd::TurnLeft => "Ctrl+Shift+R",
             _ => "",
         }
     }
@@ -229,6 +280,18 @@ impl PixelCmd {
             }
             PixelCmd::Cancel => {
                 app.cancel_pixel_edit();
+                return;
+            }
+            PixelCmd::CanvasSize | PixelCmd::SmartResize => {
+                app.open_docker(crate::app::DockerTab::PixelImage);
+                return;
+            }
+            PixelCmd::Histogram => {
+                app.open_docker(crate::app::DockerTab::PixelHistogram);
+                return;
+            }
+            PixelCmd::Hints => {
+                app.open_docker(crate::app::DockerTab::PixelHints);
                 return;
             }
             _ => {}
@@ -368,6 +431,30 @@ impl PixelCmd {
                     pe.ws.zoom_to(area, area.center(), 1.0);
                 }
             }
+            PixelCmd::TurnRight | PixelCmd::TurnLeft | PixelCmd::Turn180 => {
+                let q = match self {
+                    PixelCmd::TurnRight => 1,
+                    PixelCmd::Turn180 => 2,
+                    _ => 3,
+                };
+                pe.apply_all(true, |pi| crate::pixel_ops::turn(pi, q));
+                let area = pe.ws_area;
+                let (w, h) = pe.pi.img.dimensions();
+                pe.ws.fit(area, w, h, false);
+            }
+            PixelCmd::AutoCrop => {
+                pe.apply_all(true, crate::pixel_ops::auto_crop);
+            }
+            PixelCmd::Grayscale => {
+                pe.apply_all(true, crate::pixel_ops::grayscale);
+            }
+            PixelCmd::BlackWhite => {
+                pe.apply_all(true, |pi| crate::pixel_ops::black_and_white(pi, 128));
+            }
+            PixelCmd::CanvasSize
+            | PixelCmd::SmartResize
+            | PixelCmd::Histogram
+            | PixelCmd::Hints => {}
         }
     }
 }

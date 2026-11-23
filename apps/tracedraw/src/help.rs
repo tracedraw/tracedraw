@@ -235,7 +235,8 @@ pub fn docker_topic(t: DockerTab) -> &'static str {
         | DockerTab::PixelDistort
         | DockerTab::PixelEffects
         | DockerTab::PixelImage
-        | DockerTab::PixelHistogram => "bitmaps/resample-and-straighten#other",
+        | DockerTab::PixelHistogram
+        | DockerTab::PixelHints => "bitmaps/resample-and-straighten#other",
         DockerTab::Palettes => "color/palettes",
         DockerTab::Lens => "effects/lens",
         DockerTab::Blend => "effects/blend",

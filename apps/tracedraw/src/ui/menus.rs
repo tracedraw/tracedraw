@@ -553,6 +553,45 @@ fn item_text_tip(
     }
 }
 
+/// A menu item whose picture in the gutter is drawn by `pic` in the
+/// row's ink (greyed with the row when it cannot run).
+pub(crate) fn item_drawn(
+    ui: &mut Ui,
+    label: &str,
+    shortcut: &str,
+    enabled: bool,
+    id: &str,
+    pic: &dyn Fn(&egui::Painter, egui::Rect, egui::Color32),
+) -> bool {
+    if invoke::active() {
+        return invoke::hit(id, shortcut, enabled);
+    }
+    let shortcut = invoke::shown_shortcut(id, shortcut);
+    let (r, _) = menu_row(ui, label, &shortcut, enabled, Mark::None);
+    #[cfg(test)]
+    PICTURED.with(|p| p.borrow_mut().push(id.to_string()));
+    #[cfg(test)]
+    if replay::hit(id, enabled) {
+        return true;
+    }
+    let ir = egui::Rect::from_center_size(
+        egui::pos2(r.rect.left() + GUTTER / 2.0, r.rect.center().y),
+        egui::vec2(16.0, 16.0),
+    );
+    let color = if enabled {
+        Tokens::icon()
+    } else {
+        crate::theme::Tokens::menu_text_off()
+    };
+    pic(ui.painter(), ir, color);
+    if r.clicked() {
+        ui.close();
+        true
+    } else {
+        false
+    }
+}
+
 /// A menu item with a ready label and a picture (a texture) in the
 /// gutter, greyed with the row when it cannot run.
 fn item_picture(

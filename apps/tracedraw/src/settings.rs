@@ -663,6 +663,10 @@ pub struct Settings {
     /// Inside); none until it is first used (its default panels show).
     #[serde(default)]
     pub pixel_dockers: Option<DockerSetup>,
+    /// The image editing mode's Hints panel was put with the panels left
+    /// from before it came (once; closed after, it stays closed).
+    #[serde(default)]
+    pub pixel_hints_added: bool,
     /// The font lists' fonts used last, newest first.
     #[serde(default)]
     pub recent_fonts: Vec<String>,
@@ -2571,6 +2575,7 @@ impl Default for Settings {
             shown_bars: None,
             dockers: None,
             pixel_dockers: None,
+            pixel_hints_added: false,
             recent_fonts: Vec::new(),
             font_filter_open: false,
             font_english_names: true,

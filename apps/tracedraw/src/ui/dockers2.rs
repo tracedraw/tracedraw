@@ -75,7 +75,8 @@ pub fn show(app: &mut App, ui: &mut Ui, tab: DockerTab) {
         | DockerTab::PixelDistort
         | DockerTab::PixelEffects
         | DockerTab::PixelImage
-        | DockerTab::PixelHistogram => crate::ui::pixel_mode::docker_body(app, ui, tab),
+        | DockerTab::PixelHistogram
+        | DockerTab::PixelHints => crate::ui::pixel_mode::docker_body(app, ui, tab),
         _ => {}
     }
 }
