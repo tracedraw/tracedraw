@@ -93,8 +93,19 @@ makes it permanent.
   and place. The cutter is removed. Groups, texts and pictures stay as they
   are.
 - [[menu.object.cut_grid]] turns each selected object into rows and columns
-  of boxes that fill its bounds, with the gap you set between them, in the
-  object's paint and place.
+  of pieces, in the object's paint and place. The window has the same
+  four fields for the rows and for the columns: the number, the height
+  or width of each, the gap between them, and the total they take
+  together. The total starts as the object's size; changing the number,
+  the gap or the total shares the total out anew, and typing a height or
+  width keeps the number and changes the total. A total smaller than the
+  object lays the grid from the object's top-left corner. Keep the
+  object's shape makes the pieces the parts of the object inside each
+  box (a circle is cut into pieces of a circle) instead of whole boxes;
+  Add guidelines puts a guideline on every edge of the rows and columns;
+  Group the pieces keeps them in one group. With Preview on, the drawing
+  shows the pieces as lines over the object while the window is open,
+  and the window says how many pieces there will be and their size.
 - [[menu.object.remove_strays]] removes lone points, curves with no fill, no
   outline and no effect, and empty artistic texts from the unlocked layers
   of the page. The status bar says how many went.

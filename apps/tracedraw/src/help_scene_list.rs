@@ -396,7 +396,14 @@ pub(crate) fn all() -> Vec<Scene> {
                     line(0.5),
                 );
                 app.select(vec![id]);
-                app.grid_cut.open = true;
+                app.grid_cut = crate::cut_tools::GridCut {
+                    open: true,
+                    rows: 3,
+                    cols: 4,
+                    gap_x: 3.0,
+                    gap_y: 3.0,
+                    ..Default::default()
+                };
             },
             crop: Crop::Window,
             ..Default::default()
