@@ -935,11 +935,24 @@ fn general(app: &App, ui: &mut Ui, st: &mut PublishState) {
         st.pages = Pages::All;
     }
     row(ui, &tr("publish.file_name"), |ui| {
-        ui.label(st.file.display().to_string());
         // On Android the system's picker asks where the file goes when OK
         // is pressed, so there is nothing to browse first.
-        if !crate::files::WEB && !crate::files::ANDROID && ui.button(tr("publish.browse")).clicked()
-        {
+        let browse = !crate::files::WEB && !crate::files::ANDROID;
+        if browse {
+            // The name and folder can be typed, and the box keeps room
+            // for Browse whatever the path's length, which a long folder
+            // pushed out of the dialog (#4059).
+            let mut text = st.file.display().to_string();
+            let edit = egui::TextEdit::singleline(&mut text)
+                .desired_width(WIDTH - LABEL_W - 100.0)
+                .hint_text(tr("publish.file_hint"));
+            if ui.add(edit).changed() {
+                st.file = PathBuf::from(text);
+            }
+        } else {
+            ui.label(st.file.display().to_string());
+        }
+        if browse && ui.button(tr("publish.browse")).clicked() {
             let name = st
                 .file
                 .file_name()

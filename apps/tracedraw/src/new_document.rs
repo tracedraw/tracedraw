@@ -129,6 +129,8 @@ pub struct NewDocSettings {
     pub gray_profile: String,
     pub intent: String,
     pub saved_presets: Vec<SavedPreset>,
+    /// Color settings was left open: the next dialog shows it open (#4058).
+    pub color_settings_open: bool,
 }
 
 impl Default for NewDocSettings {
@@ -142,6 +144,7 @@ impl Default for NewDocSettings {
             gray_profile: GRAY_PROFILES[0].into(),
             intent: INTENTS[1].into(),
             saved_presets: Vec::new(),
+            color_settings_open: false,
         }
     }
 }
@@ -264,7 +267,7 @@ impl NewDocState {
             name,
             settings: settings.clone(),
             dont_show: false,
-            color_settings_open: false,
+            color_settings_open: settings.color_settings_open,
             saving_preset: None,
             found: None,
             focus_width: true,
@@ -500,6 +503,9 @@ pub fn new_document_dialog(app: &mut App, ctx: &Context, st: &mut NewDocState, c
                 .clicked()
             {
                 st.color_settings_open = !st.color_settings_open;
+                // Remembered at once, OK or Cancel (#4058).
+                st.settings.color_settings_open = st.color_settings_open;
+                app.settings.new_document.color_settings_open = st.color_settings_open;
             }
             y += 29.0;
             if st.color_settings_open {
@@ -1015,6 +1021,22 @@ fn orientation_button(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Color settings opens as it was left, and the choice survives the
+    /// settings file (#4058).
+    #[test]
+    fn color_settings_open_is_remembered() {
+        let st = NewDocState::from_settings(&NewDocSettings::default(), "A".into());
+        assert!(!st.color_settings_open);
+        let saved = NewDocSettings {
+            color_settings_open: true,
+            ..NewDocSettings::default()
+        };
+        let back: NewDocSettings =
+            serde_json::from_str(&serde_json::to_string(&saved).unwrap()).unwrap();
+        let st = NewDocState::from_settings(&back, "B".into());
+        assert!(st.color_settings_open);
+    }
 
     /// The dialog opens with Width taking the keyboard, its number
     /// selected; Tab goes straight to Height, its number selected too,

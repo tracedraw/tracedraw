@@ -17,6 +17,8 @@ full, row-by-row status.
 - Dark theme: Copy Visible Area and the full-screen preview (F9) keep the grey round the page the drawing window shows, the page white as paper; both turned it white. A colour picked for the preview in Options stays as picked (#4027).
 - Dimensions: the property bar has the Style list beside Precision (it was only in Options), and two styles join Decimal and Fractional: Engineering, in feet and inches with decimals (2' 3.5"), and Architectural, in feet and inches with fractions (2' 3 1/2"), whatever the units chosen (#4056).
 - Options > Document > Layout: a Same on all sides box beside the page margins links the four values, so editing one sets them all (#4030).
+- Export as PDF: the file name and folder can be typed in the dialog, and the Browse button stays in view however long the folder is (#4059).
+- New Document: Color settings opens as it was left last time (#4058).
 
 ## 0.51.1 (2026-11-23)
 
