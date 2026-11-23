@@ -753,6 +753,7 @@ impl App {
     /// as a picture on the system clipboard, for a chat or a mail; the
     /// copy kept here for Paste stays as it was.
     pub fn copy_visible_area(&mut self) {
+        self.note_view_step(crate::view_steps::ViewStep::CopyVisibleArea);
         let Some(img) = self.visible_area_image() else {
             return;
         };

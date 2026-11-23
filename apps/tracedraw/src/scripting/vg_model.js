@@ -1348,7 +1348,7 @@ class __Documents {
   [Symbol.iterator]() { return __iter([new Document()]); }
 }
 class __Window {
-  get ActiveView() { return { Zoom: 100, SetViewArea() { }, ToFitPage() { }, ToFitSelection() { } }; }
+  get ActiveView() { return new __View(); }
   Refresh() { }
   Activate() { }
 }
@@ -1386,6 +1386,12 @@ const Application = {
   // The layer new objects go on; there is no virtual layer apart (#2165).
   get ActiveVirtualLayer() { return new Document().ActiveLayer; },
   get ActiveWindow() { return new __Window(); },
+  // Zoom To Fit, Zoom To Page, Zoom To Selection and Copy Visible Area,
+  // as the program's own scripts call them (#4020).
+  ZoomToFit() { new __View().ToFitAllObjects(); },
+  ZoomToPage() { new __View().ToFitPage(); },
+  ZoomToSelection() { new __View().ToFitSelection(); },
+  CopyVisibleArea() { new __View().CopyVisibleArea(); },
   // The installed font families, by name (#2165).
   get FontList() { return __fontList(); },
   get Documents() { return new __Documents(); },
@@ -1490,9 +1496,12 @@ class __View {
   set Type(v) { __call('vg_view', { simulate_overprints: v === cdrEnhancedViewWithOverprints }); }
   SetViewPoint() { }
   SetViewArea() { }
-  ToFitPage() { }
-  ToFitSelection() { }
-  ToFitAllObjects() { }
+  // Zoom To Page, Zoom To Selection and Zoom To Fit (#4020).
+  ToFitPage() { __call('view_step', { step: 'fit_page' }); }
+  ToFitSelection() { __call('view_step', { step: 'fit_selection' }); }
+  ToFitAllObjects() { __call('view_step', { step: 'fit_all' }); }
+  // Edit > Copy Visible Area: the window's view on the clipboard.
+  CopyVisibleArea() { __call('view_step', { step: 'copy_visible_area' }); }
   Activate() { }
 }
 __def(__Window, 'ActiveView', function () { return new __View(); });

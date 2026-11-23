@@ -2096,6 +2096,9 @@ pub struct App {
     pub text_hyphenation: bool,
     /// Macro recording in progress: the commands run since Record started.
     pub recording: Option<Vec<Command>>,
+    /// The view steps taken while recording (#4020), each after the
+    /// number of commands recorded before it.
+    pub recorded_views: Vec<(usize, crate::view_steps::ViewStep)>,
     pub workspace: Workspace,
     pub palettes: Vec<crate::palette::Palette>,
     pub visible_palettes: Vec<usize>,
@@ -3704,6 +3707,7 @@ impl App {
             show_non_printing: false,
             text_hyphenation: false,
             recording: None,
+            recorded_views: Vec::new(),
             workspace: Workspace::Default,
             palettes: crate::palette::builtin_palettes(),
             visible_palettes: vec![0],
@@ -11420,6 +11424,11 @@ impl App {
     // ----- view --------------------------------------------------------------
 
     pub fn zoom_to_page(&mut self) {
+        self.note_view_step(crate::view_steps::ViewStep::FitPage);
+        self.fit_page_view();
+    }
+
+    fn fit_page_view(&mut self) {
         // In the Multipage View the page in use fills the window, not
         // every page shown (#3780); a new view still fits them all.
         if self.multipage && self.canvas_rect.is_positive() {
@@ -11544,9 +11553,10 @@ impl App {
     }
 
     pub fn zoom_to_fit(&mut self) {
+        self.note_view_step(crate::view_steps::ViewStep::FitAll);
         // In the Multipage View, the objects of the page in use (#3780).
         if self.multipage && self.drawn_bounds().is_none() {
-            self.zoom_to_page();
+            self.fit_page_view();
             return;
         }
         let Some(b) = self.drawn_bounds() else {
@@ -11582,6 +11592,7 @@ impl App {
     }
 
     pub fn zoom_to_selection(&mut self) {
+        self.note_view_step(crate::view_steps::ViewStep::FitSelection);
         if let Some(b) = self.selection_bounds() {
             self.view.fit(
                 b.inflate(b.width() * 0.1 + 1.0, b.height() * 0.1 + 1.0),

@@ -54,6 +54,9 @@ struct HostInner {
     status: Option<String>,
     /// View > Simulate Overprints as a macro set it (`ActiveView.Type`).
     simulate_overprints: Option<bool>,
+    /// The view steps a script asked for (#4020), taken once its objects
+    /// are in the drawing.
+    view_steps: Vec<crate::view_steps::ViewStep>,
     /// What a macro's `Copy` or `Cut` took, for its `Paste`: the macro's
     /// own, not the system clipboard, which macros do not reach.
     clip: Vec<Shape>,
@@ -400,6 +403,10 @@ const Application = {
   get Version() { return __call('version', {}).version; },
   get Name() { return 'TraceDraw'; },
   CreateColor: Color,
+  ZoomToFit() { __call('view_step', {step:'fit_all'}); },
+  ZoomToPage() { __call('view_step', {step:'fit_page'}); },
+  ZoomToSelection() { __call('view_step', {step:'fit_selection'}); },
+  CopyVisibleArea() { __call('view_step', {step:'copy_visible_area'}); },
 };
 // The active document, page and layer are read when a script uses them, not
 // bound once: a script that activates another page would otherwise go on
@@ -457,6 +464,7 @@ fn host_for(app: &App, trust: Trust) -> HostInner {
         view: vg::AppView::of(app),
         status: None,
         simulate_overprints: None,
+        view_steps: Vec::new(),
         clip: Vec::new(),
         dims: DimSettings {
             style: app.dimension_style.clone(),
@@ -609,7 +617,11 @@ fn run_host(
     if let Some(on) = inner.simulate_overprints {
         app.simulate_overprints = on;
     }
+    let views = inner.view_steps;
     apply(app, inner.commands, inner.selection, inner.page, label);
+    for step in views {
+        app.run_view_step(step);
+    }
     Ok((output, changes))
 }
 
@@ -797,6 +809,7 @@ fn blank_host(doc: Document, trust: Trust) -> HostInner {
         view: vg::AppView::default(),
         status: None,
         simulate_overprints: None,
+        view_steps: Vec::new(),
         clip: Vec::new(),
         dims: DimSettings::default(),
     }
@@ -1331,6 +1344,15 @@ impl HostInner {
         }
         Ok(match method {
             "version" => json!({"version": env!("CARGO_PKG_VERSION")}),
+            // Zoom To Fit, Zoom To Page, Zoom To Selection and Copy
+            // Visible Area (#4020).
+            "view_step" => {
+                let name = a.get("step").and_then(|v| v.as_str()).unwrap_or("");
+                let step = crate::view_steps::ViewStep::from_name(name)
+                    .ok_or_else(|| format!("no view step {name:?}"))?;
+                self.view_steps.push(step);
+                json!({})
+            }
             "log" => {
                 self.output.push(
                     a.get("text")
@@ -2719,9 +2741,23 @@ fn text_style_script(id: u64, spans: &[TextSpan]) -> Option<String> {
 }
 
 /// Turn recorded commands into a script the user can edit and replay.
+#[cfg(test)]
 pub fn commands_to_script(cmds: &[Command]) -> String {
+    commands_and_views_to_script(cmds, &[])
+}
+
+/// Turn recorded commands and the view steps taken among them (each after
+/// the number of commands before it, #4020) into a script.
+pub fn commands_and_views_to_script(
+    cmds: &[Command],
+    views: &[(usize, crate::view_steps::ViewStep)],
+) -> String {
     let mut out = String::from("// Recorded macro\nconst doc = Application.ActiveDocument;\nconst layer = doc.ActiveLayer;\n");
-    for c in cmds {
+    let mut views = views.iter().peekable();
+    for (i, c) in cmds.iter().enumerate() {
+        while let Some((_, step)) = views.next_if(|(at, _)| *at <= i) {
+            out.push_str(step.script_line());
+        }
         match c {
             Command::AddShape { shape, .. } => {
                 // A dimension records as one, kept live (#2348).
@@ -2832,6 +2868,9 @@ pub fn commands_to_script(cmds: &[Command]) -> String {
             },
             other => out.push_str(&format!("// {}\n", other.label())),
         }
+    }
+    for (_, step) in views {
+        out.push_str(step.script_line());
     }
     out
 }

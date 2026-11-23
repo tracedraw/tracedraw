@@ -321,6 +321,7 @@ mod variable_outline;
 mod symbol_scatter;
 mod vector_mosaic;
 mod view;
+mod view_steps;
 mod view_motion;
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 mod wayland_copy;
