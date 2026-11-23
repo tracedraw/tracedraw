@@ -97,8 +97,20 @@ definitiva.
   partes de dentro e de fora. Cada parte mantém a pintura e o lugar do
   objeto. A faca é removida. Grupos, textos e imagens ficam como estão.
 - [[menu.object.cut_grid]] transforma cada objeto selecionado em linhas e
-  colunas de caixas que preenchem os limites dele, com o espaço que você
-  definir entre elas, na pintura e no lugar do objeto.
+  colunas de peças, na pintura e no lugar do objeto. A janela tem os
+  mesmos quatro campos para as linhas e para as colunas: o número, a
+  altura ou largura de cada uma, o espaço entre elas e o total que
+  ocupam juntas. O total começa com o tamanho do objeto; mudar o número,
+  o espaço ou o total reparte o total de novo, e digitar uma altura ou
+  largura mantém o número e muda o total. Um total menor que o objeto
+  monta a grade a partir do canto superior esquerdo do objeto. Manter a
+  forma do objeto faz das peças as partes do objeto dentro de cada caixa
+  (um círculo é dividido em pedaços de círculo) em vez de caixas
+  inteiras; Adicionar linhas-guia coloca uma linha-guia em cada borda
+  das linhas e colunas; Agrupar as peças mantém todas em um grupo. Com
+  Prévia ligada, o desenho mostra as peças como linhas sobre o objeto
+  enquanto a janela está aberta, e a janela diz quantas peças serão e o
+  tamanho delas.
 - [[menu.object.remove_strays]] remove pontos isolados, curvas sem
   preenchimento, sem contorno e sem efeito, e textos artísticos vazios das
   camadas destravadas da página. A barra de status diz quantos saíram.
