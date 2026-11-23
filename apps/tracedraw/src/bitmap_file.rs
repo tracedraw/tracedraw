@@ -245,8 +245,10 @@ impl ReadPicture {
 /// through the colour management, as a CMYK colour of the drawing
 /// shows (#2163); every other file is read as pixels.
 pub fn read(bytes: &[u8]) -> Result<ReadPicture, String> {
-    if let Some(p) = read_cmyk_tiff(bytes) {
-        return Ok(p);
+    match read_cmyk_tiff(bytes) {
+        Ok(Some(p)) => return Ok(p),
+        Ok(None) => {}
+        Err(e) => return Err(e),
     }
     if let Some(p) = read_cmyk_jpeg(bytes) {
         return Ok(p);
@@ -257,14 +259,164 @@ pub fn read(bytes: &[u8]) -> Result<ReadPicture, String> {
     if let Some(p) = read_lab_tiff(bytes) {
         return Ok(p);
     }
-    let rgba = crate::files::decode_picture(bytes)
-        .map_err(|e| e.to_string())?
-        .into_rgba8();
+    let rgba = match crate::files::decode_picture(bytes) {
+        Ok(img) => img.into_rgba8(),
+        Err(e) if is_memory_limit(&e) => {
+            // A TIFF the image reader turned away at its memory limit
+            // ("Memory limit exceeded"): the tiff crate with the same
+            // limit the CMYK reader uses (print-size pictures, #2000).
+            // Another error, or a colour type this does not lay out, is
+            // the original error.
+            read_tiff_pixels(bytes).ok_or_else(|| e.to_string())?
+        }
+        Err(e) => return Err(e.to_string()),
+    };
     Ok(ReadPicture {
         rgba,
         planes: None,
         mode: file_mode(bytes),
     })
+}
+
+/// Whether `e` is the image library's memory limit ("Memory limit
+/// exceeded"), not a corrupt file. The limit's kind is private; the
+/// other kinds are not helped by the TIFF fallback (it returns `None`).
+fn is_memory_limit(e: &image::ImageError) -> bool {
+    matches!(e, image::ImageError::Limits(_))
+}
+
+/// `v` as 16-bit grey or a sample to 8 bits.
+fn to_u8(v: u16) -> u8 {
+    ((u32::from(v) * 255 + 32767) / 65535) as u8
+}
+
+/// An RGB, grey or RGBA TIFF the image reader turned away at its memory
+/// limit: the tiff crate, its decoded samples and the RGBA result
+/// together within the same limit. The CMYK 8-bit reader has already had
+/// its turn; this takes the kinds it leaves (a print-size scan, #4036).
+/// `None` when it is not a TIFF or a colour type this does not lay out.
+fn read_tiff_pixels(bytes: &[u8]) -> Option<image::RgbaImage> {
+    if !(bytes.starts_with(b"II*\0") || bytes.starts_with(b"MM\0*")) {
+        return None;
+    }
+    let limit = usize::try_from(crate::files::picture_decode_limit()).unwrap_or(usize::MAX);
+    let mut dec = tiff::decoder::Decoder::new(std::io::Cursor::new(bytes)).ok()?;
+    let (w, h) = dec.dimensions().ok()?;
+    if w == 0 || h == 0 {
+        return None;
+    }
+    // A turned picture the image reader would have stood upright: this
+    // fallback does not, so it is the original error (a scan usually
+    // stands as stored).
+    if let Ok(Some(o)) = dec.find_tag_unsigned::<u16>(tiff::tags::Tag::Orientation) {
+        if o != 1 {
+            return None;
+        }
+    }
+    // Separate planes come back one after another, not as RGB triples.
+    if let Ok(Some(p)) = dec.find_tag_unsigned::<u16>(tiff::tags::Tag::PlanarConfiguration) {
+        if p == 2 {
+            return None;
+        }
+    }
+    let color = dec.colortype().ok()?;
+    // Bytes of one picture's samples: 8-bit is one a sample, 16-bit two.
+    // A cap in samples, not bytes, turned a 16-bit grey picture away
+    // (200 bytes asked of a 400-byte decode, #4036).
+    let (samples, bytes) = match color {
+        tiff::ColorType::RGB(8) => (3, 1),
+        tiff::ColorType::RGBA(8) => (4, 1),
+        tiff::ColorType::Gray(8) => (1, 1),
+        tiff::ColorType::RGB(16) => (3, 2),
+        tiff::ColorType::RGBA(16) => (4, 2),
+        tiff::ColorType::Gray(16) => (1, 2),
+        _ => return None,
+    };
+    let n = u64::from(w) * u64::from(h);
+    // The decoded samples and the RGBA result together stay within the
+    // same limit the image reader had.
+    let need = n.checked_mul(samples)?.checked_mul(bytes)?;
+    let rgba_need = n.checked_mul(4)?;
+    if need == 0 || need.checked_add(rgba_need)? > limit as u64 {
+        return None;
+    }
+    let mut limits = tiff::decoder::Limits::default();
+    limits.decoding_buffer_size = usize::try_from(need).ok()?;
+    limits.intermediate_buffer_size = usize::try_from(limit as u64 - need).ok()?;
+    let mut dec = dec.with_limits(limits);
+    let n = n as usize;
+    let mut img = image::RgbaImage::new(w, h);
+    match color {
+        tiff::ColorType::RGB(8) => {
+            let tiff::decoder::DecodingResult::U8(data) = dec.read_image().ok()? else {
+                return None;
+            };
+            if data.len() < n.checked_mul(3)? {
+                return None;
+            }
+            for (p, px) in img.pixels_mut().zip(data.chunks_exact(3)) {
+                *p = image::Rgba([px[0], px[1], px[2], 255]);
+            }
+        }
+        tiff::ColorType::RGBA(8) => {
+            let tiff::decoder::DecodingResult::U8(data) = dec.read_image().ok()? else {
+                return None;
+            };
+            if data.len() < n.checked_mul(4)? {
+                return None;
+            }
+            for (p, px) in img.pixels_mut().zip(data.chunks_exact(4)) {
+                *p = image::Rgba([px[0], px[1], px[2], px[3]]);
+            }
+        }
+        tiff::ColorType::Gray(8) => {
+            let tiff::decoder::DecodingResult::U8(data) = dec.read_image().ok()? else {
+                return None;
+            };
+            if data.len() < n {
+                return None;
+            }
+            for (p, g) in img.pixels_mut().zip(data) {
+                *p = image::Rgba([g, g, g, 255]);
+            }
+        }
+        tiff::ColorType::RGB(16) => {
+            let tiff::decoder::DecodingResult::U16(data) = dec.read_image().ok()? else {
+                return None;
+            };
+            if data.len() < n.checked_mul(3)? {
+                return None;
+            }
+            for (p, px) in img.pixels_mut().zip(data.chunks_exact(3)) {
+                *p = image::Rgba([to_u8(px[0]), to_u8(px[1]), to_u8(px[2]), 255]);
+            }
+        }
+        tiff::ColorType::RGBA(16) => {
+            let tiff::decoder::DecodingResult::U16(data) = dec.read_image().ok()? else {
+                return None;
+            };
+            if data.len() < n.checked_mul(4)? {
+                return None;
+            }
+            for (p, px) in img.pixels_mut().zip(data.chunks_exact(4)) {
+                *p = image::Rgba([to_u8(px[0]), to_u8(px[1]), to_u8(px[2]), to_u8(px[3])]);
+            }
+        }
+        tiff::ColorType::Gray(16) => {
+            let tiff::decoder::DecodingResult::U16(data) = dec.read_image().ok()? else {
+                return None;
+            };
+            if data.len() < n {
+                return None;
+            }
+            for (p, g) in img.pixels_mut().zip(data) {
+                let g = to_u8(g);
+                *p = image::Rgba([g, g, g, 255]);
+            }
+        }
+        _ => return None,
+    }
+    Some(img)
 }
 
 /// The colour mode a picture file stores its pixels in, among those a
@@ -499,6 +651,7 @@ fn read_palette_tiff(bytes: &[u8]) -> Option<ReadPicture> {
     let limit = usize::try_from(crate::files::picture_decode_limit()).unwrap_or(usize::MAX);
     let mut limits = tiff::decoder::Limits::default();
     limits.decoding_buffer_size = limits.decoding_buffer_size.max(limit);
+    limits.intermediate_buffer_size = limits.intermediate_buffer_size.max(limit);
     let mut dec = tiff::decoder::Decoder::new(std::io::Cursor::new(grey.as_slice()))
         .ok()?
         .with_limits(limits);
@@ -682,37 +835,52 @@ fn read_lab_tiff(bytes: &[u8]) -> Option<ReadPicture> {
     })
 }
 
-fn read_cmyk_tiff(bytes: &[u8]) -> Option<ReadPicture> {
+fn read_cmyk_tiff(bytes: &[u8]) -> Result<Option<ReadPicture>, String> {
     if !(bytes.starts_with(b"II*\0") || bytes.starts_with(b"MM\0*")) {
-        return None;
+        return Ok(None);
     }
     // Print-size pictures too (#2000): the reader's own guard is 256 MiB.
     let limit = usize::try_from(crate::files::picture_decode_limit()).unwrap_or(usize::MAX);
     let mut limits = tiff::decoder::Limits::default();
     limits.decoding_buffer_size = limits.decoding_buffer_size.max(limit);
     limits.intermediate_buffer_size = limits.intermediate_buffer_size.max(limit);
-    let mut dec = tiff::decoder::Decoder::new(std::io::Cursor::new(bytes))
-        .ok()?
-        .with_limits(limits);
+    limits.ifd_value_size = limits.ifd_value_size.max(limit);
+    let mut dec = tiff::decoder::Decoder::new(std::io::Cursor::new(bytes)).ok()?;
     let step = match dec.colortype().ok()? {
         tiff::ColorType::CMYK(8) => 4,
         tiff::ColorType::CMYKA(8) => 5,
-        _ => return None,
+        // Not a CMYK TIFF: the Lab, palette and pixel readers follow.
+        _ => return Ok(None),
     };
-    let (w, h) = dec.dimensions().ok()?;
-    let tiff::decoder::DecodingResult::U8(data) = dec.read_image().ok()? else {
-        return None;
+    let (w, h) = dec.dimensions().map_err(|e| e.to_string())?;
+    // A CMYK TIFF that did not decode is that error, not a fall-through
+    // to the image reader's "Memory limit exceeded" (#4036): a deflate
+    // CMYK scan of 10800x21600 was reported there, the tiff crate's own
+    // error lost in `ok()`.
+    let data = match dec.read_image().map_err(|e| e.to_string())? {
+        tiff::decoder::DecodingResult::U8(data) => data,
+        _ => return Ok(None),
     };
-    let n = (w as usize).checked_mul(h as usize)?;
-    if data.len() < n.checked_mul(step)? {
-        return None;
+    let n = (w as usize)
+        .checked_mul(h as usize)
+        .ok_or_else(|| "the CMYK TIFF is too large".to_string())?;
+    if data.len() < n
+        .checked_mul(step)
+        .ok_or_else(|| "the CMYK TIFF is too large".to_string())?
+    {
+        return Err("the CMYK TIFF is short of its pixels".into());
     }
     let px = data.chunks_exact(step).take(n).map(|px| {
         let a = if step == 5 { px[4] } else { 255 };
         ([px[0], px[1], px[2], px[3]], a)
     });
-    let (rgba, planes) = inks_to_picture(w, h, px)?;
-    picture_with_planes(rgba, planes)
+    let Some((rgba, planes)) = inks_to_picture(w, h, px) else {
+        return Err("the CMYK TIFF did not decode".into());
+    };
+    match picture_with_planes(rgba, planes) {
+        Some(p) => Ok(Some(p)),
+        None => Err("the CMYK TIFF did not decode".into()),
+    }
 }
 
 /// The pixels of `w` by `h` ink coverages (cyan, magenta, yellow,
@@ -1197,6 +1365,47 @@ mod tests {
             );
         }
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// An RGB TIFF the image reader turns away at a memory limit is read
+    /// by the tiff crate with the limits the CMYK reader uses (#4036).
+    #[test]
+    fn an_rgb_tiff_at_the_memory_limit_is_read_by_the_tiff_crate() {
+        let img = image::RgbImage::from_fn(40, 30, |x, y| {
+            image::Rgb([x as u8, (y * 8) as u8, 128])
+        });
+        let mut bytes = Vec::new();
+        image::DynamicImage::ImageRgb8(img)
+            .write_to(&mut std::io::Cursor::new(&mut bytes), image::ImageFormat::Tiff)
+            .expect("tiff");
+        let e = crate::files::decode_picture_within(&bytes, 40 * 30 * 3 - 1)
+            .expect_err("the limit");
+        assert!(is_memory_limit(&e), "{e}");
+        let got = read_tiff_pixels(&bytes).expect("tiff pixels");
+        assert_eq!(got.dimensions(), (40, 30));
+        assert_eq!(got.get_pixel(10, 20).0, [10, 160, 128, 255]);
+        // The whole file still reads as a picture.
+        let back = read(&bytes).expect("read");
+        assert!(back.planes.is_none());
+        assert_eq!(back.rgba.dimensions(), (40, 30));
+    }
+
+    /// A grey 16-bit TIFF through the same fallback, samples to 8 bits.
+    #[test]
+    fn a_grey16_tiff_at_the_memory_limit_is_read_by_the_tiff_crate() {
+        let img = image::ImageBuffer::from_fn(20, 10, |x, _| image::Luma([(x as u16) * 3000]));
+        let mut bytes = Vec::new();
+        image::DynamicImage::ImageLuma16(img)
+            .write_to(&mut std::io::Cursor::new(&mut bytes), image::ImageFormat::Tiff)
+            .expect("tiff");
+        let e = crate::files::decode_picture_within(&bytes, 20 * 10 * 2 - 1)
+            .expect_err("the limit");
+        assert!(is_memory_limit(&e), "{e}");
+        let got = read_tiff_pixels(&bytes).expect("tiff pixels");
+        assert_eq!(got.dimensions(), (20, 10));
+        let p = got.get_pixel(5, 0).0;
+        let want = to_u8(5u16 * 3000);
+        assert_eq!(p, [want, want, want, 255], "{p:?}");
     }
 
     /// Edit Bitmap (#1834): a CMYK picture goes to the other program as
