@@ -825,6 +825,11 @@ pub struct Settings {
     /// applied to ("Sample again after applying" on their bars, #2380).
     #[serde(default)]
     pub eyedropper_sample_after_apply: bool,
+    /// The Color Eyedropper hands over to the Pick tool once a colour it
+    /// sampled went onto the selected objects ("Pick tool after applying
+    /// to the selection" on its bar, #3995).
+    #[serde(default)]
+    pub eyedropper_pick_after_apply: bool,
     /// Text fitted to a path: a drag off the path moves the text away
     /// from it in steps of `path_tick_mm` (tick snapping).
     #[serde(default)]
@@ -2594,6 +2599,7 @@ impl Default for Settings {
             curves: Default::default(),
             show_text_frames: true,
             eyedropper_sample_after_apply: false,
+            eyedropper_pick_after_apply: false,
             path_tick_snap: false,
             path_tick_mm: default_path_tick(),
             screen_margins: crate::ui::screen_margins::ScreenMargins::default(),

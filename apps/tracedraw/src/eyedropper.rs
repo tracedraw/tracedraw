@@ -750,6 +750,11 @@ impl App {
             } else {
                 self.apply_fill(Fill::Solid(c));
             }
+            // Done with the eyedropper where its bar asks for it: the Pick
+            // tool comes back, the objects still selected (#3995).
+            if self.settings.eyedropper_pick_after_apply && !self.eyedropper_screen {
+                self.set_tool(crate::tools::Tool::Pick);
+            }
         }
     }
 
@@ -1704,5 +1709,34 @@ mod tests {
         let sb = app.doc().find_shape(b).expect("b");
         assert_eq!(sb.stroke.as_ref().map(|s| s.color), Some(green));
         assert_eq!(sb.fill, Fill::Solid(Color::rgb8(0, 0, 200)));
+    }
+
+    /// #3995: with "Pick tool after applying to the selection" on, the
+    /// Color Eyedropper hands over to the Pick tool once the sampled colour
+    /// went onto the selection, which stays selected; off, it stays.
+    #[test]
+    fn the_pick_tool_comes_back_after_colouring_the_selection() {
+        let mut app = App::headless();
+        let a = rect(&mut app, Rect::new(0.0, 0.0, 10.0, 10.0));
+        let b = rect(&mut app, Rect::new(20.0, 0.0, 30.0, 10.0));
+        let red = Color::rgb8(200, 10, 10);
+        app.run(Command::SetFill {
+            shapes: vec![a],
+            fill: Fill::Solid(red),
+        });
+        app.set_tool(crate::tools::Tool::ColorEyedropper);
+        app.select(vec![b]);
+        app.eyedropper_click(Point::new(5.0, 5.0), false, false, false);
+        assert_eq!(app.tool, crate::tools::Tool::ColorEyedropper);
+        app.settings.eyedropper_pick_after_apply = true;
+        app.eyedropper_reset();
+        app.run(Command::SetFill {
+            shapes: vec![b],
+            fill: Fill::Solid(Color::rgb8(0, 0, 200)),
+        });
+        app.eyedropper_click(Point::new(5.0, 5.0), false, false, false);
+        assert_eq!(app.doc().find_shape(b).expect("b").fill, Fill::Solid(red));
+        assert_eq!(app.tool, crate::tools::Tool::Pick);
+        assert_eq!(app.selection, vec![b]);
     }
 }

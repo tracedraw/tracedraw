@@ -1967,6 +1967,11 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
                     tr("toolbar.sample_after_apply"),
                 )
                 .rich_tip(crate::ui::tips::keyed("toolbar.sample_after_apply"));
+                ui.checkbox(
+                    &mut app.settings.eyedropper_pick_after_apply,
+                    tr("toolbar.pick_after_apply"),
+                )
+                .rich_tip(crate::ui::tips::keyed("toolbar.pick_after_apply"));
                 // The next click anywhere in the window, the panels and
                 // bars too, samples the colour shown there (#3040).
                 if ui
