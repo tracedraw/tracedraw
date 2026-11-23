@@ -559,6 +559,10 @@ pub struct PrintState {
     /// Pages keep their size on a fixed sheet: never shrunk to make room
     /// for the marks (#388).
     pub keep_size: bool,
+    /// Print range Selection: the selected objects keep their place on
+    /// the drawing's page, printed on a page of its size, instead of the
+    /// area they cover becoming the page (#3806).
+    pub selection_on_page: bool,
     /// Where the page information sits, moved from its place (mm, x and
     /// y) by a drag in Print Preview (#388).
     pub info_offset: (f64, f64),
@@ -968,6 +972,7 @@ impl Default for PrintState {
             mirror: false,
             back_side: false,
             keep_size: false,
+            selection_on_page: false,
             info_offset: (0.0, 0.0),
             art_offset: (0.0, 0.0),
             margins: [0.0; 4],
@@ -6642,7 +6647,7 @@ pub(crate) fn print_layout_fields(app: &App, ui: &mut Ui, st: &mut PrintState) {
 /// count these, so a booklet of pages 1 to 20 of a hundred reports twenty
 /// pages, not a hundred (#788).
 pub(crate) fn printed_page_sizes(app: &App, st: &PrintState) -> Vec<Size> {
-    if st.range == 3 {
+    if st.range == 3 && !st.selection_on_page {
         if let Some(size) = selection_print_size(app) {
             return vec![size];
         }
@@ -7181,6 +7186,12 @@ fn print_tab_general(app: &App, ui: &mut Ui, st: &mut PrintState) -> Option<Stri
                         .rich_tip(crate::ui::tips::keyed("print.range_selection"))
                         .rich_disabled_tip(crate::ui::tips::keyed("print.range_selection"));
                 });
+                if st.range == 3 {
+                    ui.indent("print_selection_on_page", |ui| {
+                        ui.checkbox(&mut st.selection_on_page, tr("print.selection_on_page"))
+                            .rich_tip(crate::ui::tips::keyed("print.selection_on_page"));
+                    });
+                }
                 parity_combo(ui, st, "print_parity");
             });
         });

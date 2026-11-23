@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Print: Selection can keep the objects in their place on the page, with a new box under it in the Print dialog and in Print Preview; left unticked, the selection prints on a page the size of the area it covers as before (#3806).
 - Text fitted to a path: the Shape tool shows a node at each letter, and dragging letters moves them along the path (their horizontal offset now carries a letter along the path, turned with it, instead of off to the side) (#3252).
 - Blends: a blend grouped and bent with an envelope or a perspective keeps every step in place when the group is ungrouped; the steps ran to the end object as it was before the bend and came apart from both objects (#3969).
 - Show objects while transforming: a dashed frame stays at the selection's box as it was when the move, stretch or turn began, so the change can be judged against it (#3949).

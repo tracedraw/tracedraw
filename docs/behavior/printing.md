@@ -116,7 +116,11 @@ has one.
     at its size, shrunk only when it does not fit and Keep page size is off,
     and the layouts repeat it; #1001, `selection_as_page`,
     `export::tests::the_selection_prints_alone_on_a_page_of_its_size`,
-    `export::tests::keep_size_keeps_the_selection_at_its_size`); and Odd and even pages,
+    `export::tests::keep_size_keeps_the_selection_at_its_size`; with Keep
+    their place on the page ticked under Selection, in the Print dialog
+    and in Print Preview, the selected objects print where they stand on
+    a page the size of the drawing's page instead, #3806,
+    `export::tests::the_selection_can_print_in_its_place_on_the_page`); and Odd and even pages,
     Odd pages or Even pages of the document or the list (#951).
   - Copies: a file gets its copies inside, as whole sets (Collate) or
     each sheet repeated. Reverse order (under Collate) prints the

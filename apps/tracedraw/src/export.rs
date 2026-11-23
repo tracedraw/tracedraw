@@ -1872,7 +1872,12 @@ pub fn print_sheets(app: &App, st: &PrintState) -> Document {
             for layer in page.layers.iter_mut() {
                 layer.shapes.retain(picked);
             }
-            selection_as_page(page, &mut doc.master);
+            // On the drawing's page (#3806): the objects stay where they
+            // stand on a page of its size, so they print in their place
+            // on the paper.
+            if !st.selection_on_page {
+                selection_as_page(page, &mut doc.master);
+            }
         }
     }
     // The pages' background colour stays on screen when it is not to be
@@ -1888,7 +1893,7 @@ pub fn print_sheets(app: &App, st: &PrintState) -> Document {
     // (`imposition::Options::fit`) and what runs off a page stays cut at
     // its edge, as on screen: pulling it in shrank the page's own objects
     // and moved them off their place (#2678).
-    if st.fit_to_page && selection {
+    if st.fit_to_page && selection && !st.selection_on_page {
         for page in doc.pages.iter_mut() {
             fit_contents_to_page(page, true);
         }
@@ -6149,6 +6154,43 @@ mod tests {
             })
             .flatten()
             .collect()
+    }
+
+    /// Print range Selection with "Keep their place on the page": only
+    /// the selected objects print, where they stand, on a sheet the size
+    /// of the drawing's page; unticked, the area they cover stays the
+    /// page as before (#3806).
+    #[test]
+    fn the_selection_can_print_in_its_place_on_the_page() {
+        let (app, _) = selection_drawing();
+        let st = PrintState {
+            range: 3,
+            selection_on_page: true,
+            ..PrintState::default()
+        };
+        assert_eq!(
+            crate::ui::dialogs::printed_page_sizes(&app, &st),
+            vec![Size::new(210.0, 297.0)]
+        );
+        let sheets = print_sheets(&app, &st);
+        assert_eq!(sheets.pages.len(), 1);
+        let sheet = &sheets.pages[0];
+        assert_eq!(sheet.size, Size::new(210.0, 297.0));
+        let shapes = printed(sheet);
+        assert_eq!(shapes.len(), 2, "only the two selected squares: {shapes:?}");
+        let mut x0: Vec<f64> = shapes.iter().map(|r| r.x0).collect();
+        x0.sort_by(f64::total_cmp);
+        assert!(
+            (x0[0] - 50.0).abs() < 1e-6 && (x0[1] - 90.0).abs() < 1e-6,
+            "{x0:?}"
+        );
+        assert!(sheet.background.is_none());
+        // Unticked: the area they cover is the page, as before.
+        let st = PrintState {
+            range: 3,
+            ..PrintState::default()
+        };
+        assert_eq!(print_sheets(&app, &st).pages[0].size, Size::new(51.0, 31.0));
     }
 
     /// Print range Selection prints only the selected objects (no other
