@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Exporting no longer leaves the program standing still with nothing on screen: on the desktop File > Export runs in the background, with "Exporting <file>…" on the status line and an "Exporting" window whose bar fills file by file ("Writing file 3 of 12") when a file is written for each page; the window stays alive until the files are whole.
+- Opening a large file of another format (8 MB or more: `.cdr`, PDF, SVG, PostScript) says so before the reading starts: "Opening <file>…" on the status line and an "Opening" window, where before the program stood still from the moment the file was chosen. Large `.tdraw` drawings already open in the background with a bar.
 - Dimensions in scripts and macros: a label size or another style setting changed on the Dimension bar while a macro is recorded is recorded and plays back on the dimension the macro draws; scripts and VBA macros read and set it with `LabelSize` and `SetDimensionStyle` (#4026).
 - Blends: a double click on a group bent by an envelope or a perspective that holds a blend brings the group into focus with the blend selected and the Blend panel open, so the blend's steps, acceleration and colours change in place, the envelope and the group kept (#3968).
 - Objects docker: Ctrl+click adds or removes a layer, Shift+click picks a range of layers and Ctrl+Shift+click adds the range; the eye, printer and padlock, Delete, Select Layer Objects, Cut and Copy and Move to Master or Page then act on every picked layer in one undo step, a page keeping at least one layer (#3966; PR #3967 by ratmanz0000).

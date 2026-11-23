@@ -1817,9 +1817,21 @@ pub struct App {
     /// while it is, nothing typed or clicked reaches the drawing.
     pub saving: Option<crate::saving::Saving>,
     /// Save, Save As and their shortcuts write a large drawing on a
-    /// worker thread (never in a browser, nor in the tests unless one
-    /// asks for it, which save at once).
+    /// worker thread, and File > Export runs on one (never in a browser,
+    /// nor in the tests unless one asks for it, which write at once).
     pub save_on_worker: bool,
+    /// An export running off the interface's thread, with its progress
+    /// window; nothing typed or clicked reaches the drawing meanwhile.
+    pub exporting: Option<crate::exporting::Exporting>,
+    /// A large file of another format about to be opened (its path, the
+    /// password given and the frames its notice has been shown): the
+    /// window says so before the reading stops it.
+    pub open_notice: Option<(PathBuf, String, u8)>,
+    /// More large files to open after that one, in their order.
+    open_notice_next: Vec<(PathBuf, String)>,
+    /// The file whose notice was shown, or that is read at once (Revert):
+    /// it is read now.
+    pub(crate) open_noticed: Option<PathBuf>,
     /// What that read gave, for the open it finishes.
     pub opened_read: Option<(PathBuf, crate::opening::OpenRead)>,
     /// Manual two-sided printing: the settings of a print whose fronts
@@ -3586,6 +3598,10 @@ impl App {
             opening: None,
             saving: None,
             save_on_worker: !crate::files::WEB && !cfg!(test),
+            exporting: None,
+            open_notice: None,
+            open_notice_next: Vec::new(),
+            open_noticed: None,
             opened_read: None,
             duplex_backs: None,
             printers_seen: Vec::new(),
@@ -9059,6 +9075,24 @@ impl App {
                 return;
             }
         }
+        // A large file of another format is read on the interface's
+        // thread: the window says it is being opened first
+        // ([`App::poll_open_notice`]).
+        if ext != "tdraw"
+            && self.save_on_worker
+            && self.open_noticed.as_ref() != Some(&path)
+            && std::fs::metadata(&path)
+                .is_ok_and(|m| m.len() >= crate::opening::BACKGROUND_FROM)
+        {
+            if self.open_notice.is_some() {
+                self.open_notice_next.push((path, password.to_string()));
+            } else {
+                self.status =
+                    crate::i18n::trf("status.opening", &[("p", &path.display().to_string())]);
+                self.open_notice = Some((path, password.to_string(), 0));
+            }
+            return;
+        }
         // A package's fonts, beside the drawing, before its text is laid
         // out (#852).
         if ext == "tdraw" {
@@ -9758,6 +9792,56 @@ impl App {
                 self.status,
                 crate::i18n::trf("status.saved_mesh_as_colour", &[("n", &meshes.to_string())])
             );
+        }
+    }
+
+    /// A large file of another format about to be opened: once its
+    /// notice has been on screen for a frame, read it. Whether one is
+    /// waiting.
+    pub fn poll_open_notice(&mut self) -> bool {
+        let Some((_, _, frames)) = &mut self.open_notice else {
+            return false;
+        };
+        if *frames < 2 {
+            *frames += 1;
+            return true;
+        }
+        if let Some((path, password, _)) = self.open_notice.take() {
+            self.open_noticed = Some(path.clone());
+            self.open_path_with_password(path, &password);
+            self.open_noticed = None;
+        }
+        // The next one's notice shows before it is read in its turn.
+        if self.open_notice.is_none() && !self.open_notice_next.is_empty() {
+            let (path, password) = self.open_notice_next.remove(0);
+            self.status =
+                crate::i18n::trf("status.opening", &[("p", &path.display().to_string())]);
+            self.open_notice = Some((path, password, 0));
+        }
+        self.open_notice.is_some()
+    }
+
+    /// The export running off the interface's thread, once it is over:
+    /// the status line, as after any export. Whether it is still running.
+    pub fn poll_exporting(&mut self) -> bool {
+        let Some(job) = &self.exporting else {
+            return false;
+        };
+        let Some(result) = job.poll() else {
+            return true;
+        };
+        if let Some(job) = self.exporting.take() {
+            crate::ui::dialogs::export_done(self, result, job.last_options);
+        }
+        false
+    }
+
+    /// Wait for the export running off the interface's thread, if one is
+    /// (the program closes, or another export starts).
+    pub fn wait_for_exporting(&mut self) {
+        if let Some(job) = self.exporting.take() {
+            let result = job.wait();
+            crate::ui::dialogs::export_done(self, result, job.last_options);
         }
     }
 

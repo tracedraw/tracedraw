@@ -185,6 +185,7 @@ mod ops;
 mod ops2;
 mod opening;
 mod saving;
+mod exporting;
 mod package;
 mod page_drop;
 mod page_names;
@@ -1043,7 +1044,11 @@ impl eframe::App for Shell {
         interaction::release_chorded_left(ctx, raw_input);
         // While a large drawing is written off the interface's thread
         // nothing typed, clicked or dropped reaches it (#4011).
-        if self.app.as_ref().is_some_and(|app| app.saving.is_some()) {
+        if self
+            .app
+            .as_ref()
+            .is_some_and(|app| app.saving.is_some() || app.exporting.is_some())
+        {
             saving::hold_input(raw_input);
         }
         // The screen's safe area on Android (#1917).
@@ -1196,12 +1201,20 @@ impl eframe::App for Shell {
         }
         // A large drawing being saved off the interface's thread (#4011):
         // a window closed meanwhile waits for the file.
-        if app.saving.is_some() && ui.ctx().input(|i| i.viewport().close_requested()) {
+        if (app.saving.is_some() || app.exporting.is_some())
+            && ui.ctx().input(|i| i.viewport().close_requested())
+        {
             app.wait_for_saving();
+            app.wait_for_exporting();
         }
-        if app.poll_saving() {
+        if app.poll_saving() | app.poll_exporting() {
             ui.ctx()
                 .request_repaint_after(std::time::Duration::from_millis(50));
+        }
+        // A large file of another format about to be opened: its notice
+        // is on screen before the reading starts.
+        if app.poll_open_notice() {
+            ui.ctx().request_repaint();
         }
         // A large drawing being opened off the interface's thread (#2849).
         if app.poll_opening() {
@@ -1322,6 +1335,7 @@ impl eframe::App for Shell {
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         if let Some(app) = self.app.as_mut() {
             app.wait_for_saving();
+            app.wait_for_exporting();
             app.save_settings();
             app.leave_session();
             // Restart after an update: the new version starts last, when

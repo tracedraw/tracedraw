@@ -2197,6 +2197,8 @@ pub fn show(app: &mut App, ctx: &Context) {
     // A large drawing being opened: how far it got, and Cancel (#2849).
     crate::opening::window(app, ctx);
     crate::saving::window(app, ctx);
+    crate::exporting::window(app, ctx);
+    crate::exporting::opening_notice(app, ctx);
     // A shape of My shapes asks for its name (#2360).
     crate::ui::toolbar::my_shape_name_dialog(app, ctx);
     crate::ui::chrome::set_center_dialogs(ctx, app.settings.center_dialogs);
@@ -5308,7 +5310,29 @@ pub fn export_chosen_file(
 /// says the last options were used and how to see them, and a click on it
 /// opens Options > Global > File Formats, where the setting is.
 pub fn write_export(app: &mut App, path: &std::path::Path, st: &ExportState, last_options: bool) {
-    match crate::export::export(app, path, st) {
+    // Off the interface's thread, with a window that shows how far it
+    // got: a long export no longer stops the program with nothing on
+    // screen.
+    if app.save_on_worker {
+        app.wait_for_exporting();
+        let work = crate::export::prepare_export(app, path, st);
+        match crate::exporting::Exporting::start(work, last_options) {
+            Ok(job) => {
+                app.status = trf("status.exporting", &[("p", &path.display().to_string())]);
+                app.exporting = Some(job);
+            }
+            Err(e) => export_done(app, Err(e), last_options),
+        }
+        return;
+    }
+    let result = crate::export::export(app, path, st);
+    export_done(app, result, last_options);
+}
+
+/// An export is over: its outcome on the status line (see
+/// [`write_export`]).
+pub fn export_done(app: &mut App, result: Result<String, String>, last_options: bool) {
+    match result {
         Ok(msg) if last_options => {
             log::info!("{msg}");
             app.status = tr("status.exported_last_options");
