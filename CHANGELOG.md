@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Objects docker: Ctrl+click adds or removes a layer, Shift+click picks a range of layers and Ctrl+Shift+click adds the range; the eye, printer and padlock, Delete, Select Layer Objects, Cut and Copy and Move to Master or Page then act on every picked layer in one undo step, a page keeping at least one layer (#3966; PR #3967 by ratmanz0000).
 - Scripts and macros: Zoom To Fit, Zoom To Page, Zoom To Selection and Copy Visible Area can be called from scripts (`Application.ZoomToFit()`, `Application.CopyVisibleArea()`…) and from VBA macros (`ActiveWindow.ActiveView.ToFitAllObjects` and the others, which did nothing), and the macro recorder records them in their place among the other steps (#4020).
 - tracedraw-cli: when the program is set to take the stand-in fonts for missing ones and keep them in the drawing, the command line writes its files with those fonts too, as the program does (#3965).
 - Windows: a print of hundreds or thousands of sheets (a print merge of 2000 pages) now goes to the printer: the whole job had five minutes and what the printing step said was read only at its end, so a long job stood still and was given up with "Print failed", and every sheet was drawn into memory before the first went out. Sheets are now drawn several at a time straight to files, the job runs as long as it keeps sending sheets, and the status bar counts them: "Drawing sheet 12 of 2000 for the printer…", then "Sending sheet 12 of 2000 to the printer…" (#4053, #4054).
