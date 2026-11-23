@@ -454,7 +454,7 @@ pub fn run() -> eframe::Result<()> {
         mcp_link::bridge();
         return Ok(());
     }
-    // A window that stops responding says so, and offers a report.
+    // A step that takes long is noted in a file; a crash is offered.
     hang_watch::start();
     // `tracedraw --x11`: the window opens through X11 (XWayland on a
     // Wayland desktop), where a graphics tablet's pen moves the pointer

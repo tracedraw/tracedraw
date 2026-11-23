@@ -3317,8 +3317,6 @@ pub fn show(app: &mut App, ctx: &Context) {
         Dialog::ProblemReport(offer) => {
             use crate::hang_watch::Problem;
             let what = match offer.problem {
-                Problem::HangNow(s) => trf("report.hang_now", &[("seconds", &s.to_string())]),
-                Problem::HangLast => tr("report.hang_last"),
                 Problem::CrashLast => tr("report.crash_last"),
             };
             let text = format!("{what}\n\n{}", tr("report.body"));

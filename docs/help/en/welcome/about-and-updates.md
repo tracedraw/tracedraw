@@ -130,16 +130,13 @@ and [[menu.help.user_guide]] open its learning page, and
 - [[menu.help > menu.help.message_settings]] opens the options where
   TraceDraw's messages are set.
 
-## When TraceDraw stops responding {#problem-reports}
+## When TraceDraw closes with an error {#problem-reports}
 
-When a step of TraceDraw takes longer than 10 seconds, it writes a report
-of what it was doing: the version, the system, the tool, the last command
-and how big the drawing is, with the end of its log. The report never holds
-the drawing's name or its contents.
+When TraceDraw closes because of an error, it writes a report of what
+happened: the version, the system and where the error was. The report never
+holds the drawing's name or its contents.
 
-1. If TraceDraw comes back, a message says how long it stopped responding.
-   If it had to be closed, or it closed with an error, the message comes at
-   its next start.
+1. At its next start, a message says that TraceDraw closed with an error.
 2. Click **[[report.show]]** to read the report first.
 3. Click **[[report.send]]**: a new issue opens on GitHub with a summary
    filled in, and the folder that holds the report opens beside it.

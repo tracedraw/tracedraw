@@ -4,8 +4,11 @@ Versions follow the tags of this repository; every push to `main` also
 publishes a nightly build. [`docs/features.md`](docs/features.md) has the
 full, row-by-row status.
 
-## Unreleased
+## 0.51.1 (2026-11-23)
 
+- No more "TraceDraw stopped responding" message: since 0.50.3 a step that took more than 10 seconds (a big file saved, a heavy effect) brought a message offering a report, in that run or at the next start, which read as a crash and came at every save of a large drawing. A long step now only leaves a note in `hang.log` in the settings folder and never interrupts; a report is offered only when TraceDraw really closed with an error, and only for an error of the version in use (#4011, #4018, #4025, #4035, #4048).
+- Error reports keep the cause: when a second error followed the first (on macOS every error in the window ends with "panic in a function that cannot unwind"), the report held the second alone, so it said nothing of what went wrong; the first now stays on top and is the one shown (#4017, #4042).
+- macOS: TraceDraw no longer closes at once when an event arrives while another is still being handled (a dialog of the system held open); the event is left out instead (#4017, #4042).
 - Shape tool: rounded corners follow node edits: moving nodes or bending a segment beside a rounded corner rounds it again with its radius where its sides now run, so it stays a rounded corner with its ring (Options > Nodes and Handles, on by default) (#3265).
 
 ## 0.51.0 (2026-11-23)
