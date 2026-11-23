@@ -31,6 +31,20 @@ fn is_blend(e: &Effect) -> bool {
     matches!(e, Effect::Blend { .. })
 }
 
+/// The first object holding a blend inside the group `s`, at any depth.
+fn blend_start_in(s: &Shape) -> Option<ShapeId> {
+    let ShapeKind::Group { children } = &s.kind else {
+        return None;
+    };
+    children.iter().find_map(|c| {
+        if c.effects.iter().any(is_blend) {
+            Some(c.id)
+        } else {
+            blend_start_in(c)
+        }
+    })
+}
+
 /// `effects` with the blend replaced in place by `b` (removed with
 /// `None`).
 fn with_blend(effects: &[Effect], b: Option<Effect>) -> Vec<Effect> {
@@ -170,6 +184,33 @@ impl App {
             }
         }
         out
+    }
+
+    /// A double click on a group bent by an envelope or a perspective
+    /// that holds a blend (#3968): the group comes into focus with the
+    /// blend's start object selected and the Blend panel open, so the
+    /// blend is changed where it is, envelope and group kept. False when
+    /// `id` is not such a group.
+    pub fn edit_bent_blend(&mut self, id: ShapeId) -> bool {
+        let Some(group) = self.doc().find_shape(id) else {
+            return false;
+        };
+        let bent = group.effects.iter().any(|e| {
+            matches!(
+                e,
+                Effect::Envelope { .. } | Effect::Perspective { .. } | Effect::MeshEnvelope { .. }
+            )
+        });
+        if !bent || !matches!(group.kind, ShapeKind::Group { .. }) {
+            return false;
+        }
+        let Some(start) = blend_start_in(group) else {
+            return false;
+        };
+        self.focus_on(id);
+        self.select(vec![start]);
+        self.open_docker(crate::app::DockerTab::Blend);
+        true
     }
 
     /// The blends of the selection: those of selected start objects and
@@ -413,6 +454,80 @@ mod tests {
     fn steps_of(app: &App, id: ShapeId) -> Vec<Shape> {
         let s = app.doc().find_shape(id).cloned().expect("start");
         tracedraw_core::live::evaluate(&s).above
+    }
+
+    /// A double click on a blend grouped and bent by the group's
+    /// envelope opens the blend's options: the group in focus, the start
+    /// object selected, the Blend panel shown; a change of the blend
+    /// keeps the envelope and the group (#3968). A group with no envelope
+    /// is left to the double click it had.
+    #[test]
+    fn a_double_click_on_a_bent_blend_group_edits_the_blend() {
+        use tracedraw_core::geometry::Shape as _;
+        let mut app = App::headless();
+        let a = square(&mut app, 0.0, Color::BLACK);
+        let b = square(&mut app, 100.0, Color::WHITE);
+        app.selection = vec![a, b];
+        app.blend_selection(4, 0.0, 0.0, 0.0);
+        app.refresh_blends();
+        app.select(vec![a, b]);
+        app.group_selection();
+        let g = app.selection[0];
+        assert!(!app.edit_bent_blend(g), "no envelope yet");
+        let bb = app.doc().find_shape(g).expect("group").local_path().bounding_box();
+        let mut nodes = tracedraw_core::envelope::default_nodes(bb);
+        nodes[1].y -= 30.0;
+        let envelope = Effect::Envelope {
+            nodes,
+            keep_lines: false,
+            handles: Vec::new(),
+            corners: Vec::new(),
+            mapping: tracedraw_core::envelope::Mapping::Putty,
+            reference: None,
+        };
+        app.run(Command::SetEffects {
+            shape: g,
+            effects: vec![envelope.clone()],
+        });
+        app.refresh_blends();
+        app.select(vec![g]);
+        assert!(app.edit_bent_blend(g));
+        assert_eq!(app.focus_target(), Some(g));
+        assert_eq!(app.selection, vec![a]);
+        assert!(app.docker_shown(crate::app::DockerTab::Blend));
+        assert_eq!(app.selected_blends().len(), 1);
+        app.change_blends("Blend", |e| match e {
+            Effect::Blend { .. } => {
+                let mut e = e.clone();
+                if let Effect::Blend { steps, .. } = &mut e {
+                    *steps = 9;
+                }
+                Some(e)
+            }
+            _ => None,
+        });
+        let group = app.doc().find_shape(g).cloned().expect("the group");
+        assert_eq!(group.effects, vec![envelope]);
+        let start = app.doc().find_shape(a).cloned().expect("start");
+        assert!(start
+            .effects
+            .iter()
+            .any(|e| matches!(e, Effect::Blend { steps: 9, .. })));
+        // Nothing to edit in a bent group without a blend.
+        let c = square(&mut app, 200.0, Color::BLACK);
+        let d = square(&mut app, 220.0, Color::BLACK);
+        app.exit_focus();
+        app.select(vec![c, d]);
+        app.group_selection();
+        let plain = app.selection[0];
+        app.run(Command::SetEffects {
+            shape: plain,
+            effects: vec![Effect::envelope_around(
+                Rect::new(200.0, 0.0, 230.0, 10.0),
+                false,
+            )],
+        });
+        assert!(!app.edit_bent_blend(plain));
     }
 
     /// A blend grouped and bent by the group's envelope, then ungrouped,
