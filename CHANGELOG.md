@@ -34,8 +34,6 @@ full, row-by-row status.
 - Interactive Fill: the Transparency slider on a colour node's bar makes only that node's colour see-through, so a fill can fade out at one end while the other end and the rest of the object stay solid. It set the uniform transparency of the whole object, whichever node was selected; that one is still in the Properties docker and the Transparency tool (#2827).
 - Text > Paragraph Text Frame > Put Text Inside Shape: with a text and a closed shape selected, the text becomes a frame the size of the shape and its lines stay inside the shape's outline (a circle, a triangle, a star, a shape with a hole), a little away from the edge. Move or edit the shape and the lines follow it; delete the shape and the text is a plain frame again. Selecting a text and a shape did nothing before, since a frame was always a rectangle (discussion #3238).
 
-## 0.51.0 (2026-11-22)
-
 - .cdr import: a TraceDraw drawing embedded in a .cdr file as a packaged file comes in as its own objects, editable and at their real size, centred where the embedded object stands, instead of a grey box (#3600).
 - Typing in a large drawing: a text change made in place updates only that text instead of walking the whole document, a render for an older state of the drawing gives up as soon as a newer one is due, and the text being edited is drawn over the page picture already made (#3902, #3903, #3904; PR #3910 by ratmanz0000).
 - Pictures: a grey picture is turned into grey levels in one pass over its pixels, and placed pictures are written with the same quick setting as the others (PR #3915 by ratmanz0000).
