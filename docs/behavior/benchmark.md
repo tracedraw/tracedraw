@@ -23,7 +23,13 @@ suggestion and the test with and without the graphics card.
   to leave the computer alone. The browser build has no Advanced Test
   (no thread to run it on).
 - While a test runs, the window shows a spinner, what is being measured
-  and a progress bar; both buttons are greyed.
+  and a progress bar; both buttons are greyed. Close stays usable and
+  stops the run: the measuring thread starts no further test and lets
+  its drawings go, and the graphics test's pictures are dropped, so a
+  test too slow to finish (the window drawn on the processor) can be
+  left and the processor and graphics go back to idle (#3665,
+  `ui::benchmark::tests::closing_the_window_stops_a_run`,
+  `benchmark::tests::a_stopped_run_times_no_more_tasks`).
 - Each task is listed with its drawing's size, a bar and its time in
   seconds. The bar is green up to a quarter of a second, amber up to a
   second and red after (files: 1 s and 4 s), and full at the slow limit
@@ -73,6 +79,11 @@ frames. The window shows a spinner and what is being measured.
   `zoom-and-pan.md`) is turned on and the window says so; a faster
   result leaves the option as it is
   (`ui::benchmark::tests::a_slow_computer_turns_light_zoom_on`).
+- A start made by Test Without / With the Graphics Card draws with
+  another renderer than a normal start uses, only to compare: a low
+  score there leaves Light zoom as it is, and the window says so. Light
+  zoom is turned on only by a run with the usual renderer (#3664,
+  `ui::benchmark::tests::a_comparison_run_leaves_light_zoom_alone`).
 
 ## Zoom
 
@@ -122,7 +133,7 @@ glide
   measures, the adapter, the acceleration, the system, and the
   comfortable objects and the tasks, as text, `benchmark::report`),
   Options (closes this window and opens Options at the General page,
-  #3351) and Close.
+  #3351) and Close (usable while a test runs, and stops it, #3665).
 - Each run is written to the log in one line.
 
 ## Checks

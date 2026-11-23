@@ -9817,6 +9817,7 @@ benchmark.slow_software = "窗口由处理器绘制。如果这台电脑有显�
 benchmark.fast = "这台电脑运行 TraceDraw 足够快。" # mt
 benchmark.light_zoom_turned_on = "已打开轻量缩放,让缩放在这台电脑上更轻松。您可以在下方或 选项 > 工具 > 缩放/平移 中关闭它。" # mt
 benchmark.light_zoom_left_alone = "此次测试使用的渲染器与 TraceDraw 平时使用的不同，因此轻量缩放保持不变。如果缩放较慢，请在 选项 > 工具 > 缩放/平移 中开启。" # mt
+benchmark.cancelled = "基准测试已取消。" # mt
 benchmark.compare = "有无硬件加速对比" # mt
 benchmark.with_acceleration = "使用硬件加速(显卡)" # mt
 benchmark.without_acceleration = "不使用硬件加速(处理器)" # mt

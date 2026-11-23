@@ -9817,6 +9817,7 @@ benchmark.slow_software = "ໜ້າຕ່າງຖືກແຕ້ມໂດຍ�
 benchmark.fast = "ຄອມພິວເຕີນີ້ໄວພໍສຳລັບ TraceDraw." # mt
 benchmark.light_zoom_turned_on = "ໄດ້ເປີດຊູມແບບເບົາ ເພື່ອໃຫ້ການຊູມເບົາລົງໃນຄອມພິວເຕີນີ້. ທ່ານສາມາດປິດມັນຂ້າງລຸ່ມ ຫຼື ໃນ ຕົວເລືອກ > ເຄື່ອງມື > ຊູມ/ເລື່ອນ." # mt
 benchmark.light_zoom_left_alone = "ການທົດສອບນີ້ໃຊ້ຕົວເຣນເດີອື່ນທີ່ບໍ່ແມ່ນຕົວທີ່ TraceDraw ໃຊ້ປົກກະຕິ, ສະນັ້ນການຊູມແບບເບົາຈຶ່ງບໍ່ຖືກປ່ຽນ. ເປີດມັນໃນ ຕົວເລືອກ > ເຄື່ອງມື > ຊູມ/ເລື່ອນ ຖ້າການຊູມຊ້າ." # mt
+benchmark.cancelled = "ຍົກເລີກການທົດສອບປະສິດທິພາບແລ້ວ." # mt
 benchmark.compare = "ມີ ແລະ ບໍ່ມີການເລັ່ງຮາດແວ" # mt
 benchmark.with_acceleration = "ມີການເລັ່ງຮາດແວ (ກາດຈໍ)" # mt
 benchmark.without_acceleration = "ບໍ່ມີການເລັ່ງຮາດແວ (ໂປຣເຊສເຊີ)" # mt

@@ -9817,6 +9817,7 @@ benchmark.slow_software = "Okno rysuje procesor. Jeśli ten komputer ma kartę g
 benchmark.fast = "Ten komputer jest wystarczająco szybki dla TraceDraw." # mt
 benchmark.light_zoom_turned_on = "Włączono Lekkie powiększanie, aby powiększanie mniej obciążało ten komputer. Możesz je wyłączyć poniżej lub w Opcje > Narzędzia > Powiększanie/Przesuwanie." # mt
 benchmark.light_zoom_left_alone = "Ten test użył innego renderera niż ten, którego TraceDraw zwykle używa, więc Lekka lupa pozostała bez zmian. Włącz ją w Opcje > Narzędzia > Lupa/Przesuwanie, jeśli powiększanie jest wolne." # mt
+benchmark.cancelled = "Test wydajności anulowany." # mt
 benchmark.compare = "Z akceleracją sprzętową i bez niej" # mt
 benchmark.with_acceleration = "Z akceleracją sprzętową (karta graficzna)" # mt
 benchmark.without_acceleration = "Bez akceleracji sprzętowej (procesor)" # mt

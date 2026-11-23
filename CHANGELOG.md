@@ -9,6 +9,7 @@ full, row-by-row status.
 - Property bar: with two or more objects selected, the buttons to group, combine, weld, trim and align them come right after the position and size fields instead of at the end of the bar, where a long bar pushed them out of the window (#3973).
 - Print: Selection can keep the objects in their place on the page, with a new box under it in the Print dialog and in Print Preview; left unticked, the selection prints on a page the size of the area it covers as before (#3806).
 - Open, Save and the other file and folder dialogs no longer freeze the program while they are open: the system's dialog runs on its own and the program goes on drawing (#3940; PR #3941 by vegegoku).
+- Benchmark: Close stays usable while a test runs and stops it, so a test too slow to finish with the window drawn on the processor can be left and the computer goes back to idle (#3665).
 - Text fitted to a path: the Shape tool shows a node at each letter, and dragging letters moves them along the path (their horizontal offset now carries a letter along the path, turned with it, instead of off to the side) (#3252).
 - Blends: a blend grouped and bent with an envelope or a perspective keeps every step in place when the group is ungrouped; the steps ran to the end object as it was before the bend and came apart from both objects (#3969).
 - Show objects while transforming: a dashed frame stays at the selection's box as it was when the move, stretch or turn began, so the change can be judged against it (#3949).

@@ -9817,6 +9817,7 @@ benchmark.slow_software = "Pencereyi işlemci çiziyor. Bu bilgisayarda ekran ka
 benchmark.fast = "Bu bilgisayar TraceDraw için yeterince hızlı." # mt
 benchmark.light_zoom_turned_on = "Yakınlaştırma bu bilgisayarı daha az yorsun diye Hafif yakınlaştırma açıldı. Aşağıdan veya Seçenekler > Araçlar > Yakınlaştır/Kaydır'dan kapatabilirsiniz." # mt
 benchmark.light_zoom_left_alone = "Bu test TraceDraw'un normalde kullandığından farklı bir işleyici kullandı, bu yüzden Hafif yakınlaştırma olduğu gibi bırakıldı. Yakınlaştırma yavaşsa Seçenekler > Araçlar > Yakınlaştırma/Kaydırma bölümünden açın." # mt
+benchmark.cancelled = "Performans testi iptal edildi." # mt
 benchmark.compare = "Donanım hızlandırmalı ve hızlandırmasız" # mt
 benchmark.with_acceleration = "Donanım hızlandırmalı (ekran kartı)" # mt
 benchmark.without_acceleration = "Donanım hızlandırmasız (işlemci)" # mt

@@ -9817,6 +9817,7 @@ benchmark.slow_software = "تُرسم النافذة بواسطة المعالج
 benchmark.fast = "هذا الحاسوب سريع بما يكفي لـ TraceDraw." # mt
 benchmark.light_zoom_turned_on = "تم تشغيل التكبير الخفيف ليصبح التكبير أخف على هذا الحاسوب. يمكنك إيقافه أدناه أو من الخيارات > الأدوات > التكبير/التحريك." # mt
 benchmark.light_zoom_left_alone = "استخدم هذا الاختبار عارضًا غير الذي يستخدمه TraceDraw عادةً، لذلك تُرك التكبير الخفيف كما هو. شغّله من الخيارات > الأدوات > التكبير/التحريك إذا كان التكبير بطيئًا." # mt
+benchmark.cancelled = "أُلغي اختبار الأداء." # mt
 benchmark.compare = "مع تسريع العتاد وبدونه" # mt
 benchmark.with_acceleration = "مع تسريع العتاد (بطاقة الرسوميات)" # mt
 benchmark.without_acceleration = "بدون تسريع العتاد (المعالج)" # mt

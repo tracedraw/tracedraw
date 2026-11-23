@@ -9817,6 +9817,7 @@ benchmark.slow_software = "Het venster wordt getekend door de processor. Heeft d
 benchmark.fast = "Deze computer is snel genoeg voor TraceDraw." # mt
 benchmark.light_zoom_turned_on = "Licht zoomen is aangezet zodat zoomen deze computer minder belast. U kunt het hieronder uitzetten of in Opties > Gereedschappen > Zoomen/Pannen." # mt
 benchmark.light_zoom_left_alone = "Deze test gebruikte een andere renderer dan TraceDraw normaal gebruikt, dus Lichte zoom is niet gewijzigd. Zet het aan in Opties > Gereedschappen > Zoomen/Pannen als zoomen traag is." # mt
+benchmark.cancelled = "Benchmark geannuleerd." # mt
 benchmark.compare = "Met en zonder hardwareversnelling" # mt
 benchmark.with_acceleration = "Met hardwareversnelling (grafische kaart)" # mt
 benchmark.without_acceleration = "Zonder hardwareversnelling (processor)" # mt

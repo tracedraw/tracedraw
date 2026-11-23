@@ -9817,6 +9817,7 @@ benchmark.slow_software = "ウィンドウはプロセッサーで描画され�
 benchmark.fast = "このコンピューターは TraceDraw に十分な速さです。" # mt
 benchmark.light_zoom_turned_on = "このコンピューターでのズームを軽くするため、軽量ズームをオンにしました。下またはオプション > ツール > ズーム/パン でオフにできます。" # mt
 benchmark.light_zoom_left_alone = "このテストは TraceDraw が通常使うものとは別のレンダラーを使ったため、ライトズームは変更していません。ズームが遅い場合は、オプション > ツール > ズーム/パン でオンにしてください。" # mt
+benchmark.cancelled = "ベンチマークを中止しました。" # mt
 benchmark.compare = "ハードウェアアクセラレーションあり・なし" # mt
 benchmark.with_acceleration = "ハードウェアアクセラレーションあり (グラフィックカード)" # mt
 benchmark.without_acceleration = "ハードウェアアクセラレーションなし (プロセッサー)" # mt

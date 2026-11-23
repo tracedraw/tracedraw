@@ -127,22 +127,37 @@ fn card_blurs() -> bool {
 /// Everything the measuring thread does: the processor and the memory,
 /// then for the advanced test the tasks on the large drawings and the
 /// shadows with and without the card.
-fn measure(level: Level, card: bool, tell: &mut dyn FnMut(&'static str, usize, usize)) -> Msg {
+/// `tell` stops the run with `false`: no one waits for it any more (the
+/// window was closed or the run cancelled, #3665), so no further test
+/// starts and its drawings are let go.
+fn measure(
+    level: Level,
+    card: bool,
+    tell: &mut dyn FnMut(&'static str, usize, usize) -> bool,
+) -> Msg {
     let total = steps(level, card);
     let mut done = 0;
-    tell("benchmark.measuring_processor", done, total);
-    let (all, one) = bench::time_drawing();
-    let memory = bench::time_memory();
+    let mut go = tell("benchmark.measuring_processor", done, total);
+    let (all, one) = if go {
+        bench::time_drawing()
+    } else {
+        (0.0, 0.0)
+    };
+    let memory = if go { bench::time_memory() } else { 0.0 };
     done += 1;
     let mut tasks = Vec::new();
-    if level == Level::Advanced {
+    if level == Level::Advanced && go {
         for n in bench::ADVANCED_SIZES {
             tasks.extend(bench::time_tasks(n, &mut |key| {
-                tell(key, done, total);
+                go = go && tell(key, done, total);
                 done += 1;
+                go
             }));
+            if !go {
+                break;
+            }
         }
-        if card {
+        if card && go {
             tasks.extend(bench::time_shadows(
                 &mut |on| {
                     #[cfg(not(target_arch = "wasm32"))]
@@ -150,8 +165,9 @@ fn measure(level: Level, card: bool, tell: &mut dyn FnMut(&'static str, usize, u
                     let _ = on;
                 },
                 &mut |key| {
-                    tell(key, done, total);
+                    go = go && tell(key, done, total);
                     done += 1;
+                    go
                 },
             ));
             #[cfg(not(target_arch = "wasm32"))]
@@ -173,7 +189,7 @@ pub fn start(app: &mut App, level: Level) {
         std::thread::spawn(move || {
             let step = tx.clone();
             let done = measure(level, card, &mut |key, done, total| {
-                let _ = step.send(Msg::Step(key, done, total));
+                step.send(Msg::Step(key, done, total)).is_ok()
             });
             let _ = tx.send(done);
         });
@@ -185,7 +201,7 @@ pub fn start(app: &mut App, level: Level) {
     }
     // No threads in the browser: measured in this frame.
     #[cfg(target_arch = "wasm32")]
-    if let Msg::Done(cpu, tasks) = measure(level, card, &mut |_, _, _| {}) {
+    if let Msg::Done(cpu, tasks) = measure(level, card, &mut |_, _, _| true) {
         app.benchmark.phase = graphics(level, cpu, tasks);
     }
 }
@@ -199,6 +215,20 @@ pub fn resume(app: &mut App) {
     app.settings.save();
     app.dialog = crate::ui::dialogs::Dialog::Benchmark;
     start(app, level);
+}
+
+/// Stop a run: the measuring thread starts no further test and lets its
+/// drawings go, and the graphics test's pictures are dropped (#3665).
+pub fn cancel(app: &mut App) {
+    if !app.benchmark.running() {
+        return;
+    }
+    // Dropping the phase drops the thread's receiver: its next step
+    // finds no one listening and stops.
+    app.benchmark.phase = Phase::Idle;
+    #[cfg(not(target_arch = "wasm32"))]
+    crate::gpu_fx::force(None);
+    app.status = tr("benchmark.cancelled");
 }
 
 fn graphics(level: Level, cpu: (f64, f64, f64), tasks: Vec<Task>) -> Phase {
@@ -723,8 +753,10 @@ pub fn dialog(app: &mut App, ctx: &Context, close: &mut bool) {
                 app.open_options_page(crate::ui::dialogs::OptionsPage::General);
                 *close = true;
             }
+            // Close stops a run too: a test that takes too long (the
+            // window drawn on the processor) can be left (#3665).
             if ui
-                .add_enabled(!running, egui::Button::new(tr("dialog.close")))
+                .button(tr("dialog.close"))
                 .rich_tip_always(crate::ui::tips::keyed("dialog.close"))
                 .clicked()
             {
@@ -732,6 +764,9 @@ pub fn dialog(app: &mut App, ctx: &Context, close: &mut bool) {
             }
         });
     });
+    if *close {
+        cancel(app);
+    }
 }
 
 /// The adapter that draws the window; the browser build has no wgpu
@@ -833,6 +868,29 @@ mod tests {
         assert!(!app.benchmark.light_zoom_turned_on);
         assert!(app.benchmark.light_zoom_left_alone);
         assert_eq!(app.settings.benchmarks.len(), 1);
+    }
+
+    /// Closing the window stops a run: the measuring thread is told no
+    /// one listens and starts no further test (#3665).
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn closing_the_window_stops_a_run() {
+        let mut told = 0;
+        let msg = measure(Level::Advanced, false, &mut |_, _, _| {
+            told += 1;
+            false
+        });
+        assert_eq!(told, 1);
+        let Msg::Done(_, tasks) = msg else {
+            panic!("a stopped run still ends");
+        };
+        assert!(tasks.is_empty());
+        let mut app = App::headless();
+        start(&mut app, Level::Quick);
+        assert!(app.benchmark.running());
+        cancel(&mut app);
+        assert!(!app.benchmark.running());
+        assert!(app.benchmark.done.is_none());
     }
 
     fn run(app: &mut App, ctx: &Context, frames: usize) {

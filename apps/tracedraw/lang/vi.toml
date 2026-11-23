@@ -9783,6 +9783,7 @@ benchmark.slow_software = "Cửa sổ được vẽ bởi bộ xử lý. Nếu m
 benchmark.fast = "Máy tính này đủ nhanh cho TraceDraw."
 benchmark.light_zoom_turned_on = "Thu phóng ánh sáng đã được bật để thu phóng nhẹ hơn trên máy tính này. Bạn có thể tắt nó bên dưới hoặc trong Tùy chọn > Công cụ > Thu phóng/Pan."
 benchmark.light_zoom_left_alone = "Lần chạy này dùng trình kết xuất khác với trình TraceDraw thường dùng, nên Thu phóng nhẹ được giữ nguyên. Hãy bật nó trong Tùy chọn > Công cụ > Thu phóng/Kéo nếu thu phóng chậm." # mt
+benchmark.cancelled = "Đã hủy benchmark." # mt
 benchmark.compare = "Có và không có tăng tốc phần cứng"
 benchmark.with_acceleration = "Với khả năng tăng tốc phần cứng (card đồ họa)"
 benchmark.without_acceleration = "Không có khả năng tăng tốc phần cứng (bộ xử lý)"

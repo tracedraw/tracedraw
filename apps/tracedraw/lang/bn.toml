@@ -9817,6 +9817,7 @@ benchmark.slow_software = "উইন্ডোটি প্রসেসর আঁ
 benchmark.fast = "এই কম্পিউটারটি TraceDraw-এর জন্য যথেষ্ট দ্রুত।" # mt
 benchmark.light_zoom_turned_on = "এই কম্পিউটারে জুম হালকা করতে হালকা জুম চালু করা হয়েছে। নিচে বা অপশন > টুল > জুম/প্যান-এ এটি বন্ধ করতে পারেন।" # mt
 benchmark.light_zoom_left_alone = "এই পরীক্ষায় TraceDraw সাধারণত যে রেন্ডারার ব্যবহার করে তার বদলে অন্যটি ব্যবহৃত হয়েছে, তাই হালকা জুম যেমন ছিল তেমনই রাখা হয়েছে। জুম ধীর হলে অপশন > টুল > জুম/প্যান থেকে এটি চালু করুন।" # mt
+benchmark.cancelled = "বেঞ্চমার্ক বাতিল হয়েছে।" # mt
 benchmark.compare = "হার্ডওয়্যার ত্বরণসহ ও ছাড়া" # mt
 benchmark.with_acceleration = "হার্ডওয়্যার ত্বরণসহ (গ্রাফিক্স কার্ড)" # mt
 benchmark.without_acceleration = "হার্ডওয়্যার ত্বরণ ছাড়া (প্রসেসর)" # mt

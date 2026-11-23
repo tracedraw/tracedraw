@@ -9817,6 +9817,7 @@ benchmark.slow_software = "The window is drawn by the processor. If this compute
 benchmark.fast = "This computer is fast enough for TraceDraw."
 benchmark.light_zoom_turned_on = "Light zoom was turned on to make zooming lighter on this computer. You can turn it off below or in Options > Tools > Zoom/Pan."
 benchmark.light_zoom_left_alone = "This run used another renderer than TraceDraw normally uses, so Light zoom was left as it is. Turn it on in Options > Tools > Zoom/Pan if zooming is slow."
+benchmark.cancelled = "Benchmark cancelled."
 benchmark.compare = "With and without hardware acceleration"
 benchmark.with_acceleration = "With hardware acceleration (graphics card)"
 benchmark.without_acceleration = "Without hardware acceleration (processor)"

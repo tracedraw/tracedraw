@@ -9817,6 +9817,7 @@ benchmark.slow_software = "विंडो प्रोसेसर बना �
 benchmark.fast = "यह कंप्यूटर TraceDraw के लिए काफ़ी तेज़ है।" # mt
 benchmark.light_zoom_turned_on = "इस कंप्यूटर पर ज़ूम हल्का करने के लिए हल्का ज़ूम चालू किया गया। आप इसे नीचे या विकल्प > टूल > ज़ूम/पैन में बंद कर सकते हैं।" # mt
 benchmark.light_zoom_left_alone = "इस परीक्षण में TraceDraw सामान्यतः जो रेंडरर इस्तेमाल करता है उससे अलग रेंडरर लगा, इसलिए हल्का ज़ूम जैसा था वैसा ही छोड़ा गया। ज़ूम धीमा हो तो इसे विकल्प > टूल > ज़ूम/पैन में चालू करें।" # mt
+benchmark.cancelled = "बेंचमार्क रद्द किया गया।" # mt
 benchmark.compare = "हार्डवेयर त्वरण के साथ और बिना" # mt
 benchmark.with_acceleration = "हार्डवेयर त्वरण के साथ (ग्राफ़िक्स कार्ड)" # mt
 benchmark.without_acceleration = "हार्डवेयर त्वरण के बिना (प्रोसेसर)" # mt

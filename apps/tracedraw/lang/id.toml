@@ -9817,6 +9817,7 @@ benchmark.slow_software = "Jendela digambar oleh prosesor. Jika komputer ini pun
 benchmark.fast = "Komputer ini cukup cepat untuk TraceDraw." # mt
 benchmark.light_zoom_turned_on = "Zoom ringan dinyalakan agar zoom lebih ringan di komputer ini. Anda dapat mematikannya di bawah atau di Opsi > Alat > Zoom/Geser." # mt
 benchmark.light_zoom_left_alone = "Uji ini memakai perender lain dari yang biasa dipakai TraceDraw, jadi Zoom ringan dibiarkan seperti semula. Nyalakan di Opsi > Alat > Zoom/Geser jika zoom lambat." # mt
+benchmark.cancelled = "Benchmark dibatalkan." # mt
 benchmark.compare = "Dengan dan tanpa akselerasi perangkat keras" # mt
 benchmark.with_acceleration = "Dengan akselerasi perangkat keras (kartu grafis)" # mt
 benchmark.without_acceleration = "Tanpa akselerasi perangkat keras (prosesor)" # mt

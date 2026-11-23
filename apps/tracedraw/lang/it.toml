@@ -9817,6 +9817,7 @@ benchmark.slow_software = "La finestra è disegnata dal processore. Se questo co
 benchmark.fast = "Questo computer è abbastanza veloce per TraceDraw." # mt
 benchmark.light_zoom_turned_on = "Lo Zoom leggero è stato attivato per alleggerire lo zoom su questo computer. Puoi disattivarlo qui sotto o in Opzioni > Strumenti > Zoom/Panoramica." # mt
 benchmark.light_zoom_left_alone = "Questo test ha usato un renderer diverso da quello che TraceDraw usa di solito, quindi lo Zoom leggero è rimasto com'era. Attivalo in Opzioni > Strumenti > Zoom/Panoramica se lo zoom è lento." # mt
+benchmark.cancelled = "Benchmark annullato." # mt
 benchmark.compare = "Con e senza accelerazione hardware" # mt
 benchmark.with_acceleration = "Con accelerazione hardware (scheda grafica)" # mt
 benchmark.without_acceleration = "Senza accelerazione hardware (processore)" # mt

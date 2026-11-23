@@ -9817,6 +9817,7 @@ benchmark.slow_software = "Okno kreslí procesor. Pokud má tento počítač gra
 benchmark.fast = "Tento počítač je pro TraceDraw dostatečně rychlý." # mt
 benchmark.light_zoom_turned_on = "Byla zapnuta Lehká lupa, aby lupa tento počítač méně zatěžovala. Můžete ji vypnout níže nebo v Možnosti > Nástroje > Lupa/Posun." # mt
 benchmark.light_zoom_left_alone = "Tento test použil jiný vykreslovač, než jaký TraceDraw běžně používá, proto Lehká lupa zůstala beze změny. Zapněte ji v Možnosti > Nástroje > Lupa/Posun, pokud je přibližování pomalé." # mt
+benchmark.cancelled = "Test výkonu zrušen." # mt
 benchmark.compare = "S hardwarovou akcelerací a bez ní" # mt
 benchmark.with_acceleration = "S hardwarovou akcelerací (grafická karta)" # mt
 benchmark.without_acceleration = "Bez hardwarové akcelerace (procesor)" # mt
