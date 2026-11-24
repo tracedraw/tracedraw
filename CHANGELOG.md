@@ -9,6 +9,7 @@ full, row-by-row status.
 - Text tool: a drag that starts on a text already on the page goes into it and selects from the press, and a press held a moment on a text does the same as a click, where the drag started a new paragraph frame over the text (#4240).
 - Pages keep one zoom: going back to a page shows it at the zoom in use, where each page came back at the zoom it was left at; in the Multipage View a page gone to (Go To Page, the page tabs) comes into view at the same zoom when it was out of sight (#4241).
 - Layer Effects: an effect taken away with its × keeps its values, and ticking it again, on that object or on another, starts from them instead of the defaults (#4242).
+- Effects panel: the name of an effect in the stack can be dragged onto another object on the page, which gets a copy of the effect, sized to it, on top of its own effects (#4243).
 - Effects copy from one object to another: Object > Copy Effect > Layer Effects From copies every layer effect of the object clicked (switched off ones too, with their values) to the selected objects, and the right-button drop menu has Copy Layer Effects Here (#4243).
 - Point gradients: a palette colour dragged onto a colour point colours that point, with no need to choose it first (#4244).
 - Curvature Pen: a press on an end node of an open curve goes on from it, the points placed after it joining that curve, and a click on its other end closes it (#4245).

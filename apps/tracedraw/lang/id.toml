@@ -11326,3 +11326,4 @@ options.preview_fit_page_tip = "F9 menampilkan seluruh halaman sebesar yang dimu
 docker.title_floating_desc = "Seret judul untuk memindahkan panel. Klik dua kali untuk menambatkan panel kembali ke tempatnya. Klik kanan untuk Tambatkan Kembali dan memilih tempatnya." # mt
 menu.object.copy_layer_effects_from = "Efek Lapisan dari..." # mt
 drop.copy_effects_here = "Salin efek lapisan ke sini" # mt
+effects.drag_to_object = "Seret nama ke objek lain di halaman untuk memberinya salinan efek ini." # mt

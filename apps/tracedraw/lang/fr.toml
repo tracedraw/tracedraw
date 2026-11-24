@@ -11326,3 +11326,4 @@ options.preview_fit_page_tip = "F9 montre la page entière aussi grande que l'é
 docker.title_floating_desc = "Faites glisser le titre pour déplacer le panneau. Double-cliquez dessus pour le réancrer là où il était. Clic droit pour Réancrer et pour choisir où le placer." # mt
 menu.object.copy_layer_effects_from = "Effets de calque de..." # mt
 drop.copy_effects_here = "Copier les effets de calque ici" # mt
+effects.drag_to_object = "Faites glisser le nom sur un autre objet de la page pour lui donner une copie de cet effet." # mt

@@ -11326,3 +11326,4 @@ options.preview_fit_page_tip = "F9 ukáže celou stránku tak velkou, jak obrazo
 docker.title_floating_desc = "Tažením titulku panel přesunete. Dvojklikem ho vrátíte do doku, kde byl. Pravým tlačítkem zvolíte Zpět do doku a kam ho umístit." # mt
 menu.object.copy_layer_effects_from = "Efekty vrstvy z..." # mt
 drop.copy_effects_here = "Kopírovat sem efekty vrstvy" # mt
+effects.drag_to_object = "Přetažením názvu na jiný objekt na stránce mu dáte kopii tohoto efektu." # mt

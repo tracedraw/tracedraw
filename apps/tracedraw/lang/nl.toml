@@ -11326,3 +11326,4 @@ options.preview_fit_page_tip = "F9 toont de hele pagina zo groot als het scherm 
 docker.title_floating_desc = "Sleep de titel om het paneel te verplaatsen. Dubbelklik erop om het paneel terug vast te zetten waar het was. Klik met rechts voor Terug vastzetten en om te kiezen waar het komt." # mt
 menu.object.copy_layer_effects_from = "Laageffecten van..." # mt
 drop.copy_effects_here = "Laageffecten hierheen kopiëren" # mt
+effects.drag_to_object = "Sleep de naam op een ander object op de pagina om het een kopie van dit effect te geven." # mt

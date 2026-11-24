@@ -11326,3 +11326,4 @@ options.preview_fit_page_tip = "F9 zeigt die ganze Seite so groß, wie der Bilds
 docker.title_floating_desc = "Ziehen Sie den Titel, um das Fenster zu verschieben. Doppelklick dockt es wieder dort an, wo es war. Rechtsklick für Wieder andocken und um seinen Platz zu wählen." # mt
 menu.object.copy_layer_effects_from = "Ebeneneffekte von..." # mt
 drop.copy_effects_here = "Ebeneneffekte hierher kopieren" # mt
+effects.drag_to_object = "Ziehen Sie den Namen auf ein anderes Objekt der Seite, um ihm eine Kopie dieses Effekts zu geben." # mt

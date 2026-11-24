@@ -11326,3 +11326,4 @@ options.preview_fit_page_tip = "F9 pokazuje całą stronę tak dużą, jak pozwa
 docker.title_floating_desc = "Przeciągnij tytuł, aby przesunąć panel. Kliknij go dwukrotnie, aby zadokować panel z powrotem tam, gdzie był. Kliknij prawym przyciskiem, aby zadokować z powrotem lub wybrać jego miejsce." # mt
 menu.object.copy_layer_effects_from = "Efekty warstwy z..." # mt
 drop.copy_effects_here = "Kopiuj tutaj efekty warstwy" # mt
+effects.drag_to_object = "Przeciągnij nazwę na inny obiekt na stronie, aby nadać mu kopię tego efektu." # mt

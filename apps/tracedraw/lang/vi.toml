@@ -11322,3 +11322,4 @@ options.preview_fit_page_tip = "F9 hiển thị toàn bộ trang lớn nhất m�
 docker.title_floating_desc = "Kéo tiêu đề để di chuyển bảng điều khiển. Nhấp đúp để gắn lại bảng vào chỗ cũ. Nhấp chuột phải để Gắn lại và chọn nơi đặt nó." # mt
 menu.object.copy_layer_effects_from = "Hiệu ứng lớp từ..." # mt
 drop.copy_effects_here = "Sao chép hiệu ứng lớp vào đây" # mt
+effects.drag_to_object = "Kéo tên lên một đối tượng khác trên trang để gán cho nó một bản sao của hiệu ứng này." # mt

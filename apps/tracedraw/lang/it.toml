@@ -11326,3 +11326,4 @@ options.preview_fit_page_tip = "F9 mostra la pagina intera grande quanto lo sche
 docker.title_floating_desc = "Trascinare il titolo per spostare il pannello. Doppio clic per riagganciarlo dove era. Clic destro per Riaggancia e per scegliere dove metterlo." # mt
 menu.object.copy_layer_effects_from = "Effetti livello da..." # mt
 drop.copy_effects_here = "Copia qui gli effetti livello" # mt
+effects.drag_to_object = "Trascinare il nome su un altro oggetto della pagina per dargli una copia di questo effetto." # mt

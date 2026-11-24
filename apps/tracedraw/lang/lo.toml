@@ -11326,3 +11326,4 @@ options.preview_fit_page_tip = "F9 ສະແດງໜ້າທັງໝົດໃ
 docker.title_floating_desc = "ແກ່ແຖບຫົວຂໍ້ເພື່ອຍ້າຍແຜງ. ຄລິກສອງເທື່ອເພື່ອເອົາແຜງກັບໄປຕິດບ່ອນເດີມ. ຄລິກຂວາເພື່ອກັບໄປຕິດ ແລະ ເລືອກບ່ອນຈັດວາງ." # mt
 menu.object.copy_layer_effects_from = "ຜົນກະທົບຊັ້ນຈາກ..." # mt
 drop.copy_effects_here = "ສຳເນົາຜົນກະທົບຊັ້ນມາບ່ອນນີ້" # mt
+effects.drag_to_object = "ແກ່ຊື່ໄປໃສ່ວັດຖຸອື່ນໃນໜ້າເພື່ອໃຫ້ມັນມີສຳເນົາຂອງຜົນກະທົບນີ້." # mt

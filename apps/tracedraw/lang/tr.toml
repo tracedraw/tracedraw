@@ -11326,3 +11326,4 @@ options.preview_fit_page_tip = "F9, çizimi penceredeki yakınlaştırmasıyla g
 docker.title_floating_desc = "Paneli taşımak için başlığı sürükleyin. Paneli eski yerine geri yerleştirmek için çift tıklayın. Geri yerleştir ve nereye konacağı için sağ tıklayın." # mt
 menu.object.copy_layer_effects_from = "Katman Efektlerini Şuradan..." # mt
 drop.copy_effects_here = "Katman efektlerini buraya kopyala" # mt
+effects.drag_to_object = "Bu efektin bir kopyasını vermek için adı sayfadaki başka bir nesnenin üzerine sürükleyin." # mt

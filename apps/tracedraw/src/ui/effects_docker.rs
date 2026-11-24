@@ -243,6 +243,7 @@ fn effect_stack(app: &mut App, ui: &mut Ui) {
     }
     let n = stack.len();
     let mut change = None;
+    let mut dropped = None;
     for (i, (effect, on)) in stack.iter().enumerate() {
         ui.horizontal(|ui| {
             let mut shown = *on;
@@ -254,11 +255,37 @@ fn effect_stack(app: &mut App, ui: &mut Ui) {
                 change = Some(Change::Toggle(i));
             }
             let name = egui::RichText::new(tr(effect_key(effect)));
-            ui.label(if *on {
-                name
-            } else {
-                name.color(Tokens::text_dim())
-            });
+            // The name can be dragged onto another object on the page,
+            // which gets a copy of the effect (#4243).
+            let label = ui
+                .add(
+                    egui::Label::new(if *on {
+                        name
+                    } else {
+                        name.color(Tokens::text_dim())
+                    })
+                    .sense(egui::Sense::drag()),
+                )
+                .rich_tip(crate::ui::tips::pair(effect_key(effect), "effects.drag_to_object"));
+            if label.dragged() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+                if let Some(at) = ui.ctx().pointer_latest_pos() {
+                    egui::Area::new(egui::Id::new("effect_drag_label"))
+                        .order(egui::Order::Tooltip)
+                        .fixed_pos(at + egui::vec2(14.0, 6.0))
+                        .interactable(false)
+                        .show(ui.ctx(), |ui| {
+                            egui::Frame::popup(ui.style()).show(ui, |ui| {
+                                ui.label(tr(effect_key(effect)));
+                            });
+                        });
+                }
+            } else if label.drag_stopped() {
+                let main = ui.ctx().viewport_id() == egui::ViewportId::ROOT;
+                if let Some(at) = ui.ctx().pointer_latest_pos().filter(|_| main) {
+                    dropped = Some((effect.clone(), *on, at));
+                }
+            }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
                     .small_button("\u{00D7}")
@@ -305,6 +332,45 @@ fn effect_stack(app: &mut App, ui: &mut Ui) {
             parked,
         });
     }
+    if let Some((effect, on, at)) = dropped {
+        app.drop_effect_on(&shape, &effect, on, at);
+    }
+}
+
+impl App {
+    /// An effect of `src` dragged from the Effects panel and let go at
+    /// `at` on the screen: the object there, if another one, gets a copy
+    /// of it, sized to it, on top of its own effects (#4243). False when
+    /// nothing took it.
+    pub fn drop_effect_on(&mut self, src: &Shape, effect: &Effect, on: bool, at: egui::Pos2) -> bool {
+        if !self.canvas_rect.contains(at) || !self.has_document() || self.show_welcome {
+            return false;
+        }
+        let Some(id) = self.hit_test_inside(self.view.to_page(at)) else {
+            return false;
+        };
+        if id == src.id {
+            return false;
+        }
+        let Some(target) = self.doc().find_shape(id).cloned() else {
+            return false;
+        };
+        let mut stack = target.effect_stack();
+        stack.push((crate::copy_effect::carried(effect, src, &target), on));
+        let (effects, parked) = Shape::split_stack(stack);
+        if let Err(e) = self.engine.run_batch(
+            "Copy Effect",
+            &[Command::SetEffectStack {
+                shape: id,
+                effects,
+                parked,
+            }],
+        ) {
+            self.status = e.to_string();
+            return false;
+        }
+        true
+    }
 }
 
 #[cfg(test)]
@@ -312,6 +378,59 @@ mod tests {
     use super::*;
     use tracedraw_core::geometry::{Point, Rect, Vec2};
     use tracedraw_core::{Color, ShapeKind};
+
+    /// An effect dragged from the panel and let go over another object
+    /// gives it a copy, on top of its own effects; let go over the same
+    /// object or over nothing, nothing changes (#4243).
+    #[test]
+    fn an_effect_dragged_onto_an_object_is_copied_to_it() {
+        let mut app = App::headless();
+        app.show_welcome = false;
+        app.canvas_rect = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(800.0, 600.0));
+        app.zoom_to_page();
+        // Two squares in the window, at 100 and 200 px from its left.
+        let rect = |app: &mut App, x: f32| {
+            let p0 = app.view.to_page(egui::pos2(x, 100.0));
+            let p1 = app.view.to_page(egui::pos2(x + 40.0, 140.0));
+            app.new_shape(ShapeKind::Rect {
+                rect: Rect::new(p0.x.min(p1.x), p0.y.min(p1.y), p0.x.max(p1.x), p0.y.max(p1.y)),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("shape")
+        };
+        let a = rect(&mut app, 100.0);
+        let b = rect(&mut app, 200.0);
+        let shadow = Effect::BlockShadow {
+            offset: Vec2::new(1.0, -1.0),
+            color: Color::BLACK,
+            gap: 0.0,
+        };
+        app.run(Command::SetEffects {
+            shape: a,
+            effects: vec![shadow.clone()],
+        });
+        app.select(vec![a]);
+        let src = app.doc().find_shape(a).expect("a").clone();
+        let centre = |app: &App, id| {
+            use tracedraw_core::geometry::Shape as _;
+            let s = app.doc().find_shape(id).expect("shape");
+            app.view.to_screen(s.page_path().bounding_box().center())
+        };
+        // Onto itself or onto nothing: no change.
+        assert!(!app.drop_effect_on(&src, &shadow, true, centre(&app, a)));
+        let empty = egui::pos2(600.0, 500.0);
+        assert!(!app.drop_effect_on(&src, &shadow, true, empty));
+        assert!(app.doc().find_shape(b).expect("b").effects.is_empty());
+        // Onto the other object: it gets the effect, one undo step.
+        assert!(app.drop_effect_on(&src, &shadow, true, centre(&app, b)));
+        let got = &app.doc().find_shape(b).expect("b").effects;
+        assert_eq!(got.len(), 1);
+        assert!(matches!(got[0], Effect::BlockShadow { .. }));
+        assert_eq!(app.doc().find_shape(a).expect("a").effects.len(), 1);
+        app.undo();
+        assert!(app.doc().find_shape(b).expect("b").effects.is_empty());
+    }
 
     #[test]
     fn the_stack_switches_moves_and_removes_effects() {

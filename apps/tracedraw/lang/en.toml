@@ -11326,3 +11326,4 @@ options.preview_fit_page_tip = "F9 shows the whole page as large as the screen a
 docker.title_floating_desc = "Drag the title to move the panel. Double-click it to dock the panel back where it was. Right-click it for Dock Back and where to put it."
 menu.object.copy_layer_effects_from = "Layer Effects From..."
 drop.copy_effects_here = "Copy Layer Effects Here"
+effects.drag_to_object = "Drag the name onto another object on the page to give it a copy of this effect."

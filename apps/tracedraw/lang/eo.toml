@@ -11326,3 +11326,4 @@ options.preview_fit_page_tip = "F9 montras la tutan paĝon tiel granda kiel la e
 docker.title_floating_desc = "Trenu la titolon por movi la panelon. Duoble alklaku ĝin por redoki la panelon kie ĝi estis. Dekstre alklaku por Redoki kaj por elekti kien meti ĝin." # mt
 menu.object.copy_layer_effects_from = "Tavolaj efikoj de..." # mt
 drop.copy_effects_here = "Kopii tavolajn efikojn ĉi tien" # mt
+effects.drag_to_object = "Trenu la nomon sur alian objekton de la paĝo por doni al ĝi kopion de ĉi tiu efiko." # mt

@@ -11326,3 +11326,4 @@ options.preview_fit_page_tip = "F9 でウィンドウのズームの図面では
 docker.title_floating_desc = "タイトルをドラッグしてパネルを移動します。ダブルクリックで元の場所にドックに戻します。右クリックで「ドックに戻す」と配置先を選べます。" # mt
 menu.object.copy_layer_effects_from = "レイヤー効果のコピー元..." # mt
 drop.copy_effects_here = "レイヤー効果をここにコピー" # mt
+effects.drag_to_object = "名前をページ上の別のオブジェクトにドラッグすると、この効果のコピーが適用されます。" # mt

@@ -11326,3 +11326,4 @@ options.preview_fit_page_tip = "F9 muestra la página entera tan grande como per
 docker.title_floating_desc = "Arrastre el título para mover el panel. Haga doble clic en él para volver a acoplar el panel donde estaba. Clic derecho para Volver a acoplar y para elegir dónde ponerlo." # mt
 menu.object.copy_layer_effects_from = "Efectos de capa de..." # mt
 drop.copy_effects_here = "Copiar efectos de capa aquí" # mt
+effects.drag_to_object = "Arrastre el nombre sobre otro objeto de la página para darle una copia de este efecto." # mt

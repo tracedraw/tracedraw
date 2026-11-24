@@ -11326,3 +11326,4 @@ options.preview_fit_page_tip = "F9 将整个页面尽可能大地显示在屏幕
 docker.title_floating_desc = "拖动标题以移动面板。双击可将面板停靠回原来的位置。右键单击可停靠回去并选择放置位置。" # mt
 menu.object.copy_layer_effects_from = "图层效果自..." # mt
 drop.copy_effects_here = "将图层效果复制到此处" # mt
+effects.drag_to_object = "将名称拖到页面上的另一个对象上，即可为其添加此效果的副本。" # mt

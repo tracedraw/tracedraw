@@ -11326,3 +11326,4 @@ options.preview_fit_page_tip = "F9 mostra a página inteira tão grande quanto a
 docker.title_floating_desc = "Arraste o título para mover o painel. Clique duas vezes nele para encaixar o painel de volta onde estava. Clique com o botão direito para Encaixar de volta e para escolher onde colocá-lo." # mt
 menu.object.copy_layer_effects_from = "Efeitos de camada de..." # mt
 drop.copy_effects_here = "Copiar efeitos de camada para cá" # mt
+effects.drag_to_object = "Arraste o nome para outro objeto da página para lhe dar uma cópia deste efeito." # mt
