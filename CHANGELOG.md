@@ -4,6 +4,11 @@ Versions follow the tags of this repository; every push to `main` also
 publishes a nightly build. [`docs/features.md`](docs/features.md) has the
 full, row-by-row status.
 
+## Unreleased
+
+- Typing in a text already on the page shows each letter at once, also while the page without the text is still being drawn on a full page, and a text inside a group is typed in with the same quick drawing instead of the whole page being drawn again for each letter (#4156).
+- Zooming and panning a drawing of many groups is faster: a group whose objects' outlines reach nowhere near the part of the page being drawn is left out at once, without looking at each of its objects; wide and variable outlines inside groups still draw whole across the page's bands (#4157).
+- The caret, the marks of non-printing characters and the letters drawn of a text being typed share one layout of it, instead of laying the text out three times for each key (#4172).
 ## 0.52.0 (2026-11-24)
 
 - Merging overlapping parts with a drag: merging curved and straight objects keeps the curves whole, with a node only where outlines cross, and what is left of each object is clean too (a square merged with a circle came out with dozens of nodes along the arc); Remove leftovers on the property bar has Accept delete what is left of the objects and lines the merges used, so only the shapes built stay; with Use guidelines on and nothing selected, the rooms the guidelines close in on every side become shapes (#4123).

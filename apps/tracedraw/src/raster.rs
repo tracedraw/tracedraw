@@ -670,6 +670,14 @@ impl Raster {
         self.key.as_ref().map(|k| k.zoom)
     }
 
+    /// Every picture after the first drawn on its thread, each waiting
+    /// for `hold` before it draws, as a slow page would, for tests.
+    #[cfg(test)]
+    pub fn hold_renders(&mut self, hold: std::sync::Arc<std::sync::Mutex<()>>) {
+        self.threaded = true;
+        self.hold = Some(hold);
+    }
+
     /// The drawing revision of the picture currently held in `texture`.
     pub fn shown_revision(&self) -> Option<u64> {
         self.texture.as_ref()?;
