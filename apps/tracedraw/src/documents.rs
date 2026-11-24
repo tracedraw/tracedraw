@@ -264,9 +264,14 @@ impl App {
     fn end_transient_editing(&mut self) {
         // Time counted for the drawing being left belongs to it.
         self.flush_tracked_time();
-        if self.clip_frame_edit.is_some() {
+        // Every level of clip frames inside clip frames (#4110).
+        for _ in 0..64 {
+            if self.clip_frame_edit.is_none() {
+                break;
+            }
             self.finish_clip_frame_edit();
         }
+        self.clip_edit_outer.clear();
         // Editing a symmetry ends with the drawing it is in; it stayed on,
         // its message in the status bar over the next drawing (#442).
         if self.symmetry_edit.is_some() {

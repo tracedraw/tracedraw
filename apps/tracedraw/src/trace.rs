@@ -4654,7 +4654,29 @@ fn paint_traced_at(
 pub fn to_rect(path: &BezPath, img_w: u32, img_h: u32, rect: Rect) -> BezPath {
     let sx = rect.width() / img_w.max(1) as f64;
     let sy = rect.height() / img_h.max(1) as f64;
-    tracedraw_core::geometry::Affine::new([sx, 0.0, 0.0, -sy, rect.x0, rect.y1]) * path.clone()
+    tracedraw_core::geometry::Affine::new([sx, 0.0, 0.0, -sy, rect.x0, rect.y1]) * well_formed(path)
+}
+
+/// `path` without a close that closes nothing (at its start, or right
+/// after another close): measuring such a path (its box, its segments)
+/// stops the program, and a trace's curves are measured as they are
+/// placed (#4119).
+pub fn well_formed(path: &BezPath) -> BezPath {
+    use tracedraw_core::geometry::PathEl;
+    let els = path.elements();
+    let stray = |i: usize| {
+        matches!(els[i], PathEl::ClosePath)
+            && (i == 0 || matches!(els[i - 1], PathEl::ClosePath))
+    };
+    if !(0..els.len()).any(stray) {
+        return path.clone();
+    }
+    BezPath::from_vec(
+        (0..els.len())
+            .filter(|i| !stray(*i))
+            .map(|i| els[i])
+            .collect(),
+    )
 }
 
 /// The fill of a traced region drawn as a blend: a linear fountain fill

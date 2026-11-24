@@ -2225,6 +2225,15 @@ pub struct App {
     /// they came out: its envelope and other effects, shadow, opacity and
     /// name go back onto it when the editing ends (#4070).
     pub clip_edit_shell: Option<tracedraw_core::Shape>,
+    /// The clip frames being edited round the one edited now, outermost
+    /// first, when a clip frame inside another is edited (#4110): each
+    /// with what was outside it and its look kept aside. Finishing the
+    /// inner one goes back to editing the one round it.
+    pub clip_edit_outer: Vec<(
+        ShapeId,
+        std::collections::HashSet<ShapeId>,
+        Option<tracedraw_core::Shape>,
+    )>,
     /// The Table tool's drag and bar choices.
     pub table_ui: crate::table_tool::TableUi,
     pub missing_fonts: Vec<String>,
@@ -3793,6 +3802,7 @@ impl App {
             glyph_picked: None,
             table_edit: None,
             clip_edit_shell: None,
+            clip_edit_outer: Vec::new(),
             table_ui: Default::default(),
             missing_fonts: Vec::new(),
             ask_missing_fonts: true,

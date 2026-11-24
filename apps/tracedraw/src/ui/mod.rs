@@ -1318,7 +1318,9 @@ pub(crate) fn drawing_window(app: &mut App, ui: &mut Ui, full: egui::Rect) {
             } else if mods.ctrl && notches != 0.0 {
                 app.view.zoom_at(anchor, zoom_factor);
             } else if scroll != egui::Vec2::ZERO {
-                app.view.pan(if mods.shift {
+                // Shift+wheel sideways; a system (Windows) that sends it
+                // sideways already is not turned back up and down (#4114).
+                app.view.pan(if mods.shift && scroll.y != 0.0 {
                     egui::vec2(scroll.y, scroll.x)
                 } else {
                     scroll

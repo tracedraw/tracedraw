@@ -50,6 +50,9 @@ full, row-by-row status.
 - Common Shapes: a shape stays adjustable after it is drawn. Diamond handles on the canvas (with the Common Shapes tool right after drawing, and with the Shape tool) change an arrow's head length and shaft thickness, the slant of a parallelogram, the inset of a trapezoid or hexagon, the thickness of a plus, ring or frame, the depth of a cylinder or cube, the smile of the smiley face, a rounded corner's radius, the height of a wave, the depth of a burst's points, a callout's tail and more, on 52 of the 71 shapes; the shape is drawn again live while dragging, in one undo step, and the settings are kept in the .tdraw file. Convert To Curves leaves an ordinary curve (#4045).
 - Clip frames: an envelope (and the other effects, the shadow and the transparency) on a clip frame stays when its contents are edited, after a click on a content in the Objects docker or with Edit Contents; it was lost as the contents came out (#4070).
 - Clip frames: a blurred object (or one with other bitmap effects) inside a clip frame gets its picture made again when it changes, as on the layer; the picture of the object as it was before stayed (#4105).
+- Clip frames inside clip frames: a click in the Objects docker on a content of the inner one, Ctrl+click on the inner one, Edit Contents from the right-click menu or the key all edit it inside the outer one, and finishing it goes back to editing the outer one; editing the inner one dropped the outer one's editing and left its contents loose on the page (#4110).
+- Tracing no longer stops TraceDraw on a machine with a font that closes an outline it never began: the letters of the installed fonts, read to redraw small print, came out as a path that could not be measured (#4119).
+- With the wheel set to scroll, Shift+wheel scrolls sideways on Windows too; the system already sends that turn sideways and it was turned back up and down (#4114).
 
 ## 0.51.1 (2026-11-23)
 

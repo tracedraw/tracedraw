@@ -625,7 +625,14 @@ pub(crate) fn object_menu(app: &mut App, ui: &mut Ui, close: &mut bool) {
     let clip = shapes
         .iter()
         .any(|s| matches!(s.kind, ShapeKind::ClipFrame { .. }));
-    if clip && app.clip_frame_edit.is_none() {
+    // A clip frame among the contents being edited: into it, inside the
+    // one round it (#4110: there was no way into a second level).
+    let edited = app.clip_frame_edit.as_ref().map(|(f, _)| *f);
+    let inner = app.editing_clip_contents()
+        && shapes
+            .iter()
+            .any(|s| matches!(s.kind, ShapeKind::ClipFrame { .. }) && Some(s.id) != edited);
+    if clip && (app.clip_frame_edit.is_none() || inner) {
         if ci(
             ui,
             close,
@@ -635,6 +642,8 @@ pub(crate) fn object_menu(app: &mut App, ui: &mut Ui, close: &mut bool) {
         ) {
             app.edit_clip_frame();
         }
+    }
+    if clip && app.clip_frame_edit.is_none() {
         if ci(ui, close, "menu.object.clip_frame_extract", "", true) {
             app.extract_clip_contents();
         }

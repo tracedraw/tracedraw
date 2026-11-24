@@ -30933,6 +30933,55 @@ fn ctrl_and_shift_wheel_scroll_sideways_alt_wheel_up_and_down() {
     assert!(app.view.zoom > zoom * 1.1);
 }
 
+/// With the wheel scrolling (Options > Tools > Zoom/Pan), Shift+wheel
+/// scrolls sideways, also when the system sends the turn sideways already,
+/// as Windows does (#4114: that turn went up and down).
+#[test]
+fn shift_wheel_scrolls_sideways_when_the_wheel_scrolls() {
+    let (ctx, mut app, _) = setup();
+    app.settings.wheel_zooms = false;
+    let at = Pos2::new(700.0, 500.0);
+    let mut t = 10.0;
+    let mut step = |app: &mut App, events: Vec<Event>, modifiers: Modifiers| {
+        t += 1.0 / 60.0;
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                Pos2::ZERO,
+                egui::vec2(1600.0, 1000.0),
+            )),
+            events: std::iter::once(Event::ModifiersChanged(modifiers))
+                .chain(events)
+                .collect(),
+            time: Some(t),
+            ..Default::default()
+        };
+        let mut out = ctx.run_ui(input, |ui| crate::ui::root(app, ui));
+        out.textures_delta.clear();
+    };
+    step(&mut app, vec![Event::PointerMoved(at)], Modifiers::NONE);
+    step(&mut app, vec![Event::PointerMoved(at)], Modifiers::NONE);
+    for delta in [egui::vec2(0.0, -1.0), egui::vec2(-1.0, 0.0)] {
+        let zoom = app.view.zoom;
+        let origin = app.view.origin;
+        let wheel = Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Line,
+            delta,
+            phase: egui::TouchPhase::Move,
+            modifiers: Modifiers::SHIFT,
+        };
+        step(&mut app, vec![wheel], Modifiers::SHIFT);
+        for _ in 0..30 {
+            step(&mut app, Vec::new(), Modifiers::SHIFT);
+        }
+        assert!((app.view.zoom - zoom).abs() < 1e-9, "no zoom");
+        let moved = app.view.origin - origin;
+        assert!(
+            moved.x.abs() > 1.0 && moved.y.abs() < 1e-6,
+            "{delta:?}: {moved:?}"
+        );
+    }
+}
+
 /// Options > Tools > Zoom/Pan > Ctrl+wheel zooms (#3473): ticked, a
 /// Ctrl+wheel turn zooms about the pointer as the plain wheel does,
 /// without scrolling; unticked it scrolls sideways (#3087).

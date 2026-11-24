@@ -3705,12 +3705,19 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
         {
             app.finish_clip_frame_edit();
         }
-        if (!editing || invoke::active())
+        // A clip frame among the contents being edited is edited inside
+        // the one round it (#4110).
+        let edited = app.clip_frame_edit.as_ref().map(|(f, _)| *f);
+        let inner = clip_editing
+            && app.selected_shapes().iter().any(|s| {
+                matches!(s.kind, ShapeKind::ClipFrame { .. }) && Some(s.id) != edited
+            });
+        if (!editing || inner || invoke::active())
             && item(
                 ui,
                 "menu.object.clip_frame_edit",
                 CLIP_EDIT_KEY,
-                is_clip && !editing,
+                is_clip && (!editing || inner),
             )
         {
             app.edit_clip_frame();

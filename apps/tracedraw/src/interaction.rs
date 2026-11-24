@@ -1050,7 +1050,9 @@ impl App {
     /// click is off them). Nothing happens while contents are edited
     /// already, or off a clip frame; then `false` (#982).
     pub fn ctrl_click_edits_clip_frame(&mut self, p: Point) -> bool {
-        if self.clip_frame_edit.is_some() {
+        // While a clip frame's contents are edited, a clip frame among
+        // them is edited inside it (#4110).
+        if self.clip_frame_edit.is_some() && !self.editing_clip_contents() {
             return false;
         }
         let chain = self.hit_chain(p);
@@ -1062,13 +1064,14 @@ impl App {
         let is_clip = doc
             .find_shape(clip)
             .is_some_and(|s| matches!(s.kind, ShapeKind::ClipFrame { .. }));
-        if !on_layer || !is_clip {
+        if !on_layer || !is_clip || self.outside_clip_edit(clip) {
             return false;
         }
+        let edited = self.clip_frame_edit.as_ref().map(|(f, _)| *f);
         let under = chain.get(1).copied();
         self.select(vec![clip]);
         self.edit_clip_frame();
-        if self.clip_frame_edit.is_none() {
+        if self.clip_frame_edit.as_ref().map(|(f, _)| *f) == edited {
             return false;
         }
         if let Some(id) = under.filter(|id| self.doc().find_shape(*id).is_some()) {

@@ -7122,7 +7122,16 @@ impl ttf_parser::OutlineBuilder for OutlineSink {
             .curve_to(self.p(x1, y1), self.p(x2, y2), self.p(x, y));
     }
     fn close(&mut self) {
-        self.path.close_path();
+        // Only an outline begun is closed: a path starting with a close
+        // cannot be measured (#4119).
+        if self
+            .path
+            .elements()
+            .last()
+            .is_some_and(|e| !matches!(e, kurbo::PathEl::ClosePath))
+        {
+            self.path.close_path();
+        }
     }
 }
 

@@ -3047,19 +3047,38 @@ fn clip_rows(app: &mut App, ids: &[ShapeId], frame: ShapeId) {
 /// contents, and the object is selected. False when `id` is in no
 /// PowerClip.
 fn select_clip_content(app: &mut App, id: ShapeId) -> bool {
-    let doc = app.doc();
-    let Some(frame) = doc.ancestors(id).last().copied() else {
-        return false;
-    };
-    let in_contents = doc.find_shape(frame).is_some_and(|f| match &f.kind {
-        ShapeKind::ClipFrame { contents, .. } => contents.iter().any(|c| c.id == id),
-        _ => false,
-    });
-    if !in_contents || doc.shape(frame).is_err() {
+    // Into each clip frame on the way to the object, outermost first: a
+    // content of a clip frame inside another is reached through both
+    // (#4110: only the innermost one was looked at, and editing it while
+    // the outer one was edited dropped the outer one's editing).
+    let mut entered = false;
+    for _ in 0..32 {
+        let doc = app.doc();
+        let ancestors = doc.ancestors(id);
+        let Some(&top) = ancestors.first() else {
+            break;
+        };
+        let next = ancestors.get(1).copied().unwrap_or(id);
+        let in_contents = doc.find_shape(top).is_some_and(|f| match &f.kind {
+            ShapeKind::ClipFrame { contents, .. } => contents.iter().any(|c| c.id == next),
+            _ => false,
+        });
+        let next_is_clip = doc
+            .find_shape(next)
+            .is_some_and(|s| matches!(s.kind, ShapeKind::ClipFrame { .. }));
+        if !in_contents || doc.shape(top).is_err() || (next != id && !next_is_clip) {
+            break;
+        }
+        app.select(vec![top]);
+        app.edit_clip_frame();
+        if app.doc().shape(next).is_err() {
+            break;
+        }
+        entered = true;
+    }
+    if !entered {
         return false;
     }
-    app.select(vec![frame]);
-    app.edit_clip_frame();
     if app.doc().shape(id).is_ok() {
         app.select(vec![id]);
     }
@@ -5718,6 +5737,40 @@ mod drag_tests {
         };
         assert_eq!(contents, [b]);
         assert!(app.doc().shape(c).is_ok(), "c on the layer, free");
+    }
+
+    /// A clip frame inside another (#4110): a click on a content of the
+    /// inner one edits both, the inner inside the outer; finishing the
+    /// inner one goes back to editing the outer one, and finishing that
+    /// leaves both clip frames whole, nothing loose on the page.
+    #[test]
+    fn a_clip_frame_inside_another_is_edited_inside_it() {
+        let mut app = App::headless();
+        let content = app.new_shape(rect_kind()).expect("content");
+        let inner = app.new_shape(rect_kind()).expect("inner");
+        let outer = app.new_shape(rect_kind()).expect("outer");
+        clip_rows(&mut app, &[content], inner);
+        clip_rows(&mut app, &[inner], outer);
+        let layer_count = |app: &App| app.page_layers().iter().map(|l| l.shapes.len()).sum::<usize>();
+        assert_eq!(layer_count(&app), 1, "one clip frame on the page");
+        assert!(select_clip_content(&mut app, content));
+        assert_eq!(app.clip_frame_edit.as_ref().map(|(f, _)| *f), Some(inner));
+        assert_eq!(app.clip_edit_outer.len(), 1, "the outer one waits");
+        assert_eq!(app.selection, vec![content]);
+        app.finish_clip_frame_edit();
+        assert_eq!(app.clip_frame_edit.as_ref().map(|(f, _)| *f), Some(outer), "back in the outer one");
+        assert_eq!(app.selection, vec![inner]);
+        app.finish_clip_frame_edit();
+        assert!(app.clip_frame_edit.is_none());
+        assert_eq!(layer_count(&app), 1, "nothing left loose");
+        let ShapeKind::ClipFrame { contents, .. } = &app.doc().find_shape(outer).expect("outer").kind else {
+            panic!("the outer clip frame");
+        };
+        assert_eq!(contents.len(), 1);
+        let ShapeKind::ClipFrame { contents, .. } = &contents[0].kind else {
+            panic!("the inner clip frame inside it");
+        };
+        assert_eq!(contents[0].id, content);
     }
 
     /// An envelope on a clip frame stays when one of its contents is
