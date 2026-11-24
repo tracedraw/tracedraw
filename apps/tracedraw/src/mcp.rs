@@ -130,6 +130,13 @@ pub fn tool_list() -> Vec<Value> {
         ),
         tool("undo", "Undo the last change.", json!({}), &[]),
         tool("redo", "Redo the last undone change.", json!({}), &[]),
+        tool(
+            "dock_window",
+            "Windows, the open window only: show a top-level window of another program (hwnd, its handle as a number) docked as a panel named title. It replaces the one docked before. When the panel closes, or TraceDraw does, the window is handed back hidden and sent WM_CLOSE.",
+            json!({"hwnd": {"type": "integer"}, "title": {"type": "string"}}),
+            &["hwnd", "title"],
+        ),
+        tool("undock_window", "Close the docked external panel.", json!({}), &[]),
     ]
 }
 
@@ -254,6 +261,14 @@ pub fn call_tool(app: &mut App, name: &str, args: &Value) -> Result<String, Stri
             app.redo();
             Ok(describe(app).to_string())
         }
+        "dock_window" => {
+            let hwnd = args
+                .get("hwnd")
+                .and_then(|v| v.as_i64())
+                .ok_or("missing argument: hwnd")?;
+            crate::external_panel::dock(app, hwnd, str_arg(args, "title")?)
+        }
+        "undock_window" => Ok(crate::external_panel::undock(app)),
         other => Err(format!("unknown tool: {other}")),
     }
 }

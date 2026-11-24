@@ -2733,6 +2733,10 @@ pub enum DockerTab {
     PixelImage,
     PixelHistogram,
     PixelHints,
+    /// A window of another program docked as a panel
+    /// (external_panel.rs): kept out of [`DockerTab::ALL`] and the menus,
+    /// opened only by that program.
+    External,
 }
 
 impl DockerTab {
@@ -2926,6 +2930,7 @@ impl DockerTab {
             DockerTab::PixelImage => "pixel.section.picture",
             DockerTab::PixelHistogram => "pixel.section.histogram",
             DockerTab::PixelHints => "pixel.section.hints",
+            DockerTab::External => "docker.external_panel",
         }
     }
 

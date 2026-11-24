@@ -88,7 +88,7 @@ pub fn tab_strip(app: &mut App, ui: &mut Ui, place: DockerPlace) {
             .iter()
             .map(|tab| {
                 ui.painter().layout_no_wrap(
-                    tr(tab.key()),
+                    tab_name(*tab),
                     egui::FontId::proportional(12.0),
                     Tokens::text(),
                 )
@@ -96,7 +96,7 @@ pub fn tab_strip(app: &mut App, ui: &mut Ui, place: DockerPlace) {
             .collect();
         let compact = icons_only(&tabs, app.settings.docker_tabs_icons_only);
         for (tab, galley) in tabs.into_iter().zip(galleys) {
-            let name = tr(tab.key());
+            let name = tab_name(tab);
             let below = app.docker_below(place) == Some(tab);
             let active = shown && (front == tab || below);
             let w = galley.size().x;
@@ -673,7 +673,7 @@ pub fn floating_dockers(app: &mut App, ctx: &egui::Context) {
             .clamp(screen.top(), (screen.bottom() - TITLE_H).max(screen.top()));
         let size = fd.size;
         let place = std::mem::take(&mut fd.place);
-        let mut window = egui::Window::new(tr(tab.key()))
+        let mut window = egui::Window::new(tab_name(tab))
             .id(egui::Id::new(("floating_docker", tab.key())))
             .title_bar(false)
             .collapsible(false)
@@ -750,7 +750,7 @@ fn own_window(app: &mut App, ctx: &egui::Context, tab: DockerTab) {
         at
     });
     let builder =
-        egui::ViewportBuilder::default().with_title(format!("TraceDraw - {}", tr(tab.key())));
+        egui::ViewportBuilder::default().with_title(format!("TraceDraw - {}", tab_name(tab)));
     #[cfg(not(target_arch = "wasm32"))]
     let builder = builder.with_app_id(crate::splash::APP_ID);
     let mut builder = builder
@@ -795,6 +795,15 @@ fn own_window(app: &mut App, ctx: &egui::Context, tab: DockerTab) {
 }
 
 pub(crate) type TabIcon = fn(&egui::Painter, egui::Rect);
+
+/// A docker's name: its title, or the name the program of an external
+/// panel gave it.
+pub(crate) fn tab_name(tab: DockerTab) -> String {
+    if tab == DockerTab::External {
+        return crate::external_panel::title();
+    }
+    tr(tab.key())
+}
 
 /// A docker tab's height: the close slot, the picture (`icon_h`) and the
 /// name running downwards (`name_w` long), or no name when `compact`.
@@ -1067,6 +1076,7 @@ pub(crate) fn tab_icon(tab: DockerTab) -> Option<TabIcon> {
         | DockerTab::PixelImage
         | DockerTab::PixelHistogram
         | DockerTab::PixelHints => crate::ui::pixel_mode::docker_icon(tab),
+        DockerTab::External => None,
     }
 }
 
@@ -1232,6 +1242,11 @@ fn docker_part(app: &mut App, ui: &mut Ui, front: DockerTab, place: DockerPlace)
     let mut page = ui.new_child(egui::UiBuilder::new().max_rect(inner));
     page.set_clip_rect(content.intersect(ui.clip_rect()));
     ui.advance_cursor_after_rect(content);
+    // Another program's window covers the whole page (external_panel.rs).
+    if front == DockerTab::External {
+        crate::external_panel::page(ui, content.intersect(ui.clip_rect()));
+        return;
+    }
     // The Welcome Screen is no drawing: the dockers that work on one say
     // so instead of showing the hidden drawing's selection (#482); Hints
     // still helps.
@@ -1267,13 +1282,13 @@ fn docker_title(app: &mut App, ui: &mut Ui, tab: DockerTab, place: DockerPlace) 
     } else {
         "docker.title_desc"
     };
-    let resp = resp.rich_tip(format!("{}\n{}", tr(tab.key()), tr(desc)));
+    let resp = resp.rich_tip(format!("{}\n{}", tab_name(tab), tr(desc)));
     ui.painter()
         .rect_filled(bar, 0.0, crate::theme::Tokens::tab_strip());
     ui.painter().text(
         egui::pos2(bar.left() + 7.0, bar.center().y),
         egui::Align2::LEFT_CENTER,
-        tr(tab.key()),
+        tab_name(tab),
         egui::FontId::proportional(12.0),
         Tokens::text(),
     );

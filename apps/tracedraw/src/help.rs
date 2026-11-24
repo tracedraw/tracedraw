@@ -228,7 +228,7 @@ pub fn docker_topic(t: DockerTab) -> &'static str {
         DockerTab::ColorStyles => "color/color-styles",
         DockerTab::ObjectStyles => "templates-styles/object-styles",
         DockerTab::FindReplace => "objects/find-replace",
-        DockerTab::Scripts => "customize/scripts",
+        DockerTab::Scripts | DockerTab::External => "customize/scripts",
         DockerTab::Macros => "customize/scripts#macros",
         DockerTab::PrintMerge => "printing/print-merge#docker",
         DockerTab::PixelLayers

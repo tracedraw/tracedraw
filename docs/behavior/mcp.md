@@ -64,6 +64,7 @@ request with a JSON-RPC error (-32000) saying how to turn the option on.
 | `run_script` | `source` | Runs the JavaScript object model (`Application`, `ActiveDocument`, `ActivePage`, `ActiveLayer`, `ActiveSelection`, `Shapes`, `CreateRectangle`, `CreateEllipse`, `CreateArtisticText`, `CreateCurve`, `Fill`, `Outline`, `Move`, `Rotate`, `Stretch`, `Duplicate`, `Delete`, ...) and returns what it printed; the whole script is one undo step |
 | `document_info` | | Title, file, modified flag, pages with size, layers with visibility and lock, every object with id, type, name, bounds in mm, fill, outline, opacity, text and font, group children, effect count; the selection |
 | `undo`, `redo` | | One step back or forward, then the description |
+| `dock_window`, `undock_window` | `hwnd`, `title` | Windows, the open window only: another program's window docked as a panel (`external-panel.md`) |
 
 New objects go to the active layer: the layer picked in the Objects
 docker while it shows on the page, visible and unlocked, else the
