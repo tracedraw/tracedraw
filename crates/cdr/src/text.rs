@@ -1959,6 +1959,26 @@ pub(crate) fn drop_leading_chars(spans: &mut Vec<tracedraw_core::TextSpan>, mut 
     spans.retain(|s| !s.text.is_empty());
 }
 
+/// A paragraph's carriage returns (not part of a CR LF pair) as line
+/// separators (U+2028), the line break inside a paragraph: in version
+/// 16+ paragraph text each paragraph is a record of its own, so a
+/// carriage return inside one breaks the line only (#4162).
+pub(crate) fn soft_line_breaks(text: &str) -> String {
+    if !text.contains('\r') {
+        return text.to_string();
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut it = text.chars().peekable();
+    while let Some(c) = it.next() {
+        if c == '\r' && it.peek() != Some(&'\n') {
+            out.push('\u{2028}');
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
 /// Text with its paragraph ends as `\n`: files end lines with a carriage
 /// return (`\r`, version 21 artistic text), a CR LF pair, a paragraph
 /// separator or a vertical tab. A line separator (U+2028) stays: it is
@@ -3457,6 +3477,8 @@ mod tests {
             "a\nb\u{2028}c\nd\ne"
         );
         assert_eq!(line_breaks("plain"), "plain");
+        assert_eq!(soft_line_breaks("a\rb\r\nc"), "a\u{2028}b\r\nc");
+        assert_eq!(soft_line_breaks("plain"), "plain");
     }
 
     #[test]

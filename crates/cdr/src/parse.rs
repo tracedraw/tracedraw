@@ -145,7 +145,7 @@ const ARG_PAGE_BACKGROUND: u32 = 17000;
 /// Object argument 16016: 1 hides the object (version 21).
 const ARG_HIDDEN: u32 = 16016;
 /// Object argument 13001: the paragraph text wrap style around the
-/// object (u32; 1 wraps the text round both sides of its outline), and
+/// object (u32; 1 to 3 along its outline, 4 to 7 along its box), and
 /// 13000: the room kept free around it (u32, coordinate units). Seen on
 /// a rectangle of a version 20 file (#4142).
 const ARG_WRAP_STYLE: u32 = 13001;
@@ -2599,7 +2599,18 @@ impl<'a> Ctx<'a> {
             own.push((chars, own_align, fmt));
             for (k, run) in para.runs.iter().enumerate() {
                 let style = run.style.over(&base);
-                let mut text = text::line_breaks(&self.run_text(run, &style));
+                let raw = self.run_text(run, &style);
+                // A carriage return inside a paragraph of paragraph text
+                // (version 16+, whose paragraphs are records of their
+                // own) is the line break inside the paragraph
+                // (Shift+Enter): the lines of a verse kept together, the
+                // space between paragraphs only after the verse (#4162).
+                let raw = if kind_code == OBJ_PARAGRAPH_TEXT && self.v >= 16 {
+                    text::soft_line_breaks(&raw)
+                } else {
+                    raw
+                };
+                let mut text = text::line_breaks(&raw);
                 if i + 1 < n && k + 1 == para.runs.len() {
                     text.push('\n');
                 }
@@ -4974,17 +4985,32 @@ impl<'a> Ctx<'a> {
         // Paragraph text keeps away from an object that wraps it (#4142):
         // the text ran under such objects.
         if let Some(code) = wrap_style.filter(|&c| c != 0) {
-            if code != 1 {
-                self.report.warn(format!(
-                    "text wrap style {code} not read; the text wraps round both sides"
-                ));
-            }
+            use tracedraw_core::text_flow::{TextWrap, WrapMode, WrapSide};
+            // 1 to 3 along the outline, 4 to 7 along the bounding box;
+            // round both sides, then the left, then the right, then above
+            // and below (1, 2 and 4 seen, #4142 and #4162).
+            let (mode, side) = match code {
+                1 => (WrapMode::Contour, WrapSide::Straddle),
+                2 => (WrapMode::Contour, WrapSide::Left),
+                3 => (WrapMode::Contour, WrapSide::Right),
+                4 => (WrapMode::Square, WrapSide::Straddle),
+                5 => (WrapMode::Square, WrapSide::Left),
+                6 => (WrapMode::Square, WrapSide::Right),
+                7 => (WrapMode::Square, WrapSide::AboveBelow),
+                _ => {
+                    self.report.warn(format!(
+                        "text wrap style {code} not read; the text wraps round both sides"
+                    ));
+                    (WrapMode::Contour, WrapSide::Straddle)
+                }
+            };
             shape.wrap_text = true;
-            shape.wrap_style = tracedraw_core::text_flow::TextWrap {
+            shape.wrap_style = TextWrap {
+                mode,
+                side,
                 offset: wrap_offset
                     .map(|o| f64::from(o) * UNIT_MM)
-                    .unwrap_or(tracedraw_core::text_flow::TextWrap::default().offset),
-                ..Default::default()
+                    .unwrap_or(TextWrap::default().offset),
             };
         }
         shape.fill = fill;
@@ -8433,7 +8459,13 @@ fn paragraph_spacing(style: &text::RunStyle, base: &ParagraphStyle) -> Paragraph
     }
     // Space before: the distance from the paragraph before, so only what
     // goes past the line spacing is extra room (100 % of the character
-    // height, the default, is none). Space after: all extra room.
+    // height, the default, is none). Space after in points: all extra
+    // room. In the character height, the larger of the space after and
+    // the space before parts two paragraphs: what the space after goes
+    // past the space before is extra room. Paragraphs of 160 % before
+    // and after, and verses of 150 % both, lie about half a character
+    // height apart in the program that saved them; added up they opened
+    // two character heights apart (#4162).
     if method <= 2 {
         let baseline_mm = p.line_step(line_mm, size_mm);
         if let Some(b) = style.para_before {
@@ -8449,6 +8481,11 @@ fn paragraph_spacing(style: &text::RunStyle, base: &ParagraphStyle) -> Paragraph
                 (method == 0 && b.is_finite()).then(|| (b * 100.0).clamp(0.0, 10000.0));
         }
         if let Some(a) = style.para_after {
+            let a = if method == 0 {
+                (a - style.para_before.unwrap_or(1.0).max(1.0)).max(0.0)
+            } else {
+                a
+            };
             p.space_after = to_mm(a).clamp(0.0, 1000.0);
             p.space_after_pct =
                 (method == 0 && a.is_finite()).then(|| (a * 100.0).clamp(0.0, 10000.0));
@@ -8688,13 +8725,28 @@ pub(crate) mod tests {
         let p = paragraph_spacing(&st, &ParagraphStyle::default());
         let line_mm = st.size_pt.unwrap_or(12.0) * 25.4 / 72.0 * 1.15;
         assert!((p.space_before - line_mm).abs() < 1e-9, "{p:?}");
-        assert!((p.space_after - line_mm / 2.0).abs() < 1e-9, "{p:?}");
+        // The space after is less than the space before: no more room
+        // (#4162).
+        assert_eq!(p.space_after, 0.0, "{p:?}");
         // Kept in percent of the character height too (#2613).
         assert_eq!(
             (p.space_before_pct, p.space_after_pct),
-            (Some(200.0), Some(50.0))
+            (Some(200.0), Some(0.0))
         );
         assert!((p.leading_pct - 120.0).abs() < 1e-9);
+        // A space after past the space before adds what goes past it;
+        // the same space before and after adds none (#4162).
+        let more = text::parse_style_string(
+            r#"{"paragraph":{"beforeParaSpacing":"1500000","afterParaSpacing":"2000000"}}"#,
+        );
+        let p = paragraph_spacing(&more, &ParagraphStyle::default());
+        assert!((p.space_after_pct.unwrap() - 50.0).abs() < 1e-9, "{p:?}");
+        let same = text::parse_style_string(
+            r#"{"paragraph":{"beforeParaSpacing":"1500000","afterParaSpacing":"1500000"}}"#,
+        );
+        let p = paragraph_spacing(&same, &ParagraphStyle::default());
+        assert_eq!(p.space_after_pct, Some(0.0), "{p:?}");
+        assert!((p.space_before_pct.unwrap() - 150.0).abs() < 1e-9, "{p:?}");
         // The defaults files hold: no extra room.
         let d = text::parse_style_string(
             r#"{"paragraph":{"beforeParaSpacing":"1000000","afterParaSpacing":"0"}}"#,
@@ -10364,6 +10416,20 @@ pub(crate) mod tests {
         assert!(on);
         assert!((style.offset - 2.0).abs() < 1e-9, "{style:?}");
         assert_eq!(style.side, tracedraw_core::text_flow::WrapSide::Straddle);
+        assert_eq!(style.mode, tracedraw_core::text_flow::WrapMode::Contour);
+        // 2 keeps to the outline on the object's left, 4 to the box
+        // (#4162).
+        let (_, two) = read(Some((2, 25400)));
+        assert_eq!(
+            (two.mode, two.side),
+            (
+                tracedraw_core::text_flow::WrapMode::Contour,
+                tracedraw_core::text_flow::WrapSide::Left
+            )
+        );
+        let (_, four) = read(Some((4, 14000)));
+        assert_eq!(four.mode, tracedraw_core::text_flow::WrapMode::Square);
+        assert!((four.offset - 1.4).abs() < 1e-9);
         assert!(!read(None).0);
         assert!(!read(Some((0, 20000))).0);
     }
