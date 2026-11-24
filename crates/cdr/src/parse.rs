@@ -977,43 +977,96 @@ pub(crate) fn parse_document_kept_data(
             p.name = format!("Page {}", i + 1);
         }
     }
-    // Facing pages measure objects from the spine of their spread, half a
-    // page to the left or right of the page's centre: pages take turns on
-    // the right and left of the spine, from the first page alone on the
-    // right (or on the left starting a spread). Which of the two the
-    // file starts with is the one that puts more of the objects on their
-    // pages, and every page then goes by its place in the spreads, the
-    // turns breaking only where many pages after hold their objects
-    // better the other way (a page lost or added, #2833). Each
-    // page took the side holding more of its own objects before, and a
-    // page with objects reaching across the spine took the wrong one,
-    // mixing it with the page beside it; the pages showed one by one,
-    // not in spreads (#1660).
+    // A book on facing pages keeps one page record per spread, its
+    // objects measured from the spine between its two pages: the first
+    // record is the first page alone on the right of the spine (or a
+    // whole spread when the book starts on the left), every record after
+    // it a left and a right page, and the last one the last page alone
+    // on the left when nothing of it is on the right. Each record is
+    // split into its pages here, the objects left of the spine to the
+    // left page and the others to the right one, each moved from the
+    // spine onto its page. Read as one page each, a book of 248 pages
+    // opened as 125, every spread's two pages on top of each other
+    // (#4104, also #2609, #2584, #2018, #3035).
     if ctx.facing_pages {
-        // Each page's share of its objects that lands on it from the right
-        // of the spine and from the left; then the sides, taking turns
-        // with as few breaks as those shares allow (#2833).
-        let shares: Vec<(f64, f64)> = doc
-            .pages
-            .iter()
-            .map(|p| {
-                let w = p.size.width;
-                let n = p.layers.iter().map(|l| l.shapes.len()).sum::<usize>();
-                if n == 0 {
-                    return (0.0, 0.0);
+        let records = std::mem::take(&mut doc.pages);
+        let n = records.len();
+        // Whether the objects' centres of a record sit left of the spine,
+        // right of it, or both.
+        // Objects are placed from the record's left edge here, so the
+        // spine is half a page in.
+        let sides = |p: &Page| {
+            let spine = p.size.width / 2.0;
+            let (mut left, mut right) = (false, false);
+            for b in p
+                .layers
+                .iter()
+                .flat_map(|l| l.shapes.iter())
+                .map(|s| s.bounds())
+                .filter(|b| b.x0.is_finite() && b.x1.is_finite())
+            {
+                if (b.x0 + b.x1) / 2.0 < spine - SPINE_SLACK_MM {
+                    left = true;
+                } else {
+                    right = true;
                 }
-                let on = |right: bool| centres_on_page(&p.layers, w, spine_shift(w, right));
-                (on(true) as f64 / n as f64, on(false) as f64 / n as f64)
-            })
-            .collect();
-        let sides = facing_sides(&shares);
-        let starts_right = sides.first().copied().unwrap_or(true);
-        for (p, right) in doc.pages.iter_mut().zip(sides) {
-            let dx = spine_shift(p.size.width, right);
-            for s in p.layers.iter_mut().flat_map(|l| l.shapes.iter_mut()) {
-                s.transform = Affine::translate((dx, 0.0)) * s.transform;
+            }
+            (left, right)
+        };
+        let starts_right = records.first().is_none_or(|p| !sides(p).0);
+        let mut pages: Vec<Page> = Vec::with_capacity(n * 2);
+        for (i, mut record) in records.into_iter().enumerate() {
+            // The name the record was given for its place, not its own.
+            if record.name == format!("Page {}", i + 1) {
+                record.name.clear();
+            }
+            let right_of_spine = sides(&record).1;
+            let (has_left, has_right) = if i == 0 {
+                (!starts_right, true)
+            } else if i + 1 == n {
+                (true, right_of_spine)
+            } else {
+                (true, true)
+            };
+            for (k, on_left) in [(0, true), (1, false)] {
+                if (on_left && !has_left) || (!on_left && !has_right) {
+                    continue;
+                }
+                let first = k == 0 || !has_left;
+                let alone = !(has_left && has_right);
+                let w = record.size.width;
+                let dx = spine_shift(w, !on_left);
+                let mut page = record.clone();
+                if !first {
+                    page.id = doc.ids_mut().page();
+                    page.name.clear();
+                    page.guides.clear();
+                }
+                for l in page.layers.iter_mut() {
+                    if !first {
+                        l.id = doc.ids_mut().layer();
+                    }
+                    // A page alone keeps everything of its record.
+                    if !alone {
+                        l.shapes.retain(|s| {
+                            let b = s.bounds();
+                            let c = (b.x0 + b.x1) / 2.0;
+                            (c.is_finite() && c < w / 2.0 - SPINE_SLACK_MM) == on_left
+                        });
+                    }
+                    for s in l.shapes.iter_mut() {
+                        s.transform = Affine::translate((dx, 0.0)) * s.transform;
+                    }
+                }
+                pages.push(page);
             }
         }
+        for (i, p) in pages.iter_mut().enumerate() {
+            if p.name.is_empty() {
+                p.name = format!("Page {}", i + 1);
+            }
+        }
+        doc.pages = pages;
         doc.metadata.facing_pages = doc.pages.len() > 1;
         doc.metadata.facing_start = if starts_right {
             tracedraw_core::spreads::PageSide::Right
@@ -8192,76 +8245,9 @@ fn spine_shift(width: f64, right: bool) -> f64 {
     }
 }
 
-/// What a break in the turns of a book's pages costs, in pages' worth of
-/// objects: more than one page whose objects reach across the spine can
-/// win (two breaks, in and out, cost three), less than the pages after a
-/// page the file lost or added, which all sit on the other side.
-const SIDE_BREAK: f64 = 1.5;
-
-/// The side of the spine each facing page sits on (true: right), from
-/// `shares`, each page's share of its objects that lands on it from the
-/// right and from the left. Pages take turns on the right and left, and
-/// the turns may break (two pages on one side running) where the pages
-/// after hold their objects better that way, each break costing
-/// [`SIDE_BREAK`]: the sides that put most objects on their pages for
-/// the fewest breaks (Viterbi's way through the pages). With no break
-/// worth it, this is the strict turns from the better start (#1660); a
-/// page the file lost or added in a long book no longer throws every
-/// page after it half a page across, onto the page beside it (#2833).
-/// On a tie the first page is on the right, and turns go on.
-fn facing_sides(shares: &[(f64, f64)]) -> Vec<bool> {
-    let n = shares.len();
-    if n == 0 {
-        return Vec::new();
-    }
-    // best[i][s]: the most score for pages 0..=i with page i on side s
-    // (0 right, 1 left); from[i][s]: page i - 1's side on that way.
-    let mut best = vec![[0.0f64; 2]; n];
-    let mut from = vec![[0usize; 2]; n];
-    let score = |i: usize, s: usize| if s == 0 { shares[i].0 } else { shares[i].1 };
-    // A tiny lean to the right for the first page and to taking turns,
-    // so equal ways keep the strict turns from the right.
-    const LEAN: f64 = 1e-9;
-    best[0] = [score(0, 0) + LEAN, score(0, 1)];
-    for i in 1..n {
-        for s in 0..2 {
-            let turn = best[i - 1][1 - s] + LEAN;
-            let stay = best[i - 1][s] - SIDE_BREAK;
-            let (b, f) = if turn >= stay {
-                (turn, 1 - s)
-            } else {
-                (stay, s)
-            };
-            best[i][s] = b + score(i, s);
-            from[i][s] = f;
-        }
-    }
-    let mut s = if best[n - 1][0] >= best[n - 1][1] {
-        0
-    } else {
-        1
-    };
-    let mut sides = vec![true; n];
-    for i in (0..n).rev() {
-        sides[i] = s == 0;
-        if i > 0 {
-            s = from[i][s];
-        }
-    }
-    sides
-}
-
-/// How many of the objects' centres moved `dx` across land on a page
-/// `width` across.
-fn centres_on_page(layers: &[Layer], width: f64, dx: f64) -> usize {
-    layers
-        .iter()
-        .flat_map(|l| l.shapes.iter())
-        .map(|s| s.bounds())
-        .filter(|b| b.x0.is_finite() && b.x1.is_finite())
-        .filter(|b| (0.0..=width).contains(&((b.x0 + b.x1) / 2.0 + dx)))
-        .count()
-}
+/// How far left of the spine (mm) an object's centre must be to belong to
+/// the left page of a spread: one sitting on the spine goes right.
+const SPINE_SLACK_MM: f64 = 0.01;
 
 /// A paragraph's line spacing, space before and after and indents from
 /// its resolved style, the values of `base` where it says nothing.
@@ -10336,16 +10322,20 @@ pub(crate) mod tests {
         }
     }
 
-    /// A book on facing pages (version 21, `mcfg` byte 26) opens in
-    /// spreads, each page's objects moved from the spine by the page's
-    /// place in them: the first page alone on the right, then left and
-    /// right. An object at the spine on the left page 2 stays at the
-    /// spine; the side holding more of its objects took it to the page's
-    /// far edge (#1660).
+    /// A book on facing pages (version 21, `mcfg` byte 26) keeps one
+    /// page record per spread, its objects measured from the spine: the
+    /// first record is page 1 alone on the right, each record after it a
+    /// left and a right page, and the last one the last page alone on the
+    /// left when nothing of it is on the right. Each record opens as its
+    /// pages, every object on its own page; read as one page per record,
+    /// a book of 248 pages opened as 125 with each spread's two pages on
+    /// top of each other (#4104).
     #[test]
-    fn a_book_on_facing_pages_opens_in_spreads() {
-        let rect = || {
-            let mut c = f64s(&[254000.0, 127000.0]);
+    fn a_book_on_facing_pages_opens_each_spread_as_two_pages() {
+        // A rectangle from the spine `x` mm across (left of it when
+        // negative), 10 mm high.
+        let square = |x: f64| {
+            let mut c = f64s(&[x * 10000.0, 100000.0]);
             c.extend_from_slice(&f64s(&[1.0, 1.0]));
             c.push(0);
             c.extend_from_slice(&[0; 7]);
@@ -10353,118 +10343,64 @@ pub(crate) mod tests {
                 c.extend_from_slice(&f64s(&[0.0]));
                 c.extend_from_slice(&vec![0u8; gap]);
             }
-            list(
-                b"page",
-                &list(
-                    b"layr",
-                    &list(
-                        b"obj ",
-                        &chunk(b"loda", &loda(OBJ_RECT, &[(ARG_COORDS, c)])),
-                    ),
-                ),
-            )
+            list(b"obj ", &chunk(b"loda", &loda(OBJ_RECT, &[(ARG_COORDS, c)])))
         };
-        let open = |facing: u8| {
+        let record = |xs: &[f64]| {
+            let objs: Vec<u8> = xs.iter().flat_map(|&x| square(x)).collect();
+            list(b"page", &list(b"layr", &objs))
+        };
+        let open = |facing: u8, records: &[Vec<u8>]| {
             // 100 x 150 mm pages.
             let mut m = mcfg(21, 1_000_000, 1_500_000);
             m.resize(32, 0);
             m[26] = facing;
-            let body = [chunk(b"mcfg", &m), rect(), rect(), rect()].concat();
-            let (doc, rep) = parse(&riff(b"CDRL", &body), 21);
-            assert_eq!(rep.shapes, 3, "{:?}", rep.warnings);
-            doc
+            let mut body = chunk(b"mcfg", &m);
+            for r in records {
+                body.extend_from_slice(r);
+            }
+            parse(&riff(b"CDRL", &body), 21).0
         };
-        let doc = open(1);
+        // Page 1 alone; pages 2 and 3; pages 4 and 5 (5 empty but there,
+        // as it is not the last); page 6 alone on the left.
+        let records = [
+            record(&[20.0]),
+            record(&[-80.0, 30.0]),
+            record(&[-50.0]),
+            record(&[-90.0]),
+        ];
+        let doc = open(1, &records);
         assert!(doc.metadata.facing_pages);
         assert!(doc.metadata.facing_start.is_right());
-        assert_eq!(doc.pages.len(), 3);
-        let left_of = |i: usize| doc.pages[i].layers[0].shapes[0].bounds().x0;
-        // Page 1 on the right of the spine: the rectangle at its left edge.
-        assert!(left_of(0).abs() < 1e-6, "{}", left_of(0));
-        // Page 2 on the left: at its right edge, the spine, reaching over.
-        assert!((left_of(1) - 100.0).abs() < 1e-6, "{}", left_of(1));
-        // Page 3 on the right again.
-        assert!(left_of(2).abs() < 1e-6, "{}", left_of(2));
-        // Without facing pages: single pages, objects from their centres.
-        let doc = open(0);
-        assert!(!doc.metadata.facing_pages);
-        let x0 = doc.pages[1].layers[0].shapes[0].bounds().x0;
-        assert!((x0 - 50.0).abs() < 1e-6, "{x0}");
-    }
-
-    /// The sides of facing pages: strict turns from the better start,
-    /// one page whose objects reach across the spine does not break them,
-    /// and a run of pages that all sit the other way (after a page the
-    /// file lost or added) does, once (#2833).
-    #[test]
-    fn facing_sides_take_turns_and_follow_a_lost_page() {
-        let r = (1.0, 0.0);
-        let l = (0.0, 1.0);
-        let e = (0.0, 0.0);
-        assert_eq!(facing_sides(&[r, l, r, l]), vec![true, false, true, false]);
-        assert_eq!(facing_sides(&[l, r, l]), vec![false, true, false]);
-        // Nothing to go by: from the right.
-        assert_eq!(facing_sides(&[e, e, e]), vec![true, false, true]);
-        // Page 3 reads the wrong way: it keeps its turn.
-        assert_eq!(
-            facing_sides(&[r, l, l, l, r, l]),
-            vec![true, false, true, false, true, false]
-        );
-        // From page 4 every page sits the other way: one break.
-        assert_eq!(
-            facing_sides(&[r, l, r, r, l, r, l]),
-            vec![true, false, true, true, false, true, false]
-        );
-    }
-
-    /// A book of 300 facing pages (#2833, a 1 GB file of almost 300
-    /// pages whose pages overlapped): from page 151 on, the pages sit on
-    /// the other side of the spine than strict turns from the first page
-    /// give, as when the file holds one page more or less there. Every
-    /// page's object lands on its own page; page 11, whose object reads
-    /// from the wrong side, keeps its turn.
-    #[test]
-    fn a_long_book_whose_turns_break_keeps_every_page_on_its_side() {
-        // A 25.4 mm square from the spine, to the right or the left.
-        let page = |right: bool| {
-            let w = if right { 254000.0 } else { -254000.0 };
-            let mut c = f64s(&[w, 127000.0]);
-            c.extend_from_slice(&f64s(&[1.0, 1.0]));
-            c.push(0);
-            c.extend_from_slice(&[0; 7]);
-            for gap in [16usize, 16, 16, 0] {
-                c.extend_from_slice(&f64s(&[0.0]));
-                c.extend_from_slice(&vec![0u8; gap]);
-            }
-            list(
-                b"page",
-                &list(
-                    b"layr",
-                    &list(
-                        b"obj ",
-                        &chunk(b"loda", &loda(OBJ_RECT, &[(ARG_COORDS, c)])),
-                    ),
-                ),
-            )
+        assert_eq!(doc.pages.len(), 6);
+        let lefts = |i: usize| -> Vec<f64> {
+            doc.pages[i]
+                .layers
+                .iter()
+                .flat_map(|l| &l.shapes)
+                .map(|s| (s.bounds().x0 * 10.0).round() / 10.0)
+                .collect()
         };
-        let true_side = |i: usize| if i < 150 { i % 2 == 0 } else { i % 2 == 1 };
-        let mut m = mcfg(21, 1_000_000, 1_500_000);
-        m.resize(32, 0);
-        m[26] = 1;
-        let mut body = chunk(b"mcfg", &m);
-        for i in 0..300 {
-            // Page 11's object is drawn from the other side.
-            let right = if i == 10 { !true_side(i) } else { true_side(i) };
-            body.extend_from_slice(&page(right));
-        }
-        let (doc, rep) = parse(&riff(b"CDRL", &body), 21);
-        assert_eq!(doc.pages.len(), 300, "{:?}", rep.warnings);
-        assert!(doc.metadata.facing_pages);
-        for (i, p) in doc.pages.iter().enumerate() {
-            let b = p.layers[0].shapes[0].bounds();
-            let on = b.x0 >= -1e-6 && b.x1 <= 100.0 + 1e-6;
-            assert_eq!(on, i != 10, "page {}: {:?}", i + 1, b);
-        }
+        // From each page's left edge: right pages start at the spine,
+        // left pages end at it.
+        assert_eq!(lefts(0), vec![0.0]);
+        assert_eq!(lefts(1), vec![20.0]);
+        assert_eq!(lefts(2), vec![0.0]);
+        assert_eq!(lefts(3), vec![50.0]);
+        assert!(lefts(4).is_empty());
+        assert_eq!(lefts(5), vec![10.0]);
+        let ids: std::collections::HashSet<_> = doc.pages.iter().map(|p| p.id).collect();
+        assert_eq!(ids.len(), 6, "every page its own id");
+        // A book starting on the left: its first record is a spread.
+        let doc = open(1, &[record(&[-80.0, 30.0]), record(&[-50.0, 10.0])]);
+        assert!(!doc.metadata.facing_start.is_right());
+        assert_eq!(doc.pages.len(), 4);
+        // Without facing pages: one page per record, objects from their
+        // centres.
+        let doc = open(0, &records);
+        assert!(!doc.metadata.facing_pages);
+        assert_eq!(doc.pages.len(), 4);
+        let x0 = doc.pages[0].layers[0].shapes[0].bounds().x0;
+        assert!((x0 - 50.0).abs() < 1e-6, "{x0}");
     }
 
     #[test]

@@ -6,6 +6,9 @@ full, row-by-row status.
 
 ## Unreleased
 
+- `.cdr` books on facing pages open with every page: each page record of such a file holds a spread, which now opens as its left and right pages in order (the first a single right page when the book starts on the right), where a 248-page book opened as 125 pages with objects of two pages on one (#4104; also #2609, #2584, #2018, #3035).
+- PDF import: a PDF whose colours are RGB opens as an RGB document also when it is opened from File > Open, so a clipped object saved again as `.cdr` keeps its RGB colours instead of turning CMYK (#4096).
+- PDF import: labels set two ems apart in one text run keep their places instead of running on with a space, and a wire or box edge passing under a label stays a line instead of becoming the label's underline and disappearing (#4100).
 - Tables: pointing at a font or a size in a list while typing in a cell no longer takes the table away, with everything drawn before it, as soon as the pointer leaves the list; the cell shows the font and keeps its text. Ending any such preview never takes back more than the preview did (#4102).
 - Gaussian Blur and the other bitmap effects on a vector object spread past the object's box on the page: the blur was cut there with a hard edge, in the drawing window and wherever only part of the page was drawn (#4082).
 - 3-Point Ellipse: Ctrl held at the third click draws the circle with the first line as its diameter, its centre the line's middle (#4086).

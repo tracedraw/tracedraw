@@ -394,6 +394,12 @@ fn load(bytes: &[u8], password: &str) -> Result<PdfDoc, ImportError> {
     Ok(doc)
 }
 
+/// A `TJ` step on (in thousandths of an em) past which the next string
+/// is a text of its own at its place, not the same text after a space: a
+/// word space is about a quarter of an em, and a justified line stretches
+/// it to about an em.
+const TJ_APART: f64 = 1200.0;
+
 /// Convert an imported PDF into a document (one page per PDF page).
 pub fn to_document(imp: ImportedPdf, title: &str) -> tracedraw_core::Document {
     use tracedraw_core::document::{Layer, Page};
@@ -419,15 +425,21 @@ pub fn to_document(imp: ImportedPdf, title: &str) -> tracedraw_core::Document {
             background: None,
         });
     }
-    // A drawing in RGB colours opens as an RGB document, so that saving
-    // it keeps it one: a .cdr written as a CMYK document showed the
-    // contents of its clip frames in CMYK in other readers (#3917).
-    if mostly_rgb(&doc) {
+    open_in_colour_mode(&mut doc);
+    doc
+}
+
+/// A drawing in RGB colours opens as an RGB document, so that saving it
+/// keeps it one: a .cdr written as a CMYK document showed the contents of
+/// its clip frames in CMYK in other readers (#3917). Every way a PDF
+/// becomes a document calls this; the app's own open did not, so a PDF
+/// opened there and saved as .cdr still went out as CMYK (#4096).
+pub fn open_in_colour_mode(doc: &mut tracedraw_core::Document) {
+    if mostly_rgb(doc) {
         let mode = tracedraw_core::document::PrimaryColorMode::Rgb;
         doc.metadata.primary_color_mode = mode;
         doc.defaults = doc.defaults.in_mode(mode);
     }
-    doc
 }
 
 /// Whether more of the drawing's colours (fills, fountain stops and
@@ -2173,14 +2185,17 @@ impl<'a> Importer<'a> {
                                     if let Some(adj) = Self::num(other) {
                                         let tx = -adj / 1000.0 * gs.font_size * gs.hscale;
                                         // A jump of more than an em back, or
-                                        // of more than three ems on, places
+                                        // of more than a wide space on, places
                                         // the next string somewhere else (a
                                         // drawing program sets labels apart
                                         // in one array): it starts a text of
                                         // its own where it is, instead of
                                         // running on in this one, where it
-                                        // landed elsewhere (#3508).
-                                        if !(-3000.0..=1000.0).contains(&adj) {
+                                        // landed elsewhere (#3508). Labels two
+                                        // ems apart ran on with a space between
+                                        // them, so the second one sat right
+                                        // after the first (#4100).
+                                        if !(-TJ_APART..=1000.0).contains(&adj) {
                                             if let Some(r) = run.take() {
                                                 self.flush_run(r);
                                             }
@@ -7870,6 +7885,41 @@ mod tests {
         assert!(clk < vdd - 100.0 * PT_MM, "{clk} {vdd}");
         let wide = at("Wide gap");
         assert!((wide - 20.0 * PT_MM).abs() < 0.3, "{wide}");
+    }
+
+    /// #4100: a circuit diagram's pin names set two ems apart in one
+    /// `TJ` array (`[(CLKB)-2026(VDD)]TJ`) ran on as one text with a
+    /// space, so the second name sat right after the first in the fallback
+    /// font, over the drawing; each is a text of its own at its place.
+    #[test]
+    fn names_two_ems_apart_in_one_array_keep_their_places() {
+        let font =
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>";
+        let bytes = one_page(
+            "BT /F1 10 Tf 1 0 0 1 20 50 Tm [(CLKB)-2026(VDD)] TJ ET",
+            "<< /Font << /F1 5 0 R >> >>",
+            &[font.to_string()],
+        );
+        let mut ids = IdSource::default();
+        let imp = parse(&bytes, &mut ids).expect("parse");
+        let texts: Vec<(String, f64)> = imp.pages[0]
+            .shapes
+            .iter()
+            .filter_map(|s| match &s.kind {
+                ShapeKind::Text { spans, .. } => Some((
+                    spans.iter().map(|x| x.text.as_str()).collect(),
+                    s.bounds().x0,
+                )),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(texts.len(), 2, "{texts:?}");
+        // CLKB is 26.68 pt wide in Helvetica 10 pt; VDD 20.26 pt on.
+        let vdd = texts.iter().find(|t| t.0 == "VDD").expect("VDD").1;
+        assert!(
+            (vdd - (20.0 + 26.68 + 20.26) * PT_MM).abs() < 0.5,
+            "{texts:?}"
+        );
     }
 
     /// Text with an outline of its own colour (render mode 2, as the PDF
