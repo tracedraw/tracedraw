@@ -1,0 +1,80 @@
+name: Keep the fork's patches current
+# Fork-only: rebases external-panel (PR #4188 upstream) and native-plugins
+# (fork-only) onto the latest upstream main, builds and tests, and only on
+# a clean result pushes the rebased branches and republishes the release.
+# A conflicted rebase or a failing build/test stops here: nothing is
+# pushed, and this run shows red - GitHub's own failure notification is
+# how the owner finds out an upstream change broke a patch.
+on:
+  schedule:
+    - cron: '17 6 * * 1' # Monday, a few minutes past the hour on purpose
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: windows-latest
+    steps:
+      # Windows runners have core.autocrlf=true globally, which rewrites
+      # every checked-out text file to CRLF; a few of this repo's own
+      # hardcoded LF searches (e.g. help.rs's own test) then fail on a
+      # fresh checkout. Must be set before checkout, which is what
+      # converts.
+      - run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@v5
+        with:
+          ref: native-plugins
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Add the real TraceDraw as upstream
+        run: git remote add upstream https://github.com/tracedraw/tracedraw.git
+
+      - name: Fetch upstream
+        run: git fetch upstream
+
+      - name: Configure a committer identity (needed to rebase)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Rebase external-panel onto upstream/main
+        run: |
+          git checkout external-panel
+          git rebase upstream/main
+
+      - name: Rebase native-plugins onto the new external-panel
+        run: |
+          git checkout native-plugins
+          git rebase external-panel
+
+      - name: Build
+        run: cargo build --release -p tracedraw --bin tracedraw
+
+      - name: Test
+        run: cargo test --release -p tracedraw --lib -- i18n menus dialogs help plugins native_plugin external_panel settings
+
+      - name: Push the rebased branches
+        run: |
+          git push --force-with-lease origin external-panel
+          git push --force-with-lease origin native-plugins
+
+      - name: Package the release asset
+        shell: pwsh
+        run: Compress-Archive -Path target/release/tracedraw.exe -DestinationPath tracedraw-plugins.zip -Force
+
+      - name: Move the release tag and publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git tag -f native-plugins-latest native-plugins
+          git push -f origin native-plugins-latest
+          gh release delete native-plugins-latest --repo ${{ github.repository }} --yes || echo "no previous release"
+          gh release create native-plugins-latest tracedraw-plugins.zip --repo ${{ github.repository }} --prerelease --title "TraceDraw + external panel + native plugins (latest)" --notes "Automatically rebuilt on $(Get-Date -Format yyyy-MM-dd) from upstream $(git rev-parse --short upstream/main). One file inside: tracedraw.exe, no installer. Unsigned."
+        shell: pwsh

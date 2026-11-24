@@ -831,6 +831,16 @@ pub struct Settings {
     /// `behavior/plugins.md`).
     #[serde(default)]
     pub plugins: Vec<crate::scripting::Plugin>,
+    /// Window > Plugins (fork-only, see `behavior/native-plugins.md`).
+    #[cfg(not(target_arch = "wasm32"))]
+    #[serde(default)]
+    pub native_plugins: Vec<crate::native_plugins::NativePlugin>,
+    /// The plugin last opened, docked when TraceDraw starts again (same
+    /// idea as a docker staying open across restarts): `None` once the
+    /// user closes it on purpose.
+    #[cfg(not(target_arch = "wasm32"))]
+    #[serde(default)]
+    pub docked_native_plugin: Option<String>,
     /// Minimize, Maximize and Close at the right end of the menu bar,
     /// for windows without the desktop's title bar (#2574).
     #[serde(default)]
@@ -2646,6 +2656,10 @@ impl Default for Settings {
             pending_update: String::new(),
             script_filters: Vec::new(),
             plugins: Vec::new(),
+            #[cfg(not(target_arch = "wasm32"))]
+            native_plugins: Vec::new(),
+            #[cfg(not(target_arch = "wasm32"))]
+            docked_native_plugin: None,
             window_buttons: false,
             github: Default::default(),
             tracing: Default::default(),

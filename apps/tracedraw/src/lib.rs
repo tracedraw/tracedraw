@@ -166,6 +166,8 @@ mod macros;
 mod mcp;
 mod external_panel;
 #[cfg(not(target_arch = "wasm32"))]
+mod native_plugins;
+#[cfg(not(target_arch = "wasm32"))]
 mod mcp_link;
 mod media;
 mod mesh_tool;
@@ -1205,6 +1207,9 @@ impl eframe::App for Shell {
         if app.sync_mcp_link(ui.ctx()) {
             ui.ctx().request_repaint();
         }
+        // A plugin (Window > Plugins, native_plugins.rs) waiting for the
+        // MCP window link to come up.
+        app.poll_native_plugin_launch();
         // Fonts being installed off the interface's thread (d#3200).
         if app.poll_font_installs() {
             ui.ctx()

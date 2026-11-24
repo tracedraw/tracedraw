@@ -5,3 +5,4 @@
 /site
 # The Android build (scripts/android/build.sh).
 /dist-android/
+/dist/

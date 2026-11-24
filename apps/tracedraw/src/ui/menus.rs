@@ -5447,6 +5447,13 @@ fn window_menu(app: &mut App, ui: &mut Ui) {
             crate::ui::detached::attach(app, i);
         }
     }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        sep(ui);
+        sub(ui, "menu.window.plugins", |ui| {
+            crate::native_plugins::menu_items(app, ui)
+        });
+    }
     sep(ui);
     sub(ui, "menu.window.workspace", |ui| {
         for (key, ws) in [

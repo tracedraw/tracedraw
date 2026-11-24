@@ -2175,6 +2175,18 @@ pub struct App {
     /// AI agents editing the open drawing (MCP), while allowed.
     #[cfg(not(target_arch = "wasm32"))]
     pub mcp_link: Option<crate::mcp_link::Link>,
+    /// A native plugin (Window > Plugins, fork-only) waiting for the MCP
+    /// window link to come up before it is launched.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub pending_native_plugin: Option<crate::native_plugins::NativePlugin>,
+    /// Whether `settings.docked_native_plugin` was already restored this
+    /// run, and whether the external panel has been open at all yet
+    /// (closing it only counts once it was seen open): session-only,
+    /// never saved.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub native_plugin_restored: bool,
+    #[cfg(not(target_arch = "wasm32"))]
+    pub native_plugin_panel_was_open: bool,
     pub find_state: crate::ui::dialogs::FindReplaceState,
     pub step_repeat: crate::ops2::StepRepeat,
     /// Repeat Copies' preview of the copies (#1197): the cached
@@ -3797,6 +3809,12 @@ impl App {
             ai_vectorize: Default::default(),
             #[cfg(not(target_arch = "wasm32"))]
             mcp_link: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            pending_native_plugin: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            native_plugin_restored: false,
+            #[cfg(not(target_arch = "wasm32"))]
+            native_plugin_panel_was_open: false,
             find_state: Default::default(),
             step_repeat: Default::default(),
             step_preview: None,
