@@ -598,6 +598,10 @@ struct Ctx<'a> {
     /// The node types a curve's node bytes give where its handles read
     /// otherwise, for the shape being read.
     pending_node_types: std::collections::BTreeMap<usize, tracedraw_core::nodes::NodeType>,
+    /// The corners of the rectangle being read whose radius the file
+    /// gives as a length (version 15+), by corner: a length the corner
+    /// measures on the page, not in the rectangle's own space (#4126).
+    pending_length_corners: [bool; 4],
     /// The CMYK profile the file carries, for CMYK bitmaps.
     cmyk_profile: Option<tracedraw_core::icc::Profile>,
     /// CMYK to RGB through that profile, built for the first CMYK bitmap.
@@ -681,6 +685,7 @@ impl<'a> Ctx<'a> {
             pending_frame_number: None,
 
             pending_node_types: Default::default(),
+            pending_length_corners: [false; 4],
             cmyk_profile: None,
             cmyk_lut: None,
             static_ids: None,
@@ -4480,6 +4485,7 @@ impl<'a> Ctx<'a> {
         self.pending_on_path = None;
         self.pending_text_transform = None;
         self.pending_frame_number = None;
+        self.pending_length_corners = [false; 4];
         let mut v3_envelope_of: Option<(Affine, Rect, tracedraw_core::envelope::Frame, Affine)> =
             None;
         let chain = trfd
@@ -4959,6 +4965,25 @@ impl<'a> Ctx<'a> {
         if matches!(shape.kind, ShapeKind::Group { .. }) {
             shape.fill = Fill::None;
             shape.stroke = None;
+        }
+        // A corner the file gives as a length measures that on the page,
+        // whatever the rectangle's transform scales it by: a rectangle
+        // enlarged with its corners kept opened with corners enlarged
+        // with it (#4126).
+        let lengths = std::mem::take(&mut self.pending_length_corners);
+        if lengths.contains(&true) {
+            let (sx, sy) = tracedraw_core::document::axis_scale(shape.transform);
+            let k = sx.min(sy);
+            if let (Some((rect, mut c)), true) = (shape.kind.rect_corners(), k > 1e-12) {
+                if !c.fixed {
+                    for (r, length) in c.radii.iter_mut().zip(lengths) {
+                        if length {
+                            *r /= k;
+                        }
+                    }
+                    shape.kind = ShapeKind::rect_with_corners(rect, c);
+                }
+            }
         }
         // Rounded corners keep their size when the rectangle is resized,
         // as new rectangles do, rather than stretch with it (#619); after
@@ -6130,16 +6155,21 @@ impl<'a> Ctx<'a> {
                     // Each radius is followed by 16 bytes of corner data
                     // (corner type and unknown fields) except the last.
                     let mut radii = Vec::new();
+                    let mut lengths = Vec::new();
                     for gap in [16usize, 16, 16, 0] {
                         let Some(raw) = r.f64() else { break };
                         if raw.is_finite() {
-                            radii.push(if raw > RADIUS_LENGTH_FROM {
-                                raw * UNIT_MM
-                            } else {
-                                raw * half
-                            });
+                            let length = raw > RADIUS_LENGTH_FROM;
+                            radii.push(if length { raw * UNIT_MM } else { raw * half });
+                            lengths.push(if length { 1.0 } else { 0.0 });
                         }
                         r.skip(gap);
+                    }
+                    // A length is the corner's size on the page: a
+                    // rectangle the file scales keeps it (#4126).
+                    if lengths.contains(&1.0) {
+                        let mask = file_corners(&lengths, w, h);
+                        self.pending_length_corners = mask.radii.map(|m| m > 0.5);
                     }
                     (w, h, radii)
                 };
@@ -10264,6 +10294,49 @@ pub(crate) mod tests {
         // 20000 units are 2 mm, not 20000 times half the side (a capsule).
         assert!((read(15, 20000.0) - 2.0).abs() < 1e-9);
         assert!((read(22, 20000.0) - 2.0).abs() < 1e-9);
+    }
+
+    /// A radius the file gives as a length is the corner's size on the
+    /// page: a rectangle enlarged three times by its transform with its
+    /// 2 mm corners kept opens with 2 mm corners, not 6 mm ones, while a
+    /// radius given as a share grows with the rectangle (#4126).
+    #[test]
+    fn length_radii_keep_their_size_on_a_scaled_rectangle() {
+        let read = |raw: f64| {
+            let mut c = f64s(&[254000.0, 127000.0]);
+            c.extend_from_slice(&f64s(&[3.0, 3.0]));
+            c.push(1);
+            c.extend_from_slice(&[0; 7]);
+            for gap in [16usize, 16, 16, 0] {
+                c.extend_from_slice(&f64s(&[raw]));
+                c.extend_from_slice(&vec![0u8; gap]);
+            }
+            let obj = list(
+                b"obj ",
+                &[
+                    chunk(b"loda", &loda(OBJ_RECT, &[(ARG_COORDS, c)])),
+                    chunk(b"trfd", &trfd(22, [3.0, 0.0, 0.0, 0.0, 3.0, 0.0])),
+                ]
+                .concat(),
+            );
+            let body = [
+                chunk(b"mcfg", &mcfg(22, 2_540_000, 2_540_000)),
+                list(b"page", &list(b"layr", &obj)),
+            ]
+            .concat();
+            let (doc, rep) = parse(&riff(b"CDRM", &body), 22);
+            assert_eq!(rep.shapes, 1, "{:?}", rep.warnings);
+            let page = first_shape(&doc).page_corners().expect("a rectangle");
+            assert!(page.radii.iter().all(|r| (r - page.radii[0]).abs() < 1e-9));
+            page.radii[0]
+        };
+        // 20000 units: 2 mm on the page.
+        let got = read(20000.0);
+        assert!((got - 2.0).abs() < 1e-9, "{got}");
+        // A share of 0.4: 2.54 mm in the rectangle's own space, 7.62 mm
+        // on the page.
+        let got = read(0.4);
+        assert!((got - 7.62).abs() < 1e-9, "{got}");
     }
 
     #[test]
