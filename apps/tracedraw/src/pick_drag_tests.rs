@@ -6327,6 +6327,29 @@ fn ctrl_draws_a_three_point_circle_round_the_press_point() {
     assert_eq!(shape_count(&app), before + 1);
 }
 
+/// Ctrl held at the third click of the 3-Point Ellipse draws the circle
+/// with the line as its diameter, its centre the line's middle, wherever
+/// the third point is (#4086); on the side of the third point it is the
+/// same circle.
+#[test]
+fn ctrl_at_the_third_click_draws_the_circle_on_the_three_point_line() {
+    let (ctx, mut app, first) = setup();
+    app.select(vec![first]);
+    app.delete_selection();
+    app.set_tool(Tool::ThreePointEllipse);
+    let (a, b) = (Point::new(100.0, 150.0), Point::new(140.0, 150.0));
+    let (sa, sb) = (app.view.to_screen(a), app.view.to_screen(b));
+    drag(&ctx, &mut app, sa, sb, Modifiers::NONE, Vec::new());
+    assert!(app.three_point_base.is_some());
+    let third = app.view.to_screen(Point::new(117.0, 157.0));
+    click_at(&ctx, &mut app, third, Modifiers::CTRL);
+    let id = *app.selection.first().expect("the circle");
+    let e = bounds(&app, id);
+    for (got, want) in [(e.x0, 100.0), (e.x1, 140.0), (e.y0, 130.0), (e.y1, 170.0)] {
+        assert!((got - want).abs() < 0.05, "diameter 100..140 at y 150: {e:?}");
+    }
+}
+
 /// Ctrl held at the third click of a 3-point curve draws a bow: the arc
 /// of the circle through the three points, standing evenly on its chord
 /// wherever the third point is (#934). Without Ctrl the curve stays the

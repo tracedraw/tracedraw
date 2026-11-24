@@ -16,6 +16,10 @@ use crate::ui::icons;
 use crate::ui::tips::RichTip;
 use egui::{Pos2, Rect, Sense, Stroke, Ui, Vec2};
 
+/// Seconds the pointer rests on another flyout button, with a list open,
+/// before that button's list takes its place (#4081).
+const FLYOUT_SWITCH_REST: f64 = 0.35;
+
 /// Tools after which a flyout draws a separator.
 const SEPARATE_AFTER: [Tool; 7] = [
     Tool::FreeformPick,
@@ -765,7 +769,25 @@ fn tool_button(
             ui.ctx()
                 .request_repaint_after(std::time::Duration::from_millis(100));
         }
-        let switch = resp.hovered() && app.flyout_open.is_some_and(|o| o != gi);
+        // Another list opens only once the pointer rests on this button a
+        // moment: on its way to a tool of the open list the pointer
+        // crosses other buttons, which swapped the list each time, so its
+        // tools were hard to reach (#4081).
+        let rest_id = resp.id.with("flyout_rest");
+        let passing = resp.hovered() && app.flyout_open.is_some_and(|o| o != gi);
+        let switch = if passing {
+            let now = ui.input(|i| i.time);
+            let since = ui.ctx().data_mut(|d| *d.get_temp_mut_or_insert_with(rest_id, || now));
+            if now - since >= FLYOUT_SWITCH_REST {
+                true
+            } else {
+                ui.ctx().request_repaint_after(std::time::Duration::from_millis(60));
+                false
+            }
+        } else {
+            ui.ctx().data_mut(|d| d.remove::<f64>(rest_id));
+            false
+        };
         let pressed = (resp.drag_started() || resp.long_touched() || held)
             && !crate::ui::overflow::finger_sliding(ui.ctx());
         if pressed {
@@ -1165,10 +1187,20 @@ mod tests {
                 vec![egui::Event::PointerMoved(center)],
                 0.02,
             );
+            // Passing over another button keeps the open list (#4081);
+            // resting there a moment switches it.
+            if source != target {
+                assert_eq!(
+                    app.flyout_open,
+                    Some(group_of(tools[source])),
+                    "passing by keeps the list"
+                );
+            }
+            flyout_pointer_frame(&ctx, &mut app, Vec::new(), 0.4);
             assert_eq!(
                 app.flyout_open,
                 Some(target_group),
-                "hover switches the list"
+                "resting switches the list"
             );
             let chosen = app.tool_chosen;
             click_flyout_button(&ctx, &mut app, center);

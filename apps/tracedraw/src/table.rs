@@ -370,7 +370,10 @@ impl App {
         }
         grow_row_to_fit(&mut t, r, c);
         t.refit();
-        if self.engine.undo_label() == Some("Edit Cell") {
+        // Not during a preview (a font pointed at in a list): undoing the
+        // typing there took it out of the preview's reach, and ending the
+        // preview took back everything, the table included (#4102).
+        if self.engine.undo_label() == Some("Edit Cell") && !self.engine.in_preview() {
             let _ = self.engine.undo();
         }
         let _ = self.engine.run_with_label(

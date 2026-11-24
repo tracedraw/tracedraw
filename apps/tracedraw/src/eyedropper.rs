@@ -409,7 +409,61 @@ impl App {
         outline: bool,
         decode: &mut dyn FnMut(&tracedraw_core::SharedBytes) -> Option<Picture>,
     ) -> Option<Color> {
-        let s = if outline {
+        self.sample_color_from(None, p, outline, decode)
+    }
+
+    /// The colour at `p` of the topmost picture there, whatever objects
+    /// lie over it (#4083: Alt+click with the Colour Eyedropper, to read
+    /// the photo being traced from under the shapes drawn on it). `None`
+    /// with no picture at `p`.
+    pub fn sample_picture_beneath(&self, p: Point) -> Option<Color> {
+        fn walk(s: &tracedraw_core::Shape, parent: Affine, p: Point) -> Option<tracedraw_core::Shape> {
+            if !s.visible {
+                return None;
+            }
+            let t = parent * s.transform;
+            match &s.kind {
+                ShapeKind::Bitmap { rect, .. } => {
+                    rect.contains(t.inverse() * p).then(|| {
+                        let mut c = s.clone();
+                        c.transform = t;
+                        c
+                    })
+                }
+                ShapeKind::Group { children } => children.iter().rev().find_map(|c| walk(c, t, p)),
+                ShapeKind::ClipFrame { contents, .. } => {
+                    contents.iter().rev().find_map(|c| walk(c, t, p))
+                }
+                _ => None,
+            }
+        }
+        let leaf = self
+            .page_layers()
+            .into_iter()
+            .rev()
+            .filter(|l| l.visible)
+            .flat_map(|l| l.shapes.iter().rev())
+            .find_map(|s| walk(s, Affine::IDENTITY, p))?;
+        self.sample_color_from(Some(leaf), p, false, &mut |png| {
+            image::load_from_memory(png)
+                .ok()
+                .map(|i| std::sync::Arc::new(i.to_rgba8()))
+        })
+    }
+
+    /// [`App::sample_color_with`] reading `leaf` (page space) when given,
+    /// its own pixels, not what is drawn over it.
+    fn sample_color_from(
+        &self,
+        leaf: Option<tracedraw_core::Shape>,
+        p: Point,
+        outline: bool,
+        decode: &mut dyn FnMut(&tracedraw_core::SharedBytes) -> Option<Picture>,
+    ) -> Option<Color> {
+        let beneath = leaf.is_some();
+        let s = if let Some(s) = leaf {
+            s
+        } else if outline {
             self.leaf_to_read(p)?
         } else {
             match self.leaf_to_read_color(p) {
@@ -425,7 +479,7 @@ impl App {
             if let Some(st) = &s.stroke {
                 return Some(st.color);
             }
-        } else if shows_other_than_its_fill(s) {
+        } else if !beneath && shows_other_than_its_fill(s) {
             // A gradient, a transparency, a merge mode or an effect: the
             // colour is read as the drawing shows it there, with what
             // shows through, not as the object's first colour (#4051).
@@ -1489,6 +1543,29 @@ mod tests {
         assert!((app.doc().find_shape(b).expect("b").opacity - 1.0).abs() < 1e-9);
         assert_eq!(app.engine.history_labels().0.len(), steps + 1);
         assert!(!app.can_clear_transparency());
+    }
+
+    /// A picture covered by a filled shape gives its pixels to the Alt
+    /// reading, the shape's own colour to the usual one (#4083: tracing a
+    /// photo by hand, the photo's colour could not be read from under the
+    /// shapes drawn over it). With no picture there, nothing.
+    #[test]
+    fn a_picture_under_a_shape_gives_its_colour_to_the_alt_reading() {
+        let mut app = App::headless();
+        let img = image::RgbaImage::from_pixel(20, 20, image::Rgba([0, 160, 0, 255]));
+        let id = app.place_image_at(img, None, None).expect("picture");
+        let b = app.doc().find_shape(id).unwrap().bounds();
+        let over = rect(&mut app, b.inflate(1.0, 1.0));
+        app.run(Command::SetFill {
+            shapes: vec![over],
+            fill: Fill::Solid(Color::rgb8(250, 0, 0)),
+        });
+        app.select(Vec::new());
+        let p = b.center();
+        assert_eq!(app.sample_color_at(p, false), Some(Color::rgb8(250, 0, 0)));
+        assert_eq!(app.sample_picture_beneath(p), Some(Color::rgb8(0, 160, 0)));
+        let off = Point::new(b.x1 + 50.0, b.y1 + 50.0);
+        assert_eq!(app.sample_picture_beneath(off), None);
     }
 
     /// Pictures give their pixels: placed alone, in a group, inside a clip

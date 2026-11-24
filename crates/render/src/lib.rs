@@ -107,10 +107,18 @@ type PageBounds = std::collections::HashMap<ShapeId, Rect>;
 #[cfg(not(target_arch = "wasm32"))]
 fn page_bounds_cache(doc: &Document, page: PageId) -> PageBounds {
     fn walk(s: &Shape, parent: Affine, map: &mut PageBounds) {
+        // An object drawn as the picture its bitmap effects make: the
+        // picture's box, which the effects grow past the object (a blur
+        // spreads). The object's own box cut the picture there, a hard
+        // edge round a blurred vector object (#4082).
+        let own = match s.picture() {
+            Some(p) => s.bounds().union(p.bounds()),
+            None => s.bounds(),
+        };
         let b = if parent == Affine::IDENTITY {
-            s.bounds()
+            own
         } else {
-            parent.transform_rect_bbox(s.bounds())
+            parent.transform_rect_bbox(own)
         };
         map.insert(s.id, b);
         let t = parent * s.transform;
@@ -1022,6 +1030,7 @@ impl Renderer<'_> {
         }
         if !shape.effects.is_empty()
             || shape.shadow.is_some()
+            || shape.raster_fx.is_some()
             || matches!(shape.kind, ShapeKind::SymbolInstance { .. })
             || self.preview.is_some_and(|p| p.shapes.contains(&shape.id))
         {

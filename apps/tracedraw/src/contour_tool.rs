@@ -458,6 +458,54 @@ impl App {
         true
     }
 
+    /// The point of the edge of a visible object other than `id` (a
+    /// member of a group counts on its own) that lies within reach of
+    /// `p`, the nearest one: where a contour dragged there stops.
+    pub fn contour_edge_near(&self, id: ShapeId, p: Point) -> Option<Point> {
+        fn walk(
+            s: &tracedraw_core::Shape,
+            parent: tracedraw_core::geometry::Affine,
+            id: ShapeId,
+            p: Point,
+            tol: f64,
+            best: &mut Option<(Point, f64)>,
+        ) {
+            if !s.visible || s.id == id {
+                return;
+            }
+            let t = parent * s.transform;
+            match &s.kind {
+                ShapeKind::Group { children } => {
+                    for c in children {
+                        walk(c, t, id, p, tol, best);
+                    }
+                }
+                ShapeKind::ClipFrame { frame, .. } => walk(frame, t, id, p, tol, best),
+                _ => {
+                    let mut placed = s.clone();
+                    placed.transform = t;
+                    // Far objects are passed by their box.
+                    if !placed.bounds().inflate(tol, tol).contains(p) {
+                        return;
+                    }
+                    if let Some((q, d)) = crate::canvas::nearest_on_path(&placed.page_path(), p) {
+                        if best.is_none_or(|(_, bd)| d < bd) {
+                            *best = Some((q, d));
+                        }
+                    }
+                }
+            }
+        }
+        let tol = self.object_pick_tol() * 1.5;
+        let mut best = None;
+        for l in self.page_layers().into_iter().filter(|l| l.visible) {
+            for s in &l.shapes {
+                walk(s, tracedraw_core::geometry::Affine::IDENTITY, id, p, tol, &mut best);
+            }
+        }
+        best.filter(|(_, d)| *d <= tol).map(|(q, _)| q)
+    }
+
     /// The pointer moved to `p` during a drag.
     pub fn drag_contour(&mut self, p: Point) {
         let Some(dd) = self.contour_drag else {
@@ -471,7 +519,14 @@ impl App {
         let c = b.center();
         // Away from the middle: outside; toward it: inside.
         let away = (p - c).hypot() > (dd.start - c).hypot();
-        let d = (p - dd.start).hypot();
+        // Near the edge of another object the contour reaches exactly to
+        // it, as far from the object's outline as that edge lies (#4084:
+        // it ran past a neighbour's edge, so two pieces could not be made
+        // to meet).
+        let d = match self.contour_edge_near(dd.id, p) {
+            Some(q) => crate::canvas::distance_to_path(&s.page_path(), q),
+            None => (p - dd.start).hypot(),
+        };
         if d < 1e-6 {
             return;
         }
@@ -594,6 +649,40 @@ mod tests {
         let shape = app.doc().find_shape(id).expect("square");
         let ev = tracedraw_core::live::evaluate(shape);
         assert!(!ev.below.is_empty() && !ev.above.is_empty());
+    }
+
+    /// A contour dragged onto the edge of a neighbouring object stops on
+    /// it: it reaches as far as that edge lies from the object (#4084: it
+    /// ran past the edge). Away from any edge the drag sets it as before.
+    #[test]
+    fn a_contour_dragged_to_a_neighbour_stops_on_its_edge() {
+        let mut app = App::headless();
+        let id = square(&mut app);
+        app.new_shape(ShapeKind::Rect {
+            rect: Rect::new(26.0, 0.0, 46.0, 20.0),
+            radius: 0.0,
+            corners: None,
+        })
+        .expect("neighbour");
+        app.select(vec![id]);
+        app.contour.direction = ContourDirection::Outside;
+        app.contour.steps = 1;
+        let tol = app.object_pick_tol();
+        assert!(app.begin_contour(Point::new(19.5, 10.0)));
+        app.drag_contour(Point::new(26.0 + tol * 0.5, 10.3));
+        app.contour_drag = None;
+        let Some(Effect::Contour { offset, outside: true, .. }) = contour_of(&app, id) else {
+            panic!("an outside contour");
+        };
+        assert!((offset - 6.0).abs() < 0.05, "reaches the edge 6 mm away: {offset}");
+        // Off any edge: as far as the pointer moved.
+        assert!(app.begin_contour(Point::new(19.5, 10.0)));
+        app.drag_contour(Point::new(19.5, 10.0 - tol * 3.0 - 2.0));
+        app.contour_drag = None;
+        let Some(Effect::Contour { offset, .. }) = contour_of(&app, id) else {
+            panic!("a contour");
+        };
+        assert!((offset - (tol * 3.0 + 2.0)).abs() < 0.05, "{offset}");
     }
 
     /// A group takes a contour (#3245): Apply on a selected group puts

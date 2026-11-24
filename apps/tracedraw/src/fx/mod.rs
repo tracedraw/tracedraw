@@ -1191,6 +1191,63 @@ mod tests {
         assert_eq!(same, src);
     }
 
+    /// A Gaussian blur on a vector object spreads past the object's box
+    /// on the page: a view of only the blurred rim shows it as the whole
+    /// page does (#4082: the picture was cut at the object's box, a hard
+    /// edge round the blur).
+    #[test]
+    fn a_blurred_vector_object_is_not_cut_at_its_box() {
+        use tracedraw_core::document::{Shape, ShapeKind};
+        use tracedraw_core::geometry::{Rect, Size};
+        let mut doc = tracedraw_core::Document::new("t", Size::new(100.0, 100.0));
+        let mut sq = Shape::new(
+            tracedraw_core::ShapeId(7),
+            ShapeKind::Rect {
+                rect: Rect::new(40.0, 40.0, 60.0, 60.0),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        sq.fill = tracedraw_core::Fill::Solid(tracedraw_core::Color::BLACK);
+        sq.stroke = None;
+        let mut blur = new_effect("gaussian_blur");
+        blur.params.insert("radius".into(), 40.0);
+        sq.raster_fx = vector_raster_fx(&sq, &[], vec![blur], true, 150.0);
+        let rect = sq.raster_fx.as_ref().expect("picture").rect;
+        assert!(rect.x1 > 62.0, "the picture grows past the object: {rect:?}");
+        let page = doc.pages[0].id;
+        let layer = doc.pages[0].layers[0].id;
+        doc.layer_mut(layer).unwrap().shapes.push(sq);
+        let zoom = 4.0;
+        let alpha_at = |x0: f64, w: u32, x: f64, y: f64| {
+            let pm = tracedraw_render::render_page(
+                &doc,
+                page,
+                &tracedraw_render::RenderOptions {
+                    width: w,
+                    height: 400,
+                    view: tracedraw_render::ViewTransform {
+                        zoom,
+                        origin_x: -x0 * zoom,
+                        origin_y: 400.0,
+                        stretch_y: 1.0,
+                    },
+                    preview: None,
+                    wireframe: false,
+                    ..tracedraw_render::RenderOptions::default()
+                },
+            )
+            .expect("renders");
+            let px = ((x - x0) * zoom) as u32;
+            let py = (400.0 - y * zoom) as u32;
+            pm.pixel(px, py).expect("inside").alpha()
+        };
+        let whole = alpha_at(0.0, 400, 63.5, 50.0);
+        assert!(whole > 0, "the blur reaches past the box");
+        let rim = alpha_at(63.0, 36, 63.5, 50.0);
+        assert_eq!(rim, whole, "a view of the rim alone shows it too");
+    }
+
     #[test]
     fn effects_are_added_edited_and_removed_in_single_steps() {
         use tracedraw_core::document::ShapeKind;

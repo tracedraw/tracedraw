@@ -2279,7 +2279,15 @@ impl App {
                 // a click sampled or applied nothing (#2897).
                 if response.clicked() || response.drag_stopped_by(PointerButton::Primary) {
                     let attrs = self.tool == Tool::AttributesEyedropper;
-                    if !attrs && self.eyedropper_wants_screen(p, mods.shift, mods.ctrl) {
+                    let sampling = !self.eyedropper_apply || mods.ctrl;
+                    // Alt+click reads the picture under the shapes drawn
+                    // over it, as when tracing a photo by hand (#4083).
+                    let beneath = (!attrs && mods.alt && sampling)
+                        .then(|| self.sample_picture_beneath(p))
+                        .flatten();
+                    if let Some(c) = beneath {
+                        self.took_sampled_color(c, false);
+                    } else if !attrs && self.eyedropper_wants_screen(p, mods.shift, mods.ctrl) {
                         // No object gives a colour here (the desk, the
                         // empty page): the colour shown there (#3040).
                         let at = response.interact_pointer_pos().unwrap_or(screen);

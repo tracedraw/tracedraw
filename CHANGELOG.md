@@ -6,6 +6,12 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Tables: pointing at a font or a size in a list while typing in a cell no longer takes the table away, with everything drawn before it, as soon as the pointer leaves the list; the cell shows the font and keeps its text. Ending any such preview never takes back more than the preview did (#4102).
+- Gaussian Blur and the other bitmap effects on a vector object spread past the object's box on the page: the blur was cut there with a hard edge, in the drawing window and wherever only part of the page was drawn (#4082).
+- 3-Point Ellipse: Ctrl held at the third click draws the circle with the first line as its diameter, its centre the line's middle (#4086).
+- Color Eyedropper: Alt+click reads the picture under the shapes drawn over it, to take a photo's colours while tracing it by hand (#4083).
+- Contour: dragged near the edge of a neighbouring object, the contour reaches exactly to that edge, so two pieces meet (#4084).
+- Toolbox: with a flyout open, the pointer can cross other tool buttons on its way to a tool of the list; another list opens only when the pointer rests on its button a moment (#4081).
 - Exporting no longer leaves the program standing still with nothing on screen: on the desktop File > Export runs in the background, with "Exporting <file>…" on the status line and an "Exporting" window whose bar fills file by file ("Writing file 3 of 12") when a file is written for each page; the window stays alive until the files are whole.
 - Opening a large file of another format (8 MB or more: `.cdr`, PDF, SVG, PostScript) says so before the reading starts: "Opening <file>…" on the status line and an "Opening" window, where before the program stood still from the moment the file was chosen. Large `.tdraw` drawings already open in the background with a bar.
 - Dimensions in scripts and macros: a label size or another style setting changed on the Dimension bar while a macro is recorded is recorded and plays back on the dimension the macro draws; scripts and VBA macros read and set it with `LabelSize` and `SetDimensionStyle` (#4026).

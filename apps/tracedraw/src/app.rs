@@ -6973,7 +6973,12 @@ impl App {
         let angle = base.atan2();
         let dir = base / len;
         let normal = Vec2::new(-dir.y, dir.x);
-        let height = (c - a).dot(normal);
+        let mut height = (c - a).dot(normal);
+        // Ctrl held at the third point of the 3-Point Ellipse: a circle
+        // with the base as its diameter, wherever the point is (#4086).
+        if self.tool == Tool::ThreePointEllipse && arc {
+            height = circle_on_base_height(len, height);
+        }
         match self.tool {
             Tool::ThreePointRectangle | Tool::ThreePointEllipse => {
                 if height.abs() < 0.05 {
@@ -12419,6 +12424,17 @@ pub fn three_point_box(tool: Tool, len: f64, height: f64) -> Rect {
         Rect::new(0.0, -height.abs(), len, height.abs())
     } else {
         Rect::new(0.0, height.min(0.0), len, height.max(0.0))
+    }
+}
+
+/// The height (see [`three_point_box`]) of the 3-Point Ellipse that is
+/// the circle with the base of length `len` as its diameter, on the side
+/// of `height` (#4086: Ctrl at the third point).
+pub fn circle_on_base_height(len: f64, height: f64) -> f64 {
+    if height < 0.0 {
+        -len / 2.0
+    } else {
+        len / 2.0
     }
 }
 

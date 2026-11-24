@@ -97,6 +97,9 @@ struct PreviewMark {
     /// Steps redone from `redo` during the preview, which withdrawing it
     /// puts back there.
     redone: Vec<u64>,
+    /// The id the first step recorded during the preview gets: steps
+    /// older than it are never withdrawn (#4102).
+    first_new: u64,
     saved: bool,
     at_step: bool,
 }
@@ -633,6 +636,7 @@ impl Engine {
             redo: std::mem::take(&mut self.redo),
             redo_cleared: false,
             redone: Vec::new(),
+            first_new: self.next_step,
             saved: !self.is_dirty(),
             at_step: self.at_recorded_step(),
         });
@@ -652,7 +656,18 @@ impl Engine {
         // Each step goes back as Undo takes it (swaps, no copies); one
         // redone from the held stack returns there, newest first, so the
         // stack comes out as it was.
-        while !self.undo.is_empty() && self.last_step_id() != m.last_step {
+        // Only steps recorded or redone during the preview go: when a step
+        // that was there before it was undone meanwhile (typing that
+        // collapses into one step undoes the last one), the mark is never
+        // met again, and walking on took back the whole history, the
+        // object drawn first included (#4102).
+        while self.last_step_id() != m.last_step {
+            let Some(top) = self.undo.last() else {
+                break;
+            };
+            if top.id < m.first_new && !m.redone.contains(&top.id) {
+                break;
+            }
             let Some(mut e) = self.undo.pop() else {
                 break;
             };
@@ -1540,6 +1555,38 @@ mod tests {
         e.keep_preview();
         assert!(!e.in_preview());
         assert_eq!(e.history_labels().0.len(), undo.len() + 2);
+    }
+
+    /// A step from before a preview undone during it (typing that
+    /// collapses into one step) does not make withdrawing the preview take
+    /// back the whole history (#4102): the steps older than the preview
+    /// stay.
+    #[test]
+    fn withdrawing_a_preview_never_takes_back_steps_older_than_it() {
+        use crate::document::{Shape, ShapeKind};
+        use crate::geometry::Rect;
+        let mut e = Engine::default();
+        let layer = e.document().pages[0].layers[0].id;
+        let add = |e: &mut Engine| {
+            let id = e.new_shape_id();
+            let shape = Shape::new(
+                id,
+                ShapeKind::Rect {
+                    rect: Rect::new(0.0, 0.0, 10.0, 10.0),
+                    radius: 0.0,
+                    corners: None,
+                },
+            );
+            e.run(&Command::AddShape { layer, shape }).unwrap();
+        };
+        add(&mut e);
+        add(&mut e);
+        e.begin_preview();
+        e.undo().unwrap();
+        add(&mut e);
+        e.withdraw_preview();
+        assert_eq!(e.history_labels().0.len(), 1, "the first object stays");
+        assert_eq!(e.document().pages[0].layers[0].shapes.len(), 1);
     }
 
     /// An undo step shares the pictures with the drawing instead of

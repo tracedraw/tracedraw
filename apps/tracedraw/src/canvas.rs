@@ -40,6 +40,48 @@ pub fn flatten(path: &BezPath, view: &View) -> Vec<(Vec<Pos2>, bool)> {
     out
 }
 
+/// The point of a flattened path nearest to `p` and its distance (mm);
+/// `None` for a path with no segment.
+pub fn nearest_on_path(path: &BezPath, p: Point) -> Option<(Point, f64)> {
+    let mut best: Option<(Point, f64)> = None;
+    let mut last: Option<Point> = None;
+    let mut start: Option<Point> = None;
+    let take = |a: Point, b: Point, best: &mut Option<(Point, f64)>| {
+        let ab = b - a;
+        let len2 = ab.hypot2();
+        let t = if len2 > 0.0 {
+            ((p - a).dot(ab) / len2).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        let q = a + ab * t;
+        let d = (p - q).hypot();
+        if best.is_none_or(|(_, bd)| d < bd) {
+            *best = Some((q, d));
+        }
+    };
+    kurbo::flatten(path.elements().iter().copied(), 0.02, &mut |el| match el {
+        PathEl::MoveTo(q) => {
+            last = Some(q);
+            start = Some(q);
+        }
+        PathEl::LineTo(q) => {
+            if let Some(a) = last {
+                take(a, q, &mut best);
+            }
+            last = Some(q);
+        }
+        PathEl::ClosePath => {
+            if let (Some(a), Some(s)) = (last, start) {
+                take(a, s, &mut best);
+            }
+            last = start;
+        }
+        _ => {}
+    });
+    best
+}
+
 /// Distance from a point to the nearest segment of a flattened path (mm).
 pub fn distance_to_path(path: &BezPath, p: Point) -> f64 {
     let mut best = f64::MAX;
@@ -232,7 +274,12 @@ pub fn draw_canvas(app: &App, painter: &Painter, rect: ERect) {
             Color32::BLACK,
         );
         let mods = painter.ctx().input(|i| i.modifiers);
-        let arc = app.tool == Tool::ThreePointCurve && app.constrain_held(&mods);
+        let arc = match app.tool {
+            Tool::ThreePointCurve => app.constrain_held(&mods),
+            // Ctrl at the third point: the circle on the base (#4086).
+            Tool::ThreePointEllipse => mods.ctrl || mods.command,
+            _ => false,
+        };
         let preview = three_point_preview(app.tool, a, b, c, arc);
         for (pts, closed) in flatten(&preview, view) {
             if pts.len() > 1 {
@@ -1039,7 +1086,7 @@ fn live_colour_region(app: &App, preview: Option<Affine>) -> Option<Rect> {
     let mut pad = 2.0 / app.view.zoom.max(0.01) as f64;
     let mut region: Option<Rect> = None;
     for s in shapes.iter() {
-        if s.has_live_effects() || holds_a_symbol(s) {
+        if s.has_live_effects() || s.raster_fx.is_some() || holds_a_symbol(s) {
             return None;
         }
         let b = app.visual_bounds(s);
@@ -1368,7 +1415,10 @@ fn three_point_preview(
     let len = base.hypot().max(1e-6);
     let dir = base / len;
     let normal = Vec2::new(-dir.y, dir.x);
-    let height = (c - a).dot(normal);
+    let mut height = (c - a).dot(normal);
+    if tool == Tool::ThreePointEllipse && arc {
+        height = crate::app::circle_on_base_height(len, height);
+    }
     match tool {
         Tool::ThreePointCurve => crate::app::three_point_curve(a, b, c, arc),
         _ => {
