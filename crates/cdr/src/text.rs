@@ -1106,6 +1106,11 @@ pub(crate) struct Txsm {
     /// Versions 7 to 15: the first frame's columns when it has several
     /// (their number and the gutter after the first, in file units).
     pub columns: Option<(u32, f64)>,
+    /// Version 16+: the numbers (`spnd`) of the paragraph frames the text
+    /// runs through, in order, the frame holding the record first. A text
+    /// that continues in other frames lists them all; those frames keep
+    /// no text record of their own (#4104, #2018).
+    pub frame_ids: Vec<u32>,
 }
 
 /// How a text fitted to a path sits on it: the 40 bytes after the
@@ -1209,6 +1214,7 @@ fn early_paragraphs(chars: &[u8], size_pt: Option<f64>) -> Txsm {
         layout: None,
         frame_text_styles: Vec::new(),
         columns: None,
+        frame_ids: Vec::new(),
     }
 }
 
@@ -1378,6 +1384,7 @@ fn read_txsm_7_frames(
         layout: None,
         frame_text_styles: Vec::new(),
         columns: out_columns,
+        frame_ids: Vec::new(),
     };
     for _ in 0..np {
         let style_id = r.u32()?;
@@ -1719,8 +1726,9 @@ fn read_txsm_16(d: &[u8], v: u16, charset: u8, warn: &mut dyn FnMut(String)) -> 
     let mut any_on_path = false;
     let mut path_settings = None;
     let mut frame_style = None;
+    let mut frame_ids = Vec::with_capacity(nf);
     for _ in 0..nf {
-        let _frame_id = r.u32()?;
+        frame_ids.push(r.u32()?);
         r.skip(48);
         let on_path = r.u32()?;
         if on_path != 0 {
@@ -1754,6 +1762,7 @@ fn read_txsm_16(d: &[u8], v: u16, charset: u8, warn: &mut dyn FnMut(String)) -> 
         layout: Some(layout),
         frame_text_styles: Vec::new(),
         columns: None,
+        frame_ids,
     };
     let mut graphics = 0;
     for _ in 0..np {

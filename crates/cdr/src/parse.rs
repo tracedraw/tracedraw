@@ -585,6 +585,15 @@ struct Ctx<'a> {
     /// (`spnd`), and the file's identities (`spid`) of each.
     spnd_shapes: HashMap<u32, tracedraw_core::ShapeId>,
     spids: HashMap<tracedraw_core::ShapeId, tracedraw_core::document::Uid>,
+    /// Paragraph text running through several frames (version 16+): each
+    /// frame's number (`spnd`) to the number of the frame holding the
+    /// text and its place in the run (#4104, #2018).
+    text_chains: HashMap<u32, (u32, usize)>,
+    /// The paragraph frames read, with their numbers, to mark the runs
+    /// once every frame is read.
+    frame_shapes: Vec<(u32, tracedraw_core::ShapeId)>,
+    /// The number of the paragraph frame being read.
+    pending_frame_number: Option<u32>,
 
     /// The node types a curve's node bytes give where its handles read
     /// otherwise, for the shape being read.
@@ -667,6 +676,9 @@ impl<'a> Ctx<'a> {
             links: HashMap::new(),
             spnd_shapes: HashMap::new(),
             spids: HashMap::new(),
+            text_chains: HashMap::new(),
+            frame_shapes: Vec::new(),
+            pending_frame_number: None,
 
             pending_node_types: Default::default(),
             cmyk_profile: None,
@@ -975,6 +987,18 @@ pub(crate) fn parse_document_kept_data(
     for (i, p) in doc.pages.iter_mut().enumerate() {
         if p.name.is_empty() {
             p.name = format!("Page {}", i + 1);
+        }
+    }
+    // Frames one text runs through are marked with their run and place,
+    // as a PDF import marks its paragraph frames, so the app links them
+    // and lets the text flow on from the first (#4104, #2018).
+    let frames = std::mem::take(&mut ctx.frame_shapes);
+    for (n, id) in frames {
+        if let Some((head, place)) = ctx.text_chains.get(&n).copied() {
+            if let Some(s) = doc.find_shape_mut(id) {
+                s.data.retain(|(k, _)| k != FLOW_KEY);
+                s.data.push((FLOW_KEY.to_string(), format!("{head}:{place}")));
+            }
         }
     }
     // A book on facing pages keeps one page record per spread, its
@@ -2418,7 +2442,44 @@ impl<'a> Ctx<'a> {
                 txsm = Some(c);
             }
         });
+        let frame_number = (kind_code == OBJ_PARAGRAPH_TEXT)
+            .then(|| {
+                oc.children
+                    .iter()
+                    .find(|k| k.is(b"spnd"))
+                    .and_then(|k| self.reader(self.data(k)).u32())
+            })
+            .flatten();
+        self.pending_frame_number = frame_number;
         let Some(tc) = txsm else {
+            // A frame the text of another frame continues in keeps no text
+            // record: it opens empty, and the text flows into it once the
+            // frames are linked (#4104, #2018).
+            if kind_code == OBJ_PARAGRAPH_TEXT && frame_number.is_some() {
+                if frame.is_none() {
+                    if let Some((o, size)) = self.frame_from_hints(&hints) {
+                        origin = o;
+                        frame = Some(size);
+                    }
+                }
+                if let Some((t, o, s)) =
+                    frame.and_then(|f| unscaled_frame(hints.transform, origin, f))
+                {
+                    origin = o;
+                    frame = Some(s);
+                    self.pending_text_transform = Some(t);
+                }
+                if frame.is_some() {
+                    return Some(ShapeKind::Text {
+                        spans: Vec::new(),
+                        origin,
+                        frame,
+                        align: TextAlign::Left,
+                        para: ParagraphStyle::default(),
+                        on_path: None,
+                    });
+                }
+            }
             self.report
                 .warn("text object without a txsm chunk; skipped");
             return None;
@@ -2430,6 +2491,11 @@ impl<'a> Ctx<'a> {
             self.report.warn(w);
         }
         let parsed = parsed?;
+        if let (Some(head), true) = (frame_number, parsed.frame_ids.len() > 1) {
+            for (place, n) in parsed.frame_ids.iter().enumerate() {
+                self.text_chains.insert(*n, (head, place));
+            }
+        }
         self.pending_on_path = parsed.on_path.then_some(OnPathText {
             settings: parsed.path_settings,
             page_box: None,
@@ -4413,6 +4479,7 @@ impl<'a> Ctx<'a> {
         self.pending_clip = None;
         self.pending_on_path = None;
         self.pending_text_transform = None;
+        self.pending_frame_number = None;
         let mut v3_envelope_of: Option<(Affine, Rect, tracedraw_core::envelope::Frame, Affine)> =
             None;
         let chain = trfd
@@ -4600,6 +4667,9 @@ impl<'a> Ctx<'a> {
                     .report
                     .warn("a mesh fill could not be read; the object keeps a plain fill"),
             }
+        }
+        if let (Some(n), Some(_)) = (self.pending_frame_number.take(), &kind) {
+            self.frame_shapes.push((n, id));
         }
         let mut kind = match kind {
             Some(k) => k,
@@ -8244,6 +8314,11 @@ fn spine_shift(width: f64, right: bool) -> f64 {
         width / 2.0
     }
 }
+
+/// The object data key marking a paragraph frame as part of a run of
+/// linked frames, "run:place" (the key a PDF import marks its frames
+/// with, so the app links both the same way).
+pub const FLOW_KEY: &str = "pdf.flow";
 
 /// How far left of the spine (mm) an object's centre must be to belong to
 /// the left page of a spread: one sitting on the spine goes right.

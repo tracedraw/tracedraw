@@ -11179,6 +11179,8 @@ impl App {
             tracedraw_cdr::open_bytes(&bytes, &title).map_err(|e| e.to_string())?;
         // Clones saved by TraceDraw follow their masters again (#2879).
         crate::object_clone::rebase_clone_links(&mut doc);
+        // Text that continues in other frames flows on into them (#4104).
+        crate::textflow::link_and_flow_marked_frames(&mut doc);
         Ok((doc, report))
     }
 

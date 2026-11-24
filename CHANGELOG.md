@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- `.cdr` paragraph text that continues in other frames opens in all of them: the frames it runs through are linked in order and the text flows from the first into the next, where those frames were left out and the first frame held all the text (#4104, #2018).
 - `.cdr` books on facing pages open with every page: each page record of such a file holds a spread, which now opens as its left and right pages in order (the first a single right page when the book starts on the right), where a 248-page book opened as 125 pages with objects of two pages on one (#4104; also #2609, #2584, #2018, #3035).
 - PDF import: a PDF whose colours are RGB opens as an RGB document also when it is opened from File > Open, so a clipped object saved again as `.cdr` keeps its RGB colours instead of turning CMYK (#4096).
 - PDF import: labels set two ems apart in one text run keep their places instead of running on with a space, and a wire or box edge passing under a label stays a line instead of becoming the label's underline and disappearing (#4100).
