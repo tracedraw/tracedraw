@@ -104,6 +104,8 @@ pub(crate) const KNOWN_ARGS: &[u32] = &[
     ARG_PAGE_SIZE,
     ARG_PAGE_BACKGROUND,
     ARG_HIDDEN,
+    ARG_WRAP_STYLE,
+    ARG_WRAP_OFFSET,
     ARG_MESH,
     ARG_GUIDE_LINE,
     ARG_BLEND_STEPS,
@@ -142,6 +144,12 @@ pub(crate) const ARG_SYMBOL: u32 = 19201;
 const ARG_PAGE_BACKGROUND: u32 = 17000;
 /// Object argument 16016: 1 hides the object (version 21).
 const ARG_HIDDEN: u32 = 16016;
+/// Object argument 13001: the paragraph text wrap style around the
+/// object (u32; 1 wraps the text round both sides of its outline), and
+/// 13000: the room kept free around it (u32, coordinate units). Seen on
+/// a rectangle of a version 20 file (#4142).
+const ARG_WRAP_STYLE: u32 = 13001;
+const ARG_WRAP_OFFSET: u32 = 13000;
 /// Byte 0 of an object's `flgs`: the object is locked (#2347).
 pub(crate) const OBJECT_LOCKED: u8 = 0x10;
 
@@ -4528,6 +4536,8 @@ impl<'a> Ctx<'a> {
         let mut stroke: Option<Stroke> = None;
         let mut name: Option<String> = None;
         let mut hidden = false;
+        let mut wrap_style: Option<u32> = None;
+        let mut wrap_offset: Option<u32> = None;
         let mut coords: Option<Arg> = None;
         let mut polygon: Option<PolygonInfo> = None;
         let mut style_id: Option<u32> = None;
@@ -4613,6 +4623,8 @@ impl<'a> Ctx<'a> {
                 ARG_POLYGON => polygon = self.read_polygon_info(d, *arg),
                 ARG_CLIP_CONTENTS => self.pending_clip = self.reader_at(d, arg.off).u32(),
                 ARG_HIDDEN => hidden = self.reader_at(d, arg.off).u32().is_some_and(|h| h != 0),
+                ARG_WRAP_STYLE => wrap_style = self.reader_at(d, arg.off).u32(),
+                ARG_WRAP_OFFSET => wrap_offset = self.reader_at(d, arg.off).u32(),
                 ARG_MESH if kind_code == OBJ_MESH => mesh = Some(*arg),
                 _ => {}
             }
@@ -4959,6 +4971,22 @@ impl<'a> Ctx<'a> {
         // rectangle its preview leaves out, over the page's dark
         // background) is kept but not drawn.
         shape.visible = !hidden;
+        // Paragraph text keeps away from an object that wraps it (#4142):
+        // the text ran under such objects.
+        if let Some(code) = wrap_style.filter(|&c| c != 0) {
+            if code != 1 {
+                self.report.warn(format!(
+                    "text wrap style {code} not read; the text wraps round both sides"
+                ));
+            }
+            shape.wrap_text = true;
+            shape.wrap_style = tracedraw_core::text_flow::TextWrap {
+                offset: wrap_offset
+                    .map(|o| f64::from(o) * UNIT_MM)
+                    .unwrap_or(tracedraw_core::text_flow::TextWrap::default().offset),
+                ..Default::default()
+            };
+        }
         shape.fill = fill;
         shape.stroke = stroke;
         // A drawn embedded object's objects carry their own colours.
@@ -10294,6 +10322,50 @@ pub(crate) mod tests {
         // 20000 units are 2 mm, not 20000 times half the side (a capsule).
         assert!((read(15, 20000.0) - 2.0).abs() < 1e-9);
         assert!((read(22, 20000.0) - 2.0).abs() < 1e-9);
+    }
+
+    /// An object the file has paragraph text wrap round (arguments 13001
+    /// and 13000, a version 20 file of #4142) wraps it, with the room the
+    /// file keeps free; an object without them does not.
+    #[test]
+    fn text_wrap_round_an_object_is_read() {
+        let read = |wrap: Option<(u32, u32)>| {
+            let mut c = f64s(&[254000.0, 127000.0]);
+            c.extend_from_slice(&f64s(&[1.0, 1.0]));
+            c.extend_from_slice(&[0; 8]);
+            for gap in [16usize, 16, 16, 0] {
+                c.extend_from_slice(&f64s(&[0.0]));
+                c.extend_from_slice(&vec![0u8; gap]);
+            }
+            let mut args = vec![(ARG_COORDS, c)];
+            if let Some((style, offset)) = wrap {
+                args.push((ARG_WRAP_STYLE, style.to_le_bytes().to_vec()));
+                args.push((ARG_WRAP_OFFSET, offset.to_le_bytes().to_vec()));
+            }
+            let obj = list(
+                b"obj ",
+                &[
+                    chunk(b"loda", &loda(OBJ_RECT, &args)),
+                    chunk(b"trfd", &trfd(20, [1.0, 0.0, 0.0, 0.0, 1.0, 0.0])),
+                ]
+                .concat(),
+            );
+            let body = [
+                chunk(b"mcfg", &mcfg(20, 2_540_000, 2_540_000)),
+                list(b"page", &list(b"layr", &obj)),
+            ]
+            .concat();
+            let (doc, rep) = parse(&riff(b"CDRK", &body), 20);
+            assert_eq!(rep.shapes, 1, "{:?}", rep.warnings);
+            let s = first_shape(&doc);
+            (s.wrap_text, s.wrap_style)
+        };
+        let (on, style) = read(Some((1, 20000)));
+        assert!(on);
+        assert!((style.offset - 2.0).abs() < 1e-9, "{style:?}");
+        assert_eq!(style.side, tracedraw_core::text_flow::WrapSide::Straddle);
+        assert!(!read(None).0);
+        assert!(!read(Some((0, 20000))).0);
     }
 
     /// A radius the file gives as a length is the corner's size on the

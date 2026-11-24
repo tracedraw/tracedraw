@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- `.cdr` objects that paragraph text wraps round keep the text away when the file opens, at the distance the file gives, where the text ran under them (#4142).
 - Image editing mode: the Warp grid's points are easy to take: the nearest point within 20 screen pixels of where the button went down is taken, also on a quick drag, it keeps its distance from the pointer instead of jumping under it, and the point the pointer would take shows larger with a grab hand (#4116).
 - Image editing mode: a right click on a row of the Layers panel lists that layer's commands with their icons (rename, duplicate, delete, show or hide, lock, clip, up, down, merge down, flatten and the mask commands), and a thin line parts the rows (#4108).
 - Image editing mode: the layers and masks stay after Finish while the drawing is open, so Edit Inside opens them again (Layers > Keep Layers After Finish, on by default); Layers > Save Layers in the Drawing File keeps them in the file too; with neither on, Finish asks before it puts the layers together for good (#4112).
