@@ -220,6 +220,8 @@ mod pmd_open;
 mod preflight;
 mod prefs;
 mod print_merge;
+#[cfg(all(unix, not(any(target_arch = "wasm32", target_os = "android"))))]
+mod printer_query;
 mod printers;
 mod qr;
 mod raster;

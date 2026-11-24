@@ -28,7 +28,13 @@ destination picked meanwhile unless it names a printer the system does
 not have (#614).
 The printers come from CUPS (Linux and macOS): `lpstat -l -p -d` lists
 them with their state, description and location (`printers.rs`,
-`parse_lpstat`), and a print on one of them hands the PDF to `lp -d`
+`parse_lpstat`). Each query is limited to five seconds and 1 MiB of
+stdout; stderr is discarded instead of buffered, and an unfinished query
+is killed and reaped. If the verbose query fails or exceeds those
+bounds, the compact `lpstat -p -d` query is tried with the same bounds.
+That fallback retains names, states and the default, but has no
+description or location. Failed or partial output is not offered as a
+printer list. A print on a printer hands the PDF to `lp -d`
 with the number of copies and their collation (`lp_args`) and the
 drawing's name as the job title; the status bar says "Sent to printer
 name", or what `lp` complained about. The dialog starts on the printer
