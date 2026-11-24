@@ -2377,6 +2377,7 @@ mod tests {
             grab: Vec2::ZERO,
             mods: Default::default(),
             snapped: (false, false),
+            flat: (false, false),
             start_geometry: g,
         };
         // Without its start geometry the right side passes the middle of
@@ -2541,6 +2542,7 @@ mod tests {
             grab: Vec2::ZERO,
             mods: Default::default(),
             snapped: (false, false),
+            flat: (false, false),
             start_geometry: None,
         };
         let q = app.snap_point_excluding(Point::new(49.0, 21.0), &[id]);
@@ -2708,6 +2710,7 @@ mod tests {
             grab: Vec2::ZERO,
             mods: Default::default(),
             snapped: (false, false),
+            flat: (false, false),
             start_geometry: None,
         };
         app.drag = scale(b, 20.0);
@@ -2793,6 +2796,7 @@ mod tests {
                 grab: Vec2::ZERO,
                 mods: Default::default(),
                 snapped: (false, false),
+                flat: (false, false),
                 start_geometry: None,
             };
             let (q, snapped) = app.snap_scale_handle(Point::new(49.5, y));

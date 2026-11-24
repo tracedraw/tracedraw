@@ -832,15 +832,26 @@ impl App {
                     self.eyedropper_apply = false;
                 }
             } else if let Some(c) = self.sample_color_at(p, shift) {
-                self.took_sampled_color(c, shift);
+                // Read from an object of the selection (the picture just
+                // placed, still selected): the colour is kept for Apply,
+                // not put back onto that selection. On a picture it went
+                // in as the picture's fill, the picture itself changed
+                // and nothing was left to apply elsewhere (#4166).
+                let from_selection = self
+                    .hit_test_to_read(p)
+                    .is_some_and(|id| self.selection.contains(&id));
+                if from_selection {
+                    self.keep_sampled_color(c);
+                } else {
+                    self.took_sampled_color(c, shift);
+                }
             }
         }
     }
 
-    /// A colour the Color Eyedropper sampled, from an object or from the
-    /// window's pixels (#3040): it is kept, the tool goes on to Apply, and
-    /// with objects selected it goes straight onto them.
-    pub fn took_sampled_color(&mut self, c: Color, shift: bool) {
+    /// The Color Eyedropper's sampled colour kept for Apply and shown in
+    /// the Color docker, without going onto the selection.
+    fn keep_sampled_color(&mut self, c: Color) {
         self.eyedropper_color = Some(c);
         self.eyedropper_apply = true;
         crate::ui::color_docker::take_sampled_color(self, c);
@@ -848,6 +859,13 @@ impl App {
             "status.sampled_color",
             &[("c", &crate::app::color_description(c))],
         );
+    }
+
+    /// A colour the Color Eyedropper sampled, from an object or from the
+    /// window's pixels (#3040): it is kept, the tool goes on to Apply, and
+    /// with objects selected it goes straight onto them.
+    pub fn took_sampled_color(&mut self, c: Color, shift: bool) {
+        self.keep_sampled_color(c);
         // With objects selected the colour goes straight onto them, as a
         // palette swatch would: the fill, or the outline with Shift, in
         // one undo step (#2551).
@@ -1850,6 +1868,33 @@ mod tests {
         assert_eq!(
             app.sample_color_at(Point::new(50.0, 70.0), false),
             Some(Color::rgb8(200, 0, 0))
+        );
+    }
+
+    /// #4166: a colour read from the picture that is selected (just
+    /// placed) is kept for Apply; the picture is left as it is.
+    #[test]
+    fn a_colour_read_from_the_selected_picture_is_kept_for_apply() {
+        let mut app = App::headless();
+        app.settings.autocorrect.enabled = false;
+        let img = image::RgbaImage::from_pixel(20, 20, image::Rgba([255, 0, 0, 255]));
+        let pic = app.place_image_at(img, None, None).expect("picture");
+        let b = app.doc().find_shape(pic).unwrap().bounds();
+        let target = rect(&mut app, Rect::new(b.x1 + 10.0, b.y0, b.x1 + 20.0, b.y1));
+        app.select(vec![pic]);
+        let before = app.doc().find_shape(pic).unwrap().clone();
+        app.eyedropper_click(b.center(), false, false, false);
+        let red = Color::rgb8(255, 0, 0);
+        assert_eq!(app.eyedropper_color, Some(red));
+        assert!(app.eyedropper_apply);
+        let after = app.doc().find_shape(pic).unwrap();
+        assert_eq!(after.fill, before.fill, "the picture keeps its fill");
+        // Applied to the other object.
+        let c = app.doc().find_shape(target).unwrap().bounds().center();
+        app.eyedropper_click(c, false, false, false);
+        assert_eq!(
+            app.doc().find_shape(target).unwrap().fill,
+            Fill::Solid(red)
         );
     }
 

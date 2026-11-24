@@ -1706,6 +1706,24 @@ pub fn edit_keeping_fillets(
     nodes: &[usize],
     edit: impl Fn(&BezPath, &[usize]) -> BezPath,
 ) -> BezPath {
+    // The end of a closed subpath's last segment lies on its start and is
+    // chosen with it: the node lists show the two as one node, the
+    // start's. A rounded corner whose arc ends on the start had that end
+    // counted as not chosen, so with every node chosen the corner was let
+    // go and the start node stayed behind while the others moved (#4160).
+    let mut chosen_nodes = nodes.to_vec();
+    for sub in subpaths(&crate::nodes::normalize(path)) {
+        if !sub.closed || !nodes.contains(&sub.start_index) {
+            continue;
+        }
+        if let Some((seg, i)) = sub.segs.last() {
+            let start = sub.segs.first().map(|(s, _)| s.eval(0.0));
+            if start.is_some_and(|p| (seg.eval(1.0) - p).hypot() < 1e-9) && !chosen_nodes.contains(i) {
+                chosen_nodes.push(*i);
+            }
+        }
+    }
+    let nodes = &chosen_nodes[..];
     let keep = |f: &Fillet| {
         let chosen = f.nodes.iter().filter(|n| nodes.contains(n)).count();
         chosen == 0 || chosen == f.nodes.len()

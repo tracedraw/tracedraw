@@ -5189,6 +5189,7 @@ mod tests {
             grab: tracedraw_core::geometry::Vec2::ZERO,
             mods: Default::default(),
             snapped: (false, false),
+            flat: (false, false),
             start_geometry: None,
         };
         let t = app.preview_transform_of(&app.drag).expect("a preview");

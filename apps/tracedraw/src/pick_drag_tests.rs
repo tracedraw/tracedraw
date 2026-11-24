@@ -1003,6 +1003,7 @@ fn handle_modifiers_shape_the_scale() {
             grab: tracedraw_core::geometry::Vec2::ZERO,
             mods,
             snapped: (false, false),
+            flat: (false, false),
             start_geometry: None,
         })
         .expect("transform")
@@ -1326,6 +1327,7 @@ fn the_status_bar_tells_how_far_how_much_and_what_angle() {
         grab: tracedraw_core::geometry::Vec2::ZERO,
         mods: HandleMods::default(),
         snapped: (false, false),
+        flat: (false, false),
         start_geometry: None,
     };
     let text = info(&app);
@@ -31882,4 +31884,60 @@ fn a_common_shape_is_adjusted_by_its_handles() {
     assert!(crate::kind_nodes::nodes(&s).is_empty());
     frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
     assert!(app.node_at(app.view.to_page(tip)).is_some(), "nodes back");
+}
+
+/// A perfectly vertical line has no width of its own: its box is only as
+/// wide as its outline. Dragging its right side handle used to scale
+/// about the box's left edge by the pointer's distance over that sliver,
+/// flinging the line sideways ever faster (#4173). The line now stays
+/// where it is; the top handle still stretches it along its length.
+#[test]
+fn a_straight_lines_flat_axis_is_not_scaled_by_its_side_handle() {
+    let (ctx, mut app, id) = setup();
+    app.select(vec![id]);
+    app.delete_selection();
+    let mut path = tracedraw_core::BezPath::new();
+    path.move_to((30.0, 20.0));
+    path.line_to((30.0, 60.0));
+    let line = app
+        .new_shape(ShapeKind::Path {
+            path,
+            closed: false,
+        })
+        .expect("line");
+    app.select(vec![line]);
+    app.apply_outline_width(2.0);
+    for _ in 0..2 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let before = bounds(&app, line);
+    assert!(before.width() < 1e-9, "{before:?}");
+    let from = handle(&app, Handle::E);
+    drag(
+        &ctx,
+        &mut app,
+        from,
+        from + egui::vec2(4.0, 0.0),
+        Modifiers::NONE,
+        Vec::new(),
+    );
+    let after = bounds(&app, line);
+    assert!(
+        close(after.x0, before.x0) && close(after.x1, before.x1),
+        "{before:?} -> {after:?}"
+    );
+    assert!(close(after.height(), before.height()), "{after:?}");
+    // Along its length it still scales.
+    let from = handle(&app, Handle::N);
+    drag(
+        &ctx,
+        &mut app,
+        from,
+        from + egui::vec2(0.0, -40.0),
+        Modifiers::NONE,
+        Vec::new(),
+    );
+    let stretched = bounds(&app, line);
+    assert!(stretched.height() > before.height() + 1.0, "{stretched:?}");
+    assert!(close(stretched.x0, before.x0), "{stretched:?}");
 }

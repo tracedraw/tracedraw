@@ -421,6 +421,11 @@ pub enum Drag {
         /// snapped axis alone, so the side stays on what it snapped to
         /// (#2004).
         snapped: (bool, bool),
+        /// The axes, x and y, on which the selection has no size of its
+        /// own (a perfectly vertical or horizontal line: its box is only
+        /// as wide as its outline). They are kept at 100 %: scaled about
+        /// the box's edge, the line was flung sideways ever faster (#4173).
+        flat: (bool, bool),
         /// Where the selection stood when the handle was grabbed, built
         /// once the handle has left the snapping radius of its start: the
         /// handle then snaps to the selection's own nodes and edges as

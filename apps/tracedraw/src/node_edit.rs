@@ -847,6 +847,35 @@ mod tests {
         (app, id)
     }
 
+    /// A rectangle given round corners and turned into curves: every
+    /// node moves with all of them chosen, the first one too (#4160).
+    #[test]
+    fn a_rounded_rectangles_nodes_all_move_together() {
+        let mut app = App::headless();
+        let square = Rect::new(0.0, 0.0, 40.0, 20.0).to_path(0.01);
+        let (path, _) = tracedraw_core::corner_cut::cut_corners(
+            &square,
+            tracedraw_core::corner_cut::CornerCut::Fillet(5.0),
+            None,
+        );
+        let id = app
+            .new_shape(ShapeKind::Path { path, closed: true })
+            .expect("a rectangle");
+        app.select(vec![id]);
+        app.tool = crate::tools::Tool::Shape;
+        app.select_all_nodes();
+        let before = app.doc().find_shape(id).expect("curve").page_path();
+        app.nudge_nodes(Vec2::new(3.0, 0.0));
+        let after = app.doc().find_shape(id).expect("curve").page_path();
+        let b0 = before.bounding_box();
+        let b1 = after.bounding_box();
+        assert!(
+            (b1.x0 - b0.x0 - 3.0).abs() < 1e-6 && (b1.x1 - b0.x1 - 3.0).abs() < 1e-6,
+            "{b0:?} -> {b1:?}"
+        );
+        assert!((b1.width() - b0.width()).abs() < 1e-6, "{b0:?} -> {b1:?}");
+    }
+
     #[test]
     fn ctrl_toggles_and_shift_selects_a_run() {
         let (mut app, id) = app_with_square();

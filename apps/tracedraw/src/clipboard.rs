@@ -504,7 +504,7 @@ fn without_line_end(path: std::path::PathBuf) -> std::path::PathBuf {
 /// The resolution of the picture a copy offers (#2288): 150 dpi, less
 /// for a selection so large that its longer side would pass 4000 pixels.
 #[cfg_attr(
-    not(all(unix, not(any(target_os = "macos", target_os = "android")))),
+    not(all(unix, not(target_os = "android"))),
     allow(dead_code)
 )]
 fn copy_picture_dpi(width_mm: f64, height_mm: f64) -> f64 {
@@ -674,8 +674,37 @@ impl App {
                 return;
             }
         }
+        // macOS: the drawing as a picture, which other programs paste as
+        // the drawing; its SVG source went as text alone, and a mail, a
+        // chat or a note pasted that markup (#4170). The copy kept here
+        // still pastes here as objects.
+        #[cfg(target_os = "macos")]
+        if self.offer_picture_copy() {
+            self.mark_system_clipboard(None);
+            return;
+        }
         let written = self.offer_copy(&svg) || write_text(&svg);
         self.mark_system_clipboard(written.then_some(svg.as_str()));
+    }
+
+    /// The selection drawn as a picture on the system clipboard, on a
+    /// transparent ground at [`copy_picture_dpi`]; whether it went there.
+    #[cfg(target_os = "macos")]
+    fn offer_picture_copy(&self) -> bool {
+        let Some(bounds) = self.selection_bounds() else {
+            return false;
+        };
+        let Some(alone) = self.selection_alone(bounds) else {
+            return false;
+        };
+        let dpi = copy_picture_dpi(bounds.width(), bounds.height());
+        let Some((png, _, _)) = crate::ops2::render_alone_png(&alone, dpi, true, true) else {
+            return false;
+        };
+        let Ok(img) = image::load_from_memory(&png) else {
+            return false;
+        };
+        write_image(img.to_rgba8())
     }
 
     /// Offer the copy `svg` to other programs as SVG, as a picture and as

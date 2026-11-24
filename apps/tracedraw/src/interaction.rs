@@ -1891,8 +1891,25 @@ impl App {
             grab,
             mods: crate::app::HandleMods::of(mods),
             snapped: (false, false),
+            flat: self.selection_flat_axes(),
             start_geometry: None,
         };
+    }
+
+    /// The axes, x and y, on which the selected objects' own geometry has
+    /// no size: a perfectly vertical line has a box only as wide as its
+    /// outline, which a handle must not scale (#4173).
+    fn selection_flat_axes(&self) -> (bool, bool) {
+        const FLAT: f64 = 1e-9;
+        let Some(g) = self
+            .selected_rc()
+            .iter()
+            .map(|s| s.bounds())
+            .reduce(|a, b| a.union(b))
+        else {
+            return (false, false);
+        };
+        (g.width().abs() <= FLAT, g.height().abs() <= FLAT)
     }
 
     pub(crate) fn handle_at(&self, screen: egui::Pos2) -> Option<Handle> {
@@ -4660,6 +4677,7 @@ impl App {
                 current,
                 mods,
                 snapped,
+                flat,
                 ..
             } => {
                 let b = *start_bounds;
@@ -4732,6 +4750,14 @@ impl App {
                     let step = |v: f64| v.signum() * v.abs().round().max(1.0);
                     sx = step(sx);
                     sy = step(sy);
+                }
+                // An axis the objects have no size on stays at 100 %; a
+                // side handle on it leaves them where they are (#4173).
+                if flat.0 {
+                    sx = 1.0;
+                }
+                if flat.1 {
+                    sy = 1.0;
                 }
                 if !(sx.is_finite() && sy.is_finite()) || sx.abs() < 1e-3 || sy.abs() < 1e-3 {
                     return None;
