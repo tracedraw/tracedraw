@@ -20,6 +20,104 @@ const SHORTCUT_PAD: f32 = 28.0;
 const FONT: f32 = 13.0;
 const SEPARATOR_HEIGHT: f32 = 7.0;
 
+// Context menus (the canvas right click): smaller font, shorter rows,
+// narrower gutter and separator, taking at most a share of the window
+// so the page beneath stays visible. The top menu bar keeps the sizes
+// above.
+const CONTEXT_ROW_HEIGHT: f32 = 22.0;
+const CONTEXT_GUTTER: f32 = 24.0;
+const CONTEXT_LABEL_X: f32 = 30.0;
+const CONTEXT_SHORTCUT_PAD: f32 = 18.0;
+const CONTEXT_FONT: f32 = 12.0;
+const CONTEXT_SEPARATOR_HEIGHT: f32 = 4.0;
+const CONTEXT_HEIGHT_SHARE: f32 = 0.65;
+
+std::thread_local! {
+    static COMPACT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+pub(crate) fn compact() -> bool {
+    COMPACT.with(|c| c.get())
+}
+
+struct CompactScope(bool);
+
+impl CompactScope {
+    fn new() -> Self {
+        let previous = compact();
+        COMPACT.with(|c| c.set(true));
+        Self(previous)
+    }
+}
+
+impl Drop for CompactScope {
+    fn drop(&mut self) {
+        COMPACT.with(|c| c.set(self.0));
+    }
+}
+
+fn row_height() -> f32 {
+    if compact() {
+        CONTEXT_ROW_HEIGHT
+    } else {
+        ROW_HEIGHT
+    }
+}
+
+fn gutter() -> f32 {
+    if compact() {
+        CONTEXT_GUTTER
+    } else {
+        GUTTER
+    }
+}
+
+fn label_x() -> f32 {
+    if compact() {
+        CONTEXT_LABEL_X
+    } else {
+        LABEL_X
+    }
+}
+
+fn shortcut_pad() -> f32 {
+    if compact() {
+        CONTEXT_SHORTCUT_PAD
+    } else {
+        SHORTCUT_PAD
+    }
+}
+
+fn font_size() -> f32 {
+    if compact() {
+        CONTEXT_FONT
+    } else {
+        FONT
+    }
+}
+
+fn separator_height() -> f32 {
+    if compact() {
+        CONTEXT_SEPARATOR_HEIGHT
+    } else {
+        SEPARATOR_HEIGHT
+    }
+}
+
+/// The style of the compact canvas context menu: the menu bar's style
+/// with a smaller font.
+pub(crate) fn context_menu_style(style: &mut egui::Style) {
+    menu_popup_style(style);
+    style.override_font_id = Some(egui::FontId::proportional(CONTEXT_FONT));
+}
+
+/// A context menu body: the same rows, but compact and no taller than a
+/// share of the window, so the page under it stays in sight.
+pub(crate) fn body_context<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
+    let _compact = CompactScope::new();
+    body_within(ui, screen_body_limit(ui) * CONTEXT_HEIGHT_SHARE, add)
+}
+
 /// The style of menu pop-ups: white, a one-pixel grey frame, square
 /// corners, rows touching. With Translucent menus on (Customization >
 /// Appearance) the body lets the window show through.
@@ -75,7 +173,7 @@ fn below_body_limit(ui: &Ui, title_bottom: Option<f32>) -> f32 {
 
 /// At least a few rows, however small the window.
 fn body_limit(room: f32) -> f32 {
-    room.max(3.0 * ROW_HEIGHT)
+    room.max(3.0 * row_height())
 }
 
 /// A menu body at most `max_height` tall; taller rows scroll.
@@ -112,7 +210,7 @@ fn body_rows<R>(ui: &mut Ui, width_id: egui::Id, add: impl FnOnce(&mut Ui) -> R)
     ui.ctx().data_mut(|d| d.insert_temp(width_id, rows.width()));
     let gutter = egui::Rect::from_min_max(
         egui::pos2(rows.left(), rows.top() - 2.0),
-        egui::pos2(rows.left() + GUTTER, rows.bottom() + 2.0),
+        egui::pos2(rows.left() + gutter(), rows.bottom() + 2.0),
     );
     ui.painter().set(
         slot,
@@ -134,7 +232,7 @@ fn menu_row(
     enabled: bool,
     mark: Mark,
 ) -> (egui::Response, egui::layers::ShapeIdx) {
-    menu_row_at(ui, label, shortcut, enabled, mark, LABEL_X)
+    menu_row_at(ui, label, shortcut, enabled, mark, label_x())
 }
 
 /// [`menu_row`] with the label starting `label_x` from the row's left
@@ -152,7 +250,7 @@ fn menu_row_at(
         let l = f
             .layout_no_wrap(
                 label.to_string(),
-                egui::FontId::proportional(FONT),
+                egui::FontId::proportional(font_size()),
                 crate::theme::Tokens::text(),
             )
             .size()
@@ -162,18 +260,18 @@ fn menu_row_at(
         } else {
             f.layout_no_wrap(
                 shortcut.to_string(),
-                egui::FontId::proportional(FONT),
+                egui::FontId::proportional(font_size()),
                 crate::theme::Tokens::text(),
             )
             .size()
             .x + 32.0
         };
-        label_x + l + s + SHORTCUT_PAD
+        label_x + l + s + shortcut_pad()
     });
     // As wide as the widest row (remembered by `body` from the last frame).
     let width = MENU_WIDTH.max(needed).max(ui.min_rect().width());
     let (rect, resp) = ui.allocate_exact_size(
-        egui::vec2(width, ROW_HEIGHT),
+        egui::vec2(width, row_height()),
         if enabled {
             egui::Sense::click()
         } else {
@@ -215,11 +313,11 @@ fn menu_row_at(
             egui::pos2(rect.left() + label_x, rect.center().y),
             label,
             at,
-            FONT,
+            font_size(),
             color,
         );
     }
-    let mid = egui::pos2(rect.left() + GUTTER / 2.0, rect.center().y);
+    let mid = egui::pos2(rect.left() + gutter() / 2.0, rect.center().y);
     match mark {
         Mark::Check(true) => {
             // A bold check mark.
@@ -242,15 +340,15 @@ fn menu_row_at(
         egui::pos2(rect.left() + label_x, rect.center().y),
         egui::Align2::LEFT_CENTER,
         label,
-        egui::FontId::proportional(FONT),
+        egui::FontId::proportional(font_size()),
         color,
     );
     if !shortcut.is_empty() {
         painter.text(
-            egui::pos2(rect.right() - SHORTCUT_PAD, rect.center().y),
+            egui::pos2(rect.right() - shortcut_pad(), rect.center().y),
             egui::Align2::RIGHT_CENTER,
             shortcut,
-            egui::FontId::proportional(FONT),
+            egui::FontId::proportional(font_size()),
             color,
         );
     }
@@ -300,11 +398,11 @@ pub(crate) fn sep(ui: &mut Ui) {
     }
     let width = ui.min_rect().width().max(MENU_WIDTH);
     let (rect, _) =
-        ui.allocate_exact_size(egui::vec2(width, SEPARATOR_HEIGHT), egui::Sense::hover());
+        ui.allocate_exact_size(egui::vec2(width, separator_height()), egui::Sense::hover());
     let y = rect.center().y.round() - 0.5;
     ui.painter().rect_filled(
         egui::Rect::from_min_max(
-            egui::pos2(rect.left() + GUTTER + 2.0, y),
+            egui::pos2(rect.left() + gutter() + 2.0, y),
             egui::pos2(rect.right(), y + 1.0),
         ),
         0.0,
@@ -551,7 +649,7 @@ fn item_text_tip(
     }
     let _ = id;
     let ir = egui::Rect::from_center_size(
-        egui::pos2(r.rect.left() + GUTTER / 2.0, r.rect.center().y),
+        egui::pos2(r.rect.left() + gutter() / 2.0, r.rect.center().y),
         egui::vec2(16.0, 16.0),
     );
     let color = if enabled {
@@ -591,7 +689,7 @@ pub(crate) fn item_drawn(
         return true;
     }
     let ir = egui::Rect::from_center_size(
-        egui::pos2(r.rect.left() + GUTTER / 2.0, r.rect.center().y),
+        egui::pos2(r.rect.left() + gutter() / 2.0, r.rect.center().y),
         egui::vec2(16.0, 16.0),
     );
     let color = if enabled {
@@ -624,7 +722,7 @@ fn item_picture(
     }
     if let Some(tex) = picture {
         let ir = egui::Rect::from_center_size(
-            egui::pos2(r.rect.left() + GUTTER / 2.0, r.rect.center().y),
+            egui::pos2(r.rect.left() + gutter() / 2.0, r.rect.center().y),
             egui::vec2(16.0, 16.0),
         );
         let tint = if enabled {
@@ -911,7 +1009,7 @@ pub(crate) fn check_pic(
         &shortcut,
         true,
         Mark::Check(on),
-        LABEL_X + PIC_SLOT,
+        label_x() + PIC_SLOT,
     );
     if marked_new(key) {
         paint_new_mark(ui, r.rect);
@@ -923,7 +1021,7 @@ pub(crate) fn check_pic(
     if let Some(pic) = pic {
         let ir = egui::Rect::from_center_size(
             egui::pos2(
-                r.rect.left() + LABEL_X + PIC_SLOT / 2.0 - 2.0,
+                r.rect.left() + label_x() + PIC_SLOT / 2.0 - 2.0,
                 r.rect.center().y,
             ),
             egui::vec2(16.0, 16.0),
@@ -981,7 +1079,7 @@ fn todo_sub(ui: &mut Ui, key: &str) {
 /// The picture of the row of `key` in its gutter, when it has one.
 fn row_picture(ui: &Ui, row: egui::Rect, key: &str, enabled: bool) {
     let ir = egui::Rect::from_center_size(
-        egui::pos2(row.left() + GUTTER / 2.0, row.center().y),
+        egui::pos2(row.left() + gutter() / 2.0, row.center().y),
         egui::vec2(16.0, 16.0),
     );
     let color = if enabled {
@@ -1050,9 +1148,14 @@ fn sub_row<R>(ui: &mut Ui, key: &str, add: impl FnOnce(&mut Ui) -> R) -> Option<
     if !view.intersects(resp.rect) || !(open || pointer_in_view) {
         return Some(resp);
     }
+    let was_compact = compact();
     egui::containers::menu::SubMenu::new().show(ui, &resp, |ui| {
         ui.set_min_width(MENU_WIDTH);
-        body(ui, add)
+        if was_compact {
+            body_context(ui, add)
+        } else {
+            body(ui, add)
+        }
     });
     Some(resp)
 }

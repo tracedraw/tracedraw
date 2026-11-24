@@ -6,7 +6,7 @@ use crate::i18n::tr;
 use crate::tools::Tool;
 use crate::ui::dialogs::Dialog;
 use crate::ui::menus::{
-    body, check, item, item_label, menu_popup_style, radio, sep, sub, CLIP_EDIT_KEY,
+    body_context, check, context_menu_style, item, item_label, radio, sep, sub, CLIP_EDIT_KEY,
 };
 use egui::{Response, Ui};
 use tracedraw_core::{document::ShapeKind, Command, ShapeId};
@@ -52,12 +52,12 @@ pub fn context_menu(app: &mut App, ui: &mut Ui, response: &Response) {
     )
     .kind(egui::PopupKind::Menu)
     .layout(egui::Layout::top_down_justified(egui::Align::Min))
-    .style(menu_popup_style)
+    .style(context_menu_style)
     .open_memory(None)
     .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
     .show(|ui| {
         ui.set_min_width(200.0);
-        body(ui, |ui| menu_items(app, ui, &mut close))
+        body_context(ui, |ui| menu_items(app, ui, &mut close))
     });
     if close || shown.is_none() {
         egui::Popup::close_id(&ctx, id);
