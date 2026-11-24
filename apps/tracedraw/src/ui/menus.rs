@@ -4997,6 +4997,20 @@ fn table_menu(app: &mut App, ui: &mut Ui) {
     if item(ui, "menu.table.convert_table_to_text", "", in_table) {
         app.convert_table_to_text();
     }
+    // The table's cells in the spreadsheet program; saving there updates
+    // the table (#4145).
+    if !crate::files::WEB
+        && item_text(
+            ui,
+            &app.edit_in_spreadsheet_label(),
+            "",
+            in_table,
+            None,
+            "menu.table.edit_in_spreadsheet",
+        )
+    {
+        app.edit_table_externally();
+    }
     sep(ui);
     sub(ui, "menu.table.insert", |ui| {
         for (key, op) in [

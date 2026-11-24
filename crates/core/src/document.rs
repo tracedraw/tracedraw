@@ -2842,6 +2842,11 @@ pub struct Table {
     /// boxes, mm; `None` = cells share their borders.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub spacing: Option<[f64; 2]>,
+    /// The spreadsheet workbook (`.xlsx` bytes) the table was imported
+    /// from, or last edited in with the spreadsheet app (#4143): saved
+    /// with the drawing so the sheet can be opened again as it was.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_xlsx: Option<crate::SharedBytes>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -2891,6 +2896,7 @@ impl Table {
             padding: 1.0,
             margins: None,
             spacing: None,
+            source_xlsx: None,
         }
     }
 
@@ -6738,6 +6744,10 @@ pub struct Document {
     /// Review comments pinned to the pages (never printed or exported).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub comments: Vec<Comment>,
+    /// Name and value pairs scripts and plugins keep with the drawing
+    /// (`ActiveDocument.Data`, #4137), like an object's own data.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub data: Vec<(String, String)>,
     /// Where the object found last by its id lay, so looking up the
     /// objects of a selection one after the other does not walk the
     /// whole drawing for each (never saved, never compared).
@@ -7149,6 +7159,7 @@ impl Document {
             cmyk_profile: None,
             inks: Vec::new(),
             comments: Vec::new(),
+            data: Vec::new(),
             find_hint: FindHint::default(),
         }
     }
@@ -9019,6 +9030,7 @@ mod tests {
                     padding: 0.0,
                     margins: None,
                     spacing: None,
+                    source_xlsx: None,
                 }),
             ),
         ];

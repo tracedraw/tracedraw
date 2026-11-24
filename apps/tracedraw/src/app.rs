@@ -1951,6 +1951,9 @@ pub struct App {
     /// handed to programs, with their time stamps when handed over; one
     /// that is saved comes into the drawing.
     pub object_files: Vec<(std::path::PathBuf, Option<std::time::SystemTime>)>,
+    /// Tables' workbooks open in the spreadsheet program (#4145): saved
+    /// there, they give their tables the cells again.
+    pub table_files: Vec<crate::table_external::TableFile>,
     /// Session recovery: this session's marker in the auto-backup folder
     /// (made on the first frame; in a browser once its storage is read).
     pub session: Option<crate::recovery::Session>,
@@ -3670,6 +3673,7 @@ impl App {
             linked_mtimes: Default::default(),
             linked_checked: None,
             object_files: Vec::new(),
+            table_files: Vec::new(),
             session: None,
             recovery_offer: Vec::new(),
             highlight_whats_new: false,
@@ -9426,12 +9430,12 @@ impl App {
                     (doc, format!("HPGL: {n} stroke(s)"))
                 })
         } else if crate::spreadsheet_import::is_spreadsheet(&ext) {
-            crate::spreadsheet_import::read_rows(&path).map(|rows| {
+            crate::spreadsheet_import::read_sheet(&path).map(|(rows, source)| {
                 let title = path
                     .file_stem()
                     .map(|s| s.to_string_lossy().to_string())
                     .unwrap_or_else(App::untitled_name);
-                let doc = crate::spreadsheet_import::document(&title, &rows);
+                let doc = crate::spreadsheet_import::document_from(&title, &rows, source);
                 let n = rows.len();
                 (doc, format!("{n} row(s)"))
             })

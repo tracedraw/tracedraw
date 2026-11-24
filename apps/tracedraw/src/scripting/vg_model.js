@@ -1283,6 +1283,8 @@ class Document {
   set ReferencePoint(v) { __vg.ref = v; }
   get Resolution() { return this._d.dpi || 300; }
   get Pages() { return new Pages(); }
+  get Data() { return new __DocData(); }
+  get Properties() { return new __DocData(); }
   get PageCount() { return this._d.pages.length; }
   get ActivePage() { return new Page(this._d.page); }
   get ActiveLayer() { return this.ActivePage.ActiveLayer; }

@@ -358,6 +358,15 @@ pub(crate) fn object_menu(app: &mut App, ui: &mut Ui, close: &mut bool) {
         }
         sep(ui);
     }
+    // A table alone: its cells in the spreadsheet program (#4145).
+    if !crate::files::WEB && app.lone_selected_table().is_some() {
+        let label = app.edit_in_spreadsheet_label();
+        if crate::ui::menus::item_text(ui, &label, "", true, None, "menu.table.edit_in_spreadsheet") {
+            *close = true;
+            app.edit_table_externally();
+        }
+        sep(ui);
+    }
     if is_bitmap {
         // Edit Bitmap, then Remove Background (greyed until the AI
         // service makes pictures; the tip says why), then tracing,

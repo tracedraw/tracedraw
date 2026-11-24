@@ -116,6 +116,44 @@ function __call(m, a) { return JSON.parse(__td(m, JSON.stringify(a || {}))); }
 function print(...a) { __call('log', {text: a.map(String).join(' ')}); }
 const console = { log: print, error: print, warn: print, info: print };
 function MsgBox(t) { print(t); }
+// Asking the user (#4139): where no one can answer (the AI's scripts,
+// file filters, tests) the default comes back; a script run from the
+// Scripts panel or a plugin gets the app's input box instead.
+globalThis.InputBox = function (p, t, d) { return d === undefined || d === null ? '' : String(d); };
+globalThis.prompt = function (m, d) { return d === undefined || d === null ? '' : String(d); };
+// The drawing's own name and value pairs (#4137), kept in its file.
+class __DocData {
+  get _d() { return __call('doc_data', {}).data; }
+  get Count() { return this._d.length; }
+  _put(name, value) {
+    const data = this._d, e = data.find(p => p[0] === name);
+    if (value === null || value === undefined) {
+      const i = data.indexOf(e);
+      if (i < 0) return;
+      data.splice(i, 1);
+    } else if (e) e[1] = String(value); else data.push([name, String(value)]);
+    __call('set_doc_data', { data: data });
+  }
+  Item(IndexOrName) {
+    const d = this._d, self = this;
+    const i = typeof IndexOrName === 'number' ? IndexOrName - 1 : d.findIndex(p => p[0] === String(IndexOrName));
+    const name = i >= 0 && i < d.length ? d[i][0] : String(IndexOrName);
+    return {
+      Name: name,
+      get Value() { const e = self._d.find(p => p[0] === name); return e ? e[1] : ''; },
+      set Value(v) { self._put(name, v); },
+    };
+  }
+  Get(Name) { const e = this._d.find(p => p[0] === String(Name)); return e ? e[1] : ''; }
+  Set(Name, Value) { this._put(String(Name), Value); }
+  Has(Name) { return this._d.some(p => p[0] === String(Name)); }
+  Remove(Name) { this._put(String(Name), null); }
+  Delete(Name) { this.Remove(Name); }
+  Clear() { __call('set_doc_data', { data: [] }); }
+  get Names() { return this._d.map(p => p[0]); }
+  [Symbol.iterator]() { const d = this._d; let i = 0; const self = this;
+    return { next: () => i < d.length ? { value: self.Item(d[i++][0]), done: false } : { value: undefined, done: true } }; }
+}
 "#;
 
 /// TraceDraw's own JavaScript object model (lengths in millimetres).
@@ -378,6 +416,8 @@ class Document {
   constructor() { this.Pages = new Pages(); }
   get Name() { return __call('doc_info', {}).title; }
   get ActivePage() { return new Page(__call('doc_info', {}).page); }
+  get Data() { return new __DocData(); }
+  get Properties() { return new __DocData(); }
   get ActiveLayer() { return this.ActivePage.ActiveLayer; }
   get Selection() { return new ShapeRange(__call('selection', {}).ids); }
   get SelectionRange() { return this.Selection; }
@@ -734,11 +774,16 @@ pub fn plugin_info(src: &str) -> Result<Plugin, String> {
     })
 }
 
+/// The call that runs a plugin's command number `__input`.
+pub fn plugin_call() -> String {
+    format!("{PLUGIN_COMMANDS}[Number(__input)].run()")
+}
+
 /// Run command `index` of a plugin against the app, as a script of the
 /// user's own: its changes are one undo step named "Plugin", kept up to
 /// an error. Returns the printed lines.
 pub fn run_plugin(app: &mut App, plugin: &Plugin, index: usize) -> Result<Vec<String>, String> {
-    let call = format!("{PLUGIN_COMMANDS}[Number(__input)].run()");
+    let call = plugin_call();
     let index = index.to_string();
     let Evaluated { inner, result, .. } = evaluate(
         host_for(app, Trust::User),
@@ -1372,6 +1417,16 @@ impl HostInner {
                 json!({})
             }
             "doc_info" => json!({"title": self.doc.title, "page": self.page.raw()}),
+            "doc_data" => json!({"data": self.doc.data}),
+            "set_doc_data" => {
+                let data: Vec<(String, String)> =
+                    serde_json::from_value(a.get("data").cloned().unwrap_or(Value::Null))
+                        .map_err(|e| e.to_string())?;
+                if data != self.doc.data {
+                    self.run(Command::SetDocumentData { data })?;
+                }
+                json!({})
+            }
             "pages" => {
                 json!({"ids": self.doc.pages.iter().map(|p| p.id.raw()).collect::<Vec<_>>()})
             }

@@ -340,6 +340,156 @@ fn native_inputbox(_this: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsRe
     }
 }
 
+/// `__ask(prompt, title, default)`: the app's input box for a JavaScript
+/// script or plugin (#4139); the text, or null for Cancel. A stopped run
+/// ends with an error.
+fn native_ask(_this: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<JsValue> {
+    let prompt = arg_str(args, 0, ctx)?;
+    let title = arg_str(args, 1, ctx)?;
+    let default = arg_str(args, 2, ctx)?;
+    flush(ctx);
+    if let Some(st) = ctx.get_data::<RunState>() {
+        let _ = st.requests.send(Request::InputBox {
+            prompt,
+            title,
+            default,
+        });
+    }
+    loop {
+        match wait_input(ctx) {
+            None => return Err(js_err("stopped")),
+            Some(Input::Text(Some(t))) => return Ok(text(t)),
+            Some(Input::Text(None)) => return Ok(JsValue::null()),
+            Some(_) => continue,
+        }
+    }
+}
+
+/// What a JavaScript script run on its thread asks the user with: the
+/// app's input box (#4139).
+const SCRIPT_GLUE: &str = r#"
+globalThis.InputBox = function (p, t, d) {
+  const r = __ask(String(p === undefined ? '' : p), String(t === undefined || t === null ? '' : t),
+    String(d === undefined || d === null ? '' : d));
+  return r === null ? '' : r;
+};
+globalThis.prompt = function (m, d) {
+  return __ask(String(m === undefined ? '' : m), '', String(d === undefined || d === null ? '' : d));
+};
+"#;
+
+/// Whether a JavaScript script asks the user for a value (`InputBox` or
+/// `prompt`), so it runs on a thread of its own that can wait for the
+/// answer (#4139).
+pub fn asks_user(src: &str) -> bool {
+    src.contains("InputBox") || src.contains("prompt(")
+}
+
+/// Start a JavaScript script (TraceDraw's object model) on a worker
+/// thread so `InputBox` and `prompt` can wait for the app's input box
+/// (#4139); `call` runs after it (a plugin's command, with `__input`).
+/// Desktop only.
+pub fn start_script(
+    app: &App,
+    src: &str,
+    call: Option<String>,
+    input: Option<String>,
+    name: String,
+) -> Result<MacroRun, String> {
+    let (req_tx, req_rx) = channel();
+    let (in_tx, in_rx) = channel();
+    let stop = Arc::new(AtomicBool::new(false));
+    let forms = Arc::new(Mutex::new(Forms::default()));
+    let snap = Snapshot(super::host_for(app, Trust::User));
+    let src = src.to_string();
+    let stop2 = stop.clone();
+    let forms2 = forms.clone();
+    let handle = std::thread::Builder::new()
+        .name("script".into())
+        .stack_size(64 * 1024 * 1024)
+        .spawn(move || script_thread(snap, src, call, input, req_tx, in_rx, stop2, forms2))
+        .map_err(|e| e.to_string())?;
+    Ok(MacroRun {
+        requests: req_rx,
+        input: in_tx,
+        stop,
+        forms,
+        started: web_time::Instant::now(),
+        name,
+        handle,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn script_thread(
+    snap: Snapshot,
+    src: String,
+    call: Option<String>,
+    input: Option<String>,
+    requests: Sender<Request>,
+    input_rx: Receiver<Input>,
+    stop: Arc<AtomicBool>,
+    forms: Arc<Mutex<Forms>>,
+) -> Finished {
+    let mut ctx = Context::default();
+    ctx.insert_data(Host(RefCell::new(snap.0)));
+    ctx.insert_data(RunState {
+        requests,
+        input: input_rx,
+        stop,
+        forms,
+        models: Vec::new(),
+        flushed: Cell::new(0),
+        stopped: Cell::new(false),
+        folder: None,
+    });
+    let result = (|| -> Result<(), String> {
+        let natives: [(
+            &str,
+            usize,
+            boa_engine::native_function::NativeFunctionPointer,
+        ); 2] = [("__td", 2, dispatch), ("__ask", 3, native_ask)];
+        for (name, n, f) in natives {
+            ctx.register_global_callable(JsString::from(name), n, NativeFunction::from_fn_ptr(f))
+                .map_err(|e| e.to_string())?;
+        }
+        if let Some(input) = &input {
+            ctx.register_global_property(
+                js_string!("__input"),
+                JsValue::from(JsString::from(input.as_str())),
+                boa_engine::property::Attribute::all(),
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        for src in [COMMON, super::PRELUDE, SCRIPT_GLUE] {
+            ctx.eval(Source::from_bytes(src))
+                .map_err(|e| format!("prelude: {e}"))?;
+        }
+        ctx.eval(Source::from_bytes(&src))
+            .map_err(|e| e.to_string())?;
+        if let Some(call) = &call {
+            ctx.eval(Source::from_bytes(call))
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    })();
+    let stopped = ctx
+        .get_data::<RunState>()
+        .is_some_and(|s| s.stopped.get() || s.stop.load(Ordering::Relaxed));
+    let changes = take_changes(&mut ctx, true);
+    Finished {
+        changes,
+        error: result.err().filter(|_| !stopped).map(|e| RunError {
+            number: 0,
+            description: e,
+            module: String::new(),
+            procedure: String::new(),
+            line: 0,
+        }),
+        stopped,
+    }
+}
+
 /// The settings macros keep with SaveSetting: `settings.json` in the
 /// macros folder, by program, section and key (any case).
 fn settings_path(ctx: &Context) -> Option<std::path::PathBuf> {

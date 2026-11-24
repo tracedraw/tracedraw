@@ -59,6 +59,18 @@ pub fn table_bar(app: &mut App, ui: &mut Ui, drawing: bool) {
         ui.menu_button(tr("table.options"), |ui| table_options(app, ui))
             .response
             .rich_tip(crate::ui::tips::keyed("table.options"));
+        // The cells in the spreadsheet program (#4145).
+        if !crate::files::WEB
+            && ui
+                .button(app.edit_in_spreadsheet_label())
+                .rich_tip(crate::ui::tips::pair(
+                    "table.edit_in_spreadsheet",
+                    "table.edit_in_spreadsheet_tip",
+                ))
+                .clicked()
+        {
+            app.edit_table_externally();
+        }
     }
     if cells {
         vsep(ui);

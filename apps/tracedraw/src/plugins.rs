@@ -129,6 +129,28 @@ impl App {
             return;
         };
         self.finish_text();
+        // A plugin that asks the user for a value runs on a thread of its
+        // own, which waits for the input box (#4139).
+        if !crate::files::WEB && scripting::vba_run::asks_user(&plugin.source) {
+            if self.macros.run.is_some() {
+                self.status = tr("macros.already_running");
+                return;
+            }
+            match scripting::vba_run::start_script(
+                self,
+                &plugin.source,
+                Some(scripting::plugin_call()),
+                Some(index.to_string()),
+                "Scripts".into(),
+            ) {
+                Ok(run) => {
+                    self.macros.run = Some(run);
+                    self.macros.applied = None;
+                }
+                Err(e) => self.scripts_output.push(format!("Error: {e}")),
+            }
+            return;
+        }
         match scripting::run_plugin(self, &plugin, index) {
             Ok(out) => {
                 self.scripts_output.extend(out);

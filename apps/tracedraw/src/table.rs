@@ -627,11 +627,24 @@ impl App {
                         self.cell_insert(&commit);
                     }
                 }
-                Event::Text(t) | Event::Paste(t) => self.cell_insert(t),
+                Event::Text(t) => self.cell_insert(t),
+                // Cells copied in a spreadsheet app go over the cells from
+                // the active one on (#4146).
+                Event::Paste(t) if crate::table_clipboard::spreads_over_cells(t) => {
+                    let rows = crate::table_clipboard::parse_tsv(t);
+                    if !self.table_paste_rows(&rows) {
+                        self.cell_insert(t);
+                    }
+                }
+                Event::Paste(t) => self.cell_insert(t),
                 Event::Copy => {
                     let sel = self.cell_selected_text();
                     if !sel.is_empty() {
                         ctx.copy_text(sel);
+                    } else if let Some(e) = self.table_edit.clone() {
+                        // No characters chosen: the chosen cells, for a
+                        // spreadsheet app (#4146).
+                        self.copy_table_cells_to_system(e.shape, &e.cells);
                     }
                 }
                 Event::Cut => {

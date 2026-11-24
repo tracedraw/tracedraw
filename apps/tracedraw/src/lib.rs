@@ -272,8 +272,11 @@ mod system_prefs;
 #[cfg(any(target_os = "macos", test))]
 mod system_quit;
 mod tab_ruler;
+mod spreadsheet_editor;
 mod spreadsheet_import;
 mod table;
+mod table_clipboard;
+mod table_external;
 mod table_tool;
 mod templates;
 mod text_editing;

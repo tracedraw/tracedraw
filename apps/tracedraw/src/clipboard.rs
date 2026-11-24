@@ -315,6 +315,13 @@ fn with_clipboard<T>(f: impl FnOnce(&mut arboard::Clipboard) -> T) -> Option<T> 
     })
 }
 
+/// [`with_clipboard`] for the other parts of the app (a table's cells as
+/// HTML, #4146).
+#[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+pub(crate) fn with_system_clipboard<T>(f: impl FnOnce(&mut arboard::Clipboard) -> T) -> Option<T> {
+    with_clipboard(f)
+}
+
 /// Whether the clipboard offers text and a list of files, where
 /// TraceDraw reads its list of types before the clipboard library reads
 /// it (an X11 desktop: no `WAYLAND_DISPLAY`); `None` elsewhere, where the
@@ -659,6 +666,14 @@ impl App {
             return;
         };
         self.copy();
+        // A table alone: its cells as tab-separated text and an HTML
+        // table, for spreadsheet apps (#4146).
+        if let Some(id) = self.lone_selected_table() {
+            if let Some(tsv) = self.copy_table_cells_to_system(id, &[]) {
+                self.mark_system_clipboard(Some(tsv.as_str()));
+                return;
+            }
+        }
         let written = self.offer_copy(&svg) || write_text(&svg);
         self.mark_system_clipboard(written.then_some(svg.as_str()));
     }
@@ -1243,7 +1258,19 @@ impl App {
         } else if let Some(img) = content.image {
             self.paste_as_bitmap(img);
         } else if let Some(t) = content.text {
-            self.paste_as_text(&t);
+            self.paste_as_text_or_table(&t);
+        }
+    }
+
+    /// Text pasted on the page: cells copied in a spreadsheet app (rows
+    /// of tab-separated cells) come as a table (#4146), other text as a
+    /// text.
+    pub fn paste_as_text_or_table(&mut self, text: &str) {
+        if crate::table_clipboard::looks_tabular(text) {
+            let rows = crate::table_clipboard::parse_tsv(text);
+            self.paste_rows_as_table(&rows);
+        } else {
+            self.paste_as_text(text);
         }
     }
 
@@ -1590,7 +1617,10 @@ impl App {
             let since = now.duration_since(last);
             if since < gap {
                 if let Some(ctx) = ctx {
-                    if !self.linked_mtimes.is_empty() || !self.object_files.is_empty() {
+                    if !self.linked_mtimes.is_empty()
+                        || !self.object_files.is_empty()
+                        || !self.table_files.is_empty()
+                    {
                         ctx.request_repaint_after(gap - since);
                     }
                 }
@@ -1601,6 +1631,8 @@ impl App {
         // Insert What It Saves (#3391): a picture saved for the first
         // time comes in, linked, and follows its file from then on.
         self.watch_object_files();
+        // A table's workbook saved in the spreadsheet program (#4145).
+        self.watch_table_files();
         let linked: Vec<(ShapeId, String)> = self
             .doc()
             .all_layers()

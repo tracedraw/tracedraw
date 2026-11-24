@@ -20,6 +20,10 @@ pub enum Command {
     SetTitle {
         title: String,
     },
+    /// The drawing's own name and value pairs (#4137).
+    SetDocumentData {
+        data: Vec<(String, String)>,
+    },
 
     // Pages
     AddPage {
@@ -611,6 +615,7 @@ impl Command {
         matches!(
             self,
             Command::SetTitle { .. }
+                | Command::SetDocumentData { .. }
                 | Command::MovePage { .. }
                 | Command::RenamePage { .. }
                 | Command::RenameLayer { .. }
@@ -663,6 +668,7 @@ impl Command {
     pub fn label(&self) -> &'static str {
         match self {
             Command::SetTitle { .. } => "Rename Document",
+            Command::SetDocumentData { .. } => "Document Data",
             Command::AddPage { .. } | Command::InsertPage { .. } => "Insert Page",
             Command::DeletePage { .. } => "Delete Page",
             Command::ResizePage { .. } => "Resize Page",
@@ -771,6 +777,7 @@ impl Command {
     pub fn apply(&self, doc: &mut Document) -> Result<()> {
         match self {
             Command::SetTitle { title } => doc.title = title.clone(),
+            Command::SetDocumentData { data } => doc.data = data.clone(),
 
             Command::AddPage { name, size, layer } => {
                 let n = doc.pages.len() + 1;

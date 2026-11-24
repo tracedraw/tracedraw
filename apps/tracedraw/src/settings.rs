@@ -188,6 +188,10 @@ pub struct Settings {
     /// system's program for PNG files, #593).
     #[serde(default)]
     pub bitmap_editor: String,
+    /// The program Edit in Spreadsheet opens a table's workbook in (a
+    /// path; empty for the system's program for `.xlsx` files, #4144).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub spreadsheet_editor: String,
     pub last_dir: Option<PathBuf>,
     /// The folder of pictures the bitmap pattern picker lists as tiles
     /// (#3323).
@@ -2466,6 +2470,7 @@ impl Default for Settings {
             node_shortcuts: Vec::new(),
             command_icons: Vec::new(),
             bitmap_editor: String::new(),
+            spreadsheet_editor: String::new(),
             last_dir: None,
             pattern_folder: None,
             last_export_dir: None,
