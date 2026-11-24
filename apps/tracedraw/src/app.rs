@@ -2221,6 +2221,10 @@ pub struct App {
     pub glyph_size: f32,
     pub glyph_picked: Option<char>,
     pub table_edit: Option<crate::table::TableEdit>,
+    /// The clip frame whose contents are being edited as it was before
+    /// they came out: its envelope and other effects, shadow, opacity and
+    /// name go back onto it when the editing ends (#4070).
+    pub clip_edit_shell: Option<tracedraw_core::Shape>,
     /// The Table tool's drag and bar choices.
     pub table_ui: crate::table_tool::TableUi,
     pub missing_fonts: Vec<String>,
@@ -3788,6 +3792,7 @@ impl App {
             glyph_size: crate::ui::glyphs_docker::CELL,
             glyph_picked: None,
             table_edit: None,
+            clip_edit_shell: None,
             table_ui: Default::default(),
             missing_fonts: Vec::new(),
             ask_missing_fonts: true,

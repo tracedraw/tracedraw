@@ -5720,6 +5720,40 @@ mod drag_tests {
         assert!(app.doc().shape(c).is_ok(), "c on the layer, free");
     }
 
+    /// An envelope on a clip frame stays when one of its contents is
+    /// clicked in the list to be edited: the contents come out, and when
+    /// the edit ends the clip frame has its envelope again, bending it all
+    /// as before (#4070: it was gone).
+    #[test]
+    fn a_clip_frames_envelope_stays_through_editing_its_contents() {
+        use tracedraw_core::live::Effect;
+        let mut app = App::headless();
+        let a = app.new_shape(rect_kind()).expect("a");
+        let b = app.new_shape(rect_kind()).expect("b");
+        clip_rows(&mut app, &[b], a);
+        let clip = app.doc().find_shape(a).expect("clip").clone();
+        let mut env = Effect::envelope_around(clip.bounds(), false);
+        if let Effect::Envelope { nodes, .. } = &mut env {
+            nodes[0].x -= 5.0;
+            nodes[0].y -= 5.0;
+        }
+        app.run(Command::SetEffects {
+            shape: a,
+            effects: vec![env.clone()],
+        });
+        let drawn = app.doc().find_shape(a).expect("clip").visual_bounds();
+        assert!(select_clip_content(&mut app, b));
+        assert!(app.clip_frame_edit.is_some());
+        app.finish_clip_frame_edit();
+        let back = app.doc().find_shape(a).expect("clip");
+        assert!(matches!(back.kind, ShapeKind::ClipFrame { .. }));
+        assert_eq!(back.effects, vec![env]);
+        let now = back.visual_bounds();
+        for (x, y) in [(now.x0, drawn.x0), (now.y0, drawn.y0), (now.x1, drawn.x1), (now.y1, drawn.y1)] {
+            assert!((x - y).abs() < 1e-6, "{now:?} {drawn:?}");
+        }
+    }
+
     /// PowerClips in the list (#3053): a row let go in the middle of
     /// another object's row puts the object inside it as a PowerClip, one
     /// undo step; the PowerClip's row opens to its contents, and a click
