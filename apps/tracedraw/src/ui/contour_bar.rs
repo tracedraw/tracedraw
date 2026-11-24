@@ -37,6 +37,23 @@ fn accel(ui: &mut Ui, key: &str, v: &mut f64) -> bool {
 
 /// The controls, a group to a row.
 pub fn contour_controls(app: &mut App, ui: &mut Ui) {
+    contour_controls_in(app, ui, false);
+}
+
+/// A row of the controls: in the docker (`wrap`) it breaks onto further
+/// lines when the panel is narrowed, as the Properties docker's rows do,
+/// instead of running past the panel's edge (#4148); in the bar it stays
+/// one line.
+fn group_row<R>(ui: &mut Ui, wrap: bool, add: impl FnOnce(&mut Ui) -> R) -> R {
+    if wrap {
+        ui.horizontal_wrapped(add).inner
+    } else {
+        ui.horizontal(add).inner
+    }
+}
+
+/// [`contour_controls`], its rows wrapped when `wrap` (the docker).
+pub fn contour_controls_in(app: &mut App, ui: &mut Ui, wrap: bool) {
     app.sync_contour_settings();
     // A box of these controls typed into and left with Enter: the focus
     // it held before them is gone after them.
@@ -44,7 +61,7 @@ pub fn contour_controls(app: &mut App, ui: &mut Ui) {
     let palette = app.palette.clone();
     let mut s = app.contour;
     let mut changed = false;
-    ui.horizontal(|ui| {
+    group_row(ui, wrap, |ui| {
         for d in ContourDirection::ALL {
             if ui
                 .selectable_label(s.direction == d, tr(d.key()))
@@ -57,7 +74,7 @@ pub fn contour_controls(app: &mut App, ui: &mut Ui) {
             }
         }
     });
-    ui.horizontal(|ui| {
+    group_row(ui, wrap, |ui| {
         crate::ui::toolbar::dim_labelled_as(ui, "docker.steps", "contour.steps_desc", |ui| {
             // A slider (with its number box), stepped on a logarithmic
             // scale so the first steps are easy to pick (#1265).
@@ -105,7 +122,7 @@ pub fn contour_controls(app: &mut App, ui: &mut Ui) {
             .response
             .rich_tip(tr("contour.corners"));
     });
-    ui.horizontal(|ui| {
+    group_row(ui, wrap, |ui| {
         crate::ui::keynav::ComboBox::from_id_salt("contour_blend")
             .selected_text(tr(blend_key(s.color_blend)))
             .width(110.0)
@@ -154,7 +171,7 @@ pub fn contour_controls(app: &mut App, ui: &mut Ui) {
             true,
         );
     });
-    ui.horizontal(|ui| {
+    group_row(ui, wrap, |ui| {
         changed |= accel(ui, "docker.object_acceleration", &mut s.accel_objects);
         changed |= accel(ui, "docker.color_acceleration", &mut s.accel_colors);
     });
@@ -201,9 +218,14 @@ fn start_copy_contour(app: &mut App) {
 /// Apply (for selected objects with no contour), Clear Contour, Break
 /// Apart and Copy Contour From.
 pub fn contour_actions(app: &mut App, ui: &mut Ui) {
+    contour_actions_in(app, ui, false);
+}
+
+/// [`contour_actions`], the buttons wrapped when `wrap` (the docker).
+pub fn contour_actions_in(app: &mut App, ui: &mut Ui, wrap: bool) {
     let has = app.selected_contour().is_some();
     let bare = has_bare(app);
-    ui.horizontal(|ui| {
+    group_row(ui, wrap, |ui| {
         if bare
             && ui
                 .button(tr("docker.apply"))

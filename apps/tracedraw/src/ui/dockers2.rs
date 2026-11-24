@@ -2211,8 +2211,8 @@ fn blend(app: &mut App, ui: &mut Ui) {
 }
 
 fn contour(app: &mut App, ui: &mut Ui) {
-    crate::ui::contour_bar::contour_controls(app, ui);
-    crate::ui::contour_bar::contour_actions(app, ui);
+    crate::ui::contour_bar::contour_controls_in(app, ui, true);
+    crate::ui::contour_bar::contour_actions_in(app, ui, true);
 }
 
 fn extrude(app: &mut App, ui: &mut Ui) {
@@ -3424,7 +3424,9 @@ fn pages(app: &mut App, ui: &mut Ui) {
         .map(|p| (p.id, p.name.clone(), p.size))
         .collect();
     let n = pages.len();
-    ui.horizontal(|ui| {
+    // Rows wrap when the panel is narrowed, buttons and page details
+    // going onto the next line instead of past the edge (#4148).
+    ui.horizontal_wrapped(|ui| {
         if ui
             .button(tr("menu.layout.insert_page"))
             .rich_tip(crate::ui::tips::keyed("menu.layout.insert_page"))
@@ -3457,7 +3459,7 @@ fn pages(app: &mut App, ui: &mut Ui) {
     });
     let revision = app.engine.revision();
     for (i, (id, name, size)) in pages.iter().enumerate() {
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             let active = *id == app.page;
             // The page's miniature, so a page is found by what it shows,
             // not by its number alone (#2932).

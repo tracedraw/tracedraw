@@ -16,6 +16,8 @@ full, row-by-row status.
 - PDF import: labels set two ems apart in one text run keep their places instead of running on with a space, and a wire or box edge passing under a label stays a line instead of becoming the label's underline and disappearing (#4100).
 - View > Multipage View is kept between sessions: turned on once, a multi-page .cdr or any other drawing opened later shows all its pages, where it went back to one page at every start (#3724).
 - Tables: pointing at a font or a size in a list while typing in a cell no longer takes the table away, with everything drawn before it, as soon as the pointer leaves the list; the cell shows the font and keeps its text. Ending any such preview never takes back more than the preview did (#4102).
+- Contour and Pages dockers: their rows wrap onto further lines when the panel is made narrower, as the Properties docker's do, instead of running past its edge (#4148).
+- Windows: an update started with Restart could leave the program running for a moment after its window closed; the quiet setup could not replace its files, undid everything and closed without a word, and the old version stayed. The setup now ends a TraceDraw that does not close when asked, so the update goes through (#3816).
 - Gaussian Blur and the other bitmap effects on a vector object spread past the object's box on the page: the blur was cut there with a hard edge, in the drawing window and wherever only part of the page was drawn (#4082).
 - 3-Point Ellipse: Ctrl held at the third click draws the circle with the first line as its diameter, its centre the line's middle (#4086).
 - Color Eyedropper: Alt+click reads the picture under the shapes drawn over it, to take a photo's colours while tracing it by hand (#4083).
