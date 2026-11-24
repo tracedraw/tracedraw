@@ -325,6 +325,21 @@ pub fn menu_bar(app: &mut App, ui: &mut Ui) {
                 sep(ui);
                 cmd(app, ui, PixelCmd::MergeDown);
                 cmd(app, ui, PixelCmd::Flatten);
+                sep(ui);
+                // What becomes of the layers at Finish (#4112).
+                let keep = app.settings.pixel_keep_layers;
+                if check(ui, "pixel.layers.keep", "", keep) {
+                    app.settings.pixel_keep_layers = !keep;
+                    if keep {
+                        app.pixel_kept.clear();
+                    }
+                    app.settings.save();
+                }
+                let save = app.settings.pixel_save_layers;
+                if check(ui, "pixel.layers.save", "", save) {
+                    app.settings.pixel_save_layers = !save;
+                    app.settings.save();
+                }
             });
             menu(ui, "menu.window", &mut |ui| window_menu(app, ui));
             menu(ui, "menu.help", &mut |ui| {

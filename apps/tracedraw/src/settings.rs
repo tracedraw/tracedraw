@@ -667,6 +667,15 @@ pub struct Settings {
     /// from before it came (once; closed after, it stays closed).
     #[serde(default)]
     pub pixel_hints_added: bool,
+    /// The image editing mode's layers stay after Finish while the
+    /// drawing is open: Edit Inside on the picture again opens them
+    /// (#4112). Turned off, they go and their memory is freed.
+    #[serde(default = "default_true")]
+    pub pixel_keep_layers: bool,
+    /// The image editing mode's layers are saved with the picture in the
+    /// drawing's file too (#4112), off by default: the file grows.
+    #[serde(default)]
+    pub pixel_save_layers: bool,
     /// The font lists' fonts used last, newest first.
     #[serde(default)]
     pub recent_fonts: Vec<String>,
@@ -2580,6 +2589,8 @@ impl Default for Settings {
             dockers: None,
             pixel_dockers: None,
             pixel_hints_added: false,
+            pixel_keep_layers: true,
+            pixel_save_layers: false,
             recent_fonts: Vec::new(),
             font_filter_open: false,
             font_english_names: true,

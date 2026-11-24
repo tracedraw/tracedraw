@@ -205,6 +205,7 @@ mod picture_plates;
 mod pixel_adjust;
 mod pixel_edit;
 mod pixel_edit_app;
+mod pixel_keep;
 mod pixel_light;
 mod pixel_liquify;
 mod pixel_ops;

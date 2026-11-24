@@ -1543,6 +1543,11 @@ pub enum Dialog {
     /// Tools > Sizes and Areas: the selected objects' and the pages'
     /// sizes and areas (`ui::sizes`, #2098).
     SizesAreas(crate::ui::sizes::SizesTab),
+    /// The image editing mode's Finish puts the layers together for good:
+    /// go on? (Options > Global > Warnings, #4112.)
+    ConfirmPixelFlatten {
+        dont_ask: bool,
+    },
     /// Take an item off the Shelf? (Options > Global > Warnings.)
     ConfirmShelfRemove {
         uid: u64,
@@ -3446,6 +3451,36 @@ pub fn show(app: &mut App, ctx: &Context) {
                     crate::ui::gpu_hint::Answer::from_button(i),
                     dont_show,
                 );
+                close = true;
+            }
+        }
+        Dialog::ConfirmPixelFlatten { dont_ask } => {
+            let (flatten, keep, back) = (
+                tr("pixel.flatten_ask.flatten"),
+                tr("pixel.flatten_ask.keep"),
+                tr("pixel.flatten_ask.back"),
+            );
+            if let Some(i) = crate::ui::chrome::message_box_check(
+                ctx,
+                crate::ui::chrome::MessageIcon::Question,
+                &tr("pixel.flatten_ask.text"),
+                &[&flatten, &keep, &back],
+                &tr("shelf.dont_ask"),
+                dont_ask,
+            ) {
+                if *dont_ask && i < 2 {
+                    app.settings.warnings.pixel_flatten = false;
+                    app.settings.save();
+                }
+                match i {
+                    0 => app.finish_pixel_edit_now(),
+                    1 => {
+                        app.settings.pixel_keep_layers = true;
+                        app.settings.save();
+                        app.finish_pixel_edit_now();
+                    }
+                    _ => {}
+                }
                 close = true;
             }
         }

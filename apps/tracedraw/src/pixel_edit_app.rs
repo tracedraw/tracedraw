@@ -431,7 +431,7 @@ impl App {
     /// pixels cannot be read.
     pub fn edit_bitmap_inside(&mut self, id: ShapeId) -> bool {
         if self.pixel_edit.is_some() {
-            self.finish_pixel_edit();
+            self.finish_pixel_edit_now();
         }
         let Some(s) = self.doc().find_shape(id).cloned() else {
             return false;
@@ -470,6 +470,20 @@ impl App {
         let size_px = img.dimensions();
         let img_to_page = img_to_page
             * Affine::scale_non_uniform(w0 / size_px.0.max(1) as f64, h0 / size_px.1.max(1) as f64);
+        // The layers kept from the last Finish on this picture, while
+        // the picture is still what they were put together into (#4112).
+        let mut pi = PixelImage::new(img.clone());
+        let kept = self
+            .pixel_kept
+            .get(id, &png[..])
+            .map(|k| (k.layers.clone(), k.active))
+            .or_else(|| {
+                let (_, text) = s.data.iter().find(|(k, _)| k == crate::pixel_keep::DATA_KEY)?;
+                crate::pixel_keep::load(text, &png[..])
+            });
+        if let Some((layers, active)) = kept {
+            crate::pixel_keep::restore(&mut pi, layers, active);
+        }
         static SESSIONS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let session = SESSIONS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         self.pixel_edit = Some(Box::new(PixelEdit {
@@ -478,7 +492,7 @@ impl App {
             img_to_page,
             rect: *rect,
             size_px,
-            original: std::rc::Rc::new(img.clone()),
+            original: std::rc::Rc::new(img),
             liquify: None,
             spray: None,
             placement: Default::default(),
@@ -486,7 +500,7 @@ impl App {
             depth: None,
             remove: None,
             adjust_drag: false,
-            pi: PixelImage::new(img),
+            pi,
             history: History::default(),
             tool: PixelTool::Brush,
             opts: self.pixel_opts,
@@ -534,8 +548,27 @@ impl App {
     }
 
     /// Finish editing the picture: its pixels go back into it in one undo
-    /// step (nothing changes when nothing was changed).
+    /// step (nothing changes when nothing was changed). When the layers
+    /// would be put together for good (kept neither in memory nor in the
+    /// file), ask first (#4112).
     pub fn finish_pixel_edit(&mut self) {
+        let Some(pe) = self.pixel_edit.as_ref() else {
+            return;
+        };
+        if pe.changed
+            && pe.pi.is_layered()
+            && !self.settings.pixel_keep_layers
+            && !self.settings.pixel_save_layers
+            && self.settings.warnings.pixel_flatten
+        {
+            self.dialog = crate::ui::dialogs::Dialog::ConfirmPixelFlatten { dont_ask: false };
+            return;
+        }
+        self.finish_pixel_edit_now();
+    }
+
+    /// [`Self::finish_pixel_edit`] without asking.
+    pub fn finish_pixel_edit_now(&mut self) {
         let Some(pe) = self.pixel_edit.take() else {
             return;
         };
@@ -561,6 +594,17 @@ impl App {
             self.status = tr("pixel.status.unreadable");
             return;
         };
+        // The layers kept while the drawing is open, and in its file when
+        // asked; a picture of one plain layer keeps none.
+        let layered = pe.pi.is_layered();
+        if layered && self.settings.pixel_keep_layers {
+            self.pixel_kept.keep(pe.shape, &png, &pe.pi);
+        } else {
+            self.pixel_kept.forget(pe.shape);
+        }
+        let saved = (layered && self.settings.pixel_save_layers)
+            .then(|| crate::pixel_keep::save(&pe.pi, &png))
+            .flatten();
         let (w, h) = pixels.dimensions();
         // The box of the pixels as they are now, in the object's own
         // space: a crop keeps the pixels where they were.
@@ -588,10 +632,14 @@ impl App {
             });
         }
         // A linked picture would be read again from its file over the
-        // edit: it stands alone now.
-        if s.data.iter().any(|(k, _)| k == "bitmap.link") {
-            let mut data = s.data.clone();
-            data.retain(|(k, _)| k != "bitmap.link");
+        // edit: it stands alone now. Layers saved before give way to the
+        // ones of this edit (or to none).
+        let mut data = s.data.clone();
+        data.retain(|(k, _)| k != "bitmap.link" && k != crate::pixel_keep::DATA_KEY);
+        if let Some(text) = saved {
+            data.push((crate::pixel_keep::DATA_KEY.to_string(), text));
+        }
+        if data != s.data {
             cmds.push(Command::SetObjectData {
                 shape: pe.shape,
                 data,
@@ -764,31 +812,30 @@ impl App {
             return;
         }
         if tool == PixelTool::Warp {
-            if pe.warp.is_none() && (started || clicked) {
+            let pressed = response.contains_pointer()
+                && response.ctx.input(|i| i.pointer.primary_pressed());
+            if pe.warp.is_none() && (pressed || started || clicked) {
                 pe.start_warp();
             }
-            // Points within 12 screen pixels of the press are taken.
-            let grab = 12.0 / screen_per_px.max(1e-6);
-            if started {
-                let pick = pe.warp.as_ref().and_then(|w| {
-                    let near = w
-                        .pts
-                        .iter()
-                        .enumerate()
-                        .map(|(k, p)| (k, (p.0 - x).hypot(p.1 - y)))
-                        .min_by(|a, b| a.1.total_cmp(&b.1))?;
-                    (near.1 <= grab).then_some(near.0)
-                });
-                if let Some(w) = pe.warp.as_mut() {
-                    w.drag = pick;
+            // The nearest point within a few screen points of the press is
+            // taken, where the button went down rather than where the drag
+            // was first noticed, so a quick drag still takes it (#4116).
+            let grab = crate::pixel_warp::GRAB_RADIUS / screen_per_px.max(1e-6);
+            if let Some(w) = pe.warp.as_mut() {
+                if pressed {
+                    w.take(x, y, grab);
+                } else if dragged {
+                    w.drag_to(x, y);
                 }
-            } else if dragged {
-                if let Some(w) = pe.warp.as_mut() {
-                    if let Some(k) = w.drag {
-                        if let Some(p) = w.pts.get_mut(k) {
-                            *p = (x, y);
-                        }
-                    }
+                let cursor = if w.drag.is_some() && dragged {
+                    Some(egui::CursorIcon::Grabbing)
+                } else if w.pick(x, y, grab).is_some() {
+                    Some(egui::CursorIcon::Grab)
+                } else {
+                    None
+                };
+                if let Some(c) = cursor {
+                    response.ctx.set_cursor_icon(c);
                 }
             }
             if stopped {
@@ -1593,9 +1640,24 @@ pub fn draw_mapped(
                 .collect();
             painter.add(egui::Shape::line(pts, line));
         }
-        for p in &wp.pts {
+        // The point the pointer would take shows larger and filled.
+        let hot = wp.drag.or_else(|| {
+            let ptr = to_screen(pointer?);
+            wp.pts
+                .iter()
+                .enumerate()
+                .map(|(k, p)| (k, to_screen(*p).distance(ptr)))
+                .filter(|(_, d)| *d <= crate::pixel_warp::GRAB_RADIUS)
+                .min_by(|a, b| a.1.total_cmp(&b.1))
+                .map(|(k, _)| k)
+        });
+        for (k, p) in wp.pts.iter().enumerate() {
             let c = to_screen(*p);
-            painter.circle(c, 4.0, egui::Color32::WHITE, line);
+            if hot == Some(k) {
+                painter.circle(c, 6.0, line.color, egui::Stroke::new(1.5, egui::Color32::WHITE));
+            } else {
+                painter.circle(c, 4.0, egui::Color32::WHITE, line);
+            }
         }
     }
     if pe.lasso.len() > 1 {
@@ -1992,6 +2054,76 @@ mod tests {
             *pixels(&app, id).get_pixel(3, 3),
             Rgba([255, 255, 255, 255])
         );
+    }
+
+    /// A picture opened with a second layer painted blue, then finished.
+    fn finish_with_two_layers(app: &mut App, id: ShapeId) {
+        assert!(app.edit_bitmap_inside(id));
+        let pe = app.pixel_edit.as_mut().unwrap();
+        pe.apply_all(true, |pi| {
+            pi.add_layer("top");
+            Some([0, 0, 20, 10])
+        });
+        pe.apply(false, |pi| pixel_edit::fill_selection(pi, [0, 0, 255, 255], 1.0));
+        app.finish_pixel_edit();
+    }
+
+    #[test]
+    fn the_layers_open_again_after_finish_until_the_picture_changes() {
+        let (mut app, id) = app_with_picture();
+        assert!(app.settings.pixel_keep_layers, "on by default");
+        finish_with_two_layers(&mut app, id);
+        assert!(app.pixel_edit.is_none());
+        assert_eq!(pixels(&app, id).get_pixel(3, 3), &Rgba([0, 0, 255, 255]));
+        // Edit Inside again: both layers, the top one in use.
+        assert!(app.edit_bitmap_inside(id));
+        let pe = app.pixel_edit.as_ref().unwrap();
+        assert_eq!(pe.pi.layers.len(), 2);
+        assert_eq!(pe.pi.active, 1);
+        assert_eq!(pe.pi.layer_pixels(0).unwrap().get_pixel(3, 3), &Rgba([255, 255, 255, 255]));
+        assert_eq!(pe.pi.img.get_pixel(3, 3), &Rgba([0, 0, 255, 255]));
+        app.cancel_pixel_edit();
+        // The finish undone: the picture is another, the layers do not fit.
+        app.undo();
+        assert!(app.edit_bitmap_inside(id));
+        assert_eq!(app.pixel_edit.as_ref().unwrap().pi.layers.len(), 1);
+        assert!(app.doc().find_shape(id).unwrap().data.is_empty(), "nothing in the file");
+    }
+
+    #[test]
+    fn layers_saved_in_the_file_open_again_and_flattening_for_good_asks_first() {
+        let (mut app, id) = app_with_picture();
+        app.settings.pixel_keep_layers = false;
+        app.settings.pixel_save_layers = true;
+        finish_with_two_layers(&mut app, id);
+        assert_eq!(app.pixel_kept.len(), 0);
+        let data = app.doc().find_shape(id).unwrap().data.clone();
+        assert!(data.iter().any(|(k, _)| k == crate::pixel_keep::DATA_KEY));
+        assert!(app.edit_bitmap_inside(id));
+        assert_eq!(app.pixel_edit.as_ref().unwrap().pi.layers.len(), 2);
+        app.cancel_pixel_edit();
+        // Kept nowhere: Finish asks, and nothing changes meanwhile.
+        app.settings.pixel_save_layers = false;
+        assert!(app.edit_bitmap_inside(id));
+        let pe = app.pixel_edit.as_mut().unwrap();
+        pe.apply(false, |pi| pixel_edit::fill_selection(pi, [0, 255, 0, 255], 1.0));
+        app.finish_pixel_edit();
+        assert!(matches!(
+            app.dialog,
+            crate::ui::dialogs::Dialog::ConfirmPixelFlatten { .. }
+        ));
+        assert!(app.pixel_edit.is_some());
+        app.finish_pixel_edit_now();
+        assert_eq!(pixels(&app, id).get_pixel(3, 3), &Rgba([0, 255, 0, 255]));
+        assert!(
+            !app.doc().find_shape(id).unwrap().data.iter().any(|(k, _)| k == crate::pixel_keep::DATA_KEY),
+            "the old layers no longer fit and go"
+        );
+        // Told not to ask: it finishes at once.
+        app.dialog = crate::ui::dialogs::Dialog::None;
+        app.settings.warnings.pixel_flatten = false;
+        finish_with_two_layers(&mut app, id);
+        assert!(app.pixel_edit.is_none());
     }
 
     #[test]

@@ -1761,6 +1761,9 @@ pub struct App {
     pub pixel_edit: Option<Box<crate::pixel_edit_app::PixelEdit>>,
     /// The brush settings of picture editing, kept between pictures.
     pub pixel_opts: crate::pixel_edit::BrushOpts,
+    /// The layers of pictures edited inside, kept after Finish while the
+    /// drawings are open (#4112).
+    pub pixel_kept: crate::pixel_keep::KeptLayers,
     pub show_guides: bool,
     /// Selected guidelines of the active page (indices).
     pub selected_guides: Vec<usize>,
@@ -3579,6 +3582,7 @@ impl App {
             symmetry_doc: Default::default(),
             pixel_edit: None,
             pixel_opts: Default::default(),
+            pixel_kept: Default::default(),
             show_guides: true,
             selected_guides: Vec::new(),
             edit_master_guides: true,
@@ -5658,9 +5662,11 @@ impl App {
             return;
         }
         self.close_active_document();
-        // The last drawing gone: the kept fill pictures go with it.
+        // The last drawing gone: the kept fill pictures and picture
+        // layers go with it.
         if !self.has_document() {
             tracedraw_render::clear_procedural_cache();
+            self.pixel_kept.clear();
         }
     }
 

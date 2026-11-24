@@ -232,7 +232,10 @@ layer above; greyed with no selection), Paste as Layer (the picture on
 the clipboard, its top left at the selection's), Fit to Surface and
 Clip to layer below (pushed in when on). A layer with a mask adds a
 Mask row: Paint Mask (pushed in while painting it), Invert, Apply and
-Delete.
+Delete. A thin line parts the rows. A right click on a row uses that
+layer and lists its commands with their icons: Rename, Duplicate, Delete,
+Show or Hide, Lock or Unlock, Clip to layer below, Up, Down, Merge Down,
+Flatten, and Add Mask or Paint Mask, Invert Mask and Delete Mask (#4108).
 
 Clip to layer below: the layer shows only where the nearest layer
 beneath it that is not clipped has pixels (its coverage after its mask).
@@ -246,7 +249,28 @@ alpha by the mask and drops it) and Delete Mask. Merge Down applies the
 top layer's mask and clip first.
 
 Crop and flip reach every layer and mask. Finish puts the layers together into
-the picture's pixels, as they were seen; the drawing keeps no layers.
+the picture's pixels, as they were seen (#4112). The layers can stay,
+chosen at the foot of the Layers menu:
+
+- Keep Layers After Finish (on by default): the layers and masks stay in
+  memory while the drawing is open, and Edit Inside on that picture opens
+  them again, the same layer in use. Turned off, the kept layers go and
+  their memory is freed; at most 8 pictures keep layers, the oldest goes
+  first, and closing the last drawing frees them all.
+- Save Layers in the Drawing File (off by default): the layers are also
+  saved with the picture, as its object data `pixel.layers` (each layer's
+  settings, its pixels and mask as PNG), hidden from the Object Data
+  panel, so they open again after the file is opened again. The file
+  grows by the layers' size.
+
+Either way the layers carry a fingerprint of the picture they were put
+together into: when the picture changed since (Undo, another edit, a
+picture swapped), they no longer fit and the picture opens as it is; a
+Finish with one plain layer drops the saved layers. When neither is on,
+Finish on a changed picture with layers asks first: Flatten and Finish,
+Keep Layers and Finish (turns the first on) or Go Back, with "Do not ask
+again" (Options > Global > Warnings, "Before Finish in the image editing
+mode puts the layers together for good").
 
 ## More selections
 
@@ -334,8 +358,11 @@ keeps its scale on the page and its top left corner.
   the whole picture and nothing changes.
 - Warp tool: Start puts a grid (2 to 8 cells a side, 4 by default) over
   the selection box, else over the box of the layer's pixels that are not
-  clear, else over the whole picture. Dragging a point (picked within 12
-  screen pixels) bends the layer through a smooth (Catmull-Rom) surface
+  clear, else over the whole picture. Dragging a point (the nearest within
+  20 screen pixels of where the button went down, so a quick drag still
+  takes it; the point keeps its distance from the pointer instead of
+  jumping under it; the point the pointer would take shows larger and
+  filled, with a grab hand, #4116) bends the layer through a smooth (Catmull-Rom) surface
   through the points, previewed live; pixels outside the box stay. Enter
   or Apply keeps it as one undo step, Reset puts the points back, Esc or
   Cancel drops it, and changing tool applies it. A mask on the layer

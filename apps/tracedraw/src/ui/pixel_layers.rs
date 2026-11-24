@@ -5,7 +5,8 @@
 //! click paints the mask, a click on the pixels' miniature paints the
 //! pixels again), its name (a double click renames it) and its mode and
 //! opacity; under them rows of icon buttons for the layer commands and
-//! the mask commands, each named in its tip.
+//! the mask commands, each named in its tip. A right click on a row
+//! lists the commands for that layer.
 
 use crate::i18n::tr;
 use crate::pixel_edit::{self, PixelImage};
@@ -47,11 +48,12 @@ pub enum LayerIcon {
     Paste,
     Adjustment,
     FitSurface,
+    Rename,
 }
 
 #[cfg(test)]
 impl LayerIcon {
-    pub const ALL: [LayerIcon; 22] = [
+    pub const ALL: [LayerIcon; 23] = [
         LayerIcon::Shown,
         LayerIcon::Hidden,
         LayerIcon::Locked,
@@ -74,6 +76,7 @@ impl LayerIcon {
         LayerIcon::Paste,
         LayerIcon::Adjustment,
         LayerIcon::FitSurface,
+        LayerIcon::Rename,
     ];
 }
 
@@ -209,6 +212,12 @@ pub fn draw_icon(p: &egui::Painter, r: Rect, icon: LayerIcon, ink: Color32) {
         LayerIcon::FitSurface => {
             pen.line("M2 15c3-3 5-3 7 0s5 3 7 0 4-3 6-1", ink);
             sheet(&pen, 2.0, false, acc);
+        }
+        LayerIcon::Rename => {
+            // A name line with a pencil writing it.
+            pen.line("M3 20h9", ink);
+            pen.body("M16 3.5l4.5 4.5L10 18.5 5 19.5l1-5z");
+            pen.thin("M14 5.5l4.5 4.5", acc);
         }
     }
 }
@@ -373,6 +382,125 @@ enum RowAsk {
     Shown,
     Locked,
     Rename,
+    /// A command from the row's right-click menu, for that layer.
+    Cmd(RowCmd),
+}
+
+/// The commands of a layer row's right-click menu.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RowCmd {
+    Rename,
+    Duplicate,
+    Delete,
+    Up,
+    Down,
+    MergeDown,
+    Flatten,
+    AddMask,
+    PaintMask,
+    InvertMask,
+    DeleteMask,
+    Clip,
+    Shown,
+    Locked,
+}
+
+/// Run `c` on the layer in use.
+fn run_cmd(pe: &mut PixelEdit, c: RowCmd) {
+    let full = |pi: &PixelImage| Some([0, 0, pi.img.width(), pi.img.height()]);
+    let name = crate::ui::pixel_bar::new_layer_name(pe);
+    let i = pe.pi.active;
+    match c {
+        RowCmd::Rename => {}
+        RowCmd::Duplicate => {
+            pe.apply_all(true, |pi| {
+                pi.duplicate_layer(name.clone());
+                full(pi)
+            });
+        }
+        RowCmd::Delete => {
+            pe.apply_all(true, |pi| pi.delete_layer().then(|| full(pi)).flatten());
+        }
+        RowCmd::Up | RowCmd::Down => {
+            let up = c == RowCmd::Up;
+            pe.apply_all(true, |pi| pi.move_layer(up).then(|| full(pi)).flatten());
+        }
+        RowCmd::MergeDown => {
+            pe.apply_all(true, |pi| pi.merge_down().then(|| full(pi)).flatten());
+        }
+        RowCmd::Flatten => {
+            pe.apply_all(true, |pi| pi.flatten().then(|| full(pi)).flatten());
+        }
+        RowCmd::AddMask => {
+            if pe.apply_all(true, |pi| pi.add_layer_mask().then(|| full(pi)).flatten()) {
+                pe.set_edit_layer_mask(true);
+            }
+        }
+        RowCmd::PaintMask => pe.set_edit_layer_mask(true),
+        RowCmd::InvertMask => {
+            pe.apply_all(true, |pi| pi.invert_layer_mask().then(|| full(pi)).flatten());
+        }
+        RowCmd::DeleteMask => {
+            pe.apply_all(true, |pi| pi.delete_layer_mask().then(|| full(pi)).flatten());
+            pe.set_edit_layer_mask(false);
+        }
+        RowCmd::Clip | RowCmd::Shown | RowCmd::Locked => {
+            pe.apply_all(true, |pi| {
+                let l = pi.layers.get_mut(i)?;
+                match c {
+                    RowCmd::Clip => l.clip = !l.clip,
+                    RowCmd::Shown => l.visible = !l.visible,
+                    _ => l.locked = !l.locked,
+                }
+                full(pi)
+            });
+        }
+    }
+}
+
+/// The right-click menu of layer `i`'s row: the command picked.
+fn row_menu(ui: &mut Ui, pe: &PixelEdit, i: usize) -> Option<RowCmd> {
+    let l = pe.pi.layers.get(i)?;
+    let n = pe.pi.layers.len();
+    let has_mask = l.mask.is_some();
+    let mut picked = None;
+    let mut entry = |ui: &mut Ui, key: &str, icon: LayerIcon, enabled: bool, c: RowCmd| {
+        let pic = move |p: &egui::Painter, r: Rect, ink: Color32| draw_icon(p, r.expand(2.0), icon, ink);
+        if crate::ui::menus::item_drawn(ui, &tr(key), "", enabled, key, &pic) {
+            picked = Some(c);
+        }
+    };
+    entry(ui, "pixel.layer.rename_cmd", LayerIcon::Rename, true, RowCmd::Rename);
+    entry(ui, "pixel.layer.duplicate", LayerIcon::Duplicate, true, RowCmd::Duplicate);
+    entry(ui, "pixel.layer.delete", LayerIcon::Delete, n > 1, RowCmd::Delete);
+    crate::ui::menus::sep(ui);
+    let (key, icon) = if l.visible {
+        ("pixel.layer.hide_cmd", LayerIcon::Hidden)
+    } else {
+        ("pixel.layer.show_cmd", LayerIcon::Shown)
+    };
+    entry(ui, key, icon, true, RowCmd::Shown);
+    let (key, icon) = if l.locked {
+        ("pixel.layer.unlock_cmd", LayerIcon::Unlocked)
+    } else {
+        ("pixel.layer.lock_cmd", LayerIcon::Locked)
+    };
+    entry(ui, key, icon, true, RowCmd::Locked);
+    entry(ui, "pixel.layer.clip", LayerIcon::Clip, i > 0, RowCmd::Clip);
+    crate::ui::menus::sep(ui);
+    entry(ui, "pixel.layer.up", LayerIcon::Up, i + 1 < n, RowCmd::Up);
+    entry(ui, "pixel.layer.down", LayerIcon::Down, i > 0, RowCmd::Down);
+    entry(ui, "pixel.layer.merge_down", LayerIcon::MergeDown, i > 0, RowCmd::MergeDown);
+    entry(ui, "pixel.layer.flatten", LayerIcon::Flatten, pe.pi.is_layered(), RowCmd::Flatten);
+    crate::ui::menus::sep(ui);
+    if has_mask {
+        entry(ui, "pixel.mask.edit", LayerIcon::EditMask, true, RowCmd::PaintMask);
+        entry(ui, "pixel.mask.invert", LayerIcon::InvertMask, true, RowCmd::InvertMask);
+        entry(ui, "pixel.mask.delete", LayerIcon::DeleteMask, true, RowCmd::DeleteMask);
+    } else {
+        entry(ui, "pixel.mask.add", LayerIcon::AddMask, true, RowCmd::AddMask);
+    }
+    picked
 }
 
 pub(crate) fn layers_section(ui: &mut Ui, pe: &mut PixelEdit) {
@@ -423,6 +551,15 @@ pub(crate) fn layers_section(ui: &mut Ui, pe: &mut PixelEdit) {
                 if let Some(r) = renaming.take() {
                     commit = Some(r);
                 }
+            }
+            RowAsk::Cmd(RowCmd::Rename) => {
+                if let Some(l) = pe.pi.layers.get(i) {
+                    renaming = Some((i, l.name.clone()));
+                }
+            }
+            RowAsk::Cmd(c) => {
+                use_layer(pe, i);
+                run_cmd(pe, c);
             }
         }
     }
@@ -508,7 +645,21 @@ fn layer_row(
     } else if resp.hovered() {
         p.rect_filled(row, 0.0, Tokens::hovered_row());
     }
+    // A thin line between the rows.
+    if i > 0 {
+        p.hline(row.x_range(), row.max.y - 0.5, egui::Stroke::new(1.0, Tokens::border()));
+    }
     let mut ask = resp.clicked().then_some(RowAsk::Use);
+    egui::Popup::context_menu(&resp)
+        .id(resp.id.with("pixel_layer_menu"))
+        .style(crate::ui::menus::menu_popup_style)
+        .show(|ui| {
+            crate::ui::menus::body(ui, |ui| {
+                if let Some(c) = row_menu(ui, pe, i) {
+                    ask = Some(RowAsk::Cmd(c));
+                }
+            })
+        });
     let mut x = row.min.x + 2.0;
     let small = Vec2::splat(20.0);
     // Show and lock.
@@ -816,6 +967,41 @@ mod tests {
         let small = image::RgbaImage::new(8, 16);
         assert_eq!(shrink(&small, 40).dimensions(), (8, 16), "never enlarged");
         assert_eq!(shrink_size((0, 5), 40), (1, 1));
+    }
+
+    #[test]
+    fn the_row_menu_commands_work_on_the_layer_in_use() {
+        use tracedraw_core::{geometry::Rect as R, ShapeKind};
+        let mut app = crate::app::App::headless();
+        let img = image::RgbaImage::from_pixel(20, 10, image::Rgba([255, 255, 255, 255]));
+        let id = app
+            .new_shape(ShapeKind::Bitmap {
+                rect: R::new(0.0, 0.0, 20.0, 10.0),
+                width_px: 20,
+                height_px: 10,
+                png: crate::bitmap_fx::encode(&img).unwrap().into(),
+                fx: None,
+            })
+            .expect("a picture");
+        assert!(app.edit_bitmap_inside(id));
+        let pe = app.pixel_edit.as_mut().unwrap();
+        run_cmd(pe, RowCmd::Duplicate);
+        assert_eq!(pe.pi.layers.len(), 2);
+        run_cmd(pe, RowCmd::Shown);
+        assert!(!pe.pi.layers[1].visible);
+        run_cmd(pe, RowCmd::Locked);
+        assert!(pe.pi.layers[1].locked);
+        run_cmd(pe, RowCmd::Clip);
+        assert!(pe.pi.layers[1].clip);
+        run_cmd(pe, RowCmd::AddMask);
+        assert!(pe.pi.layers[1].mask.is_some());
+        assert_eq!(pe.target, MaskTarget::LayerMask);
+        run_cmd(pe, RowCmd::DeleteMask);
+        assert!(pe.pi.layers[1].mask.is_none());
+        run_cmd(pe, RowCmd::Down);
+        assert_eq!(pe.pi.active, 0);
+        run_cmd(pe, RowCmd::Delete);
+        assert_eq!(pe.pi.layers.len(), 1);
     }
 
     #[test]

@@ -1144,6 +1144,10 @@ pub struct WarningPrefs {
     /// drawn on the CPU and slow while a graphics card is idle
     /// (`ui::gpu_hint`); desktop only.
     pub hardware_acceleration: bool,
+    /// Before the image editing mode's Finish puts a picture's layers
+    /// together for good (they are kept neither in memory nor in the
+    /// file, #4112).
+    pub pixel_flatten: bool,
 }
 
 impl Default for WarningPrefs {
@@ -1156,6 +1160,7 @@ impl Default for WarningPrefs {
             accept_missing_fonts_keep: true,
             shelf_remove: true,
             hardware_acceleration: true,
+            pixel_flatten: true,
         }
     }
 }

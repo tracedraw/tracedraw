@@ -6,6 +6,9 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Image editing mode: the Warp grid's points are easy to take: the nearest point within 20 screen pixels of where the button went down is taken, also on a quick drag, it keeps its distance from the pointer instead of jumping under it, and the point the pointer would take shows larger with a grab hand (#4116).
+- Image editing mode: a right click on a row of the Layers panel lists that layer's commands with their icons (rename, duplicate, delete, show or hide, lock, clip, up, down, merge down, flatten and the mask commands), and a thin line parts the rows (#4108).
+- Image editing mode: the layers and masks stay after Finish while the drawing is open, so Edit Inside opens them again (Layers > Keep Layers After Finish, on by default); Layers > Save Layers in the Drawing File keeps them in the file too; with neither on, Finish asks before it puts the layers together for good (#4112).
 - `.cdr` rounded rectangles enlarged with their corners kept open with the corner radius they were given, where the corners grew with the rectangle (#4126).
 - `.cdr` paragraph text that continues in other frames opens in all of them: the frames it runs through are linked in order and the text flows from the first into the next, where those frames were left out and the first frame held all the text (#4104, #2018).
 - `.cdr` books on facing pages open with every page: each page record of such a file holds a spread, which now opens as its left and right pages in order (the first a single right page when the book starts on the right), where a 248-page book opened as 125 pages with objects of two pages on one (#4104; also #2609, #2584, #2018, #3035).
