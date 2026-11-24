@@ -1684,15 +1684,78 @@ pub struct Evaluated {
     pub above: Vec<Shape>,
 }
 
-/// How many evaluations [`evaluate`] remembers: enough for a page with
-/// several contoured or blended objects to keep each one's across the
-/// pointer's moves; with 8 they pushed each other out (#3765).
-const EVALUATION_MEMORY: usize = 32;
+/// How many evaluations [`evaluate`] remembers: enough for a drawing with
+/// dozens of contoured, blended or extruded objects to keep each one's
+/// across frames and the pointer's moves; with 8 they pushed each other
+/// out (#3765), and 32 still left large drawings working every blend out
+/// again each frame (#4193).
+const EVALUATION_MEMORY: usize = 512;
 
-/// The latest evaluations of shapes that draw objects from their outline,
-/// newest last, each with the shape it was made from. Shared by all
-/// threads: the rasteriser works on its own.
-static EVALUATED: std::sync::Mutex<Vec<(Shape, Evaluated)>> = std::sync::Mutex::new(Vec::new());
+/// How many versions of one object are kept: the object and the one being
+/// dragged or edited are both asked for in a frame.
+const VERSIONS_PER_OBJECT: usize = 4;
+
+/// The kept evaluations, by object id, each with the shape it was made
+/// from and when it was last asked for.
+#[derive(Default)]
+struct Evaluations {
+    by_id: std::collections::HashMap<crate::ShapeId, Vec<(Shape, Evaluated, u64)>>,
+    len: usize,
+    tick: u64,
+}
+
+impl Evaluations {
+    fn get(&mut self, shape: &Shape) -> Option<Evaluated> {
+        self.tick += 1;
+        let tick = self.tick;
+        // The id first: a shape of another id never pays the comparison of
+        // whole paths and children. The full comparison still guards the
+        // hit, so a changed shape of the same id is worked out again (#3765).
+        let kept = self.by_id.get_mut(&shape.id)?;
+        let hit = kept.iter_mut().find(|(from, _, _)| from == shape)?;
+        hit.2 = tick;
+        Some(hit.1.clone())
+    }
+
+    fn put(&mut self, shape: &Shape, ev: &Evaluated) {
+        self.tick += 1;
+        let tick = self.tick;
+        let kept = self.by_id.entry(shape.id).or_default();
+        if kept.len() >= VERSIONS_PER_OBJECT {
+            if let Some(i) = (0..kept.len()).min_by_key(|&i| kept[i].2) {
+                kept.remove(i);
+                self.len -= 1;
+            }
+        }
+        kept.push((shape.clone(), ev.clone(), tick));
+        self.len += 1;
+        // Over the limit, the evaluation asked for longest ago goes; this
+        // walks the kept ones, but only when a new one is worked out.
+        while self.len > EVALUATION_MEMORY {
+            let Some((id, i)) = self
+                .by_id
+                .iter()
+                .flat_map(|(id, v)| v.iter().enumerate().map(move |(i, e)| (e.2, *id, i)))
+                .min_by_key(|e| e.0)
+                .map(|(_, id, i)| (id, i))
+            else {
+                break;
+            };
+            if let Some(v) = self.by_id.get_mut(&id) {
+                v.remove(i);
+                if v.is_empty() {
+                    self.by_id.remove(&id);
+                }
+            }
+            self.len -= 1;
+        }
+    }
+}
+
+/// The latest evaluations of shapes that draw objects from their outline.
+/// Shared by all threads: the rasteriser works on its own.
+static EVALUATED: std::sync::LazyLock<std::sync::Mutex<Evaluations>> =
+    std::sync::LazyLock::new(Default::default);
 
 /// Evaluate every effect of `shape` in order. Geometry effects replace the
 /// main shape's kind with a path; object effects add shapes.
@@ -1704,26 +1767,12 @@ pub fn evaluate(shape: &Shape) -> Evaluated {
     if !shape.effects.iter().any(Effect::draws_from_outline) {
         return evaluate_now(shape);
     }
-    if let Ok(mut kept) = EVALUATED.lock() {
-        // The id first: a shape of another id never pays the comparison of
-        // whole paths and children. The full comparison still guards the
-        // hit, so a changed shape of the same id is worked out again (#3765).
-        if let Some(i) = kept
-            .iter()
-            .position(|(from, _)| from.id == shape.id && from == shape)
-        {
-            let hit = kept.remove(i);
-            let ev = hit.1.clone();
-            kept.push(hit);
-            return ev;
-        }
+    if let Some(ev) = EVALUATED.lock().ok().and_then(|mut k| k.get(shape)) {
+        return ev;
     }
     let ev = evaluate_now(shape);
     if let Ok(mut kept) = EVALUATED.lock() {
-        if kept.len() >= EVALUATION_MEMORY {
-            kept.remove(0);
-        }
-        kept.push((shape.clone(), ev.clone()));
+        kept.put(shape, &ev);
     }
     ev
 }
@@ -6042,6 +6091,46 @@ mod tests {
             evaluate(&s);
         }
         assert_eq!(evaluate(&first).below[0].bounds(), made.below[0].bounds());
+    }
+
+    /// #4193: hundreds of objects keep their evaluations; past the limit
+    /// the one asked for longest ago goes, and one object keeps only its
+    /// latest few versions.
+    #[test]
+    fn the_evaluation_cache_holds_hundreds_and_drops_the_oldest() {
+        let ev = |s: &Shape| Evaluated {
+            below: Vec::new(),
+            main: s.clone(),
+            above: Vec::new(),
+        };
+        let mut kept = Evaluations::default();
+        let base = rect_shape();
+        let shape = |k: u64| {
+            let mut s = base.clone();
+            s.id = crate::ShapeId(base.id.0 + 10_000 + k);
+            s
+        };
+        for k in 0..400 {
+            kept.put(&shape(k), &ev(&shape(k)));
+        }
+        assert!((0..400).all(|k| kept.get(&shape(k)).is_some()));
+        // Asked for again, the first is newer than the second.
+        kept.get(&shape(0));
+        for k in 400..(EVALUATION_MEMORY as u64 + 1) {
+            kept.put(&shape(k), &ev(&shape(k)));
+        }
+        assert_eq!(kept.len, EVALUATION_MEMORY);
+        assert!(kept.get(&shape(0)).is_some());
+        assert!(kept.get(&shape(1)).is_none());
+        // Versions of one object.
+        let mut v = shape(0);
+        for x in 0..10 {
+            v.transform = Affine::translate((x as f64, 0.0));
+            kept.put(&v, &ev(&v));
+        }
+        assert_eq!(kept.by_id[&v.id].len(), VERSIONS_PER_OBJECT);
+        assert!(kept.get(&v).is_some());
+        assert_eq!(kept.len, kept.by_id.values().map(Vec::len).sum::<usize>());
     }
 
     /// #2577: the contour of an open curve is a closed band round both

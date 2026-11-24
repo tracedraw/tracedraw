@@ -5284,6 +5284,35 @@ impl Shape {
                     .unwrap_or_else(|| self.local_path().bounding_box())
             }
             ShapeKind::ClipFrame { frame, .. } => frame.bounds(),
+            // A text's box from the engine's cached outline box, moved as
+            // `local_path` moves the outline (a plain shift): copying the
+            // outline of every letter only to measure it cost most of the
+            // time on drawings with thousands of labels (#4192).
+            ShapeKind::Text {
+                spans,
+                origin,
+                frame,
+                align,
+                para,
+                on_path,
+            } => {
+                let req = text_outline::TextRequest {
+                    spans,
+                    frame: *frame,
+                    align: *align,
+                    para,
+                    on_path: on_path.as_ref(),
+                };
+                let shift = if on_path.is_some() {
+                    Affine::translate(origin.to_vec2())
+                } else {
+                    text_layout_shift(*origin, *frame, false, para.columns_from_right())
+                };
+                match text_outline::bounds(&req) {
+                    Some(r) => shift.transform_rect_bbox(r),
+                    None => self.local_path().bounding_box(),
+                }
+            }
             _ => match self.kind.known_box() {
                 Some(r) => r,
                 None => self.local_path().bounding_box(),

@@ -9,7 +9,7 @@
 
 use std::collections::HashMap;
 use std::ops::Range;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock, RwLockReadGuard};
 use tracedraw_core::{
     document::{
@@ -55,6 +55,12 @@ pub struct FontSystem {
     /// each added.
     carried: RwLock<Vec<(Vec<String>, DocumentFont)>>,
     cache: Mutex<HashMap<String, CachedOutline>>,
+    /// The outline points held in `cache`, changed under its lock.
+    cached_points: AtomicUsize,
+    /// The texts laid out last, by [`FontSystem::cache_key`], newest
+    /// last: the caret, the marks of non-printing characters and the
+    /// outline of a text being typed share one layout (#4172).
+    laid: Mutex<std::collections::VecDeque<(String, Arc<TextLayout>)>>,
     /// Texts shaped lately, by [`FontSystem::shaping_key`].
     shaped: Mutex<HashMap<String, Arc<Shaped>>>,
     /// Families the application can fetch when text asks for them (the
@@ -1743,6 +1749,15 @@ fn script_fonts(c: char) -> &'static [&'static str] {
     }
 }
 
+/// How many texts' outlines [`FontSystem::cached`] keeps: enough for a
+/// map or a schematic with tens of thousands of labels (#4192).
+const OUTLINES_KEPT: usize = 60_000;
+
+/// How many outline points (path elements) [`FontSystem::cached`] keeps in
+/// all, about 170 MB: the texts of a drawing of short labels all fit,
+/// while one of long texts keeps as many as this holds.
+const OUTLINE_POINTS_KEPT: usize = 3_000_000;
+
 /// How many texts' shaped glyphs [`FontSystem::shaped`] keeps.
 const SHAPED_KEPT: usize = 64;
 
@@ -2438,6 +2453,8 @@ impl FontSystem {
             document_families: RwLock::new(Vec::new()),
             carried: RwLock::new(Vec::new()),
             cache: Mutex::new(HashMap::new()),
+            cached_points: AtomicUsize::new(0),
+            laid: Mutex::new(std::collections::VecDeque::new()),
             shaped: Mutex::new(HashMap::new()),
             offered: RwLock::new(Vec::new()),
             requests: Mutex::new((Vec::new(), Vec::new())),
@@ -2535,6 +2552,10 @@ impl FontSystem {
     /// Fonts were added: drop what was laid out or chosen without them.
     fn fonts_changed(&self) {
         if let Ok(mut c) = self.cache.lock() {
+            c.clear();
+            self.cached_points.store(0, Ordering::Relaxed);
+        }
+        if let Ok(mut c) = self.laid.lock() {
             c.clear();
         }
         if let Ok(mut c) = self.shaped.lock() {
@@ -3808,18 +3829,32 @@ impl FontSystem {
                 return hit.clone();
             }
         }
-        let p = Arc::new(self.layout(req).path);
+        let p = Arc::new(self.layout_shared(req).path.clone());
         let b = (!p.elements().is_empty()).then(|| p.bounding_box());
         if let Ok(mut c) = self.cache.lock() {
             // Evict down to the limit one entry at a time: clearing the
             // whole cache made every text re-shape after any overflow,
             // which on a drawing with many texts cost a full re-shape per
-            // keystroke.
-            while c.len() > 2000 {
+            // keystroke. The limit counts outline points as well as
+            // texts: 2000 texts left drawings with thousands of labels
+            // shaping again every frame (#4192), and the points keep a
+            // drawing of long texts from holding all of its outlines.
+            let size = p.elements().len().max(1);
+            while c.len() >= OUTLINES_KEPT
+                || (!c.is_empty()
+                    && self.cached_points.load(Ordering::Relaxed) + size > OUTLINE_POINTS_KEPT)
+            {
                 let Some(k) = c.keys().next().cloned() else { break };
-                c.remove(&k);
+                if let Some((gone, _)) = c.remove(&k) {
+                    self.cached_points
+                        .fetch_sub(gone.elements().len().max(1), Ordering::Relaxed);
+                }
             }
-            c.insert(key, (p.clone(), b));
+            self.cached_points.fetch_add(size, Ordering::Relaxed);
+            if let Some((was, _)) = c.insert(key, (p.clone(), b)) {
+                self.cached_points
+                    .fetch_sub(was.elements().len().max(1), Ordering::Relaxed);
+            }
         }
         (p, b)
     }
@@ -4526,6 +4561,40 @@ impl FontSystem {
     /// Full layout of a text object.
     pub fn layout(&self, req: &TextRequest) -> TextLayout {
         self.layout_with(req, false, false)
+    }
+
+    /// [`FontSystem::layout`], shared: the same text asked for again
+    /// (by the caret, the marks of non-printing characters, the outline
+    /// drawn, in the same frame or the frames after) gets the layout
+    /// already made instead of breaking its lines anew (#4172). Any
+    /// change to the text, its formatting, its frame or path, the
+    /// default tab step or the fonts makes a new one.
+    pub fn layout_shared(&self, req: &TextRequest) -> Arc<TextLayout> {
+        /// Texts kept: those edited and drawn around the same time.
+        const KEPT: usize = 16;
+        let key = Self::cache_key(req);
+        if let Ok(c) = self.laid.lock() {
+            if let Some((_, hit)) = c.iter().rev().find(|(k, _)| *k == key) {
+                return hit.clone();
+            }
+        }
+        let laid = Arc::new(self.layout(req));
+        if let Ok(mut c) = self.laid.lock() {
+            if !c.iter().any(|(k, _)| *k == key) {
+                c.push_back((key, laid.clone()));
+            }
+            while c.len() > KEPT {
+                c.pop_front();
+            }
+        }
+        laid
+    }
+
+    /// True when [`FontSystem::layout_shared`] keeps `req` laid out.
+    #[cfg(test)]
+    fn is_laid(&self, req: &TextRequest) -> bool {
+        let key = Self::cache_key(req);
+        self.laid.lock().is_ok_and(|c| c.iter().any(|(k, _)| *k == key))
     }
 
     /// The glyphs of a text object as its fonts draw them, placed as
@@ -7901,6 +7970,35 @@ mod tests {
         !fonts().families().is_empty()
     }
 
+    /// #4172: the text drawn and the caret's layout of it are laid out
+    /// once: the outline's layout is kept, asked for again it is the
+    /// same one, and any change to the text makes a new one.
+    #[test]
+    fn the_outline_and_the_caret_share_one_layout() {
+        let f = fonts();
+        let para = ParagraphStyle::default();
+        let spans = [span("shared layout 4172")];
+        let req = TextRequest {
+            spans: &spans,
+            frame: Some(tracedraw_core::geometry::Size::new(40.0, 30.0)),
+            align: TextAlign::Left,
+            para: &para,
+            on_path: None,
+        };
+        f.outline_cached(&req);
+        assert!(f.is_laid(&req), "the outline's layout is kept");
+        let a = f.layout_shared(&req);
+        let b = f.layout_shared(&req);
+        assert!(Arc::ptr_eq(&a, &b), "asked again: the same layout");
+        assert_eq!(a.fitted_chars, f.layout(&req).fitted_chars);
+        let typed = [span("shared layout 41723")];
+        let c = f.layout_shared(&TextRequest {
+            spans: &typed,
+            ..req
+        });
+        assert!(!Arc::ptr_eq(&a, &c), "a letter more: laid out anew");
+    }
+
     #[test]
     fn shapes_some_text_if_any_font_exists() {
         let f = fonts();
@@ -9399,6 +9497,40 @@ mod tests {
         assert!(r.x1 < end - 0.5, "{r:?} {end}");
     }
 
+    /// #4192: a text's own box comes from the cached outline box, moved as
+    /// its outline is, and matches the box of the outline itself for
+    /// artistic and paragraph text.
+    #[test]
+    fn a_text_box_is_measured_without_its_outline() {
+        if !has_fonts() {
+            return;
+        }
+        install();
+        for frame in [None, Some(tracedraw_core::geometry::Size::new(30.0, 20.0))] {
+            let s = tracedraw_core::document::Shape::new(
+                tracedraw_core::ShapeId(1),
+                tracedraw_core::ShapeKind::Text {
+                    spans: vec![span("Box 4192 gjq")],
+                    origin: Point::new(10.0, 20.0),
+                    frame,
+                    align: TextAlign::Left,
+                    para: ParagraphStyle::default(),
+                    on_path: None,
+                },
+            );
+            let fast = s.local_bounds();
+            let slow = s.local_path().bounding_box();
+            for (a, b) in [
+                (fast.x0, slow.x0),
+                (fast.y0, slow.y0),
+                (fast.x1, slow.x1),
+                (fast.y1, slow.y1),
+            ] {
+                assert!((a - b).abs() < 1e-9, "{frame:?}: {fast:?} {slow:?}");
+            }
+        }
+    }
+
     #[test]
     fn custom_hyphens_come_before_the_patterns() {
         hyphen::set_custom(vec![("zebracorn".into(), vec![3])]);
@@ -10243,6 +10375,36 @@ mod tests {
             db.load_font_data(f.to_vec());
         }
         FontSystem::from_db(db)
+    }
+
+    /// #4192: a drawing of thousands of labels keeps every label's
+    /// outline, and the count of points kept follows what is held.
+    #[test]
+    fn thousands_of_labels_stay_shaped() {
+        let f = system_with(&[SELAWIK]);
+        let family = f.families().first().cloned().expect("family");
+        let labels: Vec<[TextSpan; 1]> = (0..3000)
+            .map(|k| [TextSpan::new(&format!("R{k}"), &family, 8.0)])
+            .collect();
+        static PARA: std::sync::LazyLock<ParagraphStyle> =
+            std::sync::LazyLock::new(ParagraphStyle::default);
+        fn req(spans: &[TextSpan; 1]) -> TextRequest<'_> {
+            TextRequest {
+                spans: spans.as_slice(),
+                frame: None,
+                align: TextAlign::Left,
+                para: &PARA,
+                on_path: None,
+            }
+        }
+        let mut points = 0;
+        for l in &labels {
+            points += f.outline_cached(&req(l)).elements().len().max(1);
+        }
+        let c = f.cache.lock().expect("cache");
+        assert_eq!(c.len(), labels.len());
+        assert!(c.contains_key(&FontSystem::cache_key(&req(&labels[0]))));
+        assert_eq!(f.cached_points.load(Ordering::Relaxed), points);
     }
 
     /// The bounding box of each subpath of `path`, in order.
