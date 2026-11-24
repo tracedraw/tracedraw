@@ -1888,7 +1888,14 @@ pub fn unround(path: &BezPath, which: Option<&[usize]>) -> (BezPath, Vec<Option<
                     }
                 }
                 PathSeg::Quad(q) => {
-                    map[*index] = Some(out.elements().len());
+                    let end = q.p2;
+                    map[*index] = Some(
+                        if sub.closed && last && (end - seg_start(first)).hypot() < 1e-9 {
+                            move_index
+                        } else {
+                            out.elements().len()
+                        },
+                    );
                     out.quad_to(q.p1, q.p2);
                 }
                 PathSeg::Cubic(c) => {
@@ -1910,7 +1917,6 @@ pub fn unround(path: &BezPath, which: Option<&[usize]>) -> (BezPath, Vec<Option<
                             out.push(el);
                         }
                     }
-                    map[*index] = Some(out.elements().len());
                     if t0.is_some() || t1.is_some() {
                         let e = c.subsegment(t0.unwrap_or(0.0)..t1.unwrap_or(1.0));
                         let end = if t1.is_some() {
@@ -1918,8 +1924,22 @@ pub fn unround(path: &BezPath, which: Option<&[usize]>) -> (BezPath, Vec<Option<
                         } else {
                             c.p3
                         };
+                        map[*index] = Some(
+                            if sub.closed && last && (end - seg_start(first)).hypot() < 1e-9 {
+                                move_index
+                            } else {
+                                out.elements().len()
+                            },
+                        );
                         out.curve_to(e.p1, e.p2, end);
                     } else {
+                        map[*index] = Some(
+                            if sub.closed && last && (c.p3 - seg_start(first)).hypot() < 1e-9 {
+                                move_index
+                            } else {
+                                out.elements().len()
+                            },
+                        );
                         out.curve_to(c.p1, c.p2, c.p3);
                     }
                     if let Some((center, corner)) = arc_to_corner {
