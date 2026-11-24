@@ -23,7 +23,7 @@ use tracedraw_core::live::{Effect, MergeMode, SurfaceShade, BLEND_IF_ALL};
 use tracedraw_core::{Color, Command, Shape};
 
 /// An entry of the list.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Kind {
     Bevel,
     Outline,
@@ -397,6 +397,7 @@ impl App {
     /// keeps its values, switched off, and comes back with them; an
     /// object without it gets `fallback` (the values shown).
     pub fn set_layer_effect_on(&mut self, kind: Kind, on: bool, fallback: &Effect) {
+        self.layer_fx_last.insert(kind, fallback.clone());
         self.edit_layer_effects(|stack| match find(stack, kind) {
             Some(i) => stack[i].1 = on,
             None if on => stack.push((fallback.clone(), true)),
@@ -406,6 +407,7 @@ impl App {
 
     /// The entry's effect on the selection becomes `effect`.
     pub fn set_layer_effect(&mut self, kind: Kind, effect: &Effect) {
+        self.layer_fx_last.insert(kind, effect.clone());
         self.edit_layer_effects(|stack| {
             if let Some(i) = find(stack, kind) {
                 stack[i].0 = effect.clone();
@@ -453,9 +455,28 @@ impl App {
         }
     }
 
-    /// Take the entry's effect off the selection.
+    /// Take the entry's effect off the selection. Its values are kept
+    /// for the next time the entry is ticked (#4242).
     pub fn remove_layer_effect(&mut self, kind: Kind) {
+        if let Some(e) = self.selected_shapes().into_iter().find_map(|s| {
+            s.effect_stack()
+                .into_iter()
+                .find(|(e, _)| kind.matches(e))
+                .map(|(e, _)| e)
+        }) {
+            self.layer_fx_last.insert(kind, e);
+        }
         self.edit_layer_effects(|stack| stack.retain(|(e, _)| !kind.matches(e)));
+    }
+
+    /// The values an entry starts with on an object without it: those
+    /// it was last given, else its defaults (#4242).
+    pub fn layer_fx_start(&self, kind: Kind) -> Effect {
+        self.layer_fx_last
+            .get(&kind)
+            .filter(|e| kind.matches(e))
+            .cloned()
+            .unwrap_or_else(|| kind.default_effect())
     }
 
     /// The selection's fill opacity becomes `opacity` (0 to 1); at 1 the
@@ -510,7 +531,7 @@ pub fn layer_effects(app: &mut App, ui: &mut Ui) {
             {
                 let fallback = at
                     .map(|i| stack[i].0.clone())
-                    .unwrap_or_else(|| kind.default_effect());
+                    .unwrap_or_else(|| app.layer_fx_start(kind));
                 app.set_layer_effect_on(kind, on, &fallback);
                 current = kind;
             }
@@ -542,7 +563,7 @@ pub fn layer_effects(app: &mut App, ui: &mut Ui) {
     let at = find(&stack, current);
     let mut effect = at
         .map(|i| stack[i].0.clone())
-        .unwrap_or_else(|| current.default_effect());
+        .unwrap_or_else(|| app.layer_fx_start(current));
     ui.label(egui::RichText::new(tr(current.key())).color(Tokens::SELECTION));
     let changed = settings(app, ui, &mut effect);
     if changed {
@@ -1678,6 +1699,41 @@ mod tests {
         ctx.data_mut(|d| d.insert_temp(highlighted_id(), Kind::ALL.len() - 1));
         let mut out = ctx.run_ui(Default::default(), |ui| layer_effects(&mut app, ui));
         out.textures_delta.clear();
+    }
+
+    /// An effect taken away with its × keeps its values: ticking the
+    /// entry again, on the object or on another one, starts from them
+    /// (#4242).
+    #[test]
+    fn an_effect_taken_away_comes_back_with_its_values() {
+        let mut app = App::headless();
+        let rect = |app: &mut App, x: f64| {
+            app.new_shape(ShapeKind::Rect {
+                rect: Rect::new(x, 0.0, x + 10.0, 10.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("shape")
+        };
+        let a = rect(&mut app, 0.0);
+        let b = rect(&mut app, 20.0);
+        app.select(vec![a]);
+        let mut ht = Kind::Halftone.default_effect();
+        if let Effect::Halftone { size, angle, .. } = &mut ht {
+            *size = 3.5;
+            *angle = 30.0;
+        }
+        app.set_layer_effect_on(Kind::Halftone, true, &Kind::Halftone.default_effect());
+        app.set_layer_effect(Kind::Halftone, &ht);
+        app.remove_layer_effect(Kind::Halftone);
+        assert!(app.doc().find_shape(a).expect("a").effects.is_empty());
+        assert_eq!(app.layer_fx_start(Kind::Halftone), ht);
+        app.select(vec![b]);
+        let start = app.layer_fx_start(Kind::Halftone);
+        app.set_layer_effect_on(Kind::Halftone, true, &start);
+        assert_eq!(app.doc().find_shape(b).expect("b").effects, vec![ht]);
+        // An entry never set starts from its defaults.
+        assert_eq!(app.layer_fx_start(Kind::Bevel), Kind::Bevel.default_effect());
     }
 
     /// Ticking an entry adds its effect; clearing it keeps the values,

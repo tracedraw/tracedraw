@@ -31941,3 +31941,138 @@ fn a_straight_lines_flat_axis_is_not_scaled_by_its_side_handle() {
     assert!(stretched.height() > before.height() + 1.0, "{stretched:?}");
     assert!(close(stretched.x0, before.x0), "{stretched:?}");
 }
+
+/// With the Text tool a click or a drag on a text that is not being
+/// edited goes into it: the caret goes where it was pressed and a drag
+/// selects, and no new text starts there (#4240). A frame of paragraph
+/// text takes a press in its empty part too.
+#[test]
+fn the_text_tool_goes_into_a_text_pressed_on() {
+    let (ctx, mut app, _) = setup();
+    let none = Modifiers::NONE;
+    app.set_tool(Tool::Text);
+    // An artistic text.
+    let at = app.view.to_screen(Point::new(100.0, 150.0));
+    click_at(&ctx, &mut app, at, none);
+    frame(&ctx, &mut app, vec![Event::Text("Hello world".into())], none);
+    let art = app.text_edit.as_ref().map(|t| t.shape).expect("editing");
+    // A paragraph frame with a short line, much room under it.
+    app.finish_text();
+    let a = app.view.to_screen(Point::new(30.0, 200.0));
+    let z = app.view.to_screen(Point::new(150.0, 260.0));
+    drag(&ctx, &mut app, a, z, none, Vec::new());
+    frame(&ctx, &mut app, vec![Event::Text("Short".into())], none);
+    let para = app.text_edit.as_ref().map(|t| t.shape).expect("editing");
+    assert_ne!(art, para);
+    app.finish_text();
+    for _ in 0..20 {
+        frame(&ctx, &mut app, Vec::new(), none);
+    }
+    let count = shape_count(&app);
+    let editing = |app: &App| app.text_edit.as_ref().map(|t| t.shape);
+    // A click on the artistic text.
+    let mid = app.view.to_screen(bounds(&app, art).center());
+    click_at(&ctx, &mut app, mid, none);
+    assert_eq!(editing(&app), Some(art), "the click went into the text");
+    assert_eq!(shape_count(&app), count, "no new text from the click");
+    app.finish_text();
+    for _ in 0..20 {
+        frame(&ctx, &mut app, Vec::new(), none);
+    }
+    // A drag along it selects in it.
+    let b = bounds(&app, art);
+    let from = app.view.to_screen(Point::new(b.x0 + b.width() * 0.2, b.center().y));
+    let to = app.view.to_screen(Point::new(b.x0 + b.width() * 0.8, b.center().y));
+    drag(&ctx, &mut app, from, to, none, Vec::new());
+    for _ in 0..20 {
+        frame(&ctx, &mut app, Vec::new(), none);
+    }
+    assert_eq!(editing(&app), Some(art), "the drag went into the text");
+    assert_eq!(shape_count(&app), count, "no new frame from the drag");
+    let te = app.text_edit.as_ref().expect("editing");
+    assert_ne!(te.anchor, te.caret, "the drag selected");
+    app.finish_text();
+    for _ in 0..20 {
+        frame(&ctx, &mut app, Vec::new(), none);
+    }
+    // A click in the empty lower part of the paragraph frame.
+    let pb = bounds(&app, para);
+    let low = app.view.to_screen(Point::new(pb.center().x, pb.y1 - 5.0));
+    click_at(&ctx, &mut app, low, none);
+    assert_eq!(editing(&app), Some(para), "the click went into the frame");
+    assert_eq!(shape_count(&app), count, "no new text in the frame");
+}
+
+/// The Curvature Pen goes on from an end node of an open curve: a press
+/// there continues that curve, and the points placed after it join it;
+/// a click on the curve's other end closes it (#4245).
+#[test]
+fn the_curvature_pen_continues_an_open_curve() {
+    let (ctx, mut app, _) = setup();
+    let none = Modifiers::NONE;
+    app.select(Vec::new());
+    app.set_tool(Tool::CurvaturePen);
+    let first = [
+        Point::new(100.0, 150.0),
+        Point::new(130.0, 190.0),
+        Point::new(160.0, 150.0),
+    ];
+    for p in first {
+        let at = app.view.to_screen(p);
+        click_at(&ctx, &mut app, at, none);
+    }
+    frame(&ctx, &mut app, vec![key(egui::Key::Enter, none)], none);
+    assert!(app.curve.is_none());
+    let count = shape_count(&app);
+    let id = *app.selection.first().expect("the curve made is selected");
+    // From its last end, two more points.
+    for p in [
+        Point::new(160.0, 150.0),
+        Point::new(190.0, 190.0),
+        Point::new(220.0, 150.0),
+    ] {
+        let at = app.view.to_screen(p);
+        click_at(&ctx, &mut app, at, none);
+    }
+    frame(&ctx, &mut app, vec![key(egui::Key::Enter, none)], none);
+    assert!(app.curve.is_none());
+    assert_eq!(shape_count(&app), count, "the points joined the curve");
+    let path = |app: &App| {
+        let s = app.doc().find_shape(id).expect("the curve");
+        match &s.kind {
+            ShapeKind::Path { closed, .. } => (s.page_path(), *closed),
+            _ => panic!("a curve"),
+        }
+    };
+    let (p, closed) = path(&app);
+    assert!(!closed);
+    let ends: Vec<Point> = p.elements().iter().filter_map(|e| e.end_point()).collect();
+    assert_eq!(ends.len(), 5, "{ends:?}");
+    let has = |q: Point| ends.iter().any(|e| (*e - q).hypot() < 1e-3);
+    assert!(has(Point::new(100.0, 150.0)) && has(Point::new(220.0, 150.0)));
+    // Again from the end at 220, then onto the other end: it closes.
+    app.select(vec![id]);
+    for p in [
+        Point::new(220.0, 150.0),
+        Point::new(160.0, 100.0),
+        Point::new(100.0, 150.0),
+    ] {
+        let at = app.view.to_screen(p);
+        click_at(&ctx, &mut app, at, none);
+    }
+    assert!(app.curve.is_none(), "the click on the other end finished it");
+    assert_eq!(shape_count(&app), count);
+    let id = *app.selection.first().expect("selected");
+    let shape = app.doc().find_shape(id).expect("the curve").clone();
+    let closed_now = match &shape.kind {
+        ShapeKind::Path { path, closed } => {
+            *closed
+                || path
+                    .elements()
+                    .iter()
+                    .any(|e| matches!(e, tracedraw_core::geometry::PathEl::ClosePath))
+        }
+        _ => false,
+    };
+    assert!(closed_now, "the curve closed");
+}

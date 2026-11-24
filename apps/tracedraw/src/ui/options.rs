@@ -1314,6 +1314,16 @@ fn display_page(app: &mut App, ui: &mut Ui) {
             "options.show_page_border",
             "options.show_page_border_tip",
         ));
+        // F9 fills the screen with the page instead of keeping the zoom
+        // of the window (#4239).
+        ui.checkbox(
+            &mut app.settings.preview_fit_page,
+            tr("options.preview_fit_page"),
+        )
+        .rich_tip(crate::ui::tips::pair(
+            "options.preview_fit_page",
+            "options.preview_fit_page_tip",
+        ));
         // The colour round the page, softer than white if wished (#3930).
         ui.horizontal(|ui| {
             ui.label(tr("options.preview_background")).rich_tip(crate::ui::tips::pair(

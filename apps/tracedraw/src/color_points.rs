@@ -130,6 +130,39 @@ impl App {
         self.set_points_fill(id, f, "Colour Point")
     }
 
+    /// A palette colour dropped at `at` (screen) on a colour point of a
+    /// selected object: that point takes it and becomes the chosen one,
+    /// with no need to choose it first (#4244). False when no point lies
+    /// there.
+    pub fn drop_on_color_point(&mut self, c: Color, at: egui::Pos2) -> bool {
+        /// How near a point's node a drop counts as on it, points.
+        const NODE_PX: f32 = 8.0;
+        let mut best: Option<(ShapeId, usize, f32)> = None;
+        for id in self.selection.clone() {
+            let Some(s) = self.doc().find_shape(id) else {
+                continue;
+            };
+            for (k, p) in point_nodes(s) {
+                let d = (self.view.to_screen(p) - at).length();
+                if d <= NODE_PX && best.is_none_or(|(_, _, b)| d < b) {
+                    best = Some((id, k, d));
+                }
+            }
+        }
+        let Some((id, k, _)) = best else {
+            return false;
+        };
+        let Some(mut f) = self.doc().find_shape(id).and_then(points_fill).cloned() else {
+            return false;
+        };
+        let Some(stop) = k.checked_sub(MESH_NODE_BASE).and_then(|i| f.stops.get_mut(i)) else {
+            return false;
+        };
+        stop.color = c;
+        self.selected_effect_node = Some((id, k));
+        self.set_points_fill(id, f, "Colour Point")
+    }
+
     /// The spread of the chosen colour point, when one is chosen.
     pub fn color_point_spread(&self) -> Option<f64> {
         let (id, i) = self.selected_color_point()?;
@@ -277,6 +310,31 @@ mod tests {
             Fill::Fountain(f) => f.clone(),
             _ => panic!("a gradient"),
         }
+    }
+
+    /// A palette colour dropped on a colour point colours it and
+    /// chooses it, with no point chosen before; dropped away from the
+    /// points it goes to the object's fill as before (#4244).
+    #[test]
+    fn a_colour_dropped_on_a_colour_point_colours_it() {
+        let mut app = App::headless();
+        app.show_welcome = false;
+        app.canvas_rect = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(800.0, 600.0));
+        app.zoom_to_page();
+        let id = points_square(&mut app);
+        app.selected_effect_node = None;
+        let s = app.doc().find_shape(id).expect("shape").clone();
+        let (k, p) = point_nodes(&s)[1];
+        let red = Color::rgb8(220, 20, 20);
+        let at = app.view.to_screen(p) + egui::vec2(3.0, -2.0);
+        assert!(app.drop_on_color_point(red, at));
+        let f = fountain(&app, id);
+        assert_eq!(f.stops[1].color, red);
+        assert_eq!(f.stops[0].color, Color::BLACK);
+        assert_eq!(app.selected_effect_node, Some((id, k)));
+        // Far from both points: not taken here.
+        let mid = app.view.to_screen(s.page_path().bounding_box().center());
+        assert!(!app.drop_on_color_point(red, mid));
     }
 
     /// The points show as nodes at their places; a double click adds one

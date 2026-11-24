@@ -1170,6 +1170,58 @@ mod tests {
         assert!((after - before).length() < 1e-3);
     }
 
+    /// #4241: every page shows at the zoom in use. A page left at
+    /// another zoom comes back at the zoom in use, the point that was in
+    /// the middle of the window there still in the middle; in the
+    /// Multipage View a page gone to that is out of sight comes into
+    /// view at the same zoom.
+    #[test]
+    fn pages_gone_to_show_at_the_zoom_in_use() {
+        let mut app = App::headless();
+        app.show_welcome = false;
+        app.canvas_rect = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(800.0, 600.0));
+        app.add_page();
+        app.add_page();
+        app.page = app.doc().pages[0].id;
+        app.fit_pending = false;
+        app.view.zoom = 0.7;
+        app.view.origin = egui::pos2(-40.0, 900.0);
+        let mid = app.view.to_page(app.canvas_rect.center());
+        app.goto_page(1);
+        app.view.zoom = 1.9;
+        app.goto_page(0);
+        assert_eq!(app.view.zoom, 1.9);
+        let back = app.view.to_page(app.canvas_rect.center());
+        assert!((back.x - mid.x).abs() < 1e-3 && (back.y - mid.y).abs() < 1e-3);
+        // The Multipage View, the view far from the third page.
+        app.set_multipage(true);
+        app.fit_pending = false;
+        app.view.zoom = 2.0;
+        app.view.origin = egui::pos2(-5000.0, 500.0);
+        let third = app.doc().pages[2].id;
+        app.goto_page(2);
+        assert_eq!(app.page, third);
+        assert_eq!(app.view.zoom, 2.0);
+        assert!(app.page_on_screen(), "the page gone to is in view");
+        let centre = app.view.to_screen(app.page_rect().center());
+        assert!((centre - app.canvas_rect.center()).length() < 1e-3);
+        // A page already in view stays where it is.
+        let first = app.doc().pages[0].id;
+        let pr = app
+            .shown_pages()
+            .into_iter()
+            .find(|(id, _)| *id == first)
+            .map(|(_, r)| r)
+            .expect("shown");
+        let at = app.view.to_screen(tracedraw_core::geometry::Point::new(pr.x0, pr.y0));
+        app.view.origin += app.canvas_rect.center() - at;
+        let before = app.view;
+        app.goto_page(0);
+        assert_eq!(app.page, first);
+        assert_eq!(app.view.zoom, before.zoom);
+        assert!(app.page_on_screen());
+    }
+
     /// The space between pages of a drawing that sets none.
     const GAP_MM: f64 = tracedraw_core::document::DEFAULT_PAGE_SPACING;
     use tracedraw_core::geometry::Point;

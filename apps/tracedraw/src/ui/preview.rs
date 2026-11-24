@@ -12,6 +12,9 @@ pub struct PreviewSession {
     pub(crate) bounds: tracedraw_core::geometry::Rect,
     pub(crate) zoom: f64,
     was_fullscreen: bool,
+    /// The page fills the screen (Options > Display > Full-screen
+    /// preview, #4239) until the preview is zoomed.
+    fit_page: bool,
     /// When the preview opened, to wait for the window to fill the screen.
     started: f64,
     hint_until: f64,
@@ -39,6 +42,7 @@ pub fn begin(app: &mut App, ctx: &egui::Context, selected_only: bool) {
         bounds: preview_bounds(app),
         zoom: f64::from(app.view.zoom),
         was_fullscreen: ctx.input(|i| i.viewport().fullscreen.unwrap_or(false)),
+        fit_page: app.settings.preview_fit_page && !selected_only,
         started: ctx.input(|i| i.time),
         hint_until: ctx.input(|i| i.time) + 1.5,
         texture: None,
@@ -257,6 +261,7 @@ pub(crate) fn apply_preview_keys(app: &mut App, keys: &[PreviewInput], size: egu
             PreviewInput::Zoom(f) => {
                 if let Some(session) = &mut app.preview_session {
                     session.zoom = (session.zoom * f).clamp(0.01, 500.0);
+                    session.fit_page = false;
                 }
             }
             PreviewInput::Page(step) => {
@@ -287,6 +292,18 @@ pub fn fullscreen(app: &mut App, ui: &mut Ui) {
     if !keys.is_empty() {
         let size = ctx.content_rect().size();
         apply_preview_keys(app, &keys, size);
+    }
+    // The page filling the screen, when the option asks for it: the
+    // page's middle in the screen's, as large as the screen lets it.
+    let screen = ctx.content_rect().size();
+    let page = app.page_rect();
+    if let Some(session) = app.preview_session.as_mut().filter(|s| s.fit_page) {
+        let fit = (f64::from(screen.x) / page.width().max(1e-6))
+            .min(f64::from(screen.y) / page.height().max(1e-6));
+        if fit.is_finite() && fit > 0.0 {
+            session.bounds = page;
+            session.zoom = fit;
+        }
     }
     let background = app.preview_background_color();
     egui::CentralPanel::default()

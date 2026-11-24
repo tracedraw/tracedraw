@@ -377,10 +377,6 @@ fn place_menu(app: &mut App, ui: &mut Ui, tab: DockerTab) {
     if crate::ui::menus::check_if(ui, "docker.own_window", own, can || own) {
         app.set_docker_own_window(tab, !own);
     }
-    // Back to the column it was last docked in (#3950).
-    if own && crate::ui::menus::item(ui, "docker.dock_back", "", true) {
-        app.dock_back(tab);
-    }
 }
 
 /// Show Below in a docker's menus: ticked while `tab` is shown under the
@@ -1266,7 +1262,12 @@ fn docker_title(app: &mut App, ui: &mut Ui, tab: DockerTab, place: DockerPlace) 
         egui::vec2(full.width(), TITLE_H),
         egui::Sense::click_and_drag(),
     );
-    let resp = resp.rich_tip(format!("{}\n{}", tr(tab.key()), tr("docker.title_desc")));
+    let desc = if place == DockerPlace::Floating {
+        "docker.title_floating_desc"
+    } else {
+        "docker.title_desc"
+    };
+    let resp = resp.rich_tip(format!("{}\n{}", tr(tab.key()), tr(desc)));
     ui.painter()
         .rect_filled(bar, 0.0, crate::theme::Tokens::tab_strip());
     ui.painter().text(
@@ -1291,11 +1292,25 @@ fn docker_title(app: &mut App, ui: &mut Ui, tab: DockerTab, place: DockerPlace) 
             last: None,
         });
     }
+    // A floating panel, in the main window or in a window of its own,
+    // docks back where it was with a double click on its title or with
+    // Dock Back, first in its title's menu (#3950, #4247).
+    let floating = place == DockerPlace::Floating;
+    if floating && resp.double_clicked_by(egui::PointerButton::Primary) {
+        app.docker_drag = None;
+        app.dock_back(tab);
+    }
     egui::Popup::context_menu(&resp)
         .id(egui::Id::new(("docker_title_menu", tab.key())))
         .style(crate::ui::menus::menu_popup_style)
         .show(|ui| {
             crate::ui::menus::body(ui, |ui| {
+                if floating {
+                    if crate::ui::menus::item(ui, "docker.dock_back", "", true) {
+                        app.dock_back(tab);
+                    }
+                    crate::ui::menus::sep(ui);
+                }
                 place_menu(app, ui, tab);
                 stack_item(app, ui, tab);
                 lock_item(app, ui, tab);
@@ -5765,6 +5780,65 @@ pub(crate) mod tests {
         app.close_docker(DockerTab::Hints);
         app.open_docker(DockerTab::Hints);
         assert_eq!(app.docker_place(DockerTab::Hints), Some(DockerPlace::Right));
+    }
+
+    /// A double click on the title of a floating panel docks it back in
+    /// the column it came from (#4247).
+    #[test]
+    fn a_double_click_on_a_floating_title_docks_it_back() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        app.show_welcome = false;
+        app.move_docker(DockerTab::Objects, DockerPlace::Left, None);
+        app.move_docker(
+            DockerTab::Objects,
+            DockerPlace::Floating,
+            Some(egui::pos2(500.0, 300.0)),
+        );
+        assert_eq!(
+            app.docker_place(DockerTab::Objects),
+            Some(DockerPlace::Floating)
+        );
+        let mut time = 0.0;
+        let mut run = |app: &mut App, events: Vec<egui::Event>| {
+            time += 1.0 / 60.0;
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1600.0, 1000.0),
+                )),
+                time: Some(time),
+                events,
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(input, |ui| crate::ui::root(app, ui));
+            out.textures_delta.clear();
+        };
+        for _ in 0..5 {
+            run(&mut app, Vec::new());
+        }
+        let fd = app
+            .floating_dockers
+            .iter()
+            .find(|f| f.tab == DockerTab::Objects)
+            .copied()
+            .expect("floating");
+        let at = fd.pos + egui::vec2(40.0, TITLE_H / 2.0);
+        let press = |pressed| egui::Event::PointerButton {
+            pos: at,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        run(&mut app, vec![egui::Event::PointerMoved(at)]);
+        for _ in 0..2 {
+            run(&mut app, vec![press(true)]);
+            run(&mut app, vec![press(false)]);
+        }
+        for _ in 0..3 {
+            run(&mut app, Vec::new());
+        }
+        assert_eq!(app.docker_place(DockerTab::Objects), Some(DockerPlace::Left));
     }
 
     /// A panel given a window of its own (#2884) floats there, keeps it

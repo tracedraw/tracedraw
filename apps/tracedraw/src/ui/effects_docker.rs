@@ -286,6 +286,17 @@ fn effect_stack(app: &mut App, ui: &mut Ui) {
     }
     ui.add_space(4.0);
     ui.label(egui::RichText::new(tr("effects.order_hint")).color(Tokens::text_dim()));
+    // An effect taken away keeps its values for Layer Effects (#4242).
+    if let Some(Change::Remove(i)) = &change {
+        if let Some((e, _)) = shape.effect_stack().get(*i) {
+            if let Some(kind) = crate::ui::layer_effects::Kind::ALL
+                .into_iter()
+                .find(|k| k.matches(e))
+            {
+                app.layer_fx_last.insert(kind, e.clone());
+            }
+        }
+    }
     if let Some(stack) = change.and_then(|c| changed_stack(&shape, c)) {
         let (effects, parked) = Shape::split_stack(stack);
         app.run(Command::SetEffectStack {

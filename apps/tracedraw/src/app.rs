@@ -1267,6 +1267,11 @@ pub struct App {
     /// The view each page of the drawing was last shown with in this
     /// window, so going back to a page shows it as it was left (#3434).
     pub page_views: std::collections::HashMap<PageId, crate::view::View>,
+    /// The values each Layer Effects entry was last given, so an effect
+    /// taken away with its × (or a new object's) starts again from them
+    /// instead of the defaults (#4242).
+    pub layer_fx_last:
+        std::collections::HashMap<crate::ui::layer_effects::Kind, tracedraw_core::live::Effect>,
     /// Set the view of Options > Display > View when a drawing opens
     /// with the next fit (a drawing just opened or made, #1134).
     pub open_view_pending: bool,
@@ -3381,6 +3386,7 @@ impl App {
             status_opens_options: None,
             fit_pending: true,
             page_views: Default::default(),
+            layer_fx_last: Default::default(),
             open_view_pending: true,
             units: Units::Millimeters,
             nudge_mm: 2.54,
@@ -12130,25 +12136,47 @@ impl App {
         {
             if let Some(id) = id {
                 self.multipage_activate(id);
+                // A page gone to that is not on screen comes into view
+                // at the same zoom (#4241): before, the view stayed and
+                // the page gone to could be out of sight.
+                if self.multipage && self.page == id && !self.page_on_screen() {
+                    self.centre_page_at_zoom();
+                }
             }
             return;
         }
         let Some(new) = id else {
             return;
         };
-        // The zoom stays: the page is shown as it was left, else at the
-        // same zoom, centred in the window; it was fitted to the window
-        // each time (#3434).
+        // The zoom stays: the page is shown where it was left, else
+        // centred in the window, always at the zoom in use; it was
+        // fitted to the window each time (#3434), and each page came
+        // back at the zoom it was left at, so the zoom kept changing
+        // from page to page (#4241).
         if new != self.page {
             self.page_views.insert(self.page, self.view);
         }
         self.page = new;
         self.selection.clear();
         self.selected_layers.clear();
-        match self.page_views.get(&new) {
-            Some(v) => self.view = *v,
+        match self.page_views.get(&new).copied() {
+            Some(v) if v.zoom == self.view.zoom => self.view = v,
+            Some(v) => {
+                let c = self.canvas_rect.center();
+                let mid = v.to_page(c);
+                let z = self.view.zoom;
+                self.view.origin = egui::pos2(c.x - mid.x as f32 * z, c.y + mid.y as f32 * z);
+            }
             None => self.centre_page_at_zoom(),
         }
+    }
+
+    /// Whether the current page shows in the window at all.
+    pub(crate) fn page_on_screen(&self) -> bool {
+        let r = self.page_rect();
+        let a = self.view.to_screen(tracedraw_core::geometry::Point::new(r.x0, r.y0));
+        let b = self.view.to_screen(tracedraw_core::geometry::Point::new(r.x1, r.y1));
+        egui::Rect::from_two_pos(a, b).intersects(self.canvas_rect)
     }
 
     /// Show the current page in the middle of the window at the zoom it

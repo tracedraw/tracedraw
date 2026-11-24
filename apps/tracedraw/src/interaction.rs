@@ -3298,6 +3298,11 @@ impl App {
                     self.text_set_caret_at(idx, mods.shift);
                 }
                 self.drag = Drag::TextSelect;
+            } else if self.begin_text_edit_at(p) {
+                // A drag that starts on a text not being edited goes into
+                // it and selects from the press (#4240): it started a new
+                // paragraph frame over the text.
+                self.drag = Drag::TextSelect;
             } else {
                 if self.text_edit.is_some() {
                     self.finish_text();
@@ -3336,33 +3341,46 @@ impl App {
             if self.edit_dimension_label_at(p) {
                 return;
             }
-            let hit = self.hit_test(p);
-            // A text inside a group or a grouped blend, warped by an
-            // envelope or a perspective on the group or not (#2169).
-            if hit.is_some_and(|id| self.edit_text_inside(id, p)) {
+            if self.begin_text_edit_at(p) {
                 return;
             }
-            match hit {
-                Some(id)
-                    if matches!(
-                        self.doc()
-                            .shape(id)
-                            .map(|(_, s)| matches!(s.kind, ShapeKind::Text { .. })),
-                        Ok(true)
-                    ) =>
-                {
-                    self.begin_text_edit(id);
-                    if let Some(idx) = self.text_hit_char(p) {
-                        self.text_set_caret_at(idx, false);
-                    }
-                }
-                // On a path's outline the text starts on the path.
-                _ if self.start_text_on_path_at(p) => {}
-                _ => {
-                    let p = self.snap_point(p);
-                    self.start_text(p, None);
-                }
+            // On a path's outline the text starts on the path.
+            if !self.start_text_on_path_at(p) {
+                let p = self.snap_point(p);
+                self.start_text(p, None);
             }
+        }
+    }
+
+    /// With the Text tool, editing begins in the text at `p` (an
+    /// artistic text or a paragraph frame, also inside a group, #2169),
+    /// the caret where `p` is. False when no text lies there.
+    fn begin_text_edit_at(&mut self, p: Point) -> bool {
+        let hit = self.hit_test(p);
+        // A text inside a group or a grouped blend, warped by an
+        // envelope or a perspective on the group or not (#2169).
+        if hit.is_some_and(|id| self.edit_text_inside(id, p)) {
+            return true;
+        }
+        match hit {
+            Some(id)
+                if matches!(
+                    self.doc()
+                        .shape(id)
+                        .map(|(_, s)| matches!(s.kind, ShapeKind::Text { .. })),
+                    Ok(true)
+                ) =>
+            {
+                if self.text_edit.as_ref().is_some_and(|t| t.shape != id) {
+                    self.finish_text();
+                }
+                self.begin_text_edit(id);
+                if let Some(idx) = self.text_hit_char(p) {
+                    self.text_set_caret_at(idx, false);
+                }
+                true
+            }
+            _ => false,
         }
     }
 
@@ -3807,7 +3825,9 @@ impl App {
         // stopped: the curve is selected, so the new line joins it, and
         // the next segment leaves along the mirror of the end's handle,
         // curving the preview (#630). A drag pulls a new handle instead.
-        if smooth
+        // The Curvature Pen goes on from an end node the same way, its
+        // curve running on through the points placed after it (#4245).
+        if (smooth || curvature)
             && self.curve.is_none()
             && (response.drag_started_by(PointerButton::Primary)
                 || response.clicked_by(PointerButton::Primary))
@@ -3816,11 +3836,21 @@ impl App {
                 if self.selection != [id] {
                     self.select(vec![id]);
                 }
-                self.curve = Some(CurveInProgress {
-                    nodes: vec![(end, handle)],
-                    smooth,
-                    dragging_handle: response.drag_started_by(PointerButton::Primary),
-                    ..Default::default()
+                self.curve = Some(if curvature {
+                    CurveInProgress {
+                        nodes: vec![(end, None)],
+                        bspline,
+                        curvature,
+                        spline_fixed: vec![false],
+                        ..Default::default()
+                    }
+                } else {
+                    CurveInProgress {
+                        nodes: vec![(end, handle)],
+                        smooth,
+                        dragging_handle: response.drag_started_by(PointerButton::Primary),
+                        ..Default::default()
+                    }
                 });
                 return;
             }
@@ -4394,6 +4424,14 @@ impl App {
                         Point::new(r.x0, r.y0),
                         Some(tracedraw_core::geometry::Size::new(r.width(), r.height())),
                     );
+                } else if (current - start).hypot() * self.view.zoom as f64 <= 3.0 {
+                    // A press held past a click's time with no movement is
+                    // a drag to the window: it goes into the text there, or
+                    // starts a text, as a click does (#4240).
+                    if !self.begin_text_edit_at(start) && !self.start_text_on_path_at(start) {
+                        let s = self.snap_point(start);
+                        self.start_text(s, None);
+                    }
                 }
             }
             // Objects let go on the Color Styles docker: a window makes

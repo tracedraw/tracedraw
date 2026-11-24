@@ -285,7 +285,9 @@ impl App {
     /// `reach` of it, where a click closes the curve.
     pub(crate) fn continuation_close_at(&self, p: Point, reach: f64) -> Option<Point> {
         let c = self.curve.as_ref()?;
-        if !c.smooth || c.bspline {
+        // The Pen and Bezier tools' lines, and the Curvature Pen's
+        // (#4245); not a B-spline's, whose points are not on its curve.
+        if !(c.curvature || (c.smooth && !c.bspline)) {
             return None;
         }
         let from = c.nodes.first()?.0;

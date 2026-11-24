@@ -437,6 +437,11 @@ pub struct Settings {
     /// in the full-screen preview (F9), white at first (#3930).
     #[serde(default = "default_preview_background")]
     pub preview_background: [u8; 3],
+    /// Options > Display > Full-screen preview: F9 shows the whole page
+    /// filling the screen instead of the drawing at the zoom it has in
+    /// the window (#4239). Off at first.
+    #[serde(default)]
+    pub preview_fit_page: bool,
     /// Document Setup > Layout > Margins: the four page margins linked,
     /// so changing one sets all four to it (#4030).
     #[serde(default)]
@@ -2507,6 +2512,7 @@ impl Default for Settings {
             selection_bar_mouse: false,
             preview_page_border: true,
             preview_background: default_preview_background(),
+            preview_fit_page: false,
             preview_background_custom: false,
             page_margins_linked: false,
             page_look: PageLook::default(),

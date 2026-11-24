@@ -60,17 +60,21 @@ pub enum DropAction {
     CopyFill,
     CopyOutline,
     CopyProperties,
+    /// The first selected object's Layer Effects go onto the object
+    /// under the drop (#4243).
+    CopyEffects,
     PlaceInside,
     Cancel,
 }
 
 impl DropAction {
-    pub const ALL: [DropAction; 7] = [
+    pub const ALL: [DropAction; 8] = [
         DropAction::Move,
         DropAction::Copy,
         DropAction::CopyFill,
         DropAction::CopyOutline,
         DropAction::CopyProperties,
+        DropAction::CopyEffects,
         DropAction::PlaceInside,
         DropAction::Cancel,
     ];
@@ -82,6 +86,7 @@ impl DropAction {
             DropAction::CopyFill => "drop.copy_fill_here",
             DropAction::CopyOutline => "drop.copy_outline_here",
             DropAction::CopyProperties => "drop.copy_all_properties",
+            DropAction::CopyEffects => "drop.copy_effects_here",
             DropAction::PlaceInside => "drop.place_inside",
             DropAction::Cancel => "drop.cancel",
         }
@@ -109,6 +114,7 @@ impl DropAction {
             DropAction::CopyFill
                 | DropAction::CopyOutline
                 | DropAction::CopyProperties
+                | DropAction::CopyEffects
                 | DropAction::PlaceInside
         )
     }
@@ -243,6 +249,11 @@ impl App {
                     self.copy_style_onto(target, action);
                 }
             }
+            DropAction::CopyEffects => {
+                if let Some(target) = menu.target {
+                    self.copy_layer_effects_onto(target);
+                }
+            }
             DropAction::PlaceInside => {
                 let Some(target) = menu.target else {
                     return;
@@ -327,6 +338,26 @@ impl App {
         };
         if let Err(e) = self.engine.run_batch(label, &cmds) {
             self.status = e.to_string();
+        }
+    }
+
+    /// Copy Effects Here (#4243): `target` takes the Layer Effects of the
+    /// first selected object, one undo step.
+    pub fn copy_layer_effects_onto(&mut self, target: ShapeId) {
+        let Some(first) = self.selected_shapes().first().cloned() else {
+            return;
+        };
+        let Some(t) = self.doc().find_shape(target).cloned() else {
+            return;
+        };
+        match crate::copy_effect::layer_effects_commands(&first, &[t]) {
+            None => self.status = crate::i18n::tr("status.no_effect_to_copy"),
+            Some(cmds) if !cmds.is_empty() => {
+                if let Err(e) = self.engine.run_batch("Copy Effect", &cmds) {
+                    self.status = e.to_string();
+                }
+            }
+            Some(_) => {}
         }
     }
 
@@ -525,6 +556,53 @@ mod tests {
         let before = app.doc().clone();
         app.drop_action(none, DropAction::CopyProperties);
         assert_eq!(*app.doc(), before);
+    }
+
+    /// Copy Effects Here gives the target the source's Layer Effects,
+    /// switched off ones too, in place of its own, and leaves its other
+    /// effects; Object > Copy Effect > Layer Effects From does the same
+    /// (#4243).
+    #[test]
+    fn copy_effects_here_gives_the_target_the_layer_effects() {
+        use crate::ui::layer_effects::Kind;
+        let mut app = App::headless();
+        let (a, b) = two_boxes(&mut app);
+        let c = app
+            .new_shape(ShapeKind::Rect {
+                rect: Rect::new(0.0, 80.0, 20.0, 100.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("c");
+        app.select(vec![a]);
+        let mut ht = Kind::Halftone.default_effect();
+        if let tracedraw_core::live::Effect::Halftone { size, .. } = &mut ht {
+            *size = 2.25;
+        }
+        let glow = Kind::OuterGlow.default_effect();
+        app.set_layer_effect_on(Kind::Halftone, true, &ht);
+        app.set_layer_effect_on(Kind::OuterGlow, true, &glow);
+        app.set_layer_effect_on(Kind::OuterGlow, false, &glow);
+        // The target has a blur of its own, which goes.
+        app.select(vec![b]);
+        app.set_layer_effect_on(Kind::GaussianBlur, true, &Kind::GaussianBlur.default_effect());
+        app.select(vec![a]);
+        let menu = DropMenu {
+            screen: egui::Pos2::ZERO,
+            offset: Vec2::new(55.0, 5.0),
+            target: Some(b),
+        };
+        app.drop_action(menu, DropAction::CopyEffects);
+        let stack = |app: &App, id| app.doc().find_shape(id).expect("shape").effect_stack();
+        assert_eq!(stack(&app, b), stack(&app, a));
+        assert_eq!(stack(&app, b), vec![(ht.clone(), true), (glow.clone(), false)]);
+        // One undo step.
+        app.undo();
+        assert!(stack(&app, b).iter().all(|(e, _)| Kind::GaussianBlur.matches(e)));
+        // The menu's Layer Effects From.
+        app.select(vec![c, a]);
+        app.copy_effect_from(a, crate::copy_effect::CopyKind::LayerEffects);
+        assert_eq!(stack(&app, c), stack(&app, a));
     }
 
     #[test]
