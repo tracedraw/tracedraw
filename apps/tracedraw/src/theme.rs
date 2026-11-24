@@ -1011,7 +1011,7 @@ pub fn bundled_font_definitions() -> egui::FontDefinitions {
 pub fn needs_system_font(code: &str) -> bool {
     matches!(
         code,
-        "zh-CN" | "zh-TW" | "ja" | "ar" | "hi" | "bn" | "lo" | "vi"
+        "zh-CN" | "zh-TW" | "ja" | "ar" | "hi" | "bn" | "lo" | "vi" | "eo"
     )
 }
 
@@ -1024,8 +1024,9 @@ pub fn ui_script_family(code: &str) -> Option<&'static str> {
         "zh-TW" => Some("Noto Sans TC"),
         "ja" => Some("Noto Sans JP"),
         "lo" => Some("Noto Sans Lao"),
-        // The bundled font lacks the Vietnamese letters with two marks.
-        "vi" => Some("Noto Sans"),
+        // The bundled font lacks the Vietnamese letters with two marks
+        // and the Esperanto ones with a circumflex or a breve.
+        "vi" | "eo" => Some("Noto Sans"),
         _ => None,
     }
 }
@@ -1112,8 +1113,9 @@ const UI_SCRIPT_FONTS: &[&[&str]] = &[
         "Leelawadee UI",
         "Saysettha OT",
     ],
-    // Vietnamese: the letters with two marks (ấ, ể, ợ and the like),
-    // which the bundled font lacks.
+    // Vietnamese and Esperanto: the letters with two marks (ấ, ể, ợ and
+    // the like) and with a circumflex or a breve (ĉ, ŝ, ŭ), which the
+    // bundled font lacks.
     &[
         "Noto Sans",
         "Segoe UI",
@@ -1248,6 +1250,28 @@ mod theme_tests {
             out.textures_delta.clear();
             let font = egui::FontId::proportional(14.0);
             for c in "Tiếng Việt ợ ể".chars().filter(|c| !c.is_whitespace()) {
+                assert!(ctx.fonts_mut(|f| f.has_glyph(&font, c)), "{c}");
+            }
+        }
+    }
+
+    /// The Esperanto interface shows its letters with a circumflex or a
+    /// breve when the system has a font for them (the bundled one has
+    /// none of them).
+    #[test]
+    fn esperanto_letters_have_an_interface_font() {
+        assert!(needs_system_font("eo"));
+        assert_eq!(ui_script_family("eo"), Some("Noto Sans"));
+        let eo = UI_SCRIPT_FONTS
+            .iter()
+            .find(|g| g.first() == Some(&"Noto Sans"))
+            .expect("a group of fonts with the Esperanto letters");
+        if tracedraw_text::fonts().first_face_data(eo).is_some() {
+            let ctx = ui_context();
+            let mut out = ctx.run_ui(Default::default(), |_| {});
+            out.textures_delta.clear();
+            let font = egui::FontId::proportional(14.0);
+            for c in "ĉĝĥĵŝŭĈĜĤĴŜŬ".chars() {
                 assert!(ctx.fonts_mut(|f| f.has_glyph(&font, c)), "{c}");
             }
         }

@@ -299,6 +299,7 @@ begin
   AddAppLanguage('cs', 'Čeština');
   AddAppLanguage('lo', 'ພາສາລາວ');
   AddAppLanguage('vi', 'Tiếng Việt');
+  AddAppLanguage('eo', 'Esperanto');
   SystemCode := AppLanguageForLangId(GetUILanguage);
   if SystemCode = '' then
     SystemCode := 'en';
