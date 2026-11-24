@@ -57,6 +57,9 @@ full, row-by-row status.
 - Clip frames inside clip frames: a click in the Objects docker on a content of the inner one, Ctrl+click on the inner one, Edit Contents from the right-click menu or the key all edit it inside the outer one, and finishing it goes back to editing the outer one; editing the inner one dropped the outer one's editing and left its contents loose on the page (#4110).
 - Tracing no longer stops TraceDraw on a machine with a font that closes an outline it never began: the letters of the installed fonts, read to redraw small print, came out as a path that could not be measured (#4119).
 - With the wheel set to scroll, Shift+wheel scrolls sideways on Windows too; the system already sends that turn sideways and it was turned back up and down (#4114).
+- Selection: a rectangle marquee takes a group when each of its shown objects lies inside it, as the freehand marquee does; a hidden object of the group far away kept it out (#4136).
+- Objects docker: a collapsed layer holding the selection shows a mark at the end of its row, with a tooltip, so the layer of a selected object or group is seen without opening it (#4135).
+- Colour palettes: in an RGB drawing a CMYK palette's swatch tooltip also gives the palette's own CMYK values, beside the RGB values the drawing applies, so the palette chosen is recognised (#4128).
 
 ## 0.51.1 (2026-11-23)
 

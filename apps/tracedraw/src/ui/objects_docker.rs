@@ -752,6 +752,22 @@ fn node_row(
     (a.clicked() || resp.clicked(), resp)
 }
 
+/// `s` is selected, or holds a selected object: one of a group's or a
+/// clip frame's own (#4135).
+fn holds_selection(selection: &[ShapeId], s: &Shape) -> bool {
+    if selection.contains(&s.id) {
+        return true;
+    }
+    match &s.kind {
+        ShapeKind::Group { children } => children.iter().any(|c| holds_selection(selection, c)),
+        ShapeKind::ClipFrame { frame, contents } => {
+            holds_selection(selection, frame)
+                || contents.iter().any(|c| holds_selection(selection, c))
+        }
+        _ => false,
+    }
+}
+
 /// A layer's row, then its objects when it is open.
 fn layer_rows(
     app: &App,
@@ -769,7 +785,28 @@ fn layer_rows(
         active: is_active,
         selected: is_selected,
     });
-    let resp = resp.rich_tip_with(|| format!("{}\n{}", layer.name, tr("docker.layer_row_desc")));
+    // A collapsed layer shows that it holds the selection: a mark at the
+    // end of its row, as its hidden rows would be highlighted (#4135).
+    let holds = !open && layer.shapes.iter().any(|s| holds_selection(&app.selection, s));
+    let resp = resp.rich_tip_with(|| {
+        let mut tip = format!("{}\n{}", layer.name, tr("docker.layer_row_desc"));
+        if holds {
+            tip.push('\n');
+            tip.push_str(&tr("docker.layer_holds_selection"));
+        }
+        tip
+    });
+    if holds {
+        let c = Pos2::new(rect.right() - 10.0, rect.center().y);
+        let mark = Rect::from_center_size(c, Vec2::splat(7.0));
+        ui.painter().rect_filled(mark, 1.0, Tokens::ACCENT);
+        ui.painter().rect_stroke(
+            mark,
+            1.0,
+            Stroke::new(1.0, crate::theme::Tokens::selected_row_line()),
+            egui::epaint::StrokeKind::Outside,
+        );
+    }
     let base = egui::Id::new(("objects_layer", layer.id.raw()));
     let mut x = rect.left() + 3.0 + INDENT;
     let (ar, a) = hot(ui, rect, x, 14.0, base.with("arrow"));
@@ -4677,6 +4714,27 @@ pub(crate) mod tests {
             draw(&mut app);
         }
         assert_eq!(app.selection, vec![id]);
+    }
+
+    /// A collapsed layer marks that it holds the selection, a group
+    /// selected in it or an object inside one of its groups (#4135).
+    #[test]
+    fn a_collapsed_layer_shows_it_holds_the_selection() {
+        let mut app = App::headless();
+        let a = app.new_shape(rect_kind()).expect("a");
+        let b = app.new_shape(rect_kind()).expect("b");
+        app.select(vec![a, b]);
+        app.group_selection();
+        let g = app.selection[0];
+        let layer = app.doc().pages[0].layers[0].id;
+        let shapes = app.doc().pages[0].layers[0].shapes.clone();
+        let holds = |sel: &[ShapeId]| shapes.iter().any(|s| holds_selection(sel, s));
+        assert!(holds(&[g]));
+        assert!(holds(&[b]), "an object inside a group");
+        assert!(!holds(&[]));
+        app.objects_collapsed.insert(layer);
+        draw(&mut app);
+        assert_eq!(app.selection, vec![g]);
     }
 
     #[test]
