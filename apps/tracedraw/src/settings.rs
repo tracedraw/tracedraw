@@ -2170,6 +2170,9 @@ pub struct ViewPrefs {
     pub mode: String,
     /// The grid page shows lines per unit instead of their spacing.
     pub grid_frequency: bool,
+    /// View > Multipage View: kept on, the drawings opened next show
+    /// every page too, instead of only the first (#3724).
+    pub multipage: bool,
 }
 
 impl Default for ViewPrefs {
@@ -2190,6 +2193,7 @@ impl Default for ViewPrefs {
             rasterize_complex_effects: true,
             mode: "enhanced".into(),
             grid_frequency: false,
+            multipage: false,
         }
     }
 }

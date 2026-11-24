@@ -4711,6 +4711,7 @@ impl App {
             rasterize_complex_effects: self.rasterize_complex_effects,
             mode: self.view_mode.id().into(),
             grid_frequency: self.grid_frequency,
+            multipage: self.multipage,
         }
     }
 
@@ -4730,6 +4731,10 @@ impl App {
         self.rasterize_complex_effects = v.rasterize_complex_effects;
         self.view_mode = ViewMode::from_id(&v.mode);
         self.grid_frequency = v.grid_frequency;
+        self.multipage = v.multipage;
+        if v.multipage {
+            self.page_sorter = false;
+        }
     }
 
     /// Dockers' own choices now (see [`crate::settings::PanelPrefs`]).
@@ -13828,6 +13833,8 @@ mod tests {
         use crate::ui::bars::{move_bar, Bar, Dock};
         assert_eq!(app.settings.bars.dock(Bar::Palette), Dock::Bottom);
         move_bar(&mut app, Bar::Palette, Dock::Right, None);
+        // The Multipage View stays on for the drawings opened next (#3724).
+        app.set_multipage(true);
         app.sync_settings();
         let json = serde_json::to_string(&app.settings).expect("json");
         let saved: crate::settings::Settings = serde_json::from_str(&json).expect("read back");
@@ -13840,6 +13847,7 @@ mod tests {
         assert!(next.eraser_square);
         assert!(next.show_grid && !next.show_page_border);
         assert_eq!(next.view_mode, ViewMode::Wireframe);
+        assert!(next.multipage);
         assert!(next.snap.dynamic_guides && next.snap.off);
         assert_eq!(next.settings.snap.dynamic.angles, vec![30.0, 60.0]);
         assert!(next.settings.snap.align.each_object);
