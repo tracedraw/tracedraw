@@ -3186,6 +3186,13 @@ fn drag_rows(
         return hold_menu;
     }
     if let Some((drop, _, _)) = target {
+        // A content's row of a PowerClip not being edited, dragged out
+        // straight away: the contents are taken out for editing with it
+        // chosen, as a click on its row does, and then it is dropped, so
+        // one drag frees it with no click first (#4061).
+        if app.clip_frame_edit.is_none() && !app.doc().ancestors(dragged).is_empty() {
+            select_clip_content(app, dragged);
+        }
         let ids = dragged_objects(app, dragged);
         drop_rows(app, &ids, drop);
     }
@@ -5752,6 +5759,36 @@ mod drag_tests {
         for (x, y) in [(now.x0, drawn.x0), (now.y0, drawn.y0), (now.x1, drawn.x1), (now.y1, drawn.y1)] {
             assert!((x - y).abs() < 1e-6, "{now:?} {drawn:?}");
         }
+    }
+
+    /// #4061: a content's row dragged onto the layer's row frees it from
+    /// the PowerClip with no click on it first; the other contents stay
+    /// inside.
+    #[test]
+    fn a_content_row_drags_out_of_a_powerclip_without_a_click_first() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        let a = app.new_shape(rect_kind()).expect("a");
+        let b = app.new_shape(rect_kind()).expect("b");
+        let c = app.new_shape(rect_kind()).expect("c");
+        clip_rows(&mut app, &[b, c], a);
+        app.select(Vec::new());
+        frame(&ctx, &mut app, Vec::new());
+        frame(&ctx, &mut app, Vec::new());
+        assert!(app.clip_frame_edit.is_none());
+        let rc = object_row(&ctx, c);
+        let layer = app.active_layer().expect("layer");
+        let rl = layer_row(&ctx, layer);
+        drag(&ctx, &mut app, rc.center(), rl.center());
+        if app.clip_frame_edit.is_some() {
+            app.finish_clip_frame_edit();
+        }
+        let contents = match &app.doc().find_shape(a).expect("a").kind {
+            ShapeKind::ClipFrame { contents, .. } => contents.iter().map(|s| s.id).collect::<Vec<_>>(),
+            other => panic!("{other:?}"),
+        };
+        assert_eq!(contents, [b]);
+        assert!(app.doc().shape(c).is_ok(), "c on the layer, free");
     }
 
     /// PowerClips in the list (#3053): a row let go in the middle of

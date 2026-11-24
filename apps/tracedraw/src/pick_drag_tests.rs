@@ -5407,6 +5407,60 @@ fn bspline_preview_is_the_curve_that_is_made() {
     assert_eq!(last_path(&app), bspline_path(&controls, false));
 }
 
+/// #4087, #4076: while a B-spline is drawn, Space places a control
+/// point where the pointer is and the curve goes on (the Pick tool is not
+/// chosen); a right click places a fixed point there, with no context
+/// menu; a press that drifted into a drag does not hold back the next
+/// click.
+#[test]
+fn bspline_space_and_right_click_place_points() {
+    let (ctx, mut app, _) = setup();
+    app.select(Vec::new());
+    app.set_tool(Tool::BSpline);
+    let none = Modifiers::NONE;
+    let count = |app: &App| app.curve.as_ref().map_or(0, |c| c.nodes.len());
+    let at = app.view.to_screen(Point::new(100.0, 150.0));
+    click_at(&ctx, &mut app, at, none);
+    assert_eq!(count(&app), 1);
+    // Space with the pointer elsewhere: a second point, still drawing.
+    let at = app.view.to_screen(Point::new(140.0, 190.0));
+    frame(&ctx, &mut app, vec![Event::PointerMoved(at)], none);
+    frame(&ctx, &mut app, vec![key(egui::Key::Space, none)], none);
+    frame(&ctx, &mut app, vec![key_up(egui::Key::Space, none)], none);
+    assert_eq!(app.tool, Tool::BSpline, "Space picked no tool");
+    assert_eq!(count(&app), 2, "Space placed a point");
+    assert!(!app.curve.as_ref().expect("drawing").spline_fixed[1]);
+    // Space again on the same spot places no second point there.
+    frame(&ctx, &mut app, vec![key(egui::Key::Space, none)], none);
+    frame(&ctx, &mut app, vec![key_up(egui::Key::Space, none)], none);
+    assert_eq!(count(&app), 2);
+    // A right click: a fixed point, no context menu.
+    let at = app.view.to_screen(Point::new(180.0, 160.0));
+    frame(&ctx, &mut app, vec![Event::PointerMoved(at)], none);
+    frame(&ctx, &mut app, vec![button(at, true, PointerButton::Secondary, none)], none);
+    frame(&ctx, &mut app, vec![button(at, false, PointerButton::Secondary, none)], none);
+    for _ in 0..20 {
+        frame(&ctx, &mut app, Vec::new(), none);
+    }
+    assert_eq!(count(&app), 3, "the right click placed a point");
+    assert!(app.curve.as_ref().expect("drawing").spline_fixed[2], "fixed");
+    assert!(app.context_menu.is_none(), "no context menu");
+    // A press that drifts: a point; the click after it: one more.
+    let from = app.view.to_screen(Point::new(200.0, 140.0));
+    drag(&ctx, &mut app, from, from + egui::vec2(8.0, 0.0), none, Vec::new());
+    for _ in 0..20 {
+        frame(&ctx, &mut app, Vec::new(), none);
+    }
+    let n = count(&app);
+    app.curve.as_mut().expect("drawing").dragging_handle = true;
+    let at = app.view.to_screen(Point::new(230.0, 170.0));
+    click_at(&ctx, &mut app, at, none);
+    assert_eq!(count(&app), n + 1, "the click after a drag placed its point");
+    // Ctrl+Z takes the points back one at a time.
+    app.undo();
+    assert_eq!(count(&app), n);
+}
+
 /// The B-Spline tool: a point placed with C or V held is fixed, the
 /// curve passing through it with a corner, in the preview and in the
 /// curve made, which keeps the flags for the Shape tool (#2060).
@@ -8036,7 +8090,8 @@ fn a_freehand_click_on_the_first_node_closes_the_line() {
 }
 
 /// Space ends the curve being drawn with any of the line tools, as a
-/// right click or Enter does, with the nodes placed so far (d#2595).
+/// right click or Enter does, with the nodes placed so far (d#2595). Not
+/// the B-spline tool, where Space places a point (#4087; Enter ends it).
 #[test]
 fn space_ends_the_curve_of_every_line_tool() {
     for tool in [
@@ -8044,7 +8099,6 @@ fn space_ends_the_curve_of_every_line_tool() {
         Tool::Freehand,
         Tool::Pen,
         Tool::Polyline,
-        Tool::BSpline,
     ] {
         let (ctx, mut app, _id) = setup();
         app.set_tool(tool);
@@ -21050,10 +21104,8 @@ fn picture_dialogs(app: &App) -> Vec<(&'static str, crate::ui::dialogs::Dialog)>
         ("black_and_white", Dialog::BitmapBw(Default::default())),
         ("duotone", Dialog::BitmapDuotone(Default::default())),
         ("paletted", Dialog::BitmapPaletted(Default::default())),
-        (
-            "gaussian_blur",
-            Dialog::Effect(crate::ui::effect_dialog::EffectState::new("gaussian_blur")),
-        ),
+        // Gaussian Blur opens as the compact window, its setting alone
+        // (#4091), so it is not here.
         (
             "image_adjustments",
             Dialog::Effect(crate::ui::effect_dialog::EffectState::new(

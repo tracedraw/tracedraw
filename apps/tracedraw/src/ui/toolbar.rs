@@ -2321,6 +2321,8 @@ fn object_properties(app: &mut App, ui: &mut Ui) {
         return;
     }
     crate::ui::propbar::object_bar(app, ui);
+    // The radius of the object's Gaussian Blur, when it has one (#4091).
+    crate::blur_bar::blur_part(app, ui);
     // The nudge distances, at hand while objects are moved with the
     // arrow keys (#2608).
     vsep(ui);
@@ -3602,6 +3604,14 @@ fn interactive_fill_bar(app: &mut App, ui: &mut Ui, shapes: &[tracedraw_core::do
         Option<f64>,
     );
     let mut node_edit: Option<NodeEdit> = None;
+    // Colour points (#3947): the chosen point and its spread; an edit of
+    // the spread, or Delete Point, goes in after the bar.
+    let chosen_point = (shapes.len() == 1)
+        .then(|| app.selected_color_point())
+        .flatten();
+    let point_spread = app.color_point_spread();
+    let mut spread_edit: Option<f64> = None;
+    let mut delete_point = false;
     for (i, key) in [
         "docker.fill_none",
         "docker.fill_uniform",
@@ -3713,7 +3723,74 @@ fn interactive_fill_bar(app: &mut App, ui: &mut Ui, shapes: &[tracedraw_core::do
                 }
             }
             vsep(ui);
-            if let Some(i) = picked_node.filter(|i| *i < f.stops.len()) {
+            if f.kind == FountainKind::Points && !mix.has(FillField::FountainKind) {
+                // Colour points, grouped: the chosen point's colour,
+                // transparency and spread, then Delete Point; the angle
+                // and the edge pad, which these do not use, are not shown
+                // (#3947).
+                match chosen_point.filter(|(_, i)| *i < f.stops.len()) {
+                    Some((_, i)) => {
+                        let st = f.stops[i];
+                        ui.label(
+                            egui::RichText::new(tr("toolbar.color_point"))
+                                .color(Tokens::text_dim())
+                                .size(11.0),
+                        );
+                        let mut c = st.color;
+                        if crate::ui::color_picker::color_button(ui, &mut c) {
+                            node_edit = Some((i, Some(c), None, None));
+                        }
+                        let mut tr_pct = ((1.0 - st.opacity) * 100.0).round() as f64;
+                        if dim_labelled(ui, "toolbar.node_transparency", |ui| {
+                            ui.add(
+                                crate::ui::field::NumField::new(&mut tr_pct)
+                                    .speed(1.0)
+                                    .range(0.0..=100.0)
+                                    .suffix(" %"),
+                            )
+                        })
+                        .changed()
+                        {
+                            node_edit = Some((i, None, Some(1.0 - tr_pct as f32 / 100.0), None));
+                        }
+                        let mut pct = point_spread.unwrap_or(1.0) * 100.0;
+                        if dim_labelled_as(ui, "toolbar.point_spread", "toolbar.point_spread_tip", |ui| {
+                            ui.add(
+                                crate::ui::field::NumField::new(&mut pct)
+                                    .speed(1.0)
+                                    .range(
+                                        tracedraw_core::style::Fountain::MIN_SPREAD * 100.0
+                                            ..=tracedraw_core::style::Fountain::MAX_SPREAD * 100.0,
+                                    )
+                                    .fixed_decimals(0)
+                                    .suffix(" %"),
+                            )
+                        })
+                        .changed()
+                        {
+                            spread_edit = Some(pct / 100.0);
+                        }
+                        vsep(ui);
+                        if ui
+                            .button(tr("toolbar.delete_color_point"))
+                            .rich_tip(crate::ui::tips::pair(
+                                "toolbar.delete_color_point",
+                                "toolbar.delete_color_point_tip",
+                            ))
+                            .clicked()
+                        {
+                            delete_point = true;
+                        }
+                    }
+                    None => {
+                        ui.label(
+                            egui::RichText::new(tr("toolbar.color_points_hint"))
+                                .color(Tokens::text_dim())
+                                .size(11.0),
+                        );
+                    }
+                }
+            } else if let Some(i) = picked_node.filter(|i| *i < f.stops.len()) {
                 // The picked node: its colour, transparency and place on
                 // the line (the start and the end stay at the ends).
                 let n = f.stops.len();
@@ -3760,34 +3837,36 @@ fn interactive_fill_bar(app: &mut App, ui: &mut Ui, shapes: &[tracedraw_core::do
                     }
                 }
             }
-            if dim_labelled_as(ui, "toolbar.angle", "toolbar.fill_angle_desc", |ui| {
-                ui.add(
-                    crate::ui::field::NumField::new(&mut f.angle)
-                        .speed(1.0)
-                        .range(-360.0..=360.0)
-                        .fixed_decimals(1)
-                        .suffix("°")
-                        .mixed(mix.has(FillField::Angle)),
-                )
-            })
-            .changed()
-            {
-                set(FillField::Angle, &mut changed);
-            }
-            let mut pad = f.edge_pad * 100.0;
-            if dim_labelled(ui, "docker.edge_pad", |ui| {
-                ui.add(
-                    crate::ui::field::NumField::new(&mut pad)
-                        .speed(1.0)
-                        .range(0.0..=49.0)
-                        .suffix(" %")
-                        .mixed(mix.has(FillField::EdgePad)),
-                )
-            })
-            .changed()
-            {
-                f.edge_pad = pad / 100.0;
-                set(FillField::EdgePad, &mut changed);
+            if f.kind != FountainKind::Points {
+                if dim_labelled_as(ui, "toolbar.angle", "toolbar.fill_angle_desc", |ui| {
+                    ui.add(
+                        crate::ui::field::NumField::new(&mut f.angle)
+                            .speed(1.0)
+                            .range(-360.0..=360.0)
+                            .fixed_decimals(1)
+                            .suffix("°")
+                            .mixed(mix.has(FillField::Angle)),
+                    )
+                })
+                .changed()
+                {
+                    set(FillField::Angle, &mut changed);
+                }
+                let mut pad = f.edge_pad * 100.0;
+                if dim_labelled(ui, "docker.edge_pad", |ui| {
+                    ui.add(
+                        crate::ui::field::NumField::new(&mut pad)
+                            .speed(1.0)
+                            .range(0.0..=49.0)
+                            .suffix(" %")
+                            .mixed(mix.has(FillField::EdgePad)),
+                    )
+                })
+                .changed()
+                {
+                    f.edge_pad = pad / 100.0;
+                    set(FillField::EdgePad, &mut changed);
+                }
             }
         }
         _ => {}
@@ -3807,6 +3886,12 @@ fn interactive_fill_bar(app: &mut App, ui: &mut Ui, shapes: &[tracedraw_core::do
         }
     } else if let Some((i, c, o, p)) = node_edit {
         app.set_fountain_node(i, c, o, p, false);
+    }
+    if let Some(v) = spread_edit {
+        app.set_color_point_spread(v);
+    }
+    if delete_point {
+        app.delete_color_point();
     }
     vsep(ui);
     // Copy Fill: the next click picks the object whose fill the

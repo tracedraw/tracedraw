@@ -2090,6 +2090,13 @@ impl App {
             self.end_zoom_one_shot();
             return;
         }
+        // A right click while a B-spline is drawn places a fixed point
+        // there, where the curve turns a sharp corner, and the curve goes
+        // on (#4076); no context menu then.
+        if response.secondary_clicked() && self.curve.as_ref().is_some_and(|c| c.bspline) {
+            self.bspline_point_at(p, true);
+            return;
+        }
         // Right click: context menu (drawn by the UI at this position);
         // none while a transform is dragged.
         if response.secondary_clicked()
@@ -3508,6 +3515,34 @@ impl App {
     /// (snapped and constrained as a click there would be), for Space to
     /// end the line there (#3192). Nothing when no line has begun, the
     /// pointer is off the drawing or on the last node already.
+    /// B-Spline (and Curvature Pen) while a curve is drawn: a control
+    /// point at `at` (snapped as a click would be), the curve going on
+    /// from it; `fixed` makes it a point the curve passes through with a
+    /// corner. On the last point again, only `fixed` changes it. Space
+    /// places a smooth point at the pointer (#4087, #4076), a right click
+    /// a fixed one (#4076). One step Ctrl+Z takes back.
+    pub(crate) fn bspline_point_at(&mut self, at: Point, fixed: bool) {
+        if !self.curve.as_ref().is_some_and(|c| c.bspline && !c.nodes.is_empty()) {
+            return;
+        }
+        let q = self.curve_point(self.snap_point(at), false);
+        let again = self.curve.as_ref().is_some_and(|c| c.on_last_control(q));
+        if again && !fixed {
+            return;
+        }
+        self.curve_step();
+        if let Some(c) = self.curve.as_mut() {
+            if !again {
+                c.nodes.push((q, None));
+            }
+            c.spline_fixed.resize(c.nodes.len(), false);
+            if let Some(f) = c.spline_fixed.last_mut() {
+                *f = fixed;
+            }
+            c.dragging_handle = false;
+        }
+    }
+
     pub(crate) fn freehand_node_at_pointer(&mut self, mods: Modifiers) {
         let Some(at) = self.pointer_page else {
             return;
@@ -3780,7 +3815,11 @@ impl App {
             // A B-Spline point on the last one is not placed twice: the
             // curve would bend at its end where the preview showed none.
             let again = bspline && c.on_last_control(p);
-            if (drag || !c.dragging_handle) && !again {
+            // A B-Spline point has no handle to pull, so a press that
+            // drifted into a drag never holds back the next click: that
+            // click was lost when the drag's release did not reach here
+            // (#4076).
+            if (drag || !c.dragging_handle || bspline) && !again {
                 c.nodes.push((p, None));
                 // C or V held: a fixed point, which the curve passes
                 // through with a corner (#2060).
@@ -3799,7 +3838,7 @@ impl App {
                     }
                 }
             }
-            c.dragging_handle = drag;
+            c.dragging_handle = drag && !bspline;
             c.alt_from = None;
             if self.tool == Tool::TwoPointLine && c.nodes.len() == 2 {
                 self.finish_curve();
@@ -4286,9 +4325,8 @@ impl App {
             Drag::Freehand { points } if self.tool == Tool::Eraser => self.erase_along(&points),
             Drag::Freehand { points } if self.tool == Tool::Knife => self.knife_cut(&points),
             Drag::Freehand { points } if self.tool == Tool::Join => self.join_along(&points),
-            Drag::Freehand { .. } if self.tool == Tool::ShapeBuilder => {
-                let remove = self.builder.remove;
-                self.builder_finish(remove);
+            Drag::Freehand { points } if self.tool == Tool::ShapeBuilder => {
+                self.builder_drag_end(&points);
             }
             Drag::Freehand { points } if self.tool == Tool::SegmentDelete => {
                 // A click that slipped into a little stroke reaching
@@ -4511,8 +4549,12 @@ impl App {
                 let tol = self.settings.curves.freehand_tolerance_px() / self.view.zoom as f64;
                 let c = self.settings.curves;
                 let px = 1.0 / self.view.zoom as f64;
+                // High smoothing evens the drawn points out first (#4068).
+                let smoothed = c
+                    .freehand_presmooth_px()
+                    .map(|sigma| crate::tools2::smooth_stroke(&points, sigma * px));
                 if let Some(path) = crate::tools2::freehand_path(
-                    &points,
+                    smoothed.as_deref().unwrap_or(&points),
                     tol,
                     c.corner_turn_deg(),
                     (c.straight_threshold > 0)
@@ -5790,6 +5832,14 @@ impl App {
             }
             self.finish_curve();
         }
+        // Space while a B-spline is drawn: a control point where the
+        // pointer is, and the curve goes on (#4087); it neither ends the
+        // curve nor picks the Pick tool then.
+        if pressed(Key::Space, Modifiers::NONE) && self.curve.as_ref().is_some_and(|c| c.bspline) {
+            if let Some(at) = self.pointer_page {
+                self.bspline_point_at(at, false);
+            }
+        }
         // Space finishes a Bezier curve, or a Freehand line of clicks
         // (#2339), too (then, as the Pick tool's key, it switches to Pick).
         if pressed(Key::Space, Modifiers::NONE)
@@ -6004,7 +6054,7 @@ impl App {
                         let drop_key = drop_key
                             || (self.curve.as_ref().is_some_and(|c| c.bspline)
                                 && mods.is_none()
-                                && matches!(k, Key::C | Key::V));
+                                && matches!(k, Key::C | Key::V | Key::Space));
                         // C while a shape is dragged leaves copies of it.
                         let drop_key = drop_key
                             || (self.trail_key_busy()

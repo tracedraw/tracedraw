@@ -4917,6 +4917,23 @@ pub fn draw_effect_nodes(app: &App, painter: &Painter) {
                 }
             }
         }
+        // The chosen colour point's spread: a ring as far as its colour
+        // reaches, with a handle on it to drag (#3947).
+        if let Some((_, i)) = app.selected_color_point().filter(|(id, _)| *id == s.id) {
+            if let Some((at, r, h)) = crate::color_points::spread_ring(s, i) {
+                let c = app.view.to_screen(at);
+                let rs = r as f32 * app.view.zoom;
+                painter.circle_stroke(c, rs, egui::Stroke::new(1.0, blue));
+                let k = crate::color_points::SPREAD_HANDLE_BASE + i;
+                let held = app.effect_node_drag == Some((s.id, k));
+                painter.circle(
+                    app.view.to_screen(h),
+                    4.0,
+                    if held { blue } else { egui::Color32::WHITE },
+                    egui::Stroke::new(1.0, blue),
+                );
+            }
+        }
         // Every chosen mesh node shows filled (discussion #2387).
         let chosen: Vec<usize> = app
             .selected_mesh_nodes()

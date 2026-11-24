@@ -774,6 +774,16 @@ impl App {
                 );
             }
         }
+        // The chosen colour point's spread handle, on its ring (#3947).
+        if let Some((id, i)) = self.selected_color_point().filter(|_| !envelope_tool) {
+            if let Some((_, _, h)) = self
+                .doc()
+                .find_shape(id)
+                .and_then(|s| crate::color_points::spread_ring(s, i))
+            {
+                points.push(((id, crate::color_points::SPREAD_HANDLE_BASE + i), h));
+            }
+        }
         nearest(points)
     }
 
@@ -922,6 +932,28 @@ impl App {
         let Some(s) = self.doc().find_shape(id).cloned() else {
             return;
         };
+        // A colour point's spread handle: the spread follows the
+        // pointer's distance from the point, one undo step (#3947).
+        if let Some(i) = crate::color_points::spread_handle_of(index) {
+            if let Some((at, _, _)) = crate::color_points::spread_ring(&s, i) {
+                use tracedraw_core::geometry::Shape as _;
+                let b = s.page_path().bounding_box();
+                let unit = crate::color_points::spread_radius(b, 1.0).max(1e-9);
+                let spread = ((p + self.effect_node_grab) - at).hypot() / unit;
+                if let Some(cmd) = self.spread_color_point(id, i, spread) {
+                    if self.effect_node_stepped && self.engine.undo_label() == Some("Edit Effect")
+                    {
+                        let _ = self.engine.undo();
+                    }
+                    self.effect_node_stepped = true;
+                    if let Err(e) = self.engine.run_batch("Edit Effect", &[cmd]) {
+                        self.status = e.to_string();
+                    }
+                }
+            }
+            self.drag = Drag::Node { last: p };
+            return;
+        }
         let Some(at) = effect_point(&s, index) else {
             return;
         };
@@ -1113,6 +1145,9 @@ pub fn mesh_handle_points(s: &Shape, i: usize) -> Vec<(usize, Point)> {
 /// Where effect node `index` of `s` is on the page: a perspective
 /// corner, a mesh node or a mesh node's handle.
 pub fn effect_point(s: &Shape, index: usize) -> Option<Point> {
+    if let Some(i) = crate::color_points::spread_handle_of(index) {
+        return crate::color_points::spread_ring(s, i).map(|(_, _, h)| h);
+    }
     if let Some((i, h)) = crate::mesh_tool::mesh_handle_of(index) {
         let Fill::Mesh(m) = &s.fill else {
             return None;

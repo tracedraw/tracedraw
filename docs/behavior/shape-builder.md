@@ -32,15 +32,27 @@ release. On release, in one undo step ("Shape Builder"):
   object left with nothing is deleted;
 - the objects left and the new one are selected, to go on building.
 
+Open lines among the selection (#3814) cut the parts too; the stretches
+of a line that run through the inside of the new object (the lines that
+divided the parts merged) are removed from it, so the new object has no
+line across it; the rest of each line stays and stays selected, a line
+with nothing left is deleted (#4079,
+`shape_builder::line_outside`, `a_grid_of_open_lines_makes_its_cells_into_parts`).
+
 With Alt held during the drag ("Shape Builder Delete") the parts are cut
-out of the objects and nothing new is made
+out of the objects and nothing new is made; with lines alone selected,
+an Alt drag removes every segment of the lines it crosses, as far as the
+nearest crossings with the other selected lines, as Segment Delete does
+(only the selected objects; #4079, `alt_deletes_the_segments_of_lines`)
 (`shape_builder::tests::a_drag_merges_the_parts_it_crossed_into_a_new_object`,
 `alt_takes_the_parts_away`).
 
 ## Click
 
 A click on a part does what a drag over that part alone does: the part
-becomes an object of its own (with Alt, it goes). A click where there is
+becomes an object of its own (with Alt, it goes). Alt and a click on an
+outline of the selection (within 5 screen pixels) removes its segment
+between the nearest crossings, as Segment Delete does (#4079). A click where there is
 no part, or with nothing the tool can cut selected, selects as the Pick
 tool does; with nothing usable selected after it, the status bar asks to
 select the overlapping objects first.

@@ -1521,6 +1521,22 @@ stand-in next to each missing family: "Arial (Liberation Sans)".
   `0.35 size` above the baseline; the advance grows to at least
   `1.3 size`.
 
+## Text height and sorted lines
+
+- Text > Text Height... (#4094, `text_height.rs`): the size typed as
+  the height of the capitals on the page, mm in the model: the outline
+  of an H in the first character's font and size (an x when the text
+  has no capital letter), times the object's vertical scale. Every
+  span's `size_pt` and `baseline_shift_pt` are multiplied by
+  `wanted / measured`; one undo step for all the selected texts.
+- Text > Sort Lines (#4078, `quick_commands.rs`): A to Z, Z to A
+  (lower-cased, runs of digits compared by value), or by the first
+  number of each line (an optional minus sign before it, a decimal part
+  after a point or a comma), smallest or largest first; lines without
+  a number after the others, blank lines last, the sort stable. Lines
+  are split at `\n`; each keeps its spans, so its formatting and its
+  paragraph format go with it. No undo step when no line moves.
+
 ## Checks
 
 - Character styles (#1209):

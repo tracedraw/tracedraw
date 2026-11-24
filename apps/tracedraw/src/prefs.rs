@@ -1316,9 +1316,25 @@ impl CurvePrefs {
     }
 
     /// The simplification tolerance of a freehand stroke in screen
-    /// pixels: 0.2 at no smoothing, 1.3 at the default 50, 2.4 at 100.
+    /// pixels: 0.2 at no smoothing, 1.3 at the default 50, then faster
+    /// up to 4 at 100, where the stroke is fitted with long smooth
+    /// curves (#4068; it stopped at 2.4, still showing the hand's
+    /// wobbles at the top of the scale).
     pub fn freehand_tolerance_px(&self) -> f64 {
-        0.2 + f64::from(self.smoothing.min(100)) / 100.0 * 2.2
+        let s = f64::from(self.smoothing.min(100));
+        if s <= 50.0 {
+            0.2 + s / 100.0 * 2.2
+        } else {
+            1.3 + (s - 50.0) / 50.0 * 2.7
+        }
+    }
+
+    /// Above 50, how far (screen pixels, the spread of a Gaussian along
+    /// the stroke) the drawn points are evened out before the stroke is
+    /// fitted: 0 up to 50, 6 at 100 (#4068). `None` when they are not.
+    pub fn freehand_presmooth_px(&self) -> Option<f64> {
+        let s = f64::from(self.smoothing.min(100));
+        (s > 50.0).then(|| (s - 50.0) / 50.0 * 6.0)
     }
 
     /// The turn, degrees, past which a freehand node is a cusp; `None`

@@ -276,6 +276,11 @@ over its settings), fills the window with the sheets exactly as Print
 sends them: the imposition, the marks, Mirror and Invert, built by the
 same function (`export::print_sheets`).
 
+- Print sends the job and leaves the preview open, so pages or sheets
+  can be sent one at a time (to collate by hand); Print and Close,
+  beside it, sends the job and closes the preview (#4072). Print This
+  Sheet leaves it open too.
+
 - The printer's unprintable edge (#1924): with a printer chosen (not a
   file), the strip along each side of the sheet that the printer cannot
   print on, its hard margins as the system reports them, is shaded

@@ -427,6 +427,10 @@ thread_local! {
     /// next (#2504).
     static PROPERTIES_OF: std::cell::RefCell<Option<String>> =
         const { std::cell::RefCell::new(None) };
+    /// The Customization pages are open this frame: a click on a menu
+    /// row picks its command in the Commands list instead of running it
+    /// (#4088).
+    static PICK_ROWS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     /// Each drawn row's place, for the tests.
     #[cfg(test)]
     pub(crate) static ROWS: std::cell::RefCell<Vec<(String, egui::Rect)>> =
@@ -453,6 +457,22 @@ fn row_properties(ui: &mut Ui, r: &egui::Response, id: &str, enabled: bool) {
     }
 }
 
+/// A click on a menu row: true when its command is to run. While the
+/// Customization pages are open the click picks the row's command in the
+/// Commands list (with its Shortcut Keys tab) instead, as a click on a
+/// bar's button does (#4088, #3890).
+fn row_clicked(ui: &Ui, r: &egui::Response, id: &str) -> bool {
+    if !r.clicked() {
+        return false;
+    }
+    ui.close();
+    if PICK_ROWS.with(std::cell::Cell::get) {
+        PROPERTIES_OF.with(|p| *p.borrow_mut() = Some(id.to_string()));
+        return false;
+    }
+    true
+}
+
 /// Opens the properties a right-click on a menu row asked for.
 pub(crate) fn open_requested_properties(app: &mut App) {
     if let Some(id) = PROPERTIES_OF.with(|p| p.borrow_mut().take()) {
@@ -472,6 +492,7 @@ pub(crate) fn open_command_properties(app: &mut App, id: &str) {
     ed.capture = None;
     ed.note = None;
     ed.confirm_reset_all = false;
+    ed.scroll_to_selected = true;
     app.open_options_page(crate::ui::dialogs::OptionsPage::Commands);
 }
 
@@ -545,12 +566,7 @@ fn item_text_tip(
     } else if let Some(g) = crate::ui::menu_glyphs::for_key(id) {
         crate::ui::menu_glyphs::draw(ui.painter(), ir, g, color);
     }
-    if r.clicked() {
-        ui.close();
-        true
-    } else {
-        false
-    }
+    row_clicked(ui, &r, id)
 }
 
 /// A menu item whose picture in the gutter is drawn by `pic` in the
@@ -584,12 +600,7 @@ pub(crate) fn item_drawn(
         crate::theme::Tokens::menu_text_off()
     };
     pic(ui.painter(), ir, color);
-    if r.clicked() {
-        ui.close();
-        true
-    } else {
-        false
-    }
+    row_clicked(ui, &r, id)
 }
 
 /// A menu item with a ready label and a picture (a texture) in the
@@ -628,12 +639,7 @@ fn item_picture(
             tint,
         );
     }
-    if enabled && r.clicked() {
-        ui.close();
-        true
-    } else {
-        false
-    }
+    enabled && row_clicked(ui, &r, label)
 }
 
 /// Toolbar icon for a menu item, when it has one.
@@ -868,12 +874,7 @@ pub(crate) fn check_label(ui: &mut Ui, label: &str, id: &str, on: bool) -> bool 
     if replay::hit(id, true) {
         return true;
     }
-    if r.clicked() {
-        ui.close();
-        true
-    } else {
-        false
-    }
+    row_clicked(ui, &r, id)
 }
 
 #[cfg(test)]
@@ -929,12 +930,7 @@ pub(crate) fn check_pic(
         );
         pic(ui.painter(), ir);
     }
-    if r.clicked() {
-        ui.close();
-        true
-    } else {
-        false
-    }
+    row_clicked(ui, &r, key)
 }
 
 /// One of a set of exclusive items (a dot in the gutter when `on`).
@@ -969,12 +965,7 @@ fn mark_item_if(ui: &mut Ui, key: &str, shortcut: &str, mark: Mark, enabled: boo
     if replay::hit(key, enabled) {
         return true;
     }
-    if enabled && r.clicked() {
-        ui.close();
-        true
-    } else {
-        false
-    }
+    enabled && row_clicked(ui, &r, key)
 }
 
 /// A submenu that is not made yet: shown greyed, left out of the
@@ -1507,6 +1498,56 @@ pub(crate) mod replay {
 
 #[cfg(test)]
 mod tests {
+    /// #4088: with the Customization pages open, a click on a menu row
+    /// picks its command in the Commands list (Shortcut Keys tab,
+    /// scrolled to it) and does not run it; closed, the click runs it.
+    #[test]
+    fn a_menu_click_while_customizing_picks_the_command() {
+        let ctx = crate::theme::ui_context();
+        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800.0, 600.0));
+        let frame = |events: Vec<egui::Event>, pick: bool| {
+            let mut ran = false;
+            let mut out = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(screen),
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    super::PICK_ROWS.with(|c| c.set(pick));
+                    super::ROWS.with(|r| r.borrow_mut().clear());
+                    ran = super::item(ui, "menu.view.toggle_wireframe", "", true);
+                },
+            );
+            out.textures_delta.clear();
+            ran
+        };
+        let click = |pick: bool| {
+            frame(Vec::new(), pick);
+            let at = super::ROWS
+                .with(|r| r.borrow().first().map(|(_, rect)| rect.center()))
+                .expect("the row");
+            let press = |pressed| egui::Event::PointerButton {
+                pos: at,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: egui::Modifiers::NONE,
+            };
+            let a = frame(vec![egui::Event::PointerMoved(at), press(true)], pick);
+            let b = frame(vec![press(false)], pick);
+            a || b
+        };
+        assert!(click(false), "a click runs the command");
+        assert!(!click(true), "customizing, the click does not run it");
+        let mut app = crate::app::App::headless();
+        super::open_requested_properties(&mut app);
+        let ed = &app.shortcut_editor;
+        assert_eq!(ed.selected.as_deref(), Some("menu.view.toggle_wireframe"));
+        assert!(ed.keys_tab && ed.scroll_to_selected);
+        assert_eq!(app.options_page, crate::ui::options::OptionsPage::Commands);
+        super::PICK_ROWS.with(|c| c.set(false));
+    }
+
     /// Window > Panels shows each panel's picture beside its name, as
     /// the panel bar's "..." list does (#3221).
     #[test]
@@ -2535,6 +2576,7 @@ pub(crate) fn menu_bar_style(style: &mut egui::Style) {
 pub fn menu_bar(app: &mut App, ui: &mut Ui) {
     set_highlight_new(app.highlight_whats_new);
     open_requested_properties(app);
+    PICK_ROWS.with(|c| c.set(crate::ui::bar_items::customization_open(app)));
     // Alt and a letter the user gave a command keeps running that command
     // instead of opening a menu; while Options waits for a shortcut's keys
     // no menu opens either.
@@ -3158,6 +3200,11 @@ fn view_menu(app: &mut App, ui: &mut Ui) {
     // Right after the view modes, where the report asks for it (#615).
     if check(ui, "menu.view.mask_outside_page", "", app.mask_outside_page) {
         app.mask_outside_page = !app.mask_outside_page;
+    }
+    // Wireframe and Smooth back and forth with one key of one's own
+    // (#4077).
+    if item(ui, "menu.view.toggle_wireframe", "", true) {
+        app.toggle_wireframe_view();
     }
     sep(ui);
     if item(ui, "menu.view.fullscreen_preview", "F9", true) {
@@ -4203,6 +4250,14 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
     if item(ui, "menu.object.outline_thinner", "", has) {
         app.step_outline_width(false);
     }
+    // The fill and outline windows, so a key of one's own opens them on
+    // the selection's colour (#4089).
+    if item(ui, "menu.object.edit_fill", "", true) {
+        app.open_edit_fill();
+    }
+    if item(ui, "menu.object.outline_pen", "", true) {
+        app.open_outline_pen();
+    }
     if item(ui, "menu.object.join_curves", "", true) {
         app.show_dockers = true;
         app.docker_tab = crate::app::DockerTab::JoinCurves;
@@ -4798,6 +4853,25 @@ fn text_menu(app: &mut App, ui: &mut Ui) {
     if item(ui, "menu.text.change_case", "Shift+F3", is_text) {
         app.dialog = Dialog::ChangeCase(crate::ops2::CaseMode::Sentence);
     }
+    // The size as the height of the capitals (#4094).
+    if item(ui, "menu.text.text_height", "", is_text) {
+        app.open_text_height();
+    }
+    // The lines of the text in order, each command with a key of its own
+    // (#4078).
+    sub(ui, "menu.text.sort_lines", |ui| {
+        use crate::quick_commands::SortLines as S;
+        for (key, how) in [
+            ("menu.text.sort_a_z", S::AToZ),
+            ("menu.text.sort_z_a", S::ZToA),
+            ("menu.text.sort_numbers_up", S::NumbersUp),
+            ("menu.text.sort_numbers_down", S::NumbersDown),
+        ] {
+            if item(ui, key, "", is_text) {
+                app.sort_text_lines(how);
+            }
+        }
+    });
     if item(ui, "menu.text.make_web_compatible", "", is_text) {
         app.make_text_web_compatible();
     }

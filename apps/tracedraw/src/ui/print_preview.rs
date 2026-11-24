@@ -512,6 +512,7 @@ pub fn show(app: &mut App, ui: &mut Ui) {
     let mut close = false;
     let mut print = false;
     let mut print_one = false;
+    let mut print_close = false;
     let ctx = ui.ctx().clone();
 
     egui::Panel::top("print_preview_bar")
@@ -541,8 +542,22 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                 ui.allocate_ui_with_layout(row, wrapped, |ui| {
                     // Whole labels go to the next row, never half of one.
                     ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
-                    if ui.button(tr("dialog.print")).clicked() {
+                    // Print leaves the preview open, so pages can go out
+                    // one at a time; Print and Close closes it (#4072).
+                    if ui
+                        .button(tr("dialog.print"))
+                        .rich_tip(tr("print.print_keep_tip"))
+                        .clicked()
+                    {
                         print = true;
+                    }
+                    if ui
+                        .button(tr("print.print_and_close"))
+                        .rich_tip(tr("print.print_and_close_tip"))
+                        .clicked()
+                    {
+                        print = true;
+                        print_close = true;
                     }
                     if ui
                         .button(tr("print.print_sheet"))
@@ -1762,7 +1777,7 @@ pub fn show(app: &mut App, ui: &mut Ui) {
             app.settings.printing.remember(&pv.st);
             app.settings.save();
         }
-        close = true;
+        close |= print_close;
     }
     if !close {
         app.print_preview = Some(pv);
@@ -2668,6 +2683,9 @@ mod tests {
         let copies = at(&tr("print.number_of_copies")).expect("the copies");
         let all_pages = at(&tr("dialog.all_pages")).expect("the other options");
         let print = at(&tr("dialog.print")).expect("the Print button");
+        // Print keeps the preview open; Print and Close beside it (#4072).
+        let and_close = at(&tr("print.print_and_close")).expect("Print and Close");
+        assert!((and_close.y - print.y).abs() < 8.0 && and_close.x > print.x);
         // In the top bar, after Print, the left panel starting with the
         // pages to print (#953).
         assert!((printer.y - print.y).abs() < 8.0, "{printer:?} {print:?}");

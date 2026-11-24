@@ -35,6 +35,12 @@ pub struct Builder {
     /// shown cut the objects into parts too, and stay as they are
     /// (#3558).
     pub use_guides: bool,
+    /// Alt was held during the drag (not only the Delete mode): a drag
+    /// over lines deletes their segments (#4079).
+    pub alt: bool,
+    /// While set, Segment Delete works on these objects alone: the
+    /// Shape Builder's Alt deletes segments of the selection only.
+    pub segment_scope: Option<Vec<ShapeId>>,
     hover: std::cell::RefCell<Option<Hover>>,
 }
 
@@ -337,8 +343,66 @@ impl App {
         }
     }
 
+    /// An outline of the selection (a line or a closed object) passes
+    /// within a few pixels of `p`.
+    fn builder_outline_near(&self, p: Point) -> bool {
+        use tracedraw_core::geometry::ParamCurveNearest as _;
+        let tol = 5.0 / self.view.zoom.max(1e-6) as f64;
+        let paths: Vec<BezPath> = self
+            .builder_open_lines()
+            .into_iter()
+            .map(|(_, l)| l)
+            .chain(self.builder_pieces().into_iter().map(|q| q.area))
+            .collect();
+        paths.iter().any(|path| {
+            path.bounding_box().inflate(tol, tol).contains(p)
+                && path
+                    .segments()
+                    .any(|seg| seg.nearest(p, 1e-6).distance_sq.sqrt() <= tol)
+        })
+    }
+
+    /// Alt with the Shape Builder: `f` (a Segment Delete action) on the
+    /// selected objects only, a step Cancel takes back (#4079).
+    fn builder_segment_delete(&mut self, f: impl FnOnce(&mut App) -> bool) -> bool {
+        self.builder.segment_scope = Some(self.selection.clone());
+        let done = f(self);
+        self.builder.segment_scope = None;
+        if done {
+            self.builder.session_steps += 1;
+        }
+        done
+    }
+
+    /// The Shape Builder's drag ended (`points`, the pointer's way on the
+    /// page). With Alt and no closed object selected (lines alone), the
+    /// segments of the lines the drag crossed go, as far as their
+    /// crossings, as Segment Delete takes them (#4079); otherwise the
+    /// parts crossed merge, or with Alt or Delete go.
+    pub fn builder_drag_end(&mut self, points: &[Point]) {
+        if self.builder.alt && self.builder_pieces().is_empty() {
+            self.builder.parts.clear();
+            let pts = points.to_vec();
+            self.builder_segment_delete(|app| app.delete_virtual_segments_along(&pts));
+            return;
+        }
+        let remove = self.builder.remove;
+        self.builder_finish(remove);
+    }
+
     pub fn shape_builder_input(&mut self, response: &Response, p: Point, mods: Modifiers) {
         let pieces = self.builder_has_work();
+        // Alt and a click on an outline of the selection: its segment
+        // between the nearest crossings goes, as with Segment Delete
+        // (#4079).
+        if response.clicked_by(PointerButton::Primary)
+            && mods.alt
+            && pieces
+            && self.builder_outline_near(p)
+        {
+            self.builder_segment_delete(|app| app.delete_virtual_segment_at(p));
+            return;
+        }
         if response.clicked_by(PointerButton::Primary) {
             if !pieces || self.builder_part_at(p).is_none() {
                 self.click_select(p, mods);
@@ -355,11 +419,13 @@ impl App {
         }
         if response.drag_started_by(PointerButton::Primary) {
             self.builder.parts.clear();
+            self.builder.alt = mods.alt;
             self.builder.remove = mods.alt != self.builder.delete_mode;
             self.drag = Drag::Freehand { points: vec![p] };
             self.builder_take(p);
         }
         if response.dragged_by(PointerButton::Primary) {
+            self.builder.alt = mods.alt;
             self.builder.remove = mods.alt != self.builder.delete_mode;
             let step = 1.0 / self.view.zoom.max(1e-6) as f64;
             let mut add = Vec::new();
@@ -473,6 +539,39 @@ impl App {
             cmds.push(Command::AddShape { layer, shape: s });
             made = Some(id);
         }
+        // The lines that divided the parts merged lose the stretches
+        // inside the new object, which is one object with no line across
+        // it; the rest of each line stays (#4079).
+        let mut lines_left: Vec<ShapeId> = Vec::new();
+        for (id, line) in &lines {
+            let trimmed = if remove || keep {
+                None
+            } else {
+                line_outside(line, &area)
+            };
+            let Some(trimmed) = trimmed else {
+                lines_left.push(*id);
+                continue;
+            };
+            let to_page = self
+                .doc()
+                .find_shape(*id)
+                .map(|s| self.doc().parent_transform(*id).unwrap_or(Affine::IDENTITY) * s.transform);
+            match to_page {
+                _ if trimmed.elements().is_empty() => gone.push(*id),
+                Some(t) if t.determinant().abs() > 1e-12 => {
+                    cmds.push(Command::SetShapeKind {
+                        shape: *id,
+                        kind: ShapeKind::Path {
+                            path: t.inverse() * trimmed,
+                            closed: false,
+                        },
+                    });
+                    lines_left.push(*id);
+                }
+                _ => lines_left.push(*id),
+            }
+        }
         if !gone.is_empty() {
             cmds.push(Command::DeleteShapes {
                 shapes: gone.clone(),
@@ -489,8 +588,8 @@ impl App {
         }
         self.builder.session_steps += 1;
         // The objects stay selected, with the new one, to go on building;
-        // the lines too (they are not cut).
-        kept.extend(lines.iter().map(|(id, _)| *id));
+        // the lines too (what is left of them).
+        kept.extend(lines_left);
         kept.extend(made);
         self.select(kept);
     }
@@ -515,7 +614,7 @@ impl App {
             let ours = self
                 .engine
                 .undo_label()
-                .is_some_and(|l| l.starts_with("Shape Builder"));
+                .is_some_and(|l| l.starts_with("Shape Builder") || l == "Delete Segment");
             if !ours || self.engine.undo().is_err() {
                 break;
             }
@@ -529,6 +628,103 @@ impl App {
             .filter(|id| self.doc().find_shape(*id).is_some())
             .collect();
         self.select(ids);
+    }
+}
+
+/// `line` (an open curve on the page) without the stretches that run
+/// through the inside of `area`, both sides of them inside it: the
+/// dividing lines of the cells merged into `area` (#4079). Stretches
+/// along its edge or outside it stay, exactly as they were drawn. `None`
+/// when nothing of the line lies inside; an empty path when all of it
+/// does.
+pub fn line_outside(line: &BezPath, area: &BezPath) -> Option<BezPath> {
+    use tracedraw_core::geometry::{ParamCurveDeriv as _, PathSeg, Vec2};
+    let ab = area.bounding_box();
+    let eps = 0.01;
+    let lb = line.bounding_box().inflate(eps, eps);
+    if lb.x0 > ab.x1 || lb.x1 < ab.x0 || lb.y0 > ab.y1 || lb.y1 < ab.y0 {
+        return None;
+    }
+    let deriv = |seg: &PathSeg, t: f64| -> Vec2 {
+        match seg {
+            PathSeg::Line(l) => l.p1 - l.p0,
+            PathSeg::Quad(q) => q.deriv().eval(t).to_vec2(),
+            PathSeg::Cubic(c) => c.deriv().eval(t).to_vec2(),
+        }
+    };
+    // Inside on both sides of the line at `t`.
+    let within = |seg: &PathSeg, t: f64| -> bool {
+        let q = seg.eval(t);
+        if !ab.inflate(eps, eps).contains(q) {
+            return false;
+        }
+        let d = deriv(seg, t);
+        let len = d.hypot();
+        if len < 1e-12 {
+            return false;
+        }
+        let n = Vec2::new(-d.y, d.x) * (eps / len);
+        inside(area, q + n) && inside(area, q - n)
+    };
+    const N: usize = 48;
+    let mut out = BezPath::new();
+    let mut changed = false;
+    let mut last: Option<Point> = None;
+    for seg in line.segments() {
+        let cls: Vec<bool> = (0..N)
+            .map(|i| within(&seg, (i as f64 + 0.5) / N as f64))
+            .collect();
+        if !cls.contains(&true) {
+            if last.is_none_or(|l| (l - seg.start()).hypot() > 1e-9) {
+                out.move_to(seg.start());
+            }
+            push_seg(&mut out, &seg);
+            last = Some(seg.end());
+            continue;
+        }
+        changed = true;
+        // The places the class changes, found more closely by halving.
+        let mut cuts = vec![0.0];
+        for i in 1..N {
+            if cls[i] != cls[i - 1] {
+                let (mut lo, mut hi) = ((i as f64 - 0.5) / N as f64, (i as f64 + 0.5) / N as f64);
+                for _ in 0..30 {
+                    let mid = 0.5 * (lo + hi);
+                    if within(&seg, mid) == cls[i - 1] {
+                        lo = mid;
+                    } else {
+                        hi = mid;
+                    }
+                }
+                cuts.push(0.5 * (lo + hi));
+            }
+        }
+        cuts.push(1.0);
+        let mut class = cls[0];
+        for w in cuts.windows(2) {
+            let (a, b) = (w[0], w[1]);
+            if !class && b - a > 1e-9 {
+                let piece = seg.subsegment(a..b);
+                if last.is_none_or(|l| (l - piece.start()).hypot() > 1e-9) {
+                    out.move_to(piece.start());
+                }
+                push_seg(&mut out, &piece);
+                last = Some(piece.end());
+            } else if class {
+                last = None;
+            }
+            class = !class;
+        }
+    }
+    changed.then_some(out)
+}
+
+fn push_seg(path: &mut BezPath, seg: &tracedraw_core::geometry::PathSeg) {
+    use tracedraw_core::geometry::PathSeg;
+    match *seg {
+        PathSeg::Line(l) => path.line_to(l.p1),
+        PathSeg::Quad(q) => path.quad_to(q.p1, q.p2),
+        PathSeg::Cubic(c) => path.curve_to(c.p1, c.p2, c.p3),
     }
 }
 
@@ -645,6 +841,7 @@ fn clip_line(part: &BezPath, a: Point, z: Point) -> Vec<(Point, Point)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tracedraw_core::geometry::ParamCurveArclen as _;
     use tracedraw_core::geometry::Rect;
 
     fn rect(x0: f64, y0: f64, x1: f64, y1: f64) -> BezPath {
@@ -772,8 +969,10 @@ mod tests {
 
     /// #3814: a grid of 6 straight lines each way (open curves) makes
     /// 25 parts, its cells; a drag across two cells makes one object of
-    /// them; outside the grid there is no part; the lines stay as they
-    /// are and stay selected. A line across a square cuts it in two.
+    /// them; outside the grid there is no part; the lines stay and stay
+    /// selected, the one between the two cells without its stretch
+    /// across the new object (#4079). A line across a square cuts it in
+    /// two.
     #[test]
     fn a_grid_of_open_lines_makes_its_cells_into_parts() {
         let mut app = App::headless();
@@ -805,6 +1004,20 @@ mod tests {
         assert!((page_area(&app, made) - 200.0).abs() < 0.2, "{}", page_area(&app, made));
         assert!(ids.iter().all(|id| app.doc().find_shape(*id).is_some()));
         assert!(ids.iter().all(|id| app.selection.contains(id)));
+        // The line x = 20 (the fifth added) lost its stretch from y = 20
+        // to 30, inside the new object; the others are whole.
+        let len = |app: &App, id: ShapeId| -> f64 {
+            app.doc()
+                .find_shape(id)
+                .expect("line")
+                .page_path()
+                .segments()
+                .map(|s| s.arclen(1e-6))
+                .sum()
+        };
+        assert!((len(&app, ids[4]) - 44.0).abs() < 0.01, "{}", len(&app, ids[4]));
+        assert!((len(&app, ids[0]) - 54.0).abs() < 0.01);
+        assert!((len(&app, ids[5]) - 54.0).abs() < 0.01, "{}", len(&app, ids[5]));
         // A line across a square cuts it in two.
         let sq = square(&mut app, 100.0, 0.0, 120.0, 20.0);
         let mut path = BezPath::new();
@@ -816,6 +1029,48 @@ mod tests {
         app.select(vec![sq, id]);
         let half = app.builder_part_at(Point::new(110.0, 5.0)).expect("half");
         assert!((area(&half) - 200.0).abs() < 0.1, "{}", area(&half));
+    }
+
+    /// #4079: with lines alone selected, Alt and a click on a line takes
+    /// its segment between the two nearest crossings away; an Alt drag
+    /// takes away every segment it crosses; lines not selected are left.
+    #[test]
+    fn alt_deletes_the_segments_of_lines() {
+        let mut app = App::headless();
+        let layer = app.active_layer().unwrap();
+        let line = |app: &mut App, a: (f64, f64), b: (f64, f64)| {
+            let mut path = BezPath::new();
+            path.move_to(a);
+            path.line_to(b);
+            let id = app.engine.new_shape_id();
+            let shape = Shape::new(id, ShapeKind::Path { path, closed: false });
+            app.run(Command::AddShape { layer, shape });
+            id
+        };
+        let v = line(&mut app, (10.0, 0.0), (10.0, 40.0));
+        let h1 = line(&mut app, (0.0, 10.0), (40.0, 10.0));
+        let h2 = line(&mut app, (0.0, 30.0), (40.0, 30.0));
+        let other = line(&mut app, (20.0, 0.0), (20.0, 40.0));
+        app.select(vec![v, h1, h2]);
+        app.tool = Tool::ShapeBuilder;
+        let len = |app: &App, id: ShapeId| -> f64 {
+            app.doc().find_shape(id).map_or(0.0, |s| {
+                s.page_path().segments().map(|s| s.arclen(1e-6)).sum()
+            })
+        };
+        app.builder.alt = true;
+        assert!(app.builder_outline_near(Point::new(10.0, 20.0)));
+        app.builder_segment_delete(|app| app.delete_virtual_segment_at(Point::new(10.0, 20.0)));
+        assert!((len(&app, v) - 20.0).abs() < 0.01, "{}", len(&app, v));
+        // The line at x = 20 is not selected: it does not cut h1.
+        assert!((len(&app, h1) - 40.0).abs() < 0.01);
+        app.builder_drag_end(&[Point::new(30.0, 5.0), Point::new(30.0, 15.0)]);
+        assert!((len(&app, h1) - 10.0).abs() < 0.01, "{}", len(&app, h1));
+        assert!((len(&app, other) - 40.0).abs() < 0.01, "not selected, left");
+        assert_eq!(app.builder.session_steps, 2);
+        app.builder_cancel();
+        assert!((len(&app, v) - 40.0).abs() < 0.01);
+        assert!((len(&app, h1) - 40.0).abs() < 0.01);
     }
 
     /// Alt takes the parts away: the overlap of two squares cut out of

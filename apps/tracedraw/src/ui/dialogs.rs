@@ -1403,6 +1403,9 @@ pub enum Dialog {
         gap_x: f64,
         gap_y: f64,
     },
+    /// Text > Text Height (#4094): the height of the text's capitals, in
+    /// the drawing's units.
+    TextHeight { height: f64 },
     /// Object > Outline Offset (#2622): the distance, in the drawing's
     /// units, and whether the new outline goes outside or inside.
     OutlineOffset {
@@ -3046,6 +3049,7 @@ pub fn show(app: &mut App, ctx: &Context) {
             crate::ui::arrowhead_editor::dialog(app, ctx, st, &mut close)
         }
         Dialog::EditFill(st) => crate::ui::edit_fill::dialog(app, ctx, st, &mut close),
+        Dialog::TextHeight { height } => crate::text_height::dialog(app, ctx, height, &mut close),
         Dialog::PdfText(st) => crate::ui::pdf_import_dialog::dialog(app, ctx, st, &mut close),
         Dialog::PdfPages(st) => crate::ui::pdf_pages::dialog(app, ctx, st, &mut close),
         Dialog::OldCdrVersion { version } => {

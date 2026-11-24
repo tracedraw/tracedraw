@@ -124,6 +124,7 @@ pub fn dialog_topic(d: &Dialog, options: OptionsPage) -> &'static str {
         Dialog::TextDropCap => "text/paragraphs#drop-cap",
         Dialog::TextStatistics => "text/writing-tools#statistics",
         Dialog::ChangeCase(_) => "text/writing-tools#change-case",
+        Dialog::TextHeight { .. } => "text/writing-tools#text-height",
         Dialog::WritingTools(_) => "text/writing-tools",
         Dialog::CustomHyphens(_) => "text/writing-tools#custom-hyphens",
         Dialog::Encode(_) => "text/writing-tools#encode",

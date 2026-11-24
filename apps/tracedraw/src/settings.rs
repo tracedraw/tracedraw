@@ -857,6 +857,9 @@ pub struct Settings {
     /// The looks saved in the Effects docker's Presets (#2160).
     #[serde(default)]
     pub style_presets: Vec<crate::style_presets::StylePreset>,
+    /// The outlines saved in the Outline Pen dialog's Presets (#4090).
+    #[serde(default)]
+    pub outline_presets: Vec<crate::outline_presets::OutlinePreset>,
     /// The settings saved in a bitmap effect's dialog, by effect (#1129).
     #[serde(default)]
     pub fx_presets: Vec<crate::ui::effect_dialog::FxPreset>,
@@ -2630,6 +2633,7 @@ impl Default for Settings {
             path_tick_mm: default_path_tick(),
             screen_margins: crate::ui::screen_margins::ScreenMargins::default(),
             style_presets: Vec::new(),
+            outline_presets: Vec::new(),
             fx_presets: Vec::new(),
             fx_settings_only: false,
             object_apps: Vec::new(),

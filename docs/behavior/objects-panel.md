@@ -98,6 +98,11 @@ the right.
   middle still takes them into the group, and a locked object, a group
   or an object inside a group takes none
   (`ui::objects_docker::drag_tests::a_row_dropped_in_the_middle_of_another_powerclips_it`).
+- A content's row dragged out of a PowerClip that is not being edited
+  needs no click first: the drop takes the contents out for editing with
+  that object chosen, as a click on its row does, and then drops it, so
+  one drag onto the layer's row or beside an object outside frees it
+  (#4061, `a_content_row_drags_out_of_a_powerclip_without_a_click_first`).
 - Double-click a layer to rename it; double-click an object to name it
   (Rename Object; an empty name goes back to the description).
 - Double-click the page node, or pick Rename in its context menu, to

@@ -626,13 +626,21 @@ fn outlines_of(all: &[Shape]) -> Vec<Outline> {
 impl App {
     /// The visible objects of the page's unlocked layers.
     fn segment_targets(&self) -> Vec<Shape> {
+        // The Shape Builder's Alt: the selected objects alone (#4079).
+        let scope = self.builder.segment_scope.as_ref();
         self.doc()
             .page(self.page)
             .map(|pg| {
                 pg.layers
                     .iter()
                     .filter(|l| l.visible && !l.locked)
-                    .flat_map(|l| l.shapes.iter().filter(|s| s.visible && !s.locked).cloned())
+                    .flat_map(|l| {
+                        l.shapes
+                            .iter()
+                            .filter(|s| s.visible && !s.locked)
+                            .filter(|s| scope.is_none_or(|ids| ids.contains(&s.id)))
+                            .cloned()
+                    })
                     .collect()
             })
             .unwrap_or_default()

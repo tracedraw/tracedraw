@@ -42,6 +42,10 @@ pub struct OutlinePenState {
     pub shown: Option<(Option<Stroke>, Vec<StrokeField>, Option<bool>)>,
     /// The width box took the keys when the dialog opened.
     pub width_focused: bool,
+    /// The Presets row (#4090): the name a new preset gets, and the
+    /// preset last chosen.
+    pub preset_name: String,
+    pub preset_pick: Option<usize>,
 }
 
 /// The widths the width list offers in unit `u`, as (millimetres, label):
@@ -109,6 +113,11 @@ impl App {
             defaults,
             shown: None,
             width_focused: false,
+            preset_name: crate::outline_presets::free_outline_name(
+                &self.settings.outline_presets,
+                &tr("outline_pen.preset_default_name"),
+            ),
+            preset_pick: None,
         }));
     }
 
@@ -177,6 +186,13 @@ pub fn dialog(app: &mut App, ctx: &egui::Context, st: &mut OutlinePenState, clos
     let lib = crate::ui::line_style::OutlineLib::of(app);
     let mut ok = false;
     let mut help = false;
+    let names: Vec<String> = app
+        .settings
+        .outline_presets
+        .iter()
+        .map(|p| p.name.clone())
+        .collect();
+    let mut preset = PresetAction::None;
     crate::ui::dialogs::window(ctx, tr("outline_pen.title")).show(ctx, |ui| {
         ui.set_min_width(640.0);
         ui.horizontal_top(|ui| {
@@ -196,6 +212,7 @@ pub fn dialog(app: &mut App, ctx: &egui::Context, st: &mut OutlinePenState, clos
         group(ui, &tr("outline_pen.variable_outline"), |ui| {
             variable(ui, st, &lib)
         });
+        preset = presets_row(ui, st, &names);
         ui.add_space(4.0);
         ui.horizontal(|ui| {
             help = ui
@@ -220,6 +237,31 @@ pub fn dialog(app: &mut App, ctx: &egui::Context, st: &mut OutlinePenState, clos
     if help {
         app.open_dialog_help();
     }
+    match preset {
+        PresetAction::None => {}
+        PresetAction::Pick(i) => {
+            if let Some(p) = app.settings.outline_presets.get(i) {
+                st.stroke = p.stroke.clone();
+                for f in StrokeField::ALL {
+                    touch(st, f);
+                }
+                st.preset_pick = Some(i);
+                st.preset_name = p.name.clone();
+            }
+        }
+        PresetAction::Save => {
+            let name = st.preset_name.clone();
+            st.preset_pick = app.save_outline_preset(&name, &st.stroke);
+        }
+        PresetAction::Delete(i) => {
+            app.delete_outline_preset(i);
+            st.preset_pick = None;
+            st.preset_name = crate::outline_presets::free_outline_name(
+                &app.settings.outline_presets,
+                &tr("outline_pen.preset_default_name"),
+            );
+        }
+    }
     if ok {
         app.end_outline_pen_preview();
         app.apply_outline_pen(st);
@@ -228,6 +270,63 @@ pub fn dialog(app: &mut App, ctx: &egui::Context, st: &mut OutlinePenState, clos
     } else {
         app.preview_outline_pen(st);
     }
+}
+
+/// What the Presets row asked for.
+enum PresetAction {
+    None,
+    Pick(usize),
+    Save,
+    Delete(usize),
+}
+
+/// The Presets row (#4090): a list of the saved outlines (choosing one
+/// puts it in the dialog, OK gives it to the selection), the name for a
+/// new one, + to save the outline shown under it and - to remove the
+/// preset chosen.
+fn presets_row(ui: &mut Ui, st: &mut OutlinePenState, names: &[String]) -> PresetAction {
+    let mut act = PresetAction::None;
+    ui.horizontal(|ui| {
+        row_label(ui, "outline_pen.presets");
+        let shown = st
+            .preset_pick
+            .and_then(|i| names.get(i).cloned())
+            .unwrap_or_else(|| tr("outline_pen.preset_choose"));
+        egui::ComboBox::from_id_salt("outline_pen_presets")
+            .selected_text(shown)
+            .width(180.0)
+            .show_ui(ui, |ui| {
+                if names.is_empty() {
+                    ui.weak(tr("outline_pen.preset_none"));
+                }
+                for (i, n) in names.iter().enumerate() {
+                    if ui.selectable_label(st.preset_pick == Some(i), n).clicked() {
+                        act = PresetAction::Pick(i);
+                    }
+                }
+            })
+            .response
+            .rich_tip(tr("outline_pen.presets_tip"));
+        ui.add(egui::TextEdit::singleline(&mut st.preset_name).desired_width(120.0))
+            .rich_tip(tr("outline_pen.preset_name_tip"));
+        if ui
+            .add_enabled(!st.preset_name.trim().is_empty(), egui::Button::new("+"))
+            .rich_tip(tr("outline_pen.preset_add_tip"))
+            .clicked()
+        {
+            act = PresetAction::Save;
+        }
+        if ui
+            .add_enabled(st.preset_pick.is_some(), egui::Button::new("-"))
+            .rich_tip(tr("outline_pen.preset_delete_tip"))
+            .clicked()
+        {
+            if let Some(i) = st.preset_pick {
+                act = PresetAction::Delete(i);
+            }
+        }
+    });
+    act
 }
 
 /// A titled group with a light frame around it.

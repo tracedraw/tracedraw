@@ -910,16 +910,25 @@ pub fn effect_dialog(app: &mut App, ctx: &Context, st: &mut EffectState, close: 
     }
     let title = tr(&format!("fx.{}", spec.id));
     let mut ok = false;
-    if app.settings.fx_settings_only {
+    // Gaussian Blur has one value: its settings alone in a compact
+    // window, the blur seen on the drawing, with no large preview panes
+    // covering it (#4091).
+    let compact = compact_effect(spec.id);
+    if app.settings.fx_settings_only || compact {
         // The settings alone in a small window: the effect is seen on the
         // drawing (#2799), which the wheel zooms meanwhile.
         st.pick = None;
+        let (size, min, body_min) = if compact {
+            (COMPACT_SIZE, COMPACT_MIN, 120.0)
+        } else {
+            (SETTINGS_ONLY_SIZE, SETTINGS_ONLY_MIN, 200.0)
+        };
         crate::ui::dialogs::window(ctx, title)
-            .id_salt("fx_settings_only")
-            .resizable(SETTINGS_ONLY_SIZE, SETTINGS_ONLY_MIN)
+            .id_salt(if compact { "fx_compact" } else { "fx_settings_only" })
+            .resizable(size, min)
             .show(ctx, |ui| {
                 let total = ui.available_rect_before_wrap();
-                let body_h = (total.height() - BOTTOM_H).max(200.0);
+                let body_h = (total.height() - BOTTOM_H).max(body_min);
                 let r = Rect::from_min_size(total.min, Vec2::new(total.width(), body_h));
                 let mut col = ui.new_child(
                     egui::UiBuilder::new()
@@ -994,6 +1003,16 @@ pub fn effect_dialog(app: &mut App, ctx: &Context, st: &mut EffectState, close: 
 /// The settings-only window's first size and its smallest.
 pub const SETTINGS_ONLY_SIZE: Vec2 = Vec2::new(380.0, 600.0);
 pub const SETTINGS_ONLY_MIN: Vec2 = Vec2::new(320.0, 380.0);
+
+/// The compact window of an effect with a single value (#4091): its first
+/// size and its smallest.
+pub const COMPACT_SIZE: Vec2 = Vec2::new(360.0, 330.0);
+pub const COMPACT_MIN: Vec2 = Vec2::new(300.0, 260.0);
+
+/// Effects whose dialog opens as the compact settings window (#4091).
+pub fn compact_effect(id: &str) -> bool {
+    id == "gaussian_blur"
+}
 
 /// After the dialog's frame: OK keeps the effect, a close takes the
 /// preview back, otherwise the drawing shows the values.
