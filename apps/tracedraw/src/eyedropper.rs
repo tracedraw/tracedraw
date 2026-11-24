@@ -1586,6 +1586,50 @@ mod tests {
         assert_eq!(app.sample_picture_beneath(off), None);
     }
 
+    /// Tracing a photo: a plain click reads what the drawing shows there.
+    /// Inside an outline drawn over the photo (no fill) it is the photo's
+    /// colour; through a half transparent shape, the mix seen; on an
+    /// opaque shape, the shape's own colour, and Alt reads the photo
+    /// under it (#4083).
+    #[test]
+    fn a_plain_click_reads_what_shows_over_a_traced_photo() {
+        let mut app = App::headless();
+        let green = Color::rgb8(0, 160, 0);
+        let img = image::RgbaImage::from_pixel(40, 40, image::Rgba([0, 160, 0, 255]));
+        let id = app.place_image_at(img, None, None).expect("picture");
+        let b = app.doc().find_shape(id).unwrap().bounds();
+        let p = b.center();
+        // An outline only, over the photo.
+        let outline = rect(&mut app, b.inflate(-b.width() / 4.0, -b.height() / 4.0));
+        app.run(Command::SetFill {
+            shapes: vec![outline],
+            fill: Fill::None,
+        });
+        app.select(Vec::new());
+        assert_eq!(app.sample_color_at(p, false), Some(green));
+        // Filled red, half transparent: the mix shows.
+        app.run(Command::SetFill {
+            shapes: vec![outline],
+            fill: Fill::Solid(Color::rgb8(255, 0, 0)),
+        });
+        app.run(Command::SetOpacity {
+            shapes: vec![outline],
+            opacity: 0.5,
+        });
+        app.select(Vec::new());
+        let mixed = app.sample_color_at(p, false).expect("a colour");
+        assert_ne!(mixed, green);
+        assert_ne!(mixed, Color::rgb8(255, 0, 0));
+        // Opaque: the shape's colour; Alt reads the photo.
+        app.run(Command::SetOpacity {
+            shapes: vec![outline],
+            opacity: 1.0,
+        });
+        app.select(Vec::new());
+        assert_eq!(app.sample_color_at(p, false), Some(Color::rgb8(255, 0, 0)));
+        assert_eq!(app.sample_picture_beneath(p), Some(green));
+    }
+
     /// Pictures give their pixels: placed alone, in a group, inside a clip
     /// frame, and kept as JPEG bytes (#403: pictures gave no colour).
     #[test]

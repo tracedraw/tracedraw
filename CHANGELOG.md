@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Toolbox: on the way from a tool button to its open flyout, the pointer can cross other buttons as slowly as it likes without the flyout changing; while it heads for the open list, another button's list opens only once the pointer stops on that button (#4081).
+- Color Eyedropper: pressed in the window and let go outside it, it takes the colour shown there on the screen (the desktop, the task bar, another program), on Windows; with Sample from Screen too. Over a photo being traced, a plain click takes the colour the drawing shows, and Alt+click the photo's under an opaque shape (#4083).
 - Shape tool: on a closed path with rounded corners, a chosen first node moves with the other chosen nodes. The curve ending on it stayed where it was, so the first node was left behind and the path was pulled out of shape (#4196; PR #4197 by vegegoku).
 - Typing in a text already on the page shows each letter at once, also while the page without the text is still being drawn on a full page, and a text inside a group is typed in with the same quick drawing instead of the whole page being drawn again for each letter (#4156).
 - Zooming and panning a drawing of many groups is faster: a group whose objects' outlines reach nowhere near the part of the page being drawn is left out at once, without looking at each of its objects; wide and variable outlines inside groups still draw whole across the page's bands (#4157).

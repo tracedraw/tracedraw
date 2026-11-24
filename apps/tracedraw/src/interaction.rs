@@ -1966,6 +1966,18 @@ impl App {
         });
         let pointer = hover.map(|h| self.view.to_page(h));
         self.pointer_page = pointer;
+        // The Color Eyedropper pressed in the window and let go outside
+        // it: the colour shown there, on the desktop or another program's
+        // window, where the system lets it be read (#4083).
+        if self.tool == Tool::ColorEyedropper
+            && (!self.eyedropper_apply || mods.ctrl)
+            && !self.mask.picking
+            && response.drag_stopped_by(PointerButton::Primary)
+            && crate::screen_sample::let_go_outside(&response.ctx)
+        {
+            self.sample_desktop(mods.shift);
+            return;
+        }
         // A colour picker's eyedropper waits for a click: the colour there
         // goes to it, and no tool sees the click (#814). Esc stops it.
         if crate::ui::color_picker::picking(&response.ctx) {

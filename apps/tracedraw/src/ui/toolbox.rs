@@ -777,6 +777,17 @@ fn tool_button(
         let passing = resp.hovered() && app.flyout_open.is_some_and(|o| o != gi);
         let switch = if passing {
             let now = ui.input(|i| i.time);
+            // Heading for the open list (the pointer inside the wedge from
+            // where it left that list's button to the list), the rest only
+            // counts once the pointer stops: a slow, steady move across
+            // the buttons on the way never swaps the list (#4081).
+            let moving = ui.input(|i| i.pointer.delta() != Vec2::ZERO);
+            let aiming = app
+                .flyout_open
+                .is_some_and(|o| heading_for_flyout(ui.ctx(), o, ui.input(|i| i.pointer.latest_pos())));
+            if aiming && moving {
+                ui.ctx().data_mut(|d| d.insert_temp(rest_id, now));
+            }
             let since = ui.ctx().data_mut(|d| *d.get_temp_mut_or_insert_with(rest_id, || now));
             if now - since >= FLYOUT_SWITCH_REST {
                 true
@@ -995,6 +1006,71 @@ fn flyout(app: &mut App, ui: &mut Ui, gi: usize, button: Rect, dock: crate::ui::
     if close || clicked_elsewhere || (away && !over_toolbox) {
         app.flyout_open = None;
     }
+    // Where the pointer last was on this list's button, and where the list
+    // lies: the wedge between them is the way to the list (#4081).
+    let pointer = ui.input(|i| i.pointer.latest_pos());
+    let aim_id = flyout_aim_id();
+    let last: Option<FlyoutAim> = ui.ctx().data(|d| d.get_temp(aim_id));
+    let anchor = match pointer {
+        Some(p) if button.expand(1.0).contains(p) => p,
+        _ => last
+            .filter(|a| a.group == gi)
+            .map_or(button.center(), |a| a.anchor),
+    };
+    ui.ctx().data_mut(|d| {
+        d.insert_temp(
+            aim_id,
+            FlyoutAim {
+                group: gi,
+                list: area.response.rect,
+                anchor,
+            },
+        )
+    });
+}
+
+/// The open flyout's list and the point the pointer left its button
+/// from, kept from frame to frame (#4081).
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct FlyoutAim {
+    group: usize,
+    list: Rect,
+    anchor: Pos2,
+}
+
+fn flyout_aim_id() -> egui::Id {
+    egui::Id::new("toolbox_flyout_aim")
+}
+
+/// Whether `pointer` lies on the way from where it left group `open`'s
+/// button to that group's open list: inside the shape spanned by that
+/// point and the list (a little wider, for an unsteady hand).
+fn heading_for_flyout(ctx: &egui::Context, open: usize, pointer: Option<Pos2>) -> bool {
+    let Some(p) = pointer else {
+        return false;
+    };
+    let Some(aim) = ctx.data(|d| d.get_temp::<FlyoutAim>(flyout_aim_id())) else {
+        return false;
+    };
+    aim.group == open && in_wedge(aim.anchor, aim.list.expand(6.0), p)
+}
+
+/// Whether `p` lies inside the hull of point `a` and rectangle `r`.
+fn in_wedge(a: Pos2, r: Rect, p: Pos2) -> bool {
+    if r.contains(p) {
+        return true;
+    }
+    let corners = [r.left_top(), r.right_top(), r.right_bottom(), r.left_bottom()];
+    let cross = |o: Pos2, u: Pos2, v: Pos2| (u - o).x * (v - o).y - (u - o).y * (v - o).x;
+    (0..4).any(|i| {
+        let (b, c) = (corners[i], corners[(i + 1) % 4]);
+        let d1 = cross(a, b, p);
+        let d2 = cross(b, c, p);
+        let d3 = cross(c, a, p);
+        let neg = d1 < 0.0 || d2 < 0.0 || d3 < 0.0;
+        let pos = d1 > 0.0 || d2 > 0.0 || d3 > 0.0;
+        !(neg && pos)
+    })
 }
 
 /// The "+" at the end of the toolbox: tick the flyouts to show.
@@ -1212,6 +1288,62 @@ mod tests {
                 "the click chooses the tool once"
             );
         }
+    }
+
+    /// On the way from a button to its open list the pointer crosses
+    /// other buttons; however slowly it moves, the list stays while it
+    /// heads for it, and resting on a button still switches (#4081).
+    #[test]
+    fn heading_for_the_open_list_never_swaps_it() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        flyout_pointer_frame(&ctx, &mut app, Vec::new(), 0.02);
+        let buttons = flyout_pointer_frame(&ctx, &mut app, Vec::new(), 0.02);
+        let arrow = buttons[0].right_bottom() - Vec2::splat(3.0);
+        click_flyout_button(&ctx, &mut app, arrow);
+        let first = group_of(Tool::Shape);
+        assert_eq!(app.flyout_open, Some(first));
+        flyout_pointer_frame(&ctx, &mut app, Vec::new(), 0.02);
+        let aim: FlyoutAim = ctx
+            .data(|d| d.get_temp(flyout_aim_id()))
+            .expect("the open list is kept");
+        assert_eq!(aim.group, first);
+        // From the arrow to the list's lowest tool: the steps on the next
+        // button down.
+        let target = aim.list.left_bottom() + Vec2::new(12.0, -6.0);
+        let path: Vec<Pos2> = (0..=200)
+            .map(|i| arrow + (target - arrow) * (i as f32 / 200.0))
+            .filter(|p| buttons[1].contains(*p) && !buttons[0].expand(1.0).contains(*p))
+            .collect();
+        assert!(path.len() >= 2, "the way crosses the next button: {path:?}");
+        // Slowly: a tenth of a second a step, back and forth, well over
+        // the rest that switches lists.
+        for k in 0..8 {
+            let p = path[k % path.len()];
+            flyout_pointer_frame(&ctx, &mut app, vec![egui::Event::PointerMoved(p)], 0.1);
+            assert_eq!(app.flyout_open, Some(first), "step {k} at {p:?}");
+        }
+        // Off the way, straight down the toolbox, the rest switches.
+        assert!(!in_wedge(aim.anchor, aim.list.expand(6.0), buttons[1].left_center() + Vec2::new(2.0, 0.0)));
+        // Stopped on the button, the rest switches.
+        let last = *path.last().unwrap();
+        flyout_pointer_frame(&ctx, &mut app, Vec::new(), 0.4);
+        flyout_pointer_frame(&ctx, &mut app, Vec::new(), 0.02);
+        assert!(buttons[1].contains(last));
+        assert_eq!(app.flyout_open, Some(group_of(Tool::Zoom)), "resting switches");
+    }
+
+    /// The wedge: the list itself, and the way from the point to it.
+    #[test]
+    fn the_wedge_spans_the_point_and_the_list() {
+        let list = Rect::from_min_max(Pos2::new(100.0, 0.0), Pos2::new(200.0, 200.0));
+        let a = Pos2::new(50.0, 10.0);
+        assert!(in_wedge(a, list, Pos2::new(150.0, 100.0)));
+        assert!(in_wedge(a, list, Pos2::new(90.0, 60.0)));
+        assert!(in_wedge(a, list, Pos2::new(60.0, 10.0)));
+        assert!(!in_wedge(a, list, Pos2::new(50.0, 60.0)));
+        assert!(!in_wedge(a, list, Pos2::new(40.0, 10.0)));
+        assert!(!in_wedge(a, list, Pos2::new(90.0, -20.0)));
     }
 
     /// Letting go after a hold or a sideways drag keeps the list open.
