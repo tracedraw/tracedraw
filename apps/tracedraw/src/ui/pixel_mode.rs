@@ -29,6 +29,7 @@ pub const GROUPS: [&[PixelTool]; 13] = [
         PixelTool::RectSelect,
         PixelTool::EllipseSelect,
         PixelTool::FreehandMask,
+        PixelTool::PenMask,
         PixelTool::Lasso,
         PixelTool::EdgeMask,
         PixelTool::MagicWand,
@@ -82,7 +83,7 @@ const BREAKS: [usize; 4] = [1, 2, 5, 8];
 
 /// Each tool's key (with Shift when the flag is on), shown in its
 /// flyout and its tip.
-pub const SHORTCUTS: [(PixelTool, egui::Key, bool); 41] = {
+pub const SHORTCUTS: [(PixelTool, egui::Key, bool); 42] = {
     use egui::Key as K;
     use PixelTool as T;
     [
@@ -90,6 +91,7 @@ pub const SHORTCUTS: [(PixelTool, egui::Key, bool); 41] = {
         (T::RectSelect, K::R, false),
         (T::EllipseSelect, K::J, false),
         (T::FreehandMask, K::K, false),
+        (T::PenMask, K::N, false),
         (T::Lasso, K::A, false),
         (T::EdgeMask, K::Num4, false),
         (T::MagicWand, K::W, false),
@@ -220,6 +222,8 @@ pub fn choose_tool(pe: &mut crate::pixel_edit_app::PixelEdit, t: PixelTool) {
     pe.drag_from = None;
     pe.drag_to = None;
     pe.lasso.clear();
+    pe.pen.clear();
+    pe.pen_drag = false;
     if let Some(g) = GROUPS.iter().position(|g| g.contains(&t)) {
         if pe.group_pick.len() < GROUPS.len() {
             pe.group_pick = GROUPS.iter().map(|g| g[0]).collect();

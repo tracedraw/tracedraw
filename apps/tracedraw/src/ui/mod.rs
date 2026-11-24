@@ -117,6 +117,7 @@ pub mod status;
 pub mod straighten_dialog;
 pub mod stretch_zones_dialog;
 pub mod pixel_bar;
+pub mod pixel_layers;
 pub mod pixel_cmds;
 pub mod pixel_icons;
 pub mod pixel_menu_icons;

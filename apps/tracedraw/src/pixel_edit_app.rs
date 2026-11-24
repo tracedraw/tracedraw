@@ -35,7 +35,9 @@ const LABEL: &str = "Edit Picture";
 #[derive(Default)]
 pub struct PixelTextures {
     pub tex: Option<egui::TextureHandle>,
-    pub outline: Option<egui::TextureHandle>,
+    /// The selection's outline: runs of pixel edges, round it clockwise
+    /// (see `pixel_edit::selection_edges`).
+    pub edges: Vec<[(f32, f32); 2]>,
     /// Pixels changed since the picture was last sent to the screen.
     pub dirty: Option<Dirty>,
     /// The whole picture is sent again (new size, undo, preview).
@@ -46,6 +48,8 @@ pub struct PixelTextures {
     pub overlay: Option<egui::TextureHandle>,
     /// The effect preview was shown last frame.
     pub showed_preview: bool,
+    /// The Layers panel's miniatures.
+    pub thumbs: crate::ui::pixel_layers::LayerThumbs,
 }
 
 /// A picture being edited in place.
@@ -65,6 +69,10 @@ pub struct PixelEdit {
     pub drag_from: Option<(f32, f32)>,
     pub drag_to: Option<(f32, f32)>,
     pub lasso: Vec<(f32, f32)>,
+    /// The pen outline being made (Pen mask), and whether a press is
+    /// pulling the handles of its last point.
+    pub pen: Vec<pixel_edit::PenNode>,
+    pub pen_drag: bool,
     /// Move: the layer's pixels when the drag started, and how far the
     /// drag has moved them.
     pub move_base: Option<image::RgbaImage>,
@@ -486,6 +494,8 @@ impl App {
             drag_from: None,
             drag_to: None,
             lasso: Vec::new(),
+            pen: Vec::new(),
+            pen_drag: false,
             move_base: None,
             move_by: (0, 0),
             layer_drag: false,
@@ -1017,6 +1027,42 @@ impl App {
                     pe.lasso.push((x, y));
                 }
             }
+            PixelTool::PenMask => {
+                // A press sets a point, a drag from it pulls its handles
+                // (Alt the one going on only); a double click, or a
+                // press on the first point, closes it.
+                let spp = screen_per_px.max(1e-6);
+                let near = |p: (f32, f32), r: f32| (p.0 - x).hypot(p.1 - y) * spp <= r;
+                let pressed = response.contains_pointer()
+                    && response.ctx.input(|i| i.pointer.primary_pressed());
+                if response.double_clicked() {
+                    pe.pen_drag = false;
+                    if pe.pen.len() > 2 {
+                        close_pen(pe, mode);
+                    }
+                } else if pressed {
+                    if pe.pen.len() > 2 && pe.pen.first().is_some_and(|f| near(f.p, 8.0)) {
+                        pe.pen_drag = false;
+                        close_pen(pe, mode);
+                    } else if pe.pen.last().is_some_and(|l| near(l.p, 3.0)) {
+                        // The second press of a double click.
+                        pe.pen_drag = false;
+                    } else {
+                        pe.pen.push(pixel_edit::PenNode::corner((x, y)));
+                        pe.pen_drag = true;
+                    }
+                } else if dragged && pe.pen_drag {
+                    if let Some(l) = pe.pen.last_mut() {
+                        l.out = (x - l.p.0, y - l.p.1);
+                        if !mods.alt {
+                            l.inn = (-l.out.0, -l.out.1);
+                        }
+                    }
+                }
+                if stopped || clicked {
+                    pe.pen_drag = false;
+                }
+            }
             PixelTool::EdgeMask => {
                 let reach = pe.opts.magnet_reach;
                 if started {
@@ -1097,6 +1143,10 @@ impl App {
                     let mode = pe.opts.sel_mode;
                     close_freehand(pe, mode);
                 }
+                Some(pe) if pe.tool == PixelTool::PenMask && pe.pen.len() > 2 => {
+                    let mode = pe.opts.sel_mode;
+                    close_pen(pe, mode);
+                }
                 Some(pe) if pe.warp.is_some() => pe.apply_warp(),
                 _ => self.finish_pixel_edit(),
             }
@@ -1137,8 +1187,10 @@ impl App {
         if pressed(Key::Escape, Modifiers::NONE) {
             // Esc leaves a warp off first, then drops the selection, then
             // ends the editing (an outline being clicked goes first).
-            if !pe.lasso.is_empty() {
+            if !pe.lasso.is_empty() || !pe.pen.is_empty() {
                 pe.lasso.clear();
+                pe.pen.clear();
+                pe.pen_drag = false;
             } else if pe.warp.is_some() {
                 pe.cancel_warp();
             } else if pe.pi.sel.is_some() {
@@ -1162,6 +1214,10 @@ impl App {
             let (w, h) = pe.pi.img.dimensions();
             let inv = pixel_edit::invert(pe.pi.sel.as_ref(), w, h);
             pe.set_selection(Some(inv));
+        } else if !pe.pen.is_empty() && pressed(Key::Backspace, Modifiers::NONE) {
+            // Backspace takes the pen outline's last point back.
+            pe.pen.pop();
+            pe.pen_drag = false;
         } else if pressed(Key::Delete, Modifiers::NONE) || pressed(Key::Backspace, Modifiers::NONE)
         {
             pe.apply(false, pixel_edit::clear_selection);
@@ -1202,6 +1258,17 @@ pub fn close_freehand(pe: &mut PixelEdit, mode: SelectMode) {
     let pts = std::mem::take(&mut pe.lasso);
     let (w, h) = pe.pi.img.dimensions();
     if let Some(m) = pixel_edit::lasso_mask(w, h, &pts) {
+        let sel = pixel_edit::combine(pe.pi.sel.as_ref(), m, mode);
+        pe.set_selection(sel);
+    }
+}
+
+/// Close the pen outline into a selection.
+pub fn close_pen(pe: &mut PixelEdit, mode: SelectMode) {
+    let nodes = std::mem::take(&mut pe.pen);
+    pe.pen_drag = false;
+    let (w, h) = pe.pi.img.dimensions();
+    if let Some(m) = pixel_edit::lasso_mask(w, h, &pixel_edit::pen_polygon(&nodes, true)) {
         let sel = pixel_edit::combine(pe.pi.sel.as_ref(), m, mode);
         pe.set_selection(sel);
     }
@@ -1326,7 +1393,9 @@ pub fn draw_mapped(
         }
         v.full = false;
         v.dirty = None;
+        v.thumbs.stale = true;
     } else if let Some(b) = v.dirty.take() {
+        v.thumbs.stale = true;
         let (x0, y0) = (b[0].min(w), b[1].min(h));
         let (x1, y1) = (b[2].min(w), b[3].min(h));
         if x1 > x0 && y1 > y0 {
@@ -1357,14 +1426,12 @@ pub fn draw_mapped(
     }
     v.showed_preview = preview;
     if v.sel_changed {
-        v.outline = pe.pi.sel.as_ref().map(|m| {
-            let o = pixel_edit::selection_outline(m);
-            let img = egui::ColorImage::from_rgba_unmultiplied(
-                [o.width() as usize, o.height() as usize],
-                o.as_raw(),
-            );
-            ctx.load_texture("pixel_edit_outline", img, opts)
-        });
+        v.edges = pe
+            .pi
+            .sel
+            .as_ref()
+            .map(pixel_edit::selection_edges)
+            .unwrap_or_default();
         v.sel_changed = false;
     }
     let corners = [
@@ -1428,10 +1495,8 @@ pub fn draw_mapped(
     if let Some(t) = &v.overlay {
         painter.add(quad(t.id()));
     }
-    if pe.target != MaskTarget::QuickMask {
-        if let Some(t) = &v.outline {
-            painter.add(quad(t.id()));
-        }
+    if pe.target != MaskTarget::QuickMask && !v.edges.is_empty() {
+        marching_ants(painter, &v.edges, map);
     }
     // The picture's edge.
     let edge = egui::Stroke::new(1.0, egui::Color32::from_rgb(0x1E, 0x7C, 0xE8));
@@ -1547,6 +1612,47 @@ pub fn draw_mapped(
             painter.circle(to_screen(*f), 4.0, egui::Color32::WHITE, ink);
         }
     }
+    // The pen outline: its curve so far, on to the pointer, its points,
+    // the first one round, and the handles of the last.
+    if pe.tool == PixelTool::PenMask && !pe.pen.is_empty() {
+        let line: Vec<_> = pixel_edit::pen_polygon(&pe.pen, false)
+            .into_iter()
+            .map(to_screen)
+            .collect();
+        if line.len() > 1 {
+            painter.add(egui::Shape::line(line, ink));
+        }
+        if let (Some(l), Some(p), false) = (pe.pen.last(), pointer, pe.pen_drag) {
+            let next = [*l, pixel_edit::PenNode::corner(p)];
+            let pts: Vec<_> = pixel_edit::pen_polygon(&next, false)
+                .into_iter()
+                .map(to_screen)
+                .collect();
+            painter.add(egui::Shape::dashed_line(&pts, ink, 4.0, 3.0));
+        }
+        for n in &pe.pen {
+            let c = to_screen(n.p);
+            painter.rect(
+                egui::Rect::from_center_size(c, egui::vec2(6.0, 6.0)),
+                0.0,
+                egui::Color32::WHITE,
+                ink,
+                egui::StrokeKind::Middle,
+            );
+        }
+        if let Some(f) = pe.pen.first() {
+            painter.circle(to_screen(f.p), 4.0, egui::Color32::WHITE, ink);
+        }
+        if let Some(l) = pe.pen.last() {
+            for h in [l.inn, l.out] {
+                if h != (0.0, 0.0) {
+                    let e = to_screen((l.p.0 + h.0, l.p.1 + h.1));
+                    painter.line_segment([to_screen(l.p), e], ink);
+                    painter.circle_filled(e, 3.0, ink.color);
+                }
+            }
+        }
+    }
     // The brush's size under the pointer, and the clone source.
     if pe.tool.is_brush()
         || pe.tool.is_liquify()
@@ -1587,10 +1693,127 @@ pub fn draw_mapped(
     }
 }
 
+/// Dashes and gaps of the selection outline, in screen points.
+const ANT: f32 = 4.0;
+/// How fast the dashes march round the selection, points a second.
+const ANT_SPEED: f64 = 12.0;
+/// More screen points of outline than this and the dashes stand still
+/// (a selection of thousands of specks), so the screen keeps up.
+const ANT_MOST: f32 = 400_000.0;
+
+/// The selection outline as marching ants: a black line with white
+/// dashes on it that move round the selection, clockwise, a line one
+/// screen point wide at every zoom. Only the runs on the screen are
+/// drawn.
+fn marching_ants(
+    painter: &egui::Painter,
+    edges: &[[(f32, f32); 2]],
+    map: &dyn Fn(f32, f32) -> egui::Pos2,
+) {
+    let clip = painter.clip_rect().expand(2.0);
+    let shown: Vec<(egui::Pos2, egui::Pos2)> = edges
+        .iter()
+        .map(|e| (map(e[0].0, e[0].1), map(e[1].0, e[1].1)))
+        .filter(|(a, b)| clip.intersects(egui::Rect::from_two_pos(*a, *b)))
+        .collect();
+    if shown.is_empty() {
+        return;
+    }
+    let black = egui::Stroke::new(1.0, egui::Color32::BLACK);
+    let white = egui::Stroke::new(1.0, egui::Color32::WHITE);
+    let mut shapes: Vec<egui::Shape> =
+        shown.iter().map(|(a, b)| egui::Shape::line_segment([*a, *b], black)).collect();
+    let length: f32 = shown.iter().map(|(a, b)| (*b - *a).length()).sum();
+    let moving = length <= ANT_MOST;
+    let ctx = painter.ctx();
+    let phase = if moving {
+        (ctx.input(|i| i.time) * ANT_SPEED).rem_euclid(2.0 * ANT as f64) as f32
+    } else {
+        0.0
+    };
+    for (a, b) in shown {
+        ant_dashes(a, b, phase, white, &mut shapes);
+    }
+    painter.extend(shapes);
+    if moving {
+        ctx.request_repaint_after(std::time::Duration::from_millis(50));
+    }
+}
+
+/// The white dashes on the line from `a` to `b`: laid on the line's
+/// own distance along its direction less `phase`, so runs in a line
+/// share one pattern and a larger phase moves them on towards `b`.
+pub(crate) fn ant_dashes(
+    a: egui::Pos2,
+    b: egui::Pos2,
+    phase: f32,
+    stroke: egui::Stroke,
+    out: &mut Vec<egui::Shape>,
+) {
+    let v = b - a;
+    let len = v.length();
+    if len <= 0.0 {
+        return;
+    }
+    let u = v / len;
+    let along = a.x * u.x + a.y * u.y - phase;
+    let mut t = -along.rem_euclid(2.0 * ANT);
+    while t < len {
+        let (d0, d1) = (t.max(0.0), (t + ANT).min(len));
+        if d1 > d0 {
+            out.push(egui::Shape::line_segment([a + u * d0, a + u * d1], stroke));
+        }
+        t += 2.0 * ANT;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use image::{Rgba, RgbaImage};
+
+    #[test]
+    fn the_pen_closes_its_outline_into_a_selection_and_curves_through_handles() {
+        let (mut app, id) = app_with_picture();
+        app.edit_bitmap_inside(id);
+        let pe = app.pixel_edit.as_mut().unwrap();
+        pe.tool = PixelTool::PenMask;
+        let c = pixel_edit::PenNode::corner;
+        pe.pen = vec![c((1.0, 1.0)), c((10.0, 1.0)), c((10.0, 9.0)), c((1.0, 9.0))];
+        close_pen(pe, SelectMode::Replace);
+        let sel = pe.pi.sel.clone().unwrap();
+        assert_eq!(sel.get_pixel(5, 5)[0], 255);
+        assert_eq!(sel.get_pixel(15, 5)[0], 0);
+        assert!(pe.pen.is_empty() && !pe.pen_drag);
+        // The right side pulled out into a curve reaches further right.
+        let mut bulge = c((10.0, 5.0));
+        bulge.inn = (6.0, -3.0);
+        bulge.out = (-6.0, 3.0);
+        pe.pen = vec![c((1.0, 1.0)), c((10.0, 1.0)), bulge, c((10.0, 9.0)), c((1.0, 9.0))];
+        close_pen(pe, SelectMode::Replace);
+        let sel = pe.pi.sel.clone().unwrap();
+        assert!(sel.get_pixel(11, 3)[0] >= 128, "the curve bulges past the corners");
+        assert_eq!(sel.get_pixel(15, 3)[0], 0);
+    }
+
+    #[test]
+    fn the_ants_dashes_march_along_the_line() {
+        let dashes = |phase: f32| {
+            let mut out = Vec::new();
+            let st = egui::Stroke::new(1.0, egui::Color32::WHITE);
+            ant_dashes(egui::pos2(0.0, 0.0), egui::pos2(16.0, 0.0), phase, st, &mut out);
+            out.iter()
+                .filter_map(|s| match s {
+                    egui::Shape::LineSegment { points, .. } => Some((points[0].x, points[1].x)),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(dashes(0.0), vec![(0.0, 4.0), (8.0, 12.0)]);
+        // Later on they have moved on along the line.
+        assert_eq!(dashes(2.0), vec![(2.0, 6.0), (10.0, 14.0)]);
+        assert_eq!(dashes(6.0), vec![(0.0, 2.0), (6.0, 10.0), (14.0, 16.0)]);
+    }
 
     /// An app with one 20 x 10 pixel picture, 40 x 20 mm at (10, 10).
     fn app_with_picture() -> (App, ShapeId) {

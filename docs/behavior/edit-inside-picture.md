@@ -95,7 +95,13 @@ fits and Ctrl+1 shows the actual pixels.
 
 `PixelEdit` (`pixel_edit_app.rs`) holds the picture decoded to RGBA
 (`PixelImage`), an optional selection mask (one byte per pixel, 0 to
-255), the tool, its options and its own undo history. Nothing in the
+255), the tool, its options and its own undo history. The selection
+shows as marching ants (`selection_edges`): the pixel edges where the
+mask crosses half way, joined into straight runs turned clockwise round
+the selection, drawn as a black line one screen point wide with white
+dashes of 4 points (gaps of 4) moving 12 points a second; only the runs
+on screen are drawn, and past 400,000 points of outline the dashes stand
+still. Nothing in the
 document changes while editing: the page is drawn without the picture
 (`pixel_edit_doc`, the shape with `visible = false`) and the edited
 pixels are drawn over it as a texture through the picture's own
@@ -129,6 +135,7 @@ pixel y runs down, page y runs up.
 | Rectangle mask | R | drag a box; Shift adds, Ctrl subtracts, Shift+Ctrl exclusive or |
 | Ellipse mask | J | drag a box |
 | Freehand mask | K | a click sets a corner, a drag draws freehand; a double click, Enter or a click within 8 points of the first corner closes it; Esc drops it |
+| Pen mask | N | a press sets a point and a drag from it pulls its two handles (opposite, or with Alt only the one going on), so the outline curves through it as a cubic curve; a click is a corner; the curve on to the pointer shows dashed; Backspace takes the last point back; a double click, Enter or a press within 8 points of the first point closes it (curves cut into steps of about 2 px); Esc drops it |
 | Lasso | A | freehand outline, closed on release |
 | Edge mask | 4 | freehand outline whose points (2 px apart) go to the strongest edge (Sobel slope of the light, less half a unit a pixel away) within the reach (1 to 40 px, 6), closed on release |
 | Magic wand | W | pixels of like colour (Tolerance, Contiguous) |
@@ -205,14 +212,27 @@ opacity and merge mode (the 28 merge modes of transparencies, drawn by
 the renderer's `composite_layer`); hidden layers are left out. While
 painting only the changed box is put together again.
 
-Layers panel (top of the side panel): the layers top first, each with a
-show box, a lock box and its name (a click uses it); the name, opacity
-(a drag of the slider is one undo step) and merge mode of the layer in
-use; New (clear, above), Duplicate, Delete (never the last), Up, Down,
+Layers panel (`ui/pixel_layers.rs`): on top the merge mode and opacity
+of the layer in use (a drag of the slider is one undo step); then the
+layers top first in a list, each a row with its show (eye) and lock
+buttons, a bent arrow when it is clipped, a miniature of its pixels
+(an adjustment layer's icon), a miniature of its mask when it has one,
+its name and, under it, its merge mode and opacity (and "hidden"). A
+click on a row uses the layer; a double click renames it in place
+(Enter or a click away keeps the name). A click on the mask's miniature
+uses the layer and paints its mask (framed in the accent), a click on
+the pixels' miniature paints its pixels again. The miniatures are made
+again at most every half second while the picture changes, never in the
+middle of a stroke. Under the list, icon buttons named in their tips:
+New (clear, above), Duplicate, Add Mask, New Adjustment Layer, Up, Down,
 Merge Down (into the one below with its opacity and mode; the one below
-keeps its settings), Flatten; Copy to Layer and Cut to Layer (the
-selected pixels, soft edges kept, on a new layer above), Paste as Layer
-(the picture on the clipboard, its top left at the selection's).
+keeps its settings), Flatten, Delete (never the last); then Copy to
+Layer and Cut to Layer (the selected pixels, soft edges kept, on a new
+layer above; greyed with no selection), Paste as Layer (the picture on
+the clipboard, its top left at the selection's), Fit to Surface and
+Clip to layer below (pushed in when on). A layer with a mask adds a
+Mask row: Paint Mask (pushed in while painting it), Invert, Apply and
+Delete.
 
 Clip to layer below: the layer shows only where the nearest layer
 beneath it that is not clipped has pixels (its coverage after its mask).

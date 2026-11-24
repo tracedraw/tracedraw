@@ -199,6 +199,14 @@ pub fn draw(painter: &Painter, r: Rect, tool: PixelTool, color: Color32) {
             pen.node(14.0, 8.0, false);
             pen.node(18.0, 19.0, true);
         }
+        PixelTool::PenMask => {
+            // A dashed curved outline and the nib drawing it.
+            pen.dashed("M9 15c-5 3-7-2-5-6s7-6 11-4", LINE, ink, 2.4, 2.2);
+            pen.body("M9 15l2.5-8.5L19 3l2 2-3.5 7.5z");
+            pen.thin("M9 15l5-5", ink);
+            pen.node(4.0, 9.0, false);
+            pen.node(9.0, 15.0, true);
+        }
         PixelTool::EdgeMask => {
             pen.ghost("M5 15c-3-4 0-11 7-11s9 5 6 8", ink);
             // A magnet: a U in the accent with its ends.

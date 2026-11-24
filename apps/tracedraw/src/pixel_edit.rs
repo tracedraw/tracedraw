@@ -59,6 +59,10 @@ pub enum PixelTool {
     /// A selection outline of clicked corners and dragged freehand parts,
     /// closed with a double click, Enter or a click on its first point.
     FreehandMask,
+    /// A selection outline of points, curved where a press is dragged
+    /// (the drag pulls the point's handles), closed with a double click,
+    /// Enter or a click on its first point.
+    PenMask,
     /// A freehand selection whose outline clings to the strongest edge
     /// near the pointer.
     EdgeMask,
@@ -86,7 +90,7 @@ pub enum PixelTool {
 }
 
 impl PixelTool {
-    pub const ALL: [PixelTool; 41] = [
+    pub const ALL: [PixelTool; 42] = [
         PixelTool::RectSelect,
         PixelTool::EllipseSelect,
         PixelTool::Lasso,
@@ -117,6 +121,7 @@ impl PixelTool {
         PixelTool::Zoom,
         PixelTool::Pan,
         PixelTool::FreehandMask,
+        PixelTool::PenMask,
         PixelTool::EdgeMask,
         PixelTool::MaskBrush,
         PixelTool::BandMask,
@@ -163,6 +168,7 @@ impl PixelTool {
             PixelTool::Zoom => "pixel.tool.zoom",
             PixelTool::Pan => "pixel.tool.pan",
             PixelTool::FreehandMask => "pixel.tool.freehand_mask",
+            PixelTool::PenMask => "pixel.tool.pen_mask",
             PixelTool::EdgeMask => "pixel.tool.edge_mask",
             PixelTool::MaskBrush => "pixel.tool.mask_brush",
             PixelTool::BandMask => "pixel.tool.band_mask",
@@ -232,6 +238,7 @@ impl PixelTool {
                 | PixelTool::Lasso
                 | PixelTool::MagicWand
                 | PixelTool::FreehandMask
+                | PixelTool::PenMask
                 | PixelTool::EdgeMask
                 | PixelTool::MaskBrush
                 | PixelTool::BandMask
@@ -2292,32 +2299,127 @@ impl History {
     }
 }
 
-/// The outline of a selection for the screen: an RGBA picture of its
-/// size, clear except a dashed black and white line where the mask
-/// crosses half way.
-pub fn selection_outline(m: &GrayImage) -> RgbaImage {
-    let (w, h) = m.dimensions();
+/// The outline of a selection for the screen: the pixel edges where the
+/// mask crosses half way, joined into straight runs, each (from, to) in
+/// pixels and turned so that the selection lies on its right: followed
+/// from start to end the runs go round the selection clockwise (the way
+/// the dashes march).
+pub fn selection_edges(m: &GrayImage) -> Vec<[(f32, f32); 2]> {
+    let (w, h) = (m.width() as i64, m.height() as i64);
+    let raw = m.as_raw();
     let on = |x: i64, y: i64| {
-        x >= 0
-            && y >= 0
-            && x < w as i64
-            && y < h as i64
-            && m.get_pixel(x as u32, y as u32)[0] >= 128
+        x >= 0 && y >= 0 && x < w && y < h && raw[(y * w + x) as usize] >= 128
     };
-    RgbaImage::from_fn(w, h, |x, y| {
-        let (xi, yi) = (x as i64, y as i64);
-        let me = on(xi, yi);
-        let edge = me && (!on(xi - 1, yi) || !on(xi + 1, yi) || !on(xi, yi - 1) || !on(xi, yi + 1));
-        if edge {
-            if ((x + y) / 4) % 2 == 0 {
-                Rgba([0, 0, 0, 255])
+    let mut out = Vec::new();
+    // Across: 1 where the selection is below the edge, 2 above.
+    for y in 0..=h {
+        let mut run: Option<(i64, u8)> = None;
+        for x in 0..=w {
+            let side = if x == w {
+                0
             } else {
-                Rgba([255, 255, 255, 255])
+                match (on(x, y - 1), on(x, y)) {
+                    (false, true) => 1,
+                    (true, false) => 2,
+                    _ => 0,
+                }
+            };
+            if run.is_some_and(|(_, s)| s != side) {
+                if let Some((s0, s)) = run.take() {
+                    let (a, b) = ((s0 as f32, y as f32), (x as f32, y as f32));
+                    out.push(if s == 1 { [a, b] } else { [b, a] });
+                }
             }
-        } else {
-            Rgba([0, 0, 0, 0])
+            if side != 0 && run.is_none() {
+                run = Some((x, side));
+            }
         }
-    })
+    }
+    // Up and down: 1 where the selection is right of the edge, 2 left.
+    for x in 0..=w {
+        let mut run: Option<(i64, u8)> = None;
+        for y in 0..=h {
+            let side = if y == h {
+                0
+            } else {
+                match (on(x - 1, y), on(x, y)) {
+                    (false, true) => 1,
+                    (true, false) => 2,
+                    _ => 0,
+                }
+            };
+            if run.is_some_and(|(_, s)| s != side) {
+                if let Some((s0, s)) = run.take() {
+                    let (a, b) = ((x as f32, s0 as f32), (x as f32, y as f32));
+                    out.push(if s == 1 { [b, a] } else { [a, b] });
+                }
+            }
+            if side != 0 && run.is_none() {
+                run = Some((y, side));
+            }
+        }
+    }
+    out
+}
+
+/// A point of a pen outline: where it lies and its two handles, as
+/// offsets from it (both nothing at a corner).
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct PenNode {
+    pub p: (f32, f32),
+    /// The handle of the curve coming in.
+    pub inn: (f32, f32),
+    /// The handle of the curve going out.
+    pub out: (f32, f32),
+}
+
+impl PenNode {
+    pub fn corner(p: (f32, f32)) -> Self {
+        PenNode {
+            p,
+            ..Default::default()
+        }
+    }
+}
+
+/// A pen outline as a polygon: each part between two points a cubic
+/// curve through their handles (a straight line between corners), cut
+/// into steps of about 2 pixels; `closed` adds the part from the last
+/// point back to the first.
+pub fn pen_polygon(nodes: &[PenNode], closed: bool) -> Vec<(f32, f32)> {
+    let n = nodes.len();
+    let Some(first) = nodes.first() else {
+        return Vec::new();
+    };
+    let dist = |a: (f32, f32), b: (f32, f32)| (a.0 - b.0).hypot(a.1 - b.1);
+    let mut pts = vec![first.p];
+    let parts = if closed && n > 2 { n } else { n - 1 };
+    for i in 0..parts {
+        let (a, b) = (nodes[i], nodes[(i + 1) % n]);
+        let p0 = a.p;
+        let p1 = (a.p.0 + a.out.0, a.p.1 + a.out.1);
+        let p2 = (b.p.0 + b.inn.0, b.p.1 + b.inn.1);
+        let p3 = b.p;
+        let steps = if a.out == (0.0, 0.0) && b.inn == (0.0, 0.0) {
+            1
+        } else {
+            let len = dist(p0, p1) + dist(p1, p2) + dist(p2, p3);
+            ((len / 2.0).ceil() as usize).clamp(4, 512)
+        };
+        for k in 1..=steps {
+            let t = k as f32 / steps as f32;
+            let u = 1.0 - t;
+            let (c0, c1, c2, c3) = (u * u * u, 3.0 * u * u * t, 3.0 * u * t * t, t * t * t);
+            pts.push((
+                c0 * p0.0 + c1 * p1.0 + c2 * p2.0 + c3 * p3.0,
+                c0 * p0.1 + c1 * p1.1 + c2 * p2.1 + c3 * p3.1,
+            ));
+        }
+    }
+    if closed && pts.len() > 1 && pts.first() == pts.last() {
+        pts.pop();
+    }
+    pts
 }
 
 #[cfg(test)]
@@ -3054,11 +3156,45 @@ mod tests {
     }
 
     #[test]
-    fn the_selection_outline_is_on_the_edge() {
+    fn the_selection_outline_runs_round_the_selection_clockwise() {
         let m = rect_mask(10, 10, (2.0, 2.0), (8.0, 8.0)).unwrap();
-        let o = selection_outline(&m);
-        assert_eq!(o.get_pixel(2, 5)[3], 255);
-        assert_eq!(o.get_pixel(5, 5)[3], 0);
-        assert_eq!(o.get_pixel(0, 0)[3], 0);
+        let mut e = selection_edges(&m);
+        e.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        // Four runs, one a side: right along the top, down the right,
+        // left along the bottom and up the left.
+        assert_eq!(
+            e,
+            vec![
+                [(2.0, 2.0), (8.0, 2.0)],
+                [(2.0, 8.0), (2.0, 2.0)],
+                [(8.0, 2.0), (8.0, 8.0)],
+                [(8.0, 8.0), (2.0, 8.0)],
+            ]
+        );
+        assert!(selection_edges(&GrayImage::new(4, 4)).is_empty());
+        // A selection to the picture's edge has its outline there.
+        let all = GrayImage::from_pixel(3, 2, Luma([255]));
+        assert_eq!(selection_edges(&all).len(), 4);
+    }
+
+    #[test]
+    fn a_pen_outline_curves_through_its_handles() {
+        // Corners only: the polygon of the points.
+        let sq = [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)].map(PenNode::corner);
+        assert_eq!(pen_polygon(&sq, true), vec![(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)]);
+        assert_eq!(pen_polygon(&sq[..1], true), vec![(0.0, 0.0)]);
+        // A smooth point bulges the line out towards its handles.
+        let mut mid = PenNode::corner((10.0, 0.0));
+        mid.inn = (-5.0, -8.0);
+        mid.out = (5.0, 8.0);
+        let curve = [PenNode::corner((0.0, 0.0)), mid, PenNode::corner((20.0, 0.0))];
+        let pts = pen_polygon(&curve, false);
+        assert!(pts.len() > 8);
+        assert_eq!(pts.last(), Some(&(20.0, 0.0)));
+        assert!(pts.iter().any(|p| p.1 < -1.0), "the first part bulges up");
+        assert!(pts.iter().any(|p| p.1 > 1.0), "the second part bulges down");
+        let m = lasso_mask(20, 20, &pen_polygon(&sq, true)).unwrap();
+        assert_eq!(m.get_pixel(8, 2)[0], 255);
+        assert_eq!(m.get_pixel(2, 8)[0], 0);
     }
 }
