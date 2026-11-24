@@ -48,6 +48,7 @@ full, row-by-row status.
 - Print on Windows: Print > PostScript has Send PostScript to a PostScript printer. Ticked, a printer with a PostScript driver, such as most PDF printers, is sent PostScript instead of RGB pictures of the sheets, so CMYK colours arrive with the values set (100 C 100 M stayed 100 C 100 M, where the driver made it 98 C 98 M 2 Y) (#4052).
 - Common Shapes: a shape stays adjustable after it is drawn. Diamond handles on the canvas (with the Common Shapes tool right after drawing, and with the Shape tool) change an arrow's head length and shaft thickness, the slant of a parallelogram, the inset of a trapezoid or hexagon, the thickness of a plus, ring or frame, the depth of a cylinder or cube, the smile of the smiley face, a rounded corner's radius, the height of a wave, the depth of a burst's points, a callout's tail and more, on 52 of the 71 shapes; the shape is drawn again live while dragging, in one undo step, and the settings are kept in the .tdraw file. Convert To Curves leaves an ordinary curve (#4045).
 - Clip frames: an envelope (and the other effects, the shadow and the transparency) on a clip frame stays when its contents are edited, after a click on a content in the Objects docker or with Edit Contents; it was lost as the contents came out (#4070).
+- Clip frames: a blurred object (or one with other bitmap effects) inside a clip frame gets its picture made again when it changes, as on the layer; the picture of the object as it was before stayed (#4105).
 
 ## 0.51.1 (2026-11-23)
 
