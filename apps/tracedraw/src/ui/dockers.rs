@@ -104,7 +104,10 @@ pub fn tab_strip(app: &mut App, ui: &mut Ui, place: DockerPlace) {
             let icon_h = if tab_icon(tab).is_some() { 24.0 } else { 0.0 };
             // A slot at the top of the tab for the close cross, shown while
             // the pointer is over the tab.
-            let h = tab_height(icon_h, w, compact);
+            // Pictures alone: the panel in front still shows its name, so
+            // the one open is read at a glance (#4121).
+            let named = !compact || active;
+            let h = tab_height(icon_h, w, !named);
             let (r, resp) =
                 ui.allocate_exact_size(egui::vec2(full.width(), h), egui::Sense::click_and_drag());
             laid.push((tab, r));
@@ -142,7 +145,7 @@ pub fn tab_strip(app: &mut App, ui: &mut Ui, place: DockerPlace) {
                 );
                 icon(ui.painter(), ir);
             }
-            if !compact {
+            if named {
                 let text_top = r.min.y + CLOSE_SLOT + 7.0 + icon_h;
                 let mut ts = egui::epaint::TextShape::new(
                     egui::pos2(bg.center().x + gh / 2.0, text_top),
@@ -788,7 +791,7 @@ fn tab_height(icon_h: f32, name_w: f32, compact: bool) -> f32 {
 }
 
 /// Whether a column's tabs show their pictures alone (the name stays in
-/// the tip): only when Options > Customization > Appearance asks for it
+/// the tip, and on the tab in front, #4121): only when Options > Customization > Appearance asks for it
 /// (`chosen`) and every tab has a picture. Otherwise each tab shows its
 /// picture and its name, however short the column: a column too short
 /// for its tabs slides (#950, #2902).
@@ -5348,6 +5351,8 @@ pub(crate) mod tests {
         let tabs = [DockerTab::Properties, DockerTab::Objects, DockerTab::Blend];
         assert!(!icons_only(&tabs, false), "names by default");
         assert!(icons_only(&tabs, true), "pictures alone when chosen");
+        // The tab in front keeps its name below its picture (#4121).
+        assert!(tab_height(24.0, 60.0, false) > tab_height(24.0, 60.0, true));
         assert!(!crate::settings::Settings::default().docker_tabs_icons_only);
         // Drawn: five panels in a tall column, then a short one.
         let ctx = crate::theme::ui_context();
@@ -5386,13 +5391,18 @@ pub(crate) mod tests {
         for ((_, a), (_, b)) in short.iter().zip(&tall) {
             assert!((a.height() - b.height()).abs() < 0.5, "{a:?} {b:?}");
         }
-        // Icons only chosen: the pictures alone, in any column.
+        // Icons only chosen: the pictures alone, in any column, but for
+        // the panel in front, which keeps its name (#4121).
         app.settings.docker_tabs_icons_only = true;
         let compact = run(&mut app, 2000.0);
-        assert!(
-            compact.iter().all(|(_, r)| (r.height() - 54.0).abs() < 0.5),
-            "{compact:?}"
-        );
+        let (_, front, _) = app.docker_column(DockerPlace::Right);
+        for (tab, r) in &compact {
+            if *tab == front {
+                assert!(r.height() > 60.0, "{tab:?} {r:?}");
+            } else {
+                assert!((r.height() - 54.0).abs() < 0.5, "{tab:?} {r:?}");
+            }
+        }
     }
 
     /// The pointer over a docker tab shows a close cross at its top; a
