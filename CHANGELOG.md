@@ -4,9 +4,9 @@ Versions follow the tags of this repository; every push to `main` also
 publishes a nightly build. [`docs/features.md`](docs/features.md) has the
 full, row-by-row status.
 
-## Unreleased
+## 0.52.0 (2026-11-24)
 
-- Shape Builder: merging curved and straight objects keeps the curves whole, with a node only where outlines cross, and what is left of each object is clean too (a square merged with a circle came out with dozens of nodes along the arc); Remove leftovers on the property bar has Accept delete what is left of the objects and lines the merges used, so only the shapes built stay; with Use guidelines on and nothing selected, the rooms the guidelines close in on every side become shapes (#4123).
+- Merging overlapping parts with a drag: merging curved and straight objects keeps the curves whole, with a node only where outlines cross, and what is left of each object is clean too (a square merged with a circle came out with dozens of nodes along the arc); Remove leftovers on the property bar has Accept delete what is left of the objects and lines the merges used, so only the shapes built stay; with Use guidelines on and nothing selected, the rooms the guidelines close in on every side become shapes (#4123).
 - Pick tool: a perfectly vertical or horizontal line is no longer flung sideways by the side handle across it. Its box is only as wide as its outline, and dragging that handle a few pixels moved the line ever faster away; that side now leaves the line where it is, and the handles along it still stretch it (#4173).
 - Shape tool: with every node of a curve chosen, a rounded corner whose arc ends on the curve's first node moves with the others. On a rectangle given round corners, the first node stayed behind while the rest moved, and the shape was pulled out of form (#4160).
 - Color Eyedropper: a colour read from a picture that is still selected (just placed) is kept for Apply, as from any other object; it went onto the selected picture itself, which changed it and left nothing to apply elsewhere (#4166).
@@ -42,9 +42,9 @@ full, row-by-row status.
 - Outline Pen: a Presets row saves the outline shown under a name (width, colour, style, caps, corners, arrowheads) and gives it to other objects from the list in two clicks; + saves, - removes (#4090).
 - Print Preview: Print sends the job and leaves the preview open, so pages can be sent one at a time; Print and Close beside it closes the preview after printing (#4072).
 - B-spline tool: Space places a point under the pointer while drawing, a right click places a sharp (fixed) point, and a quick click right after the previous one is no longer lost (#4087, #4076).
-- Shape Builder with lines: the stretches of a line that run inside a merged area are removed with the merge, so a shape divided by lines comes out as one clean shape; Alt+click or Alt+drag over lines deletes their segments up to the next crossing (#4079, #3814).
+- merging overlapping parts with a drag with lines: the stretches of a line that run inside a merged area are removed with the merge, so a shape divided by lines comes out as one clean shape; Alt+click or Alt+drag over lines deletes their segments up to the next crossing (#4079, #3814).
 - Freehand tool: smoothing above 50 also evens out the stroke before it is fitted, so 100 gives a much smoother curve from a shaky hand (#4068).
-- Objects panel: an object inside a PowerClip can be dragged out of it straight away, without being selected first (#4061).
+- Objects panel: an object inside a clip frame can be dragged out of it straight away, without being selected first (#4061).
 - Property bar: with one object that has a Gaussian Blur selected, a Blur slider on the bar changes its radius with the drawing in view; the Gaussian Blur window opens small, with its settings only (#4091).
 - Colour points gradient: each point has a spread, how far its colour reaches, set on the property bar or by dragging the handle on the ring round the chosen point; the property bar groups the chosen point's colour, transparency, spread and Delete Point, and leaves out the angle and edge pad the type does not use (#3947).
 - Tables: pointing at a font or a size in a list while typing in a cell no longer takes the table away, with everything drawn before it, as soon as the pointer leaves the list; the cell shows the font and keeps its text. Ending any such preview never takes back more than the preview did (#4102).
