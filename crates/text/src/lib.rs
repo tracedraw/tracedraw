@@ -55,6 +55,10 @@ pub struct FontSystem {
     /// each added.
     carried: RwLock<Vec<(Vec<String>, DocumentFont)>>,
     cache: Mutex<HashMap<String, CachedOutline>>,
+    /// The texts laid out last, by [`FontSystem::cache_key`], newest
+    /// last: the caret, the marks of non-printing characters and the
+    /// outline of a text being typed share one layout (#4172).
+    laid: Mutex<std::collections::VecDeque<(String, Arc<TextLayout>)>>,
     /// Texts shaped lately, by [`FontSystem::shaping_key`].
     shaped: Mutex<HashMap<String, Arc<Shaped>>>,
     /// Families the application can fetch when text asks for them (the
@@ -2438,6 +2442,7 @@ impl FontSystem {
             document_families: RwLock::new(Vec::new()),
             carried: RwLock::new(Vec::new()),
             cache: Mutex::new(HashMap::new()),
+            laid: Mutex::new(std::collections::VecDeque::new()),
             shaped: Mutex::new(HashMap::new()),
             offered: RwLock::new(Vec::new()),
             requests: Mutex::new((Vec::new(), Vec::new())),
@@ -2535,6 +2540,9 @@ impl FontSystem {
     /// Fonts were added: drop what was laid out or chosen without them.
     fn fonts_changed(&self) {
         if let Ok(mut c) = self.cache.lock() {
+            c.clear();
+        }
+        if let Ok(mut c) = self.laid.lock() {
             c.clear();
         }
         if let Ok(mut c) = self.shaped.lock() {
@@ -3808,7 +3816,7 @@ impl FontSystem {
                 return hit.clone();
             }
         }
-        let p = Arc::new(self.layout(req).path);
+        let p = Arc::new(self.layout_shared(req).path.clone());
         let b = (!p.elements().is_empty()).then(|| p.bounding_box());
         if let Ok(mut c) = self.cache.lock() {
             // Evict down to the limit one entry at a time: clearing the
@@ -4526,6 +4534,40 @@ impl FontSystem {
     /// Full layout of a text object.
     pub fn layout(&self, req: &TextRequest) -> TextLayout {
         self.layout_with(req, false, false)
+    }
+
+    /// [`FontSystem::layout`], shared: the same text asked for again
+    /// (by the caret, the marks of non-printing characters, the outline
+    /// drawn, in the same frame or the frames after) gets the layout
+    /// already made instead of breaking its lines anew (#4172). Any
+    /// change to the text, its formatting, its frame or path, the
+    /// default tab step or the fonts makes a new one.
+    pub fn layout_shared(&self, req: &TextRequest) -> Arc<TextLayout> {
+        /// Texts kept: those edited and drawn around the same time.
+        const KEPT: usize = 16;
+        let key = Self::cache_key(req);
+        if let Ok(c) = self.laid.lock() {
+            if let Some((_, hit)) = c.iter().rev().find(|(k, _)| *k == key) {
+                return hit.clone();
+            }
+        }
+        let laid = Arc::new(self.layout(req));
+        if let Ok(mut c) = self.laid.lock() {
+            if !c.iter().any(|(k, _)| *k == key) {
+                c.push_back((key, laid.clone()));
+            }
+            while c.len() > KEPT {
+                c.pop_front();
+            }
+        }
+        laid
+    }
+
+    /// True when [`FontSystem::layout_shared`] keeps `req` laid out.
+    #[cfg(test)]
+    fn is_laid(&self, req: &TextRequest) -> bool {
+        let key = Self::cache_key(req);
+        self.laid.lock().is_ok_and(|c| c.iter().any(|(k, _)| *k == key))
     }
 
     /// The glyphs of a text object as its fonts draw them, placed as
@@ -7899,6 +7941,35 @@ mod tests {
 
     fn has_fonts() -> bool {
         !fonts().families().is_empty()
+    }
+
+    /// #4172: the text drawn and the caret's layout of it are laid out
+    /// once: the outline's layout is kept, asked for again it is the
+    /// same one, and any change to the text makes a new one.
+    #[test]
+    fn the_outline_and_the_caret_share_one_layout() {
+        let f = fonts();
+        let para = ParagraphStyle::default();
+        let spans = [span("shared layout 4172")];
+        let req = TextRequest {
+            spans: &spans,
+            frame: Some(tracedraw_core::geometry::Size::new(40.0, 30.0)),
+            align: TextAlign::Left,
+            para: &para,
+            on_path: None,
+        };
+        f.outline_cached(&req);
+        assert!(f.is_laid(&req), "the outline's layout is kept");
+        let a = f.layout_shared(&req);
+        let b = f.layout_shared(&req);
+        assert!(Arc::ptr_eq(&a, &b), "asked again: the same layout");
+        assert_eq!(a.fitted_chars, f.layout(&req).fitted_chars);
+        let typed = [span("shared layout 41723")];
+        let c = f.layout_shared(&TextRequest {
+            spans: &typed,
+            ..req
+        });
+        assert!(!Arc::ptr_eq(&a, &c), "a letter more: laid out anew");
     }
 
     #[test]
