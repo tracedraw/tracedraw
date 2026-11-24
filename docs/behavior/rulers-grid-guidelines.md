@@ -254,6 +254,18 @@ scale is the whole drawing's (#3450,
   otherwise, #1753,
   `pick_drag_tests::ctrl_a_with_a_guideline_selected_selects_all_guidelines`).
 
+### Convert to Guidelines
+
+Object > Convert to Guidelines, also in the objects' right-click menu
+under Convert Outline to Object (#3954): each selected unlocked object
+becomes guidelines and is removed, one undo step ("Convert to
+Guidelines"). Each straight side gives one guideline through it
+(horizontal, vertical or angled; sides on one line give one); an object
+with no straight side (a circle, an ellipse, a free curve) gives the
+four edges of its box. A guideline already on the page is not added
+again. With the master page's guidelines chosen they go there
+(`App::convert_to_guides`, `guides::guide_lines_of_path`).
+
 ### Guidelines panel
 
 Show and Snap toggles, Guideline type (horizontal, vertical, angled), the

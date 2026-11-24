@@ -1273,6 +1273,151 @@ pub fn transformed_line(line: GuideLine, t: Affine, mid: Point) -> GuideLine {
     }
 }
 
+/// The guidelines that run along the straight sides of `path`: one per
+/// side, sides on one line giving one guideline. A path with no straight
+/// side (a circle, an ellipse, a free curve) gives the four edges of its
+/// bounding box instead (#3954).
+pub fn guide_lines_of_path(path: &tracedraw_core::geometry::BezPath) -> Vec<GuideLine> {
+    use tracedraw_core::geometry::PathEl;
+    let mut out: Vec<GuideLine> = Vec::new();
+    let push = |a: Point, b: Point, out: &mut Vec<GuideLine>| {
+        let (dx, dy) = (b.x - a.x, b.y - a.y);
+        if !(dx.is_finite() && dy.is_finite()) || dx.hypot(dy) < 1e-6 {
+            return;
+        }
+        let mut angle = dy.atan2(dx).to_degrees();
+        angle = angle.rem_euclid(180.0);
+        let line = if angle < 1e-6 || angle > 180.0 - 1e-6 {
+            GuideLine::Horizontal { y: a.y }
+        } else if (angle - 90.0).abs() < 1e-6 {
+            GuideLine::Vertical { x: a.x }
+        } else {
+            GuideLine::Angled {
+                x: a.x,
+                y: a.y,
+                angle,
+            }
+        };
+        if !out.iter().any(|g| same_line(g, &line)) {
+            out.push(line);
+        }
+    };
+    let mut start: Option<Point> = None;
+    let mut at: Option<Point> = None;
+    let mut curved = false;
+    for el in path.elements() {
+        match *el {
+            PathEl::MoveTo(p) => {
+                start = Some(p);
+                at = Some(p);
+            }
+            PathEl::LineTo(p) => {
+                if let Some(a) = at {
+                    push(a, p, &mut out);
+                }
+                at = Some(p);
+            }
+            PathEl::QuadTo(_, p) | PathEl::CurveTo(_, _, p) => {
+                curved = true;
+                at = Some(p);
+            }
+            PathEl::ClosePath => {
+                if let (Some(a), Some(s)) = (at, start) {
+                    push(a, s, &mut out);
+                }
+                at = start;
+            }
+        }
+    }
+    if out.is_empty() && curved {
+        let b = tracedraw_core::geometry::Shape::bounding_box(path);
+        if b.width().is_finite() && b.height().is_finite() && (b.width() > 1e-6 || b.height() > 1e-6) {
+            out.push(GuideLine::Vertical { x: b.x0 });
+            out.push(GuideLine::Vertical { x: b.x1 });
+            out.push(GuideLine::Horizontal { y: b.y0 });
+            out.push(GuideLine::Horizontal { y: b.y1 });
+            out.dedup_by(|a, b| same_line(a, b));
+        }
+    }
+    out
+}
+
+/// Whether two guidelines lie on the same line (within a micron).
+fn same_line(a: &GuideLine, b: &GuideLine) -> bool {
+    const E: f64 = 1e-3;
+    match (a, b) {
+        (GuideLine::Horizontal { y: p }, GuideLine::Horizontal { y: q })
+        | (GuideLine::Vertical { x: p }, GuideLine::Vertical { x: q }) => (p - q).abs() < E,
+        (
+            GuideLine::Angled { angle, .. },
+            GuideLine::Angled {
+                x: x2,
+                y: y2,
+                angle: a2,
+            },
+        ) => {
+            let d = (angle - a2).rem_euclid(180.0);
+            (d < 1e-3 || d > 180.0 - 1e-3) && a.distance(Point::new(*x2, *y2)).abs() < E
+        }
+        _ => false,
+    }
+}
+
+impl App {
+    /// Whether Convert to Guidelines has something to convert: an
+    /// unlocked selected object.
+    pub fn can_convert_to_guides(&self) -> bool {
+        self.selected_shapes().iter().any(|s| !s.locked)
+    }
+
+    /// Convert to Guidelines (#3954): each selected object becomes the
+    /// guidelines along its straight sides (the edges of its bounding box
+    /// for a curved one) and is removed, one undo step. Guidelines already
+    /// on the page are not added twice.
+    pub fn convert_to_guides(&mut self) {
+        let shapes: Vec<_> = self
+            .selected_shapes()
+            .into_iter()
+            .filter(|s| !s.locked)
+            .collect();
+        if shapes.is_empty() {
+            return;
+        }
+        let have = self.page_guides();
+        let mut added: Vec<GuideLine> = Vec::new();
+        for s in &shapes {
+            for line in guide_lines_of_path(&s.page_path()) {
+                let known = have.iter().any(|g| same_line(&g.line, &line))
+                    || added.iter().any(|g| same_line(g, &line));
+                if !known {
+                    added.push(line);
+                }
+            }
+        }
+        let ids: Vec<_> = shapes.iter().map(|s| s.id).collect();
+        let mut cmds = Vec::new();
+        if self.edit_master_guides {
+            if !added.is_empty() {
+                let mut guides = have;
+                guides.extend(added.into_iter().map(Guide::from));
+                cmds.push(Command::SetMasterGuides { guides });
+            }
+        } else {
+            let page = self.page;
+            cmds.extend(added.into_iter().map(|line| Command::AddGuide {
+                page,
+                guide: Guide::from(line),
+            }));
+        }
+        cmds.push(Command::DeleteShapes { shapes: ids });
+        if let Err(e) = self.engine.run_batch("Convert to Guidelines", &cmds) {
+            self.status = e.to_string();
+            return;
+        }
+        self.select(Vec::new());
+    }
+}
+
 pub fn moved_line(line: GuideLine, d: Vec2) -> GuideLine {
     match line {
         GuideLine::Horizontal { y } => GuideLine::Horizontal { y: y + d.y },
@@ -1288,6 +1433,40 @@ pub fn moved_line(line: GuideLine, d: Vec2) -> GuideLine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #3954: a triangle gives a guideline along each side (the slanted
+    /// one angled), a square's opposite sides two each, and a circle the
+    /// edges of its box.
+    #[test]
+    fn guidelines_run_along_the_straight_sides() {
+        use tracedraw_core::geometry::{BezPath, Circle, Shape as _};
+        let mut tri = BezPath::new();
+        tri.move_to((0.0, 0.0));
+        tri.line_to((10.0, 0.0));
+        tri.line_to((0.0, 10.0));
+        tri.close_path();
+        let lines = guide_lines_of_path(&tri);
+        assert_eq!(lines.len(), 3, "{lines:?}");
+        assert!(lines.contains(&GuideLine::Horizontal { y: 0.0 }));
+        assert!(lines.contains(&GuideLine::Vertical { x: 0.0 }));
+        assert!(lines.iter().any(|l| matches!(l, GuideLine::Angled { angle, .. }
+            if (angle - 135.0).abs() < 1e-9)));
+        // Two sides on one line give one guideline.
+        let mut zig = BezPath::new();
+        zig.move_to((0.0, 0.0));
+        zig.line_to((5.0, 0.0));
+        zig.line_to((5.0, 5.0));
+        zig.move_to((8.0, 0.0));
+        zig.line_to((12.0, 0.0));
+        let lines = guide_lines_of_path(&zig);
+        assert_eq!(lines, [GuideLine::Horizontal { y: 0.0 }, GuideLine::Vertical { x: 5.0 }]);
+        let circle = Circle::new((5.0, 5.0), 3.0).to_path(0.1);
+        let lines = guide_lines_of_path(&circle);
+        assert_eq!(lines.len(), 4, "{lines:?}");
+        assert!(lines.iter().any(|l| matches!(l, GuideLine::Vertical { x } if (x - 2.0).abs() < 1e-6)));
+        assert!(lines.iter().any(|l| matches!(l, GuideLine::Horizontal { y } if (y - 8.0).abs() < 1e-6)));
+        assert!(guide_lines_of_path(&BezPath::new()).is_empty());
+    }
 
     fn app() -> App {
         let mut app = App::headless();

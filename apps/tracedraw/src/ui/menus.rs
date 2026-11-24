@@ -1696,6 +1696,95 @@ mod tests {
         }
     }
 
+    /// #4132 #3752 #3954: No Frame, Center to Page Horizontally and
+    /// Vertically and Convert to Guidelines are commands of the Object
+    /// menu (so each can take a shortcut) and run by their keys.
+    #[test]
+    fn frame_center_and_guideline_commands_run_by_key() {
+        use tracedraw_core::document::GuideLine;
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        let mut entries = Vec::new();
+        run_frame(&ctx, |ui| entries = commands(&mut app, ui.ctx()));
+        let path = |key: &str| {
+            entries
+                .iter()
+                .find(|e| e.key == key)
+                .map(|e| e.path.clone())
+                .unwrap_or_else(|| panic!("{key} listed"))
+        };
+        assert_eq!(
+            path("menu.object.clip_frame_none"),
+            ["menu.object", "menu.object.clip_frame"]
+        );
+        assert_eq!(
+            path("menu.object.center_to_page_h"),
+            ["menu.object", "menu.object.align_distribute"]
+        );
+        path("menu.object.center_to_page_v");
+        assert_eq!(path("menu.object.convert_to_guidelines"), ["menu.object"]);
+        let mut run = |app: &mut App, key: &str| {
+            let mut ran = false;
+            run_frame(&ctx, |ui| ran = run_command(app, ui.ctx(), key));
+            ran
+        };
+        // A small rectangle off the page centre moves across only, then
+        // down only.
+        let page = app.page_rect();
+        let id = app
+            .new_shape(ShapeKind::Rect {
+                rect: tracedraw_core::Rect::new(1.0, 2.0, 11.0, 6.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        app.select(vec![id]);
+        let centre = |app: &App| app.doc().shape_on_page(id).expect("rect").bounds().center();
+        assert!(run(&mut app, "menu.object.center_to_page_h"));
+        let c = centre(&app);
+        assert!((c.x - page.center().x).abs() < 1e-6 && (c.y - 4.0).abs() < 1e-6, "{c:?}");
+        assert!(run(&mut app, "menu.object.center_to_page_v"));
+        let c = centre(&app);
+        assert!((c - page.center()).hypot() < 1e-6, "{c:?}");
+        // An empty clip frame goes back to its object.
+        app.objects_to_clip_frames();
+        assert_eq!(app.empty_clip_frames(), vec![id]);
+        assert!(run(&mut app, "menu.object.clip_frame_none"));
+        assert!(app.empty_clip_frames().is_empty());
+        assert!(matches!(
+            app.doc().shape_on_page(id).expect("rect again").kind,
+            ShapeKind::Rect { .. }
+        ));
+        // The rectangle becomes four guidelines along its sides.
+        app.select(vec![id]);
+        let b = app.doc().shape_on_page(id).expect("rect").bounds();
+        let before = app.page_guides().len();
+        assert!(run(&mut app, "menu.object.convert_to_guidelines"));
+        assert!(app.doc().shape_on_page(id).is_none(), "the object is gone");
+        let lines: Vec<GuideLine> = app.page_guides()[before..].iter().map(|g| g.line).collect();
+        assert_eq!(lines.len(), 4, "{lines:?}");
+        for want in [
+            GuideLine::Vertical { x: b.x0 },
+            GuideLine::Vertical { x: b.x1 },
+            GuideLine::Horizontal { y: b.y0 },
+            GuideLine::Horizontal { y: b.y1 },
+        ] {
+            assert!(
+                lines.iter().any(|l| match (l, &want) {
+                    (GuideLine::Vertical { x }, GuideLine::Vertical { x: w })
+                    | (GuideLine::Horizontal { y: x }, GuideLine::Horizontal { y: w }) =>
+                        (x - w).abs() < 1e-6,
+                    _ => false,
+                }),
+                "{want:?} in {lines:?}"
+            );
+        }
+        // One undo step brings the rectangle back without the guidelines.
+        app.undo();
+        assert!(app.doc().shape_on_page(id).is_some());
+        assert_eq!(app.page_guides().len(), before);
+    }
+
     /// The menus list their commands with the menus they sit in and their
     /// built-in shortcuts, and run one by its key with nothing shown.
     /// Page > Page Spacing: the presets and Custom... (the dialog in the
@@ -3690,6 +3779,16 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
         if item(ui, "menu.object.clip_frame_extract", "", is_clip) {
             app.extract_clip_contents();
         }
+        // The right-click menu's Frame Type > No Frame, here so it can
+        // take a shortcut (#4132): empty clip frames become their objects.
+        if item(
+            ui,
+            "menu.object.clip_frame_none",
+            "",
+            !app.empty_clip_frames().is_empty(),
+        ) {
+            app.frames_to_objects();
+        }
         // Walked for the list of commands (Options > Customization >
         // Commands) both rows count, so each can take a shortcut (#1148).
         let editing = app.clip_frame_edit.is_some();
@@ -3956,6 +4055,16 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
                 app.align(a);
             }
         }
+        // Centre on the page across or down only, so each can take a
+        // shortcut (#3752).
+        for (key, horizontal) in [
+            ("menu.object.center_to_page_h", true),
+            ("menu.object.center_to_page_v", false),
+        ] {
+            if item(ui, key, "", has) {
+                app.center_to_page_axis(horizontal);
+            }
+        }
         sep(ui);
         let three = app.selection.len() >= 3;
         for (key, shortcut, d) in [
@@ -4191,6 +4300,15 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
         has,
     ) {
         app.convert_outline_to_object();
+    }
+    // The selected objects become guidelines along their sides (#3954).
+    if item(
+        ui,
+        "menu.object.convert_to_guidelines",
+        "",
+        app.can_convert_to_guides(),
+    ) {
+        app.convert_to_guides();
     }
     // A new outline at a typed distance outside or inside the selected
     // objects (#2622).

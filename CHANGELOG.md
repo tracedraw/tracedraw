@@ -7,6 +7,12 @@ full, row-by-row status.
 ## Unreleased
 
 - `.cdr` objects that paragraph text wraps round keep the text away when the file opens, at the distance the file gives, where the text ran under them (#4142).
+- Object > Clip to Frame > No Frame: the right-click menu's Frame Type > No Frame is also a command of the Object menu, so it can take a shortcut in Options > Customization > Commands (#4132).
+- Object > Align and Distribute > Center to Page Horizontally and Center to Page Vertically move the selected objects only across or only down to the page's centre line; they can take a shortcut in Options > Customization > Commands (#3752).
+- Convert to Guidelines (Object menu and the objects' right-click menu): the selected objects become guidelines along their straight sides, a curved object the edges of its box, in one undo step (#3954).
+- Export > PDF remembers the export range Selected objects: chosen once, the dialog opens on it again the next time objects are selected, with the page size chosen for it (#4141).
+- Lock Docker in a panel's tab or title menu keeps the panel in front of its column: a panel opened afterwards goes under it instead of taking its place, and when the one under it is locked too it opens in a new column beside; off by default and kept with the workspace (#3953).
+- Options > Customization > Commands names the View > Snap To commands "Snap To Guidelines", "Snap To Objects" and so on, so they are found together with the other Snap commands (#3754).
 - Image editing mode: the Warp grid's points are easy to take: the nearest point within 20 screen pixels of where the button went down is taken, also on a quick drag, it keeps its distance from the pointer instead of jumping under it, and the point the pointer would take shows larger with a grab hand (#4116).
 - Image editing mode: a right click on a row of the Layers panel lists that layer's commands with their icons (rename, duplicate, delete, show or hide, lock, clip, up, down, merge down, flatten and the mask commands), and a thin line parts the rows (#4108).
 - Image editing mode: the layers and masks stay after Finish while the drawing is open, so Edit Inside opens them again (Layers > Keep Layers After Finish, on by default); Layers > Save Layers in the Drawing File keeps them in the file too; with neither on, Finish asks before it puts the layers together for good (#4112).

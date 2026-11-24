@@ -259,6 +259,20 @@ impl App {
         }
     }
 
+    /// Center to Page Horizontally (`horizontal`) or Vertically (#3752):
+    /// each selected object moves across, or down, until its centre lies
+    /// on the page centre's line; the other direction stays.
+    pub fn center_to_page_axis(&mut self, horizontal: bool) {
+        // Align::CenterV lines the centres up on a vertical line (moves
+        // across); CenterH on a horizontal one (moves down).
+        let how = if horizontal {
+            Align::CenterV
+        } else {
+            Align::CenterH
+        };
+        self.align_with(how, crate::ops2::AlignTo::PageCenter);
+    }
+
     /// Distribute between the outermost selected objects (the menu).
     pub fn distribute(&mut self, how: Distribute) {
         self.distribute_with(how, DistributeTo::Selection);

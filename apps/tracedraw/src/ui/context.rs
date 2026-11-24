@@ -512,6 +512,16 @@ pub(crate) fn object_menu(app: &mut App, ui: &mut Ui, close: &mut bool) {
     ) {
         app.convert_outline_to_object();
     }
+    // The objects become guidelines along their sides (#3954).
+    if ci(
+        ui,
+        close,
+        "menu.object.convert_to_guidelines",
+        "",
+        app.can_convert_to_guides(),
+    ) {
+        app.convert_to_guides();
+    }
     // Break Apart, or the drop shadow's or effect group's version of it.
     let label = app.break_apart_label();
     // Also a warped object (its warp is baked into curves) and artistic

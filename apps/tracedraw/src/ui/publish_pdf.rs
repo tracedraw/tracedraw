@@ -300,6 +300,12 @@ pub struct PublishPrefs {
     pub bitmaps: BitmapPrefs,
     /// Printers' marks around the pages (#789).
     pub marks: MarkPrefs,
+    /// Export range "Selected objects" was chosen last: the dialog opens
+    /// on it again while objects are selected (#4141).
+    pub range_selection: bool,
+    /// The page size chosen with Selected objects: the selection's own
+    /// size (true) or the drawing's.
+    pub fit_selection: bool,
 }
 
 impl Default for PublishPrefs {
@@ -327,6 +333,8 @@ impl Default for PublishPrefs {
             subset_below_pct: 80.0,
             bitmaps: BitmapPrefs::default(),
             marks: MarkPrefs::default(),
+            range_selection: false,
+            fit_selection: true,
         }
     }
 }
@@ -447,9 +455,15 @@ impl PublishState {
             tab: Tab::General,
             prefs: app.settings.publish_pdf.clone(),
             file,
-            pages: Pages::All,
+            // The range chosen last when it was Selected objects, while
+            // there is a selection to export (#4141).
+            pages: if app.settings.publish_pdf.range_selection && !app.selection.is_empty() {
+                Pages::Selection
+            } else {
+                Pages::All
+            },
             range: "1".into(),
-            fit_selection: true,
+            fit_selection: app.settings.publish_pdf.fit_selection,
             new_preset: None,
             bleed_mm: m.bleed.max(0.0),
             title: app.document_name(),
@@ -462,6 +476,17 @@ impl PublishState {
             permissions_password: String::new(),
             show_passwords: false,
         }
+    }
+
+    /// The choices OK keeps in the preferences: the dialog's, with the
+    /// export range when it is Selected objects (#4141).
+    pub fn prefs_to_keep(&self) -> PublishPrefs {
+        let mut prefs = self.prefs.clone();
+        prefs.range_selection = self.pages == Pages::Selection;
+        if prefs.range_selection {
+            prefs.fit_selection = self.fit_selection;
+        }
+        prefs
     }
 
     /// PDF/X files cannot be protected: the standards forbid encryption.
@@ -863,7 +888,7 @@ pub fn dialog(app: &mut App, ctx: &Context, st: &mut PublishState, close: &mut b
         if !ok {
             return;
         }
-        app.settings.publish_pdf = st.prefs.clone();
+        app.settings.publish_pdf = st.prefs_to_keep();
         // On Android the system's picker asks where the PDF goes, with
         // the file name of the form; it answers on a later frame.
         if crate::files::ANDROID {
@@ -1844,5 +1869,38 @@ mod tests {
         let others: usize = other_documents(&app).iter().map(|d| d.pages.len()).sum();
         assert!(others >= 2, "the leaflet is among the others");
         assert_eq!(doc.pages.len(), app.doc().pages.len() + others);
+    }
+
+    /// #4141: Selected objects chosen and OK pressed, the next export
+    /// opens on Selected objects again (with the page size chosen), and
+    /// on Current document when nothing is selected; any other range
+    /// chosen goes back to the old start.
+    #[test]
+    fn the_selected_objects_range_is_remembered() {
+        let mut app = app_with_two_pages();
+        assert_eq!(PublishState::new(&app).pages, Pages::All, "default");
+        let id = app
+            .new_shape(tracedraw_core::document::ShapeKind::Rect {
+                rect: tracedraw_core::Rect::new(10.0, 10.0, 30.0, 20.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("a rectangle");
+        app.select(vec![id]);
+        let mut st = PublishState::new(&app);
+        assert_eq!(st.pages, Pages::All);
+        st.pages = Pages::Selection;
+        st.fit_selection = false;
+        app.settings.publish_pdf = st.prefs_to_keep();
+        let again = PublishState::new(&app);
+        assert_eq!(again.pages, Pages::Selection, "remembered");
+        assert!(!again.fit_selection, "the page size too");
+        app.select(Vec::new());
+        assert_eq!(PublishState::new(&app).pages, Pages::All, "nothing to export");
+        app.select(vec![id]);
+        let mut st = PublishState::new(&app);
+        st.pages = Pages::Current;
+        app.settings.publish_pdf = st.prefs_to_keep();
+        assert_eq!(PublishState::new(&app).pages, Pages::All);
     }
 }

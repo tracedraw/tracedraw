@@ -177,8 +177,12 @@ pub fn tab_strip(app: &mut App, ui: &mut Ui, place: DockerPlace) {
                 let on_close = resp
                     .interact_pointer_pos()
                     .is_some_and(|p| close.contains(p));
+                // A locked docker keeps its place: its close button does
+                // nothing until it is unlocked (#3953).
                 if on_close {
-                    app.close_docker(tab);
+                    if !app.docker_locked(tab) {
+                        app.close_docker(tab);
+                    }
                 } else {
                     click_tab(app, place, tab);
                 }
@@ -190,8 +194,10 @@ pub fn tab_strip(app: &mut App, ui: &mut Ui, place: DockerPlace) {
                     crate::ui::menus::body(ui, |ui| {
                         place_menu(app, ui, tab);
                         stack_item(app, ui, tab);
+                        lock_item(app, ui, tab);
                         crate::ui::menus::sep(ui);
-                        if crate::ui::menus::item(ui, "docker.close_docker", "", true) {
+                        let open = !app.docker_locked(tab);
+                        if crate::ui::menus::item(ui, "docker.close_docker", "", open) {
                             app.close_docker(tab);
                         }
                     })
@@ -394,6 +400,20 @@ fn stack_item(app: &mut App, ui: &mut Ui, tab: DockerTab) {
         } else {
             app.stack_docker(tab, place);
         }
+    }
+}
+
+/// Lock Docker in a docker's menus (#3953): a locked docker stays in
+/// front of its column and cannot be closed; a docker opened there goes
+/// under it (or to the side's second column when the one under it is
+/// locked too). Off by default. Offered for a docker in a column.
+fn lock_item(app: &mut App, ui: &mut Ui, tab: DockerTab) {
+    if app.docker_place(tab).is_none_or(|p| p == DockerPlace::Floating) {
+        return;
+    }
+    let locked = app.docker_locked(tab);
+    if crate::ui::menus::check_if(ui, "docker.lock_docker", locked, true) {
+        app.set_docker_locked(tab, !locked);
     }
 }
 
@@ -1113,7 +1133,9 @@ pub(crate) fn click_tab(app: &mut App, place: DockerPlace, tab: DockerTab) {
         app.set_docker_column(place, false, None);
     } else if below {
         app.set_docker_column(place, true, None);
-    } else {
+    } else if !app.open_beside_locked(tab, place) {
+        // A locked front docker stays; the clicked one goes under it
+        // (#3953).
         app.set_docker_column(place, true, Some(tab));
     }
 }
@@ -1276,8 +1298,10 @@ fn docker_title(app: &mut App, ui: &mut Ui, tab: DockerTab, place: DockerPlace) 
             crate::ui::menus::body(ui, |ui| {
                 place_menu(app, ui, tab);
                 stack_item(app, ui, tab);
+                lock_item(app, ui, tab);
                 crate::ui::menus::sep(ui);
-                if crate::ui::menus::item(ui, "docker.close_docker", "", true) {
+                let open = !app.docker_locked(tab);
+                if crate::ui::menus::item(ui, "docker.close_docker", "", open) {
                     app.close_docker(tab);
                 }
             })

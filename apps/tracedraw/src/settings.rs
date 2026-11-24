@@ -921,6 +921,9 @@ pub struct DockerSetup {
     /// The dockers shown under the front one of a column (#2312).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub stacks: Vec<StackSetup>,
+    /// The dockers locked in front of their column (#3953).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub locked: Vec<String>,
     pub floating: Vec<FloatingSetup>,
 }
 

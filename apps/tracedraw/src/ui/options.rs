@@ -3803,6 +3803,13 @@ fn command_items(app: &App, category: Option<&str>, filter: &str) -> Vec<Command
             let label = command_label(e);
             let name = match crate::macros::command_name(&e.key) {
                 Some((name, _)) => name,
+                // View > Snap To's rows say what they snap to, so in the
+                // list they read "Snap To Guidelines" and come together
+                // with the other Snap commands (#3754).
+                None if e.path.last().map(String::as_str) == Some("menu.view.snap_to") => trf(
+                    "options.snap_to_command",
+                    &[("name", tr(&e.key).trim_end_matches("..."))],
+                ),
                 None => tr(&e.key).trim_end_matches("...").to_string(),
             };
             out.push(CommandItem {
@@ -6520,6 +6527,13 @@ mod tests {
         );
         let found = command_items(&app, None, "open");
         assert!(!found.is_empty() && found.len() < all.len());
+        // The Snap To rows are named for the list (#3754).
+        let snap = command_items(&app, None, "");
+        for id in ["menu.view.snap_guidelines", "menu.view.snap_objects"] {
+            let name = trf("options.snap_to_command", &[("name", &tr(id))]);
+            assert_ne!(name, tr(id));
+            assert!(snap.iter().any(|c| c.id == id && c.name == name), "{id}");
+        }
         // Table's commands come under Text, where their submenu sits;
         // there is no Table category.
         let text = command_items(&app, Some("menu.text"), "");
