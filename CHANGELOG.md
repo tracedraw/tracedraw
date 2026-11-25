@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- `.cdr` packages saved by TraceDraw keep the identities of a live Fit Objects to Path, including imported linked brush strokes, so its guide and repeated objects stay editable after reopening here (#4275).
 - Text tool: a drag that starts on a text already on the page goes into it and selects from the press, and a press held a moment on a text does the same as a click, where the drag started a new paragraph frame over the text (#4240).
 - Pages keep one zoom: going back to a page shows it at the zoom in use, where each page came back at the zoom it was left at; in the Multipage View a page gone to (Go To Page, the page tabs) comes into view at the same zoom when it was out of sight (#4241).
 - Layer Effects: an effect taken away with its × keeps its values, and ticking it again, on that object or on another, starts from them instead of the defaults (#4242).

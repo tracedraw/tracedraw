@@ -183,6 +183,21 @@ With the Pick tool the selected live fit shows two handles:
 
 Each handle drag is one undo step.
 
+### Saving a live fit
+
+Native `.tdraw` files keep the live fit. A `.cdr` package (version 14 or
+later) saved by TraceDraw also keeps its object data and stable identities
+in `tracedraw/data.json`. Opening it again here retains the guide,
+source objects, copies and settings, so moving or reshaping the guide and
+changing spacing still work with undo. This includes a linked brush
+stroke adopted on import. Missing or unreadable metadata leaves ordinary
+vectors; versions before 14 cannot hold this member.
+
+Other readers see the guide and placed vectors. This member does not
+write a native linked brush record for editing in another application.
+See `a_live_fit_stays_editable_after_a_cdr_package_round_trip` and the
+original samples in `docs/examples/linked-fit/`.
+
 ### Strokes read from `.cdr` files
 
 A brush stroke a `.cdr` file links to its curve (#3680; the

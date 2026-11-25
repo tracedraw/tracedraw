@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="150mm" height="110mm" viewBox="0 0 150 110">
+  <title>Linked fit save and reopen</title>
+  <g id="2" data-name="Layer 1">
+    <path id="5" d="M12.5 72.18L11.75 73.5L13.25 73.5Z" fill="#23a05f" fill-rule="evenodd" stroke="none"/>
+    <path id="63" d="M22.5 72.18L21.75 73.5L23.25 73.5Z" fill="#23a05f" fill-rule="evenodd" stroke="none"/>
+    <path id="64" d="M32.5 72.18L31.75 73.5L33.25 73.5Z" fill="#23a05f" fill-rule="evenodd" stroke="none"/>
+    <path id="65" d="M42.5 72.18L41.75 73.5L43.25 73.5Z" fill="#23a05f" fill-rule="evenodd" stroke="none"/>
+    <path id="66" d="M52.5 72.18L51.75 73.5L53.25 73.5Z" fill="#23a05f" fill-rule="evenodd" stroke="none"/>
+    <path id="67" d="M62.5 72.18L61.75 73.5L63.25 73.5Z" fill="#23a05f" fill-rule="evenodd" stroke="none"/>
+    <path id="68" d="M72.5 72.18L71.75 73.5L73.25 73.5Z" fill="#23a05f" fill-rule="evenodd" stroke="none"/>
+    <path id="69" d="M82.5 72.18L81.75 73.5L83.25 73.5Z" fill="#23a05f" fill-rule="evenodd" stroke="none"/>
+    <path id="70" d="M92.4744 72.0369L91.7626 73.3778L93.262 73.3348Z" fill="#23a05f" fill-rule="evenodd" stroke="none"/>
+    <path id="71" d="M102.2466 70.9034L101.7997 72.3543L103.2642 72.03Z" fill="#23a05f" fill-rule="evenodd" stroke="none"/>
+    <path id="72" d="M111.7471 68.2546L111.5217 69.756L112.9214 69.2168Z" fill="#23a05f" fill-rule="evenodd" stroke="none"/>
+    <path id="73" d="M120.4517 63.8301L120.6158 65.3394L121.8322 64.4618Z" fill="#23a05f" fill-rule="evenodd" stroke="none"/>
+    <path id="74" d="M127.7412 57.3732L128.3203 58.7766L129.2432 57.5941Z" fill="#23a05f" fill-rule="evenodd" stroke="none"/>
+    <path id="75" d="M132.9699 49.1554L133.9173 50.3417L134.474 48.9489Z" fill="#23a05f" fill-rule="evenodd" stroke="none"/>
+    <path id="76" d="M135.8652 39.7613L137.007 40.7619L137.3093 39.2927Z" fill="#23a05f" fill-rule="evenodd" stroke="none"/>
+    <path id="3" d="M12.5 73L87.5 73C125 73 137.5 52 137.5 31" fill="none" fill-rule="evenodd" stroke="#000000" stroke-width="0.0762" stroke-linecap="butt" stroke-linejoin="miter" stroke-miterlimit="2.6131"/>
+  </g>
+</svg>

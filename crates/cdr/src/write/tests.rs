@@ -10117,14 +10117,17 @@ fn object_data_and_clone_links_open_again() {
         s.fill = Fill::Solid(Color::rgb8(200, 30, 30));
         s
     };
-    let master = rect(101, 10.0);
+    let mut master = rect(101, 10.0);
+    master.uid = Some(tracedraw_core::document::Uid(0x101));
     let mut clone = rect(102, 50.0);
+    clone.uid = Some(tracedraw_core::document::Uid(0x102));
     clone.data = vec![
         ("Price".into(), "5".into()),
         ("clone.master".into(), "101".into()),
         ("clone.state".into(), "fill:1/2;outline:own".into()),
     ];
     let mut inner = rect(103, 90.0);
+    inner.uid = Some(tracedraw_core::document::Uid(0x103));
     inner.data = vec![("Code".into(), "A-1".into())];
     let group = Shape::new(
         tracedraw_core::ShapeId(104),
@@ -10148,6 +10151,9 @@ fn object_data_and_clone_links_open_again() {
                 .unwrap_or_else(|| panic!("v{v}: object at {x}"))
         };
         let (m, c) = (at(10.0), at(50.0));
+        assert_eq!(m.uid, Some(tracedraw_core::document::Uid(0x101)), "v{v}");
+        assert_eq!(c.uid, Some(tracedraw_core::document::Uid(0x102)), "v{v}");
+        assert_eq!(at(90.0).uid, Some(tracedraw_core::document::Uid(0x103)), "v{v}");
         let value = |s: &Shape, k: &str| {
             s.data
                 .iter()
@@ -10172,6 +10178,7 @@ fn object_data_and_clone_links_open_again() {
     let mut all = Vec::new();
     shapes_on_page(&back.pages[0].layers[0].shapes, Affine::IDENTITY, &mut all);
     assert!(all.iter().all(|(_, s)| s.data.is_empty()));
+    assert!(all.iter().all(|(_, s)| s.uid.is_none()));
 }
 
 /// A rectangle with `fill` saved and opened again, alone on the page.

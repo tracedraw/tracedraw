@@ -1247,6 +1247,106 @@ mod tests {
     }
 
     #[test]
+    fn a_live_fit_stays_editable_after_a_cdr_package_round_trip() {
+        for version in [14, 17, 27] {
+            let (mut doc, guide_uid) = stroke_drawing(0.0);
+            assert_eq!(adopt_imported_strokes(&mut doc), 1);
+            let expected = doc
+                .all_layers()
+                .flat_map(|l| &l.shapes)
+                .find_map(LiveFit::of)
+                .expect("fit");
+            for _ in 0..2 {
+                let bytes = tracedraw_cdr::write::document_to_cdr_version(&doc, version);
+                let (back, report) = tracedraw_cdr::open_bytes(&bytes, "round trip").expect("CDR");
+                assert_eq!(report.skipped_objects, 0);
+                let mut app = App::headless();
+                app.open_document(back, None);
+                let fits = app.live_fits();
+                assert_eq!(fits.len(), 1, "version {version}");
+                let (path, fit) = fits[0].clone();
+                assert_eq!(
+                    app.doc().find_shape(path).expect("guide").uid,
+                    Some(guide_uid)
+                );
+                assert_eq!(fit.settings, expected.settings);
+                assert_eq!(fit.members.len(), 1);
+                assert_eq!(fit.copies.len(), expected.copies.len());
+                let first = app.shapes_by_uid()[&fit.members[0].uid];
+                let before = centre(&app, first);
+                app.run(Command::TransformShapes {
+                    shapes: vec![path],
+                    transform: Affine::translate((5.0, 7.0)),
+                });
+                app.refresh_live_fits();
+                let after = centre(&app, first);
+                assert!(close(after, before.x + 5.0, before.y + 7.0));
+                assert_eq!(app.live_fits()[0].1.copies.len(), expected.copies.len());
+                app.engine.undo().expect("undo move");
+                app.refresh_live_fits();
+                assert!((centre(&app, first) - before).hypot() < 1e-6);
+                let mut settings = fit.settings;
+                settings.distance *= 2.0;
+                app.set_live_fit_settings(path, settings);
+                assert!(app.live_fits()[0].1.copies.len() < expected.copies.len());
+                app.engine.undo().expect("undo spacing");
+                app.refresh_live_fits();
+                doc = app.doc().clone();
+            }
+        }
+    }
+
+    /// Original geometry, generated with the same placement and editing
+    /// commands as the application. Run explicitly to write review samples.
+    #[test]
+    #[ignore = "writes linked-fit review samples to TRACEDRAW_FIT_SAMPLE_DIR"]
+    fn write_linked_fit_review_samples() {
+        let dir = std::path::PathBuf::from(
+            std::env::var_os("TRACEDRAW_FIT_SAMPLE_DIR").expect("set TRACEDRAW_FIT_SAMPLE_DIR"),
+        );
+        std::fs::create_dir_all(&dir).expect("sample directory");
+        let (mut doc, _) = stroke_drawing(0.0);
+        doc.pages[0].size = tracedraw_core::Size::new(150.0, 110.0);
+        doc.title = "Linked fit save and reopen".into();
+        // A visible guide and green original markers, with no font assets.
+        for shape in &mut doc.pages[0].layers[0].shapes {
+            if shape.data.is_empty() {
+                shape.fill = tracedraw_core::Fill::Solid(tracedraw_core::Color::rgb8(35, 160, 95));
+                shape.stroke = None;
+            }
+        }
+        assert_eq!(adopt_imported_strokes(&mut doc), 1);
+        let mut app = App::headless();
+        app.open_document(doc, None);
+        let save = |app: &App, name: &str| {
+            let doc = app.doc();
+            tracedraw_io::save_native(doc, dir.join(format!("{name}.tdraw")))
+                .expect("native sample");
+            std::fs::write(
+                dir.join(format!("{name}.cdr")),
+                tracedraw_cdr::write::document_to_cdr_version(doc, 27),
+            )
+            .expect("CDR sample");
+            tracedraw_io::save_svg(doc, 0, dir.join(format!("{name}.svg"))).expect("SVG sample");
+            tracedraw_render::render_page_image(doc, doc.pages[0].id, 100.0)
+                .expect("render")
+                .save_png(dir.join(format!("{name}.png")))
+                .expect("PNG sample");
+        };
+        save(&app, "linked-fit-original");
+        let (path, fit) = app.live_fits()[0].clone();
+        app.run(Command::TransformShapes {
+            shapes: vec![path],
+            transform: Affine::translate((0.0, 30.0)) * Affine::scale_non_uniform(1.25, 0.7),
+        });
+        app.refresh_live_fits();
+        let mut settings = fit.settings;
+        settings.distance *= 2.0;
+        app.set_live_fit_settings(path, settings);
+        save(&app, "linked-fit-edited");
+    }
+
+    #[test]
     fn a_stroke_whose_objects_do_not_follow_a_fit_stays_as_drawn() {
         let (mut doc, _) = stroke_drawing(1.0);
         assert_eq!(adopt_imported_strokes(&mut doc), 0);
