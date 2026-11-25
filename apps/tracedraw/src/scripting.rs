@@ -56,7 +56,7 @@ struct HostInner {
     simulate_overprints: Option<bool>,
     /// The view steps a script asked for (#4020), taken once its objects
     /// are in the drawing.
-    view_steps: Vec<crate::view_steps::ViewStep>,
+    view_steps: Vec<crate::view_steps::Taken>,
     /// What a macro's `Copy` or `Cut` took, for its `Paste`: the macro's
     /// own, not the system clipboard, which macros do not reach.
     clip: Vec<Shape>,
@@ -668,8 +668,8 @@ fn run_host(
     }
     let views = inner.view_steps;
     apply(app, inner.commands, inner.selection, inner.page, label);
-    for step in views {
-        app.run_view_step(step);
+    for (step, selection) in views {
+        app.run_view_step_with(step, &selection);
     }
     Ok((output, changes))
 }
@@ -1404,7 +1404,10 @@ impl HostInner {
                 let name = a.get("step").and_then(|v| v.as_str()).unwrap_or("");
                 let step = crate::view_steps::ViewStep::from_name(name)
                     .ok_or_else(|| format!("no view step {name:?}"))?;
-                self.view_steps.push(step);
+                // With the selection of that moment: a Zoom To Selection
+                // followed by Clear Selection still fits what was
+                // selected (#4269).
+                self.view_steps.push((step, self.selection.clone()));
                 json!({})
             }
             "log" => {

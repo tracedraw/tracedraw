@@ -651,8 +651,12 @@ impl App {
                 .find(|s| is_group(s) && kurbo::Shape::bounding_box(&s.page_path()).contains(p))
                 .cloned()
         });
-        let Some(group) = group else {
-            return false;
+        let (group, grouped) = match group {
+            Some(g) => (g, None),
+            None => match self.live_group_around(p) {
+                Some((g, mark)) => (g, Some(mark)),
+                None => return false,
+            },
         };
         let color = match self.area_fill_mode {
             1 => Some(self.area_fill_color),
@@ -676,6 +680,11 @@ impl App {
             .unwrap_or(Affine::IDENTITY);
         let local = (parent * group.transform).inverse() * p;
         if !tracedraw_core::live_paint::paint_at(&group, &mut fills, local, color) {
+            if let Some(mark) = grouped {
+                // Nothing painted: the objects are not left grouped.
+                self.engine.end_group(mark, "Area Fill");
+                self.undo();
+            }
             return tracedraw_core::live_paint::region_at(&group, local).is_some();
         }
         match effects
@@ -690,8 +699,62 @@ impl App {
             shape: group.id,
             effects,
         });
+        if let Some(mark) = grouped {
+            self.engine.end_group(mark, "Area Fill");
+        }
         self.select(vec![group.id]);
         true
+    }
+
+    /// Live Area Fill on lines not grouped (#4199): the objects of the
+    /// active layer whose lines close round `p` are grouped, so the live
+    /// fill follows them as they are edited. One Undo takes back the
+    /// grouping with the fill. None when no area closes round `p`.
+    fn live_group_around(&mut self, p: Point) -> Option<(Shape, Option<u64>)> {
+        let layer = self.active_layer()?;
+        let shapes: Vec<Shape> = self
+            .doc()
+            .layers_for_page(self.page)
+            .unwrap_or_default()
+            .iter()
+            .filter(|l| l.id == layer && l.visible && !l.locked)
+            .flat_map(|l| l.shapes.iter())
+            .filter(|s| !matches!(s.kind, ShapeKind::Group { .. }) && s.effects.is_empty())
+            .cloned()
+            .collect();
+        if shapes.len() < 2 {
+            return None;
+        }
+        let all = Shape::new(ShapeId(u64::MAX), ShapeKind::Group { children: shapes.clone() });
+        let area = tracedraw_core::live_paint::region_at(&all, p)?;
+        let around = kurbo::Shape::bounding_box(&area).inflate(0.5, 0.5);
+        let members: Vec<ShapeId> = shapes
+            .iter()
+            .filter(|s| {
+                let b = kurbo::Shape::bounding_box(&s.page_path());
+                b.x0 <= around.x1 && b.x1 >= around.x0 && b.y0 <= around.y1 && b.y1 >= around.y0
+            })
+            .map(|s| s.id)
+            .collect();
+        if members.len() < 2 {
+            return None;
+        }
+        let mark = self.engine.begin_group();
+        self.select(members);
+        self.group_selection();
+        let group = match self.selection[..] {
+            [id] => self
+                .doc()
+                .find_shape(id)
+                .filter(|s| matches!(s.kind, ShapeKind::Group { .. }))
+                .cloned(),
+            _ => None,
+        };
+        if group.is_none() {
+            self.engine.end_group(mark, "Area Fill");
+        }
+        // The fill joins this step (`live_paint_at` ends the group).
+        group.map(|g| (g, mark))
     }
 
     /// The symmetry object an Area Fill click at `p` falls in, among the

@@ -890,6 +890,13 @@ impl Shell {
         }
         let frame = self.check_frames;
         self.check_frames += 1;
+        if frame == 0 && gpu::gl_drawn_before() {
+            // Read back drawn by an earlier start on this computer: a dark
+            // first frame now is a drawing still loading, not the driver
+            // (#4236).
+            self.renderer_check = RendererCheck::Done;
+            return;
+        }
         match self.renderer_check {
             RendererCheck::Done => return,
             RendererCheck::At(at) => {
@@ -932,6 +939,7 @@ impl Shell {
         if !gpu::renderer_blind(&image, probe) {
             self.renderer_check = RendererCheck::Done;
             log::info!("the window ({w} x {h} px) read back drawn");
+            gpu::note_gl_drawn();
             return;
         }
         if ctx.input(|i| i.viewport().focused) == Some(false) {

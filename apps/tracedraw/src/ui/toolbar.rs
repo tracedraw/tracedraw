@@ -864,7 +864,9 @@ fn command_item(app: &mut App, ui: &mut Ui, key: &str) {
             + 12.0
     };
     let (rect, resp) = ui.allocate_exact_size(Vec2::new(width, std_btn()), egui::Sense::click());
-    std_frame(ui, rect, resp.hovered(), false);
+    // A toggle (Snap To Objects, Page Border) shows pushed in while on.
+    let on = crate::ui::menus::command_on(app, ui.ctx(), key).unwrap_or(false);
+    std_frame(ui, rect, resp.hovered(), on);
     let resp = resp.on_hover_ui(|ui| rich_tip(ui, &name));
     if picture {
         crate::ui::menus::draw_menu_picture(

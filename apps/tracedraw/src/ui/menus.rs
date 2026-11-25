@@ -898,6 +898,7 @@ pub(crate) fn check_pic(
     pic: Option<&dyn Fn(&egui::Painter, egui::Rect)>,
 ) -> bool {
     if invoke::active() {
+        invoke::note_state(key, on);
         return invoke::hit(key, shortcut, true);
     }
     #[cfg(test)]
@@ -954,6 +955,9 @@ fn mark_item(ui: &mut Ui, key: &str, shortcut: &str, mark: Mark) -> bool {
 
 fn mark_item_if(ui: &mut Ui, key: &str, shortcut: &str, mark: Mark, enabled: bool) -> bool {
     if invoke::active() {
+        if let Mark::Check(on) | Mark::Radio(on) = mark {
+            invoke::note_state(key, on);
+        }
         return invoke::hit(key, shortcut, enabled);
     }
     let shortcut = invoke::shown_shortcut(key, shortcut);
@@ -1240,6 +1244,8 @@ pub(crate) mod invoke {
     enum Mode {
         Collect { path: Vec<String>, out: Vec<Entry> },
         Trigger { key: String, fired: bool },
+        /// The on/off state of each checkable command (#4208).
+        States { out: std::collections::HashMap<String, bool> },
     }
 
     thread_local! {
@@ -1270,7 +1276,32 @@ pub(crate) mod invoke {
                 *fired = true;
                 true
             }
-            Some(Mode::Trigger { .. }) | None => false,
+            Some(Mode::Trigger { .. } | Mode::States { .. }) | None => false,
+        })
+    }
+
+    /// A checkable row walked: its state kept while states are collected.
+    pub fn note_state(key: &str, on: bool) {
+        MODE.with(|m| {
+            if let Some(Mode::States { out }) = m.borrow_mut().as_mut() {
+                out.entry(key.to_string()).or_insert(on);
+            }
+        });
+    }
+
+    pub(super) fn start_states() {
+        MODE.with(|m| {
+            *m.borrow_mut() = Some(Mode::States {
+                out: Default::default(),
+            })
+        });
+    }
+
+    /// End a walk of states: each checkable command's.
+    pub(super) fn finish_states() -> std::collections::HashMap<String, bool> {
+        MODE.with(|m| match m.borrow_mut().take() {
+            Some(Mode::States { out }) => out,
+            _ => Default::default(),
         })
     }
 
@@ -1326,7 +1357,7 @@ pub(crate) mod invoke {
         MODE.with(|m| match m.borrow_mut().take() {
             Some(Mode::Collect { out, .. }) => (out, false),
             Some(Mode::Trigger { fired, .. }) => (Vec::new(), fired),
-            None => (Vec::new(), false),
+            Some(Mode::States { .. }) | None => (Vec::new(), false),
         })
     }
 
@@ -1416,6 +1447,32 @@ pub fn commands(app: &mut App, ctx: &egui::Context) -> Vec<invoke::Entry> {
     invoke::start_collect();
     walk_invisibly(app, ctx, false, false);
     invoke::finish().0
+}
+
+/// Whether the checkable menu command `key` is on now (Snap To Objects,
+/// Show Page Border...); None for a command that is not a toggle. A bar
+/// button of such a command shows it pushed in while it is on, whether
+/// it has a picture or only its name (#4208). The states are read from
+/// one walk of the menus, kept a quarter of a second.
+pub fn command_on(app: &mut App, ctx: &egui::Context, key: &str) -> Option<bool> {
+    type States = std::sync::Arc<std::collections::HashMap<String, bool>>;
+    let id = egui::Id::new("menu_command_states");
+    let now = ctx.input(|i| i.time);
+    let kept = ctx.data(|d| d.get_temp::<(f64, States)>(id));
+    let states = match kept {
+        Some((at, st)) if now - at < 0.25 && now >= at => st,
+        _ => {
+            let st: States = {
+                let _guard = invoke::Guard;
+                invoke::start_states();
+                walk_invisibly(app, ctx, true, false);
+                std::sync::Arc::new(invoke::finish_states())
+            };
+            ctx.data_mut(|d| d.insert_temp(id, (now, st.clone())));
+            st
+        }
+    };
+    states.get(key).copied()
 }
 
 /// Run the menu command `key` as its item would when clicked; false when
@@ -1824,6 +1881,24 @@ mod tests {
         app.undo();
         assert!(app.doc().shape_on_page(id).is_some());
         assert_eq!(app.page_guides().len(), before);
+    }
+
+    /// #4208: a toggle's state reads from the menus, for its bar button.
+    #[test]
+    fn a_toggle_command_tells_whether_it_is_on() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        let key = "menu.view.snap_objects";
+        let mut on = None;
+        app.snap.objects = true;
+        run_frame(&ctx, |ui| on = command_on(&mut app, ui.ctx(), key));
+        assert_eq!(on, Some(true));
+        app.snap.objects = false;
+        ctx.data_mut(|d| d.remove_temp::<(f64, std::sync::Arc<std::collections::HashMap<String, bool>>)>(egui::Id::new("menu_command_states")));
+        run_frame(&ctx, |ui| on = command_on(&mut app, ui.ctx(), key));
+        assert_eq!(on, Some(false));
+        run_frame(&ctx, |ui| on = command_on(&mut app, ui.ctx(), "menu.file.new"));
+        assert_eq!(on, None);
     }
 
     /// The menus list their commands with the menus they sit in and their

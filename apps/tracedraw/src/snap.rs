@@ -890,6 +890,16 @@ impl App {
         if !enabled {
             return p;
         }
+        // Where an angled guideline crosses another guideline: a point,
+        // before either line alone takes the pointer (#4234).
+        if let Some(q) = self.guide_crossing_near(p) {
+            self.snap_mark.set(Some(crate::snap_points::Target {
+                point: q,
+                mode: crate::snap_points::SnapMode::Guideline,
+                edge: None,
+            }));
+            return q;
+        }
         let (xs, ys) = self.snap_candidates(exclude, true, false);
         let axis = Point::new(
             self.snap_axis(p.x, &xs, true).unwrap_or(p.x),
@@ -926,6 +936,47 @@ impl App {
             }
         }
         self.edge_snap(p, exclude, own)
+    }
+
+    /// The crossing nearest `p`, within the snap tolerance, of an angled
+    /// guideline with another guideline of the page (#4234); crossings of
+    /// two straight ones are found by the axes already.
+    pub(crate) fn guide_crossing_near(&self, p: Point) -> Option<Point> {
+        if !self.snap.guides {
+            return None;
+        }
+        let guides = self.doc().guides_on_page(self.page).ok()?;
+        let tol = self.snap_tolerance();
+        let lines: Vec<(bool, Point, tracedraw_core::geometry::Vec2)> = guides
+            .iter()
+            .map(|g| {
+                let (o, d) = g.line.point_and_direction();
+                (matches!(g.line, GuideLine::Angled { .. }), o, d)
+            })
+            .collect();
+        let mut best: Option<(f64, Point)> = None;
+        for (i, &(ai, oa, da)) in lines.iter().enumerate() {
+            // Only lines that pass near the pointer can cross near it.
+            if (p - oa).cross(da).abs() > tol {
+                continue;
+            }
+            for &(bi, ob, db) in &lines[i + 1..] {
+                if !(ai || bi) {
+                    continue;
+                }
+                let den = da.cross(db);
+                if den.abs() < 1e-9 {
+                    continue;
+                }
+                let t = (ob - oa).cross(db) / den;
+                let q = oa + da * t;
+                let d = (q - p).hypot();
+                if d <= tol && best.is_none_or(|b| d < b.0) {
+                    best = Some((d, q));
+                }
+            }
+        }
+        best.map(|b| b.1)
     }
 
     /// The pointer at `p` snapped to `q` along the axes: mark it, with its
@@ -1745,6 +1796,23 @@ mod tests {
             ..SnapSettings::default()
         };
         app
+    }
+
+    /// #4234: an angled guideline crossing a vertical one gives a point
+    /// the pointer snaps to; two straight guidelines are left to the axes.
+    #[test]
+    fn an_angled_guideline_crossing_another_is_a_snap_point() {
+        let mut app = app();
+        let page = app.page;
+        for line in [
+            GuideLine::Vertical { x: 50.0 },
+            GuideLine::Angled { x: 0.0, y: 0.0, angle: 45.0 },
+        ] {
+            app.run(Command::AddGuide { page, guide: line.into() });
+        }
+        let q = app.guide_crossing_near(Point::new(50.4, 49.7)).expect("crossing");
+        assert!((q - Point::new(50.0, 50.0)).hypot() < 1e-9, "{q:?}");
+        assert!(app.guide_crossing_near(Point::new(80.0, 20.0)).is_none());
     }
 
     /// A new drawing's grid starts at the page's top-left corner, so a

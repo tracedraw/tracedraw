@@ -1464,7 +1464,15 @@ impl App {
         // transform, baked in when it is drawn again, leaves them there),
         // while the line or arc keeps the move.
         let by_itself = g.transform != Affine::IDENTITY;
-        if !moved.is_empty() && !by_itself {
+        // The line or arc moves only when what it measures moved as one
+        // (every held point by the same step); an object resized or
+        // reshaped under one end leaves it in place, so a distance that
+        // did not change keeps its dimension where it was (#4224).
+        let rigid = moved.len() == d.anchors.len()
+            && moved
+                .first()
+                .is_some_and(|m0| moved.iter().all(|m| (*m - *m0).hypot() <= 1e-6));
+        if !moved.is_empty() && !by_itself && rigid {
             let shift = moved.iter().fold(Vec2::ZERO, |s, v| s + *v) / moved.len() as f64;
             match &mut next.measure {
                 Measure::Linear { at, .. } | Measure::Angular { at, .. } => *at += shift,

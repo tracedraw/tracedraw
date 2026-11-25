@@ -734,8 +734,8 @@ impl App {
         if let Some(on) = c.simulate_overprints {
             self.simulate_overprints = on;
         }
-        for step in c.view_steps {
-            self.run_view_step(step);
+        for (step, selection) in c.view_steps {
+            self.run_view_step_with(step, &selection);
         }
     }
 

@@ -109,7 +109,10 @@ pub fn skew_transform(
     constrain_deg: f64,
 ) -> Option<Affine> {
     let horizontal = matches!(handle, Handle::N | Handle::S);
-    if handle.is_corner() || b.width() <= 1e-9 || b.height() <= 1e-9 {
+    // Only the side across the slant needs a size: a perfectly vertical
+    // line slants sideways from its top or bottom handle, a horizontal one
+    // up or down from its side handles (#4213); `span` below checks it.
+    if handle.is_corner() {
         return None;
     }
     // The fixed line and how far the dragged side is from it, signed.

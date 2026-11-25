@@ -13769,6 +13769,27 @@ mod tests {
         assert!(!other.docker_locked(DockerTab::Color));
     }
 
+    /// #4254: a docker ticked in a column's three-dot list goes under a
+    /// locked docker there, never in its place.
+    #[test]
+    fn a_locked_docker_stays_when_one_opens_from_the_list() {
+        let mut app = App::headless();
+        app.set_docker_setup(&crate::settings::DockerSetup {
+            open: vec!["docker.properties".into()],
+            front: "docker.properties".into(),
+            ..Default::default()
+        });
+        app.show_dockers = true;
+        app.set_docker_locked(DockerTab::Properties, true);
+        crate::ui::dockers::open_from_list(&mut app, DockerTab::Undo, DockerPlace::Right);
+        assert_eq!(app.docker_tab, DockerTab::Properties);
+        assert_eq!(app.docker_below(DockerPlace::Right), Some(DockerTab::Undo));
+        // Unlocked: it takes the front as before.
+        app.set_docker_locked(DockerTab::Properties, false);
+        crate::ui::dockers::open_from_list(&mut app, DockerTab::Objects, DockerPlace::Right);
+        assert_eq!(app.docker_tab, DockerTab::Objects);
+    }
+
     #[test]
     fn a_closed_docker_stays_closed_the_next_time() {
         let mut app = App::headless();

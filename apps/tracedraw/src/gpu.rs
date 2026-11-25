@@ -210,6 +210,21 @@ pub fn blind() -> bool {
     BLIND.load(Ordering::SeqCst)
 }
 
+/// Whether an earlier start read the OpenGL renderer back drawn on this
+/// computer (`Settings::gl_drawn`): its frames are not checked again.
+pub fn gl_drawn_before() -> bool {
+    crate::settings::Settings::load().gl_drawn
+}
+
+/// The OpenGL renderer read back drawn: remembered for later starts.
+pub fn note_gl_drawn() {
+    let mut s = crate::settings::Settings::load();
+    if !s.gl_drawn {
+        s.gl_drawn = true;
+        s.save();
+    }
+}
+
 pub fn note_blind() {
     BLIND.store(true, Ordering::SeqCst);
 }

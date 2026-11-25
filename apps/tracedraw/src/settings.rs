@@ -329,6 +329,11 @@ pub struct Settings {
     /// not ("software" or "gl"); cleared when the choice changes.
     #[serde(default)]
     pub working_renderer: String,
+    /// The OpenGL renderer once read back drawn on this computer: later
+    /// starts skip the check of its frames, so a slow first frame (a heavy
+    /// drawing still loading) is never taken for a blind driver (#4236).
+    #[serde(default)]
+    pub gl_drawn: bool,
     /// Options > General, Linux: on a Wayland desktop that leaves the
     /// title bar to the application, open the window through XWayland so
     /// that the desktop draws its own and file drops arrive, from the
@@ -2592,6 +2597,7 @@ impl Default for Settings {
             gpu_adapter: String::new(),
             gpu_effects: false,
             working_renderer: String::new(),
+            gl_drawn: false,
             system_title_bar: true,
             system_save_dialog: default_system_save_dialog(),
             center_dialogs: true,

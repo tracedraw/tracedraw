@@ -512,12 +512,13 @@ pub(crate) fn commands(
             Some(t) => t.name(),
             None => tr(id),
         };
-        crate::theme::paint_icon_button(
-            ui.painter(),
-            rect,
-            resp.hovered(),
-            tool.is_some_and(|t| app.tool == t),
-        );
+        // A toggle command (Snap To Objects, Page Border) shows pushed in
+        // while it is on, picture or not (#4208).
+        let on = match tool {
+            Some(t) => app.tool == t,
+            None => crate::ui::menus::command_on(app, ui.ctx(), id).unwrap_or(false),
+        };
+        crate::theme::paint_icon_button(ui.painter(), rect, resp.hovered(), on);
         let pic = Rect::from_center_size(rect.center(), Vec2::splat(icon));
         if tool.is_some() || crate::ui::menus::has_menu_picture(id) {
             bar_items::picture(ui.painter(), pic, id, Tokens::icon());
@@ -545,6 +546,11 @@ pub(crate) fn commands(
             );
         }
         let resp = resp.on_hover_ui(|ui| crate::ui::toolbar::rich_tip(ui, &name));
+        // A right click: the toolbox's menu under the command's
+        // Properties, as on a tool's button (#4206).
+        if !custom {
+            crate::ui::bars::bar_menu_of(app, &resp, crate::ui::bars::Bar::Toolbox, Some(id));
+        }
         if custom {
             if resp.hovered() {
                 ui.painter().rect_stroke(

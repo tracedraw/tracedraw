@@ -6985,6 +6985,44 @@ mod tests {
         assert!((last - want).hypot() < 1e-6, "{last:?}, not {want:?}");
     }
 
+    /// #4256: an EPS exported with Selected only holds the selected
+    /// object alone, sized to it.
+    #[test]
+    fn an_eps_of_the_selection_holds_only_the_selection() {
+        let mut app = App::headless();
+        let a = app
+            .new_shape(ShapeKind::Rect {
+                rect: Rect::new(10.0, 10.0, 40.0, 30.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("a");
+        app.new_shape(ShapeKind::Ellipse {
+            rect: Rect::new(100.0, 100.0, 160.0, 150.0),
+            arc: None,
+        })
+        .expect("b");
+        let dir = std::env::temp_dir().join(format!("tracedraw-4256-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let eps = EXPORT_FORMATS.iter().position(|f| f.1 == "eps").unwrap();
+        app.selection = vec![a];
+        let st = |sel: bool| ExportState {
+            format: eps,
+            selection_only: sel,
+            ..ExportState::default()
+        };
+        export(&mut app, &dir.join("sel.eps"), &st(true)).expect("selection");
+        export(&mut app, &dir.join("all.eps"), &st(false)).expect("page");
+        let sel = std::fs::read_to_string(dir.join("sel.eps")).unwrap();
+        let all = std::fs::read_to_string(dir.join("all.eps")).unwrap();
+        let curves = |t: &str| t.split_whitespace().filter(|w| *w == "c").count();
+        assert!(curves(&sel) < curves(&all), "{sel}");
+        let bbox = |t: &str| t.lines().find(|l| l.starts_with("%%BoundingBox:")).map(str::to_string);
+        assert_ne!(bbox(&sel), bbox(&all));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// A rectangle with a 2 mm outline exported alone: the export takes
     /// the whole outline, 1 mm past the path on every side, where the SVG's
     /// box was the path's and cut half the outline off at each edge

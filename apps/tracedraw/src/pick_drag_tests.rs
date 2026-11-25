@@ -1177,6 +1177,13 @@ fn side_handles_skew() {
     assert!(skew_transform(Handle::NE, b, Vec2::new(5.0, 0.0), none, 15.0).is_none());
     let flat = Rect::new(0.0, 0.0, 40.0, 0.0);
     assert!(skew_transform(Handle::N, flat, Vec2::new(5.0, 0.0), none, 15.0).is_none());
+    // A perfectly vertical line slants from its top handle, a horizontal
+    // one from its side handle (#4213).
+    let vertical = Rect::new(10.0, 0.0, 10.0, 40.0);
+    let t = skew_transform(Handle::N, vertical, Vec2::new(8.0, 0.0), none, 15.0).expect("skew");
+    assert!(close(at(t, 10.0, 40.0).x, 18.0) && close(at(t, 10.0, 0.0).x, 10.0));
+    let t = skew_transform(Handle::E, flat, Vec2::new(0.0, 6.0), none, 15.0).expect("skew");
+    assert!(close(at(t, 40.0, 0.0).y, 6.0) && close(at(t, 0.0, 0.0).y, 0.0));
 }
 
 #[test]
@@ -23333,6 +23340,57 @@ fn live_smart_fill_paints_a_cell_that_follows_its_lines() {
     assert!((cells[0].x1 - 118.0).abs() < 1e-6, "{:?}", cells[0]);
     app.undo();
     assert!(painted(&app).is_empty());
+}
+
+/// Live Area Fill on lines that are not grouped (#4199): the lines
+/// round the click are grouped and the cell is a live fill of that
+/// group; a line far away stays out of it, and one undo takes back both.
+#[test]
+fn live_area_fill_groups_loose_lines_round_the_click() {
+    let (ctx, mut app, _) = setup();
+    app.select(Vec::new());
+    let line = |a: (f64, f64), b: (f64, f64)| {
+        let mut p = tracedraw_core::BezPath::new();
+        p.move_to(a);
+        p.line_to(b);
+        ShapeKind::Path {
+            path: p,
+            closed: false,
+        }
+    };
+    let mut ids = Vec::new();
+    for (a, b) in [
+        ((100.0, 100.0), (130.0, 100.0)),
+        ((130.0, 100.0), (130.0, 130.0)),
+        ((130.0, 130.0), (100.0, 130.0)),
+        ((100.0, 130.0), (100.0, 100.0)),
+        ((110.0, 95.0), (110.0, 135.0)),
+    ] {
+        ids.push(app.new_shape(line(a, b)).expect("line"));
+    }
+    let far = app.new_shape(line((10.0, 10.0), (20.0, 10.0))).expect("far");
+    app.select(Vec::new());
+    let count = shape_count(&app);
+    app.set_tool(Tool::AreaFill);
+    app.area_fill_live = true;
+    app.area_fill_mode = 1;
+    app.area_fill_color = tracedraw_core::Color::rgb8(255, 0, 0);
+    click_page(&ctx, &mut app, Point::new(105.0, 115.0));
+    let [group] = app.selection[..] else {
+        panic!("one group selected: {:?}", app.selection);
+    };
+    let g = app.doc().find_shape(group).expect("group").clone();
+    let ShapeKind::Group { children } = &g.kind else {
+        panic!("not a group");
+    };
+    // The four lines round the cell (the square's far side is not one).
+    assert_eq!(children.len(), 4);
+    assert!(!children.iter().any(|c| c.id == far || c.id == ids[1]));
+    let cells = tracedraw_core::live::evaluate(&g).below;
+    assert_eq!(cells.len(), 1);
+    app.undo();
+    assert_eq!(shape_count(&app), count);
+    assert!(app.doc().find_shape(ids[0]).is_some_and(|s| s.effects.is_empty()));
 }
 
 /// The Shape tool reads Ctrl while a node is dragged, not only at the

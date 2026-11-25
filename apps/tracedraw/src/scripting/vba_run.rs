@@ -46,7 +46,7 @@ pub struct Changes {
     /// View > Simulate Overprints as it set it (`ActiveView.Type`).
     pub simulate_overprints: Option<bool>,
     /// Zoom To Fit and the other view steps it took (#4020).
-    pub view_steps: Vec<crate::view_steps::ViewStep>,
+    pub view_steps: Vec<crate::view_steps::Taken>,
 }
 
 /// What the macro asks the app for.

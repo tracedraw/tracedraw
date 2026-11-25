@@ -264,7 +264,7 @@ pub fn tab_strip(app: &mut App, ui: &mut Ui, place: DockerPlace) {
                             if open {
                                 app.close_docker(tab);
                             } else {
-                                app.move_docker(tab, place, None);
+                                open_from_list(app, tab, place);
                             }
                         }
                     };
@@ -285,6 +285,14 @@ pub fn tab_strip(app: &mut App, ui: &mut Ui, place: DockerPlace) {
                 })
             });
     });
+}
+
+/// A docker ticked in the three-dot list of the column at `place`: in
+/// front of it, or under a locked docker there, which stays (#4254).
+pub(crate) fn open_from_list(app: &mut App, tab: DockerTab, place: DockerPlace) {
+    if !app.open_beside_locked(tab, place) {
+        app.move_docker(tab, place, None);
+    }
 }
 
 /// The three-dot button at the end of the tab column at `place`.
