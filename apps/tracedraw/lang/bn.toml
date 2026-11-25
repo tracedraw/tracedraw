@@ -2727,6 +2727,7 @@ menu.edit.duplicate = "ডুপ্লিকেট"
 menu.edit.find_and_replace = "খুঁজুন ও প্রতিস্থাপন"
 menu.edit.paste = "পেস্ট"
 menu.edit.paste_in_view = "দৃশ্যে পেস্ট করুন"
+menu.edit.paste_at_pointer = "পয়েন্টারে পেস্ট করুন"
 menu.edit.paste_above_selection = "নির্বাচনের উপরে পেস্ট করুন" # mt
 menu.edit.paste_special = "বিশেষ পেস্ট..."
 menu.edit.redo = "পুনরায় করুন"
@@ -11816,3 +11817,6 @@ same.matches = "{n}টি মিলে যাওয়া অবজেক্ট 
 same.equal_desc = "প্রস্থ ও উচ্চতার পার্থক্য সহনসীমার বেশি নয়।" # mt
 same.larger_desc = "কোনো মাত্রা সহনসীমার বাইরে ছোট নয়; অন্তত একটি তার বাইরে বড়।" # mt
 same.smaller_desc = "কোনো মাত্রা সহনসীমার বাইরে বড় নয়; অন্তত একটি তার বাইরে ছোট।" # mt
+status.pasting = "পেস্ট করা হচ্ছে..."
+
+status.clipboard_failed = "ক্লিপবোর্ড থেকে পেস্ট করা যায়নি: {e}"

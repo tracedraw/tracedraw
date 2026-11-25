@@ -15,6 +15,186 @@ use tracedraw_core::{
     Command, ShapeId,
 };
 
+/// One native paste in flight. Keeping a single receiver bounds bitmap memory.
+pub struct PendingPaste {
+    ready: std::sync::mpsc::Receiver<Result<PreparedPaste, String>>,
+    instance: u64,
+    page: tracedraw_core::PageId,
+    layer: Option<tracedraw_core::LayerId>,
+    at: Option<Point>,
+    center: Point,
+    mark: Option<Mark>,
+    above: Option<ShapeId>,
+}
+
+#[cfg_attr(any(target_arch = "wasm32", target_os = "android"), allow(dead_code))]
+enum PreparedPaste {
+    Internal,
+    Vector(Vec<tracedraw_core::Shape>),
+    External {
+        content: ClipboardContent,
+        image: Result<Option<crate::ops::PreparedImage>, String>,
+    },
+}
+
+/// Retry only temporary clipboard contention, away from the UI thread.
+#[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+fn retry_clipboard<T>(
+    mut read: impl FnMut() -> Result<T, arboard::Error>,
+    mut wait: impl FnMut(std::time::Duration),
+) -> Result<Option<T>, String> {
+    for attempt in 0..8 {
+        match read() {
+            Ok(value) => return Ok(Some(value)),
+            Err(arboard::Error::ContentNotAvailable) => return Ok(None),
+            Err(arboard::Error::ClipboardOccupied) if attempt < 7 => {
+                wait(std::time::Duration::from_millis(50));
+            }
+            Err(error) => return Err(error.to_string()),
+        }
+    }
+    Ok(None)
+}
+
+#[cfg(windows)]
+fn read_windows_picture() -> Result<Option<image::RgbaImage>, String> {
+    for attempt in 0..8 {
+        match crate::win_clipboard::read_picture_result() {
+            Ok(Some(bytes)) => {
+                return crate::files::decode_picture(&bytes)
+                    .map(|image| Some(image.into_rgba8()))
+                    .map_err(|error| error.to_string());
+            }
+            Ok(None) => return Ok(None),
+            Err(_) if attempt < 7 => std::thread::sleep(std::time::Duration::from_millis(50)),
+            Err(error) => return Err(error),
+        }
+    }
+    Err("the copied picture could not be read after retrying the clipboard".into())
+}
+
+#[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+fn read_native_paste(mark: Option<Mark>) -> Result<PreparedPaste, String> {
+    read_stable_snapshot(|seq| read_native_paste_once(seq, mark), change_count)
+}
+
+#[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+fn read_stable_snapshot<T>(
+    mut read: impl FnMut(Option<u32>) -> Result<T, String>,
+    mut sequence: impl FnMut() -> Option<u32>,
+) -> Result<T, String> {
+    for _ in 0..3 {
+        let before = sequence();
+        let result = read(before);
+        let after = sequence();
+        // A delayed-rendering owner can advance the sequence while a large
+        // image is first read. Repeat the entire snapshot on the worker so
+        // this normal first read is not mistaken for a failed paste.
+        if before.is_none() || before == after {
+            return result;
+        }
+    }
+    Err("the clipboard kept changing while the paste was being read; paste again".into())
+}
+
+#[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+fn read_native_paste_once(seq: Option<u32>, mark: Option<Mark>) -> Result<PreparedPaste, String> {
+    let (text_offered, files_offered) = x11_offers_text_and_files().unwrap_or((true, true));
+    let mut content = with_clipboard(|cb| {
+        let text = if text_offered {
+            retry_clipboard(|| cb.get_text(), std::thread::sleep)?.filter(|t| !t.is_empty())
+        } else {
+            None
+        };
+        let files = if files_offered {
+            retry_clipboard(|| cb.get().file_list(), std::thread::sleep)?
+                .unwrap_or_default()
+                .into_iter()
+                .map(without_line_end)
+                .collect()
+        } else {
+            Vec::new()
+        };
+        Ok::<_, String>(ClipboardContent {
+            text,
+            files,
+            ..Default::default()
+        })
+    })
+    .ok_or_else(|| "the system clipboard is unavailable".to_string())??;
+    content.vector = read_vector();
+    prepare_paste_content(content, seq, mark, read_native_image)
+}
+
+#[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+fn prepare_paste_content(
+    mut content: ClipboardContent,
+    seq: Option<u32>,
+    mark: Option<Mark>,
+    read_image: impl FnOnce() -> Result<Option<image::RgbaImage>, String>,
+) -> Result<PreparedPaste, String> {
+    if mark.is_some_and(|m| m.still_holds(seq, &content.text, &content.files, || None))
+        && (seq.is_some() || content.text.is_some() || !content.files.is_empty())
+    {
+        return Ok(PreparedPaste::Internal);
+    }
+    if content.files.is_empty() {
+        if let Some(bytes) = content.vector.take() {
+            if let Some(shapes) = parse_vector_shapes(&bytes) {
+                return Ok(PreparedPaste::Vector(shapes));
+            }
+        }
+    }
+    let image_read = (|| {
+        if content.files.is_empty() && !content.is_svg() {
+            content.image = read_image()?;
+        }
+        Ok::<(), String>(())
+    })();
+    if image_read.is_ok()
+        && mark.is_some_and(|m| {
+            m.still_holds(seq, &content.text, &content.files, || {
+                content.image.as_ref().map(image_sample)
+            })
+        })
+    {
+        return Ok(PreparedPaste::Internal);
+    }
+    let image = image_read.and_then(|()| {
+        content
+            .image
+            .take()
+            .map(crate::ops::PreparedImage::encode)
+            .transpose()
+    });
+    Ok(PreparedPaste::External { content, image })
+}
+
+#[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+fn read_native_image() -> Result<Option<image::RgbaImage>, String> {
+    #[cfg(windows)]
+    {
+        read_windows_picture()
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        Ok(read_image())
+    }
+    #[cfg(all(not(windows), not(all(unix, not(target_os = "macos")))))]
+    {
+        let image = with_clipboard(|cb| retry_clipboard(|| cb.get_image(), std::thread::sleep))
+            .ok_or_else(|| "the system clipboard is unavailable".to_string())??;
+        image
+            .map(|img| {
+                let width = u32::try_from(img.width).map_err(|e| e.to_string())?;
+                let height = u32::try_from(img.height).map_err(|e| e.to_string())?;
+                image::RgbaImage::from_raw(width, height, img.bytes.into_owned())
+                    .ok_or_else(|| "the clipboard image dimensions are invalid".to_string())
+            })
+            .transpose()
+    }
+}
+
 /// What the system clipboard currently offers.
 #[derive(Debug, Clone, Default)]
 pub struct ClipboardContent {
@@ -344,6 +524,21 @@ fn x11_offers_text_and_files() -> Option<(bool, bool)> {
 /// window froze for the reads that waited (#1488).
 #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
 pub fn paste_may_read_text() -> bool {
+    #[cfg(windows)]
+    {
+        #[cfg_attr(
+            target_arch = "x86",
+            link(name = "user32", kind = "raw-dylib", import_name_type = "undecorated")
+        )]
+        #[cfg_attr(not(target_arch = "x86"), link(name = "user32", kind = "raw-dylib"))]
+        unsafe extern "system" {
+            fn IsClipboardFormatAvailable(format: u32) -> i32;
+        }
+        // SAFETY: this only inspects the available formats and does not open
+        // the clipboard or request delayed image rendering from its owner.
+        unsafe { IsClipboardFormatAvailable(13) != 0 }
+    }
+    #[cfg(not(windows))]
     x11_offers_text_and_files().is_none_or(|(text, _)| text)
 }
 
@@ -451,6 +646,38 @@ fn corel_shapes(bytes: &[u8]) -> Option<Vec<tracedraw_core::Shape>> {
     let page = doc.pages.into_iter().next()?;
     let shapes: Vec<_> = page.layers.into_iter().flat_map(|l| l.shapes).collect();
     (!shapes.is_empty()).then_some(shapes)
+}
+
+/// Decode copied vector data without reading or mutating an application.
+fn parse_vector_shapes(bytes: &[u8]) -> Option<Vec<tracedraw_core::Shape>> {
+    let mut ids = tracedraw_core::id::IdSource::default();
+    let shapes = if let Some(shapes) = corel_shapes(bytes) {
+        Some(shapes)
+    } else if let Some(svg) = std::str::from_utf8(bytes)
+        .ok()
+        .map(|t| t.trim_start_matches('\u{feff}').trim_start())
+        .filter(|t| t.starts_with('<') && t.contains("<svg"))
+    {
+        tracedraw_io::svg_import::parse(svg, &mut ids)
+            .map(|i| i.shapes)
+            .ok()
+    } else if let Some(dxf) = std::str::from_utf8(bytes).ok().filter(|t| is_dxf_text(t)) {
+        tracedraw_io::dxf::parse(dxf, &mut ids)
+            .map(|i| i.shapes)
+            .ok()
+    } else if tracedraw_io::pdf_import::is_pdf(bytes) {
+        tracedraw_io::pdf_import::parse(bytes, &mut ids)
+            .ok()
+            .and_then(|p| p.pages.into_iter().next())
+            .map(|page| page.shapes)
+    } else if tracedraw_io::emf::is_emf(bytes) || tracedraw_io::emf::is_wmf(bytes) {
+        tracedraw_io::emf::parse(bytes, &mut ids)
+            .map(|i| i.shapes)
+            .ok()
+    } else {
+        None
+    };
+    shapes.filter(|shapes| !shapes.is_empty())
 }
 
 /// The clipboard's picture, decoded. On an X11 desktop the clipboard's
@@ -589,12 +816,17 @@ thread_local! {
     static HANDED: std::cell::RefCell<Vec<Handed>> = const { std::cell::RefCell::new(Vec::new()) };
     /// Pastes being read in the background.
     static AWAITED: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    /// Destination captured by the shortcut before a browser's files arrive.
+    static AWAITED_AT: std::cell::Cell<Option<Option<Point>>> = const { std::cell::Cell::new(None) };
 }
 
 /// A paste is being read in the background: the paste shortcut of this
 /// frame must not paste the copy here as well (`App::paste_with_event_text`).
 #[cfg_attr(not(any(target_arch = "wasm32", test)), allow(dead_code))]
 pub fn expect_handed() {
+    if !handed_awaited() {
+        AWAITED_AT.with(|at| at.set(None));
+    }
     AWAITED.with(|a| a.set(a.get() + 1));
 }
 
@@ -612,7 +844,7 @@ pub fn hand_over(handed: Handed) {
 
 /// Whether a paste is still being read in the background.
 pub fn handed_awaited() -> bool {
-    AWAITED.with(|a| a.get() > 0)
+    AWAITED.with(|a| a.get() > 0) || HANDED.with(|h| h.borrow().iter().any(|h| !h.from_menu))
 }
 
 /// The image file among `files` when it is the only file and decodes: a
@@ -927,36 +1159,13 @@ impl App {
     /// as objects, one undo step, selected (#2514). False when it holds nothing this reads, so the picture
     /// copied with it is pasted instead.
     pub fn paste_vector(&mut self, bytes: &[u8]) -> bool {
-        let mut ids = tracedraw_core::id::IdSource::default();
-        let shapes = if let Some(shapes) = corel_shapes(bytes) {
-            Some(shapes)
-        } else if let Some(svg) = std::str::from_utf8(bytes)
-            .ok()
-            .map(|t| t.trim_start_matches('\u{feff}').trim_start())
-            .filter(|t| t.starts_with('<') && t.contains("<svg"))
-        {
-            tracedraw_io::svg_import::parse(svg, &mut ids)
-                .map(|i| i.shapes)
-                .ok()
-        } else if let Some(dxf) = std::str::from_utf8(bytes).ok().filter(|t| is_dxf_text(t)) {
-            tracedraw_io::dxf::parse(dxf, &mut ids)
-                .map(|i| i.shapes)
-                .ok()
-        } else if tracedraw_io::pdf_import::is_pdf(bytes) {
-            tracedraw_io::pdf_import::parse(bytes, &mut ids)
-                .ok()
-                .and_then(|p| p.pages.into_iter().next())
-                .map(|page| page.shapes)
-        } else if tracedraw_io::emf::is_emf(bytes) || tracedraw_io::emf::is_wmf(bytes) {
-            tracedraw_io::emf::parse(bytes, &mut ids)
-                .map(|i| i.shapes)
-                .ok()
-        } else {
-            None
-        };
-        let Some(shapes) = shapes.filter(|s| !s.is_empty()) else {
+        let Some(shapes) = parse_vector_shapes(bytes) else {
             return false;
         };
+        self.paste_vector_shapes(shapes)
+    }
+
+    fn paste_vector_shapes(&mut self, shapes: Vec<tracedraw_core::Shape>) -> bool {
         let Some(layer) = self.active_layer() else {
             return false;
         };
@@ -1010,9 +1219,7 @@ impl App {
         }) {
             return;
         }
-        let before = self.selection.clone();
-        self.paste_with_event_text(None);
-        self.move_pasted_to(&before, at);
+        self.paste_with_event_text_at(None, at);
     }
 
     /// Edit > Paste Above Selection: paste, then lay what came just in
@@ -1022,11 +1229,25 @@ impl App {
     pub fn paste_above_selection(&mut self) {
         let reference = self.topmost_selected();
         let before = self.selection.clone();
+        let was_pending = self.clipboard_paste.is_some();
         self.paste_with_event_text(None);
         let Some(reference) = reference else {
             return;
         };
+        if !was_pending {
+            if let Some(pending) = self.clipboard_paste.as_mut() {
+                pending.above = Some(reference);
+                return;
+            }
+        }
+        self.place_pasted_above(&before, reference);
+    }
+
+    fn place_pasted_above(&mut self, before: &[ShapeId], reference: ShapeId) {
         if self.selection.is_empty() || self.selection == before {
+            return;
+        }
+        if self.doc().find_shape(reference).is_none() {
             return;
         }
         let shapes: Vec<ShapeId> = self
@@ -1090,7 +1311,11 @@ impl App {
 
     /// Paste what a browser handed over: a picture alone as a bitmap,
     /// other files imported, text as for a paste here.
-    pub fn paste_handed(&mut self, h: Handed) {
+    pub fn paste_handed(&mut self, mut h: Handed) {
+        if !h.from_menu {
+            let awaited_at = AWAITED_AT.with(|at| at.take()).flatten();
+            h.at = h.at.or(awaited_at);
+        }
         let before = self.selection.clone();
         if self.editing_text() {
             // Into the text at the caret; pictures do not go into text.
@@ -1146,6 +1371,11 @@ impl App {
     /// Ctrl+V, with the text of the paste event when there was one (a
     /// browser offers the clipboard's text only that way).
     pub fn paste_with_event_text(&mut self, text: Option<String>) {
+        self.paste_with_event_text_at(text, None);
+    }
+
+    /// Paste at a destination captured when the shortcut or menu was used.
+    pub fn paste_with_event_text_at(&mut self, text: Option<String>, at: Option<Point>) {
         // While a text is being edited: into the text at the caret
         // (#1377).
         if self.editing_text() {
@@ -1155,21 +1385,183 @@ impl App {
         // Pictures or files of the paste event are being read (browser):
         // they are pasted when they arrive, not the copy here (#1403).
         if handed_awaited() {
+            AWAITED_AT.with(|pending| {
+                if pending.get().is_none() {
+                    pending.set(Some(at));
+                }
+            });
             return;
         }
-        if crate::files::WEB {
-            let content = ClipboardContent {
-                text: text.filter(|t| !t.is_empty()),
-                ..Default::default()
-            };
-            self.paste_with(None, || content, || None);
-        } else {
-            self.paste_with(
-                change_count(),
-                read_system_text_and_files,
-                read_system_image,
-            );
+        if self.clipboard_paste_busy() {
+            return;
         }
+        #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+        {
+            let _ = text;
+            let seq = change_count();
+            if self
+                .clipboard
+                .as_ref()
+                .is_some_and(|cb| seq.is_some() && cb.system.seq == seq)
+            {
+                let before = self.selection.clone();
+                self.paste();
+                self.move_pasted_to(&before, at);
+                return;
+            }
+            let mark = self.clipboard.as_ref().map(|cb| cb.system);
+            self.start_clipboard_paste(at, move || read_native_paste(mark));
+        }
+        #[cfg(any(target_arch = "wasm32", target_os = "android"))]
+        {
+            let before = self.selection.clone();
+            if crate::files::WEB {
+                let content = ClipboardContent {
+                    text: text.filter(|t| !t.is_empty()),
+                    ..Default::default()
+                };
+                self.paste_with(None, || content, || None);
+            } else {
+                self.paste_with(
+                    change_count(),
+                    read_system_text_and_files,
+                    read_system_image,
+                );
+            }
+            self.move_pasted_to(&before, at);
+        }
+    }
+
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+    fn start_clipboard_paste(
+        &mut self,
+        at: Option<Point>,
+        read: impl FnOnce() -> Result<PreparedPaste, String> + Send + 'static,
+    ) {
+        if self.clipboard_paste_busy() {
+            return;
+        }
+        let (send, ready) = std::sync::mpsc::channel();
+        let pending = PendingPaste {
+            ready,
+            instance: self.engine.instance(),
+            page: self.page,
+            layer: self.active_layer(),
+            at,
+            center: at.unwrap_or_else(|| self.page_rect().center()),
+            mark: self.clipboard.as_ref().map(|cb| cb.system),
+            above: None,
+        };
+        match std::thread::Builder::new()
+            .name("clipboard-paste".into())
+            .spawn(move || {
+                let _ = send.send(read());
+            }) {
+            Ok(_) => {
+                self.clipboard_paste = Some(pending);
+                self.status = tr("status.pasting");
+            }
+            Err(error) => self.clipboard_paste_failed(&error.to_string()),
+        }
+    }
+
+    pub fn clipboard_paste_busy(&self) -> bool {
+        self.clipboard_paste.is_some() || handed_awaited()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn complete_internal_paste_for_test(&mut self) {
+        if let Some(pending) = self.clipboard_paste.as_mut() {
+            // Keep the request's destination, but make the result independent
+            // of the desktop clipboard available to a test runner.
+            let (send, ready) = std::sync::mpsc::channel();
+            pending.ready = ready;
+            send.send(Ok(PreparedPaste::Internal)).expect("paste result");
+            self.poll_clipboard_paste();
+        }
+    }
+
+    fn clipboard_paste_failed(&mut self, error: &str) {
+        self.status = trf("status.clipboard_failed", &[("e", error)]);
+    }
+
+    /// Polling never waits: reading, decoding and PNG encoding happen on the worker.
+    pub fn poll_clipboard_paste(&mut self) -> bool {
+        let Some(pending) = self.clipboard_paste.as_ref() else {
+            return false;
+        };
+        let result = match pending.ready.try_recv() {
+            Ok(result) => result,
+            Err(std::sync::mpsc::TryRecvError::Empty) => return true,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                Err("the clipboard worker stopped before completing the paste".into())
+            }
+        };
+        let Some(pending) = self.clipboard_paste.take() else {
+            return false;
+        };
+        if self.status == tr("status.pasting") {
+            self.status.clear();
+        }
+        if pending.instance != self.engine.instance()
+            || pending.page != self.page
+            || self.editing_text()
+        {
+            return false;
+        }
+        let Some(layer) = pending.layer else {
+            return false;
+        };
+        if self.active_layer() != Some(layer)
+            || !self
+                .page_layers()
+                .iter()
+                .any(|l| l.id == layer && !l.locked)
+        {
+            return false;
+        }
+        let before = self.selection.clone();
+        match result {
+            Err(error) => self.clipboard_paste_failed(&error),
+            Ok(PreparedPaste::Vector(shapes)) => {
+                if self.paste_vector_shapes(shapes) {
+                    self.move_pasted_to(&before, pending.at);
+                }
+            }
+            Ok(PreparedPaste::Internal) => {
+                // A copy made while the worker was reading must not replace the
+                // snapshot that this request decided to paste.
+                if self.clipboard.as_ref().map(|cb| cb.system) == pending.mark {
+                    self.paste();
+                    self.move_pasted_to(&before, pending.at);
+                }
+            }
+            Ok(PreparedPaste::External { content, image }) => {
+                let image = match image {
+                    Ok(image) => image,
+                    Err(error) => {
+                        self.clipboard_paste_failed(&error);
+                        return false;
+                    }
+                };
+                if let Some(image) = image {
+                    self.place_prepared_image(
+                        image,
+                        Some(tr("kind.bitmap_short")),
+                        None,
+                        pending.center,
+                        layer,
+                    );
+                } else if !content.is_empty() {
+                    self.paste_from_unmarked(content);
+                    self.move_pasted_to(&before, pending.at);
+                }
+            }
+        }
+        if let Some(reference) = pending.above {
+            self.place_pasted_above(&before, reference);
+        }
+        false
     }
 
     /// Paste with the clipboard at change count `seq`: `read` gives its
@@ -2252,6 +2644,7 @@ mod tests {
         app.select(vec![b, a]);
         let steps = app.engine.history_labels().0.len();
         app.paste_above_selection();
+        app.complete_internal_paste_for_test();
         let pasted = app.selection.clone();
         assert_eq!(pasted.len(), 1);
         assert!(pasted[0] != c);
@@ -2267,6 +2660,7 @@ mod tests {
         // With nothing selected it pastes as Paste does: on top.
         app.select(vec![]);
         app.paste_above_selection();
+        app.complete_internal_paste_for_test();
         let top = app.selection[0];
         let order: Vec<ShapeId> = app
             .doc()
@@ -2312,8 +2706,12 @@ mod tests {
             files: vec![png_file("image.png")],
             ..Default::default()
         });
-        assert!(!handed_awaited());
+        assert!(
+            handed_awaited(),
+            "the decoded files still wait for the shortcut's destination"
+        );
         app.take_handed_pastes();
+        assert!(!handed_awaited());
         assert_eq!(shape_count(&app), 2);
         assert!(is_bitmap(&app), "the picture, not the rectangle");
         // Taken once.
@@ -2331,7 +2729,8 @@ mod tests {
         app.take_handed_pastes();
         assert_eq!(shape_count(&app), 2);
         // The next paste is no longer held back.
-        app.paste_with_event_text(None);
+        assert!(!handed_awaited());
+        app.paste_from(svg_text());
         assert_eq!(shape_count(&app), 3);
     }
 
@@ -2380,8 +2779,12 @@ mod tests {
         });
         assert!(handed_awaited(), "the paste event's files still come");
         hand_over(Handed::default());
-        assert!(!handed_awaited());
+        assert!(
+            handed_awaited(),
+            "the received paste still waits to be applied"
+        );
         HANDED.with(|h| h.borrow_mut().clear());
+        assert!(!handed_awaited());
     }
 
     /// The page's context menu pastes where it was opened, and moves
@@ -2507,6 +2910,319 @@ mod tests {
         );
     }
 
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+    fn pending_paste(
+        app: &mut App,
+        at: Option<Point>,
+    ) -> std::sync::mpsc::Sender<Result<PreparedPaste, String>> {
+        let (send, ready) = std::sync::mpsc::channel();
+        app.clipboard_paste = Some(PendingPaste {
+            ready,
+            instance: app.engine.instance(),
+            page: app.page,
+            layer: app.active_layer(),
+            at,
+            center: at.unwrap_or_else(|| app.page_rect().center()),
+            mark: app.clipboard.as_ref().map(|cb| cb.system),
+            above: None,
+        });
+        send
+    }
+
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+    #[test]
+    fn paste_above_selection_places_a_prepared_vector_above_the_captured_object() {
+        let mut app = App::headless();
+        let mut rect = |x| {
+            app.new_shape(ShapeKind::Rect {
+                rect: tracedraw_core::geometry::Rect::new(x, 0.0, x + 10.0, 10.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rectangle")
+        };
+        let reference = rect(0.0);
+        let top = rect(20.0);
+        let shape = app.doc().find_shape(top).expect("source").clone();
+        let send = pending_paste(&mut app, None);
+        app.clipboard_paste.as_mut().expect("pending").above = Some(reference);
+        app.select(vec![top]);
+        let steps = app.engine.history_labels().0.len();
+        send.send(Ok(PreparedPaste::Vector(vec![shape])))
+            .expect("finished paste");
+        assert!(!app.poll_clipboard_paste());
+        let pasted = app.selection[0];
+        let order: Vec<_> = app
+            .doc()
+            .all_layers()
+            .flat_map(|l| l.shapes.iter().map(|s| s.id))
+            .collect();
+        assert_eq!(order, vec![reference, pasted, top]);
+        assert_eq!(app.engine.history_labels().0.len(), steps + 1);
+    }
+
+    #[test]
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+    fn a_pending_picture_never_waits_and_lands_at_the_captured_point_in_one_step() {
+        let mut app = App::headless();
+        let at = Point::new(37.0, 82.0);
+        let send = pending_paste(&mut app, Some(at));
+        assert!(app.clipboard_paste_busy());
+        assert!(
+            app.poll_clipboard_paste(),
+            "poll returns while the worker still owns its result"
+        );
+        app.start_clipboard_paste(None, || {
+            panic!("an overlapping request must not start");
+        });
+        // A second request keeps the original receiver, and cannot consume its result.
+        assert!(app.poll_clipboard_paste());
+        let image =
+            crate::ops::PreparedImage::encode(picture().image.expect("picture")).expect("png");
+        send.send(Ok(PreparedPaste::External {
+            content: ClipboardContent::default(),
+            image: Ok(Some(image)),
+        }))
+        .unwrap_or_else(|_| panic!("the original receiver was replaced"));
+        app.pointer_page = Some(Point::new(900.0, 700.0));
+        let revision = app.engine.revision();
+        assert!(!app.poll_clipboard_paste());
+        assert!(!app.clipboard_paste_busy());
+        assert!((app.selection_bounds().expect("bitmap").center() - at).hypot() < 1e-6);
+        assert_eq!(
+            app.engine.revision(),
+            revision + 1,
+            "placement is part of AddShape"
+        );
+        assert!(is_bitmap(&app));
+        app.undo();
+        assert_eq!(shape_count(&app), 0);
+    }
+
+    #[test]
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+    fn failed_and_disconnected_pastes_clear_busy_without_pasting_an_old_copy() {
+        let mut app = copied(&svg_text());
+        let before = shape_count(&app);
+        let send = pending_paste(&mut app, None);
+        send.send(Err("clipboard busy".into()))
+            .unwrap_or_else(|_| panic!("receiver"));
+        assert!(!app.poll_clipboard_paste());
+        assert_eq!(shape_count(&app), before);
+        assert!(!app.clipboard_paste_busy());
+        assert!(app.status.contains("clipboard busy"));
+        let send = pending_paste(&mut app, None);
+        drop(send);
+        assert!(!app.poll_clipboard_paste());
+        assert!(!app.clipboard_paste_busy());
+        assert_eq!(shape_count(&app), before);
+    }
+
+    #[test]
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+    fn a_late_paste_cannot_enter_a_different_document_or_page() {
+        let mut app = App::headless();
+        let send = pending_paste(&mut app, None);
+        send.send(Ok(PreparedPaste::External {
+            content: ClipboardContent {
+                text: Some("late".into()),
+                ..Default::default()
+            },
+            image: Ok(None),
+        }))
+        .unwrap_or_else(|_| panic!("receiver"));
+        app.engine = tracedraw_core::Engine::new(app.doc().clone());
+        assert!(!app.poll_clipboard_paste());
+        assert_eq!(shape_count(&app), 0);
+        let send = pending_paste(&mut app, None);
+        send.send(Ok(PreparedPaste::External {
+            content: ClipboardContent {
+                text: Some("late".into()),
+                ..Default::default()
+            },
+            image: Ok(None),
+        }))
+        .unwrap_or_else(|_| panic!("receiver"));
+        app.page = tracedraw_core::PageId(u64::MAX);
+        assert!(!app.poll_clipboard_paste());
+        assert_eq!(shape_count(&app), 0);
+    }
+
+    #[test]
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+    fn a_late_paste_does_not_interrupt_text_editing_or_enter_an_old_layer() {
+        let mut app = App::headless();
+        let send = pending_paste(&mut app, None);
+        send.send(Ok(PreparedPaste::External {
+            content: ClipboardContent {
+                text: Some("late".into()),
+                ..Default::default()
+            },
+            image: Ok(None),
+        }))
+        .unwrap_or_else(|_| panic!("receiver"));
+        app.start_text(Point::new(10.0, 10.0), None);
+        let edited = app.text_edit.as_ref().expect("caret").shape;
+        let before = shape_count(&app);
+        assert!(!app.poll_clipboard_paste());
+        assert_eq!(shape_count(&app), before);
+        assert_eq!(app.text_edit.as_ref().expect("caret").shape, edited);
+        app.finish_text();
+        let send = pending_paste(&mut app, None);
+        send.send(Ok(PreparedPaste::External {
+            content: ClipboardContent {
+                text: Some("late".into()),
+                ..Default::default()
+            },
+            image: Ok(None),
+        }))
+        .unwrap_or_else(|_| panic!("receiver"));
+        app.run(Command::AddLayer {
+            page: app.page,
+            name: "Second".into(),
+        });
+        let before = shape_count(&app);
+        assert!(!app.poll_clipboard_paste());
+        assert_eq!(shape_count(&app), before);
+        assert!(!app.clipboard_paste_busy());
+    }
+
+    #[test]
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+    fn valid_vector_data_still_pastes_when_its_bitmap_fallback_is_unreadable() {
+        let mut app = App::headless();
+        let send = pending_paste(&mut app, None);
+        let prepared = prepare_paste_content(
+            ClipboardContent {
+                vector: Some(br#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect x="10" y="10" width="30" height="20"/></svg>"#.to_vec()),
+                ..Default::default()
+            },
+            None,
+            None,
+            || panic!("valid vector data never reads its bitmap fallback"),
+        );
+        assert!(matches!(prepared, Ok(PreparedPaste::Vector(_))));
+        send.send(prepared).unwrap_or_else(|_| panic!("receiver"));
+        app.status = tr("status.pasting");
+        assert!(!app.poll_clipboard_paste());
+        assert!(!app.clipboard_paste_busy());
+        assert_eq!(shape_count(&app), 1);
+        assert!(!is_bitmap(&app));
+        assert_ne!(app.status, tr("status.pasting"));
+    }
+
+    #[test]
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+    fn malformed_vector_data_uses_its_picture_and_encodes_it_before_handoff() {
+        let prepared = prepare_paste_content(
+            ClipboardContent {
+                vector: Some(b"not a drawing".to_vec()),
+                ..Default::default()
+            },
+            None,
+            None,
+            || Ok(picture().image),
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+        match prepared {
+            PreparedPaste::External {
+                content,
+                image: Ok(Some(image)),
+            } => {
+                assert!(content.vector.is_none());
+                assert!(
+                    content.image.is_none(),
+                    "RGBA data does not cross the handoff"
+                );
+                assert!(image.png.starts_with(b"\x89PNG"));
+            }
+            _ => panic!("the malformed vector's picture was lost"),
+        }
+    }
+
+    #[test]
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+    fn a_temporary_clipboard_lock_is_retried_with_a_bounded_wait() {
+        let mut attempts = 0;
+        let mut waits = Vec::new();
+        let result = retry_clipboard(
+            || {
+                attempts += 1;
+                if attempts < 3 {
+                    Err(arboard::Error::ClipboardOccupied)
+                } else {
+                    Ok(42)
+                }
+            },
+            |duration| waits.push(duration),
+        );
+        assert_eq!(result, Ok(Some(42)));
+        assert_eq!(attempts, 3);
+        assert_eq!(waits, vec![std::time::Duration::from_millis(50); 2]);
+        let mut attempts = 0;
+        assert!(retry_clipboard::<()>(
+            || {
+                attempts += 1;
+                Err(arboard::Error::ClipboardOccupied)
+            },
+            |_| {}
+        )
+        .is_err());
+        assert_eq!(attempts, 8);
+        let mut waits = 0;
+        assert_eq!(
+            retry_clipboard::<()>(|| Err(arboard::Error::ContentNotAvailable), |_| waits += 1),
+            Ok(None)
+        );
+        assert_eq!(waits, 0);
+    }
+
+    #[test]
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+    fn a_delayed_rendering_sequence_change_retries_the_snapshot_before_succeeding() {
+        let mut sequences = [Some(7), Some(8), Some(8), Some(8)].into_iter();
+        let mut reads = Vec::new();
+        let result = read_stable_snapshot(
+            |seq| {
+                reads.push(seq);
+                Ok(seq)
+            },
+            || sequences.next().expect("sequence"),
+        );
+        assert_eq!(result, Ok(Some(8)));
+        assert_eq!(reads, vec![Some(7), Some(8)]);
+        let mut sequence = 0;
+        let mut reads = 0;
+        assert!(read_stable_snapshot(
+            |_| {
+                reads += 1;
+                Ok(())
+            },
+            || {
+                sequence += 1;
+                Some(sequence)
+            }
+        )
+        .is_err());
+        assert_eq!(reads, 3, "a changing owner cannot cause an unbounded retry");
+    }
+
+    #[test]
+    fn a_waiting_browser_picture_keeps_the_first_shortcuts_destination() {
+        let mut app = App::headless();
+        let at = Point::new(45.0, 73.0);
+        expect_handed();
+        app.paste_with_event_text_at(None, Some(at));
+        app.paste_with_event_text_at(None, Some(Point::new(900.0, 700.0)));
+        hand_over(Handed {
+            files: vec![png_file("image.png")],
+            ..Default::default()
+        });
+        app.take_handed_pastes();
+        assert!((app.selection_bounds().expect("bitmap").center() - at).hypot() < 1e-6);
+        assert!(!app.clipboard_paste_busy());
+    }
+
     #[test]
     fn the_mark_follows_the_content() {
         let empty = ClipboardContent::default();
@@ -2613,6 +3329,19 @@ mod clipboard_bench {
     #[test]
     #[ignore]
     fn clipboard_costs() {
+        fn paste_and_wait(app: &mut App) {
+            let start = web_time::Instant::now();
+            app.paste_with_event_text(None);
+            eprintln!("paste request returned in {:?}", start.elapsed());
+            let deadline = start + std::time::Duration::from_secs(60);
+            while app.poll_clipboard_paste() {
+                assert!(
+                    web_time::Instant::now() < deadline,
+                    "paste completion timed out"
+                );
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+        }
         let Ok(mut cb) = arboard::Clipboard::new() else {
             eprintln!("no clipboard");
             return;
@@ -2630,7 +3359,7 @@ mod clipboard_bench {
         time("Ctrl+C over a picture copied elsewhere", || {
             app.copy_with_system()
         });
-        time("Ctrl+V of that copy", || app.paste_with_event_text(None));
+        time("Ctrl+V of that copy", || paste_and_wait(&mut app));
         picture_elsewhere(&mut cb, 1);
         app.select(vec![id]);
         app.copy();
@@ -2638,7 +3367,7 @@ mod clipboard_bench {
             app.mark_system_clipboard(None)
         });
         time("Ctrl+V of that copy, picture still there", || {
-            app.paste_with_event_text(None)
+            paste_and_wait(&mut app)
         });
         time("reading and decoding the picture alone", || {
             let _ = read_system_image();
@@ -2653,7 +3382,7 @@ mod clipboard_bench {
             .map(|l| l.shapes.len())
             .sum::<usize>();
         time("Ctrl+V of a picture copied elsewhere since", || {
-            app.paste_with_event_text(None)
+            paste_and_wait(&mut app)
         });
         let after = app
             .doc()

@@ -1172,6 +1172,8 @@ pub struct App {
     /// A paste event or paste shortcut press came and its key is still
     /// down (see `interaction::paste_without_text`).
     pub paste_seen: bool,
+    /// A system clipboard read and picture preparation running in the background.
+    pub clipboard_paste: Option<crate::clipboard::PendingPaste>,
     pub curve: Option<CurveInProgress>,
     /// Undo and redo steps of `curve`, node by node.
     pub curve_steps: CurveSteps,
@@ -3402,6 +3404,7 @@ impl App {
             drop_colour_target: None,
             pen_editing: false,
             paste_seen: false,
+            clipboard_paste: None,
             curve: None,
             text_edit: None,
             ime_preedit: String::new(),
@@ -6180,10 +6183,20 @@ impl App {
     }
 
     /// Edit > Paste in View: what Edit > Paste pastes (the copy here or
-    /// what another program copied), centred on the visible area.
+    /// what another program copied), centred on the pointer in the drawing
+    /// window, or on the visible area when no drawing pointer is available.
     pub fn paste_in_view(&mut self) {
-        let at = self.view_center();
+        let at = self.pointer_page.unwrap_or_else(|| self.view_center());
         self.paste_any_at(Some(at));
+    }
+
+    /// The destination of a pointer paste, using the pointer of the shortcut's
+    /// frame rather than the previous frame's canvas hover.
+    pub(crate) fn paste_pointer_target(&self, pointer: Option<egui::Pos2>) -> Point {
+        pointer
+            .filter(|p| self.canvas_rect.contains(*p))
+            .map(|p| self.view.to_page(p))
+            .unwrap_or_else(|| self.view_center())
     }
 
     pub fn select_all_of(&mut self, pred: impl Fn(&Shape) -> bool) {

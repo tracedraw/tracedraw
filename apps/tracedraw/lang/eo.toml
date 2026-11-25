@@ -2828,6 +2828,7 @@ menu.edit.duplicate = "Duobligi" # mt
 menu.edit.find_and_replace = "Serĉi kaj anstataŭigi" # mt
 menu.edit.paste = "Alglui" # mt
 menu.edit.paste_in_view = "Alglui en la vidon" # mt
+menu.edit.paste_at_pointer = "Alglui ĉe la montrilo" # mt
 menu.edit.paste_above_selection = "Alglui Super la Elekto" # mt
 menu.edit.paste_special = "Speciale alglui..." # mt
 menu.edit.redo = "Refari" # mt

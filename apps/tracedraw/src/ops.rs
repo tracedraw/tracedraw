@@ -8,6 +8,21 @@ use tracedraw_core::{
     Command, ShapeId,
 };
 
+/// A bitmap prepared without touching the document, including its PNG encoding.
+pub(crate) struct PreparedImage {
+    pub png: Vec<u8>,
+    pub width: u32,
+    pub height: u32,
+}
+
+impl PreparedImage {
+    pub(crate) fn encode(img: image::RgbaImage) -> Result<Self, String> {
+        let (width, height) = img.dimensions();
+        let png = crate::bitmap_fx::encode(&img).ok_or_else(|| "PNG encode failed".to_string())?;
+        Ok(Self { png, width, height })
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Align {
     Left,
@@ -1610,13 +1625,20 @@ impl App {
         name: Option<String>,
         dpi: Option<(f64, f64)>,
     ) -> Option<tracedraw_core::ShapeId> {
-        let (w, h) = img.dimensions();
-        let Some(png) = crate::bitmap_fx::encode(&img) else {
-            self.status =
-                crate::i18n::trf("status.could_not_encode_image", &[("e", "PNG encode failed")]);
-            return None;
+        let image = match PreparedImage::encode(img) {
+            Ok(image) => image,
+            Err(error) => {
+                self.status = crate::i18n::trf("status.could_not_encode_image", &[("e", &error)]);
+                return None;
+            }
         };
-        self.place_png_at(png, w, h, name, dpi)
+        self.place_prepared_image(
+            image,
+            name,
+            dpi,
+            self.page_rect().center(),
+            self.active_layer()?,
+        )
     }
 
     /// Place a picture already encoded as the PNG a bitmap keeps (`w` by
@@ -1630,19 +1652,45 @@ impl App {
         name: Option<String>,
         dpi: Option<(f64, f64)>,
     ) -> Option<tracedraw_core::ShapeId> {
+        let image = PreparedImage {
+            png,
+            width: w,
+            height: h,
+        };
+        self.place_prepared_image(
+            image,
+            name,
+            dpi,
+            self.page_rect().center(),
+            self.active_layer()?,
+        )
+    }
+
+    /// Commit an already encoded image at its final centre in one undo step.
+    pub(crate) fn place_prepared_image(
+        &mut self,
+        image: PreparedImage,
+        name: Option<String>,
+        dpi: Option<(f64, f64)>,
+        center: Point,
+        layer: tracedraw_core::LayerId,
+    ) -> Option<tracedraw_core::ShapeId> {
+        let PreparedImage {
+            png,
+            width: w,
+            height: h,
+        } = image;
         let (dpi_x, dpi_y) =
             dpi.unwrap_or((crate::image_dpi::DEFAULT_DPI, crate::image_dpi::DEFAULT_DPI));
         let mm_w = w as f64 * 25.4 / dpi_x;
         let mm_h = h as f64 * 25.4 / dpi_y;
-        let page = self.page_rect();
-        let c = page.center();
+        let c = center;
         let rect = Rect::new(
             c.x - mm_w / 2.0,
             c.y - mm_h / 2.0,
             c.x + mm_w / 2.0,
             c.y + mm_h / 2.0,
         );
-        let layer = self.active_layer()?;
         let id = self.engine.new_shape_id();
         let mut shape = Shape::new(
             id,

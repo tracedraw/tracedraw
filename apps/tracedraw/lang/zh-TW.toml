@@ -2727,6 +2727,7 @@ menu.edit.duplicate = "再製"
 menu.edit.find_and_replace = "尋找與取代"
 menu.edit.paste = "貼上"
 menu.edit.paste_in_view = "貼至檢視中"
+menu.edit.paste_at_pointer = "貼上至滑鼠位置"
 menu.edit.paste_above_selection = "貼到所選物件上方" # mt
 menu.edit.paste_special = "選擇性貼上..."
 menu.edit.redo = "重做"
@@ -11816,3 +11817,6 @@ same.matches = "已選取 {n} 個相符物件" # mt
 same.equal_desc = "寬度和高度的差值都不超過容差。" # mt
 same.larger_desc = "寬度和高度都不小於參考尺寸減去容差，且至少一項大於參考尺寸加上容差。" # mt
 same.smaller_desc = "寬度和高度都不大於參考尺寸加上容差，且至少一項小於參考尺寸減去容差。" # mt
+status.pasting = "正在貼上..."
+
+status.clipboard_failed = "無法從剪貼簿貼上：{e}"

@@ -2727,6 +2727,7 @@ menu.edit.duplicate = "Dupliceren"
 menu.edit.find_and_replace = "Zoeken en vervangen"
 menu.edit.paste = "Plakken"
 menu.edit.paste_in_view = "Plakken in weergave"
+menu.edit.paste_at_pointer = "Plakken bij aanwijzer"
 menu.edit.paste_above_selection = "Plakken boven selectie" # mt
 menu.edit.paste_special = "Plakken speciaal..."
 menu.edit.redo = "Opnieuw"
@@ -11816,3 +11817,6 @@ same.matches = "{n} overeenkomende objecten geselecteerd" # mt
 same.equal_desc = "Breedte en hoogte verschillen niet meer dan de tolerantie." # mt
 same.larger_desc = "Geen afmeting is kleiner buiten de tolerantie; minstens één is groter buiten die grens." # mt
 same.smaller_desc = "Geen afmeting is groter buiten de tolerantie; minstens één is kleiner buiten die grens." # mt
+status.pasting = "Bezig met plakken..."
+
+status.clipboard_failed = "Kan niet plakken vanuit het klembord: {e}"

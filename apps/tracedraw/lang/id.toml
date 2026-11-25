@@ -2727,6 +2727,7 @@ menu.edit.duplicate = "Duplikat"
 menu.edit.find_and_replace = "Cari dan Ganti"
 menu.edit.paste = "Tempel"
 menu.edit.paste_in_view = "Tempel di Tampilan"
+menu.edit.paste_at_pointer = "Tempel di Penunjuk"
 menu.edit.paste_above_selection = "Tempel di atas pilihan" # mt
 menu.edit.paste_special = "Tempel Khusus..."
 menu.edit.redo = "Ulangi"
@@ -11816,3 +11817,6 @@ same.matches = "{n} objek yang cocok dipilih" # mt
 same.equal_desc = "Selisih lebar dan tinggi tidak melebihi toleransi." # mt
 same.larger_desc = "Tidak ada dimensi yang lebih kecil melampaui toleransi; setidaknya satu lebih besar melampauinya." # mt
 same.smaller_desc = "Tidak ada dimensi yang lebih besar melampaui toleransi; setidaknya satu lebih kecil melampauinya." # mt
+status.pasting = "Menempelkan..."
+
+status.clipboard_failed = "Tidak dapat menempelkan dari papan klip: {e}"

@@ -176,6 +176,44 @@ pub(crate) fn clipboard_events(events: &[egui::Event]) -> (bool, bool, Option<St
     out
 }
 
+/// The modifiers when a paste event arrived, before later key releases in
+/// the same frame. Shift+Insert is a normal paste, not a pointer paste.
+fn paste_event_modifiers(events: &[egui::Event], fallback: Modifiers) -> Modifiers {
+    let mut modifiers = fallback;
+    let mut pasted = fallback;
+    for event in events {
+        match event {
+            egui::Event::ModifiersChanged(now) => modifiers = *now,
+            egui::Event::Key { modifiers: now, .. } => modifiers = *now,
+            egui::Event::Paste(_) => pasted = modifiers,
+            _ => {}
+        }
+    }
+    pasted
+}
+
+/// Capture the pointer at the shortcut, before later motion in the same frame.
+fn paste_event_pointer(events: &[egui::Event], previous: Option<egui::Pos2>) -> Option<egui::Pos2> {
+    let mut pointer = previous;
+    let mut pasted = None;
+    for event in events {
+        match event {
+            egui::Event::PointerMoved(now) | egui::Event::PointerButton { pos: now, .. } => {
+                pointer = Some(*now);
+            }
+            egui::Event::PointerGone => pointer = None,
+            egui::Event::Paste(_) => {
+                pasted.get_or_insert(pointer);
+            }
+            egui::Event::Key { key, modifiers, .. } if is_paste_key(*key, *modifiers) => {
+                pasted.get_or_insert(pointer);
+            }
+            _ => {}
+        }
+    }
+    pasted.unwrap_or(pointer)
+}
+
 /// The paste shortcuts: Ctrl+V (Cmd+V), Shift+Insert and the Paste key.
 fn is_paste_key(key: egui::Key, mods: Modifiers) -> bool {
     key == Key::Paste || (mods.command && key == Key::V) || (mods.shift && key == Key::Insert)
@@ -186,9 +224,10 @@ fn is_paste_key(key: egui::Key, mods: Modifiers) -> bool {
 /// only while the system clipboard holds text and drops the key press
 /// otherwise (a picture or files copied in another application), so its
 /// release is all that is left of it. `seen` keeps a paste event or press
-/// across frames until the key goes up.
-pub(crate) fn paste_without_text(events: &[egui::Event], seen: &mut bool) -> bool {
-    let mut out = false;
+/// across frames until the key goes up. The result says whether the paste
+/// belongs at the pointer (Ctrl+Shift+V), preserving the release's modifiers.
+pub(crate) fn paste_without_text(events: &[egui::Event], seen: &mut bool) -> Option<bool> {
+    let mut out = None;
     for e in events {
         match e {
             egui::Event::Paste(_) => *seen = true,
@@ -201,14 +240,16 @@ pub(crate) fn paste_without_text(events: &[egui::Event], seen: &mut bool) -> boo
                 if *pressed {
                     *seen = true;
                 } else {
-                    out |= !*seen;
+                    if !*seen {
+                        out = Some(*key == Key::V && modifiers.command && modifiers.shift);
+                    }
                     *seen = false;
                 }
             }
-            // V let go after Ctrl: not a paste, and the next one starts
-            // afresh.
+            // The modifier was let go before V or Insert: the press was
+            // already handled, and the next one starts afresh.
             egui::Event::Key {
-                key: Key::V,
+                key: Key::V | Key::Insert,
                 pressed: false,
                 ..
             } => *seen = false,
@@ -5128,6 +5169,10 @@ impl App {
         // The pen's pressure, which the raw input hook read from this
         // frame's touch events, before the tools see the pointer (#850).
         self.pen_pressure = crate::pen::pressure(ctx);
+        // Releases still end a paste while a menu, dialog or field owns
+        // the keyboard, so they cannot suppress a later drawing paste.
+        let pasted_without_text =
+            ctx.input(|i| paste_without_text(&i.events, &mut self.paste_seen));
         // Q held on its own: snapping off for as long as it is held,
         // set again below when the drawing has the keyboard (#3072).
         self.snap_held_off = false;
@@ -5682,8 +5727,10 @@ impl App {
         // there. Either form counts, once per frame.
         let (copy_event, cut_event, paste_text) = clipboard_events(&input.events);
         let paste_event = paste_text.is_some();
-        let pasted_without_text = paste_without_text(&input.events, &mut self.paste_seen);
-        let shift_held = input.modifiers.shift;
+        let paste_modifiers = paste_event_modifiers(&input.events, input.modifiers);
+        let pointer_paste = pressed(Key::V, cmd | Modifiers::SHIFT)
+            || pasted_without_text == Some(true)
+            || (paste_event && paste_modifiers.command && paste_modifiers.shift);
         // While a B-spline is drawn with Ctrl held (a straight line),
         // Ctrl+C and Ctrl+V make the next point fixed, as C and V alone
         // do, and copy or paste nothing (#2694).
@@ -5696,7 +5743,7 @@ impl App {
                 || pressed(Key::V, cmd)
                 || copy_event
                 || paste_event
-                || pasted_without_text;
+                || pasted_without_text.is_some();
             c.spline_fix_key |= spline_key;
         }
         if !spline_key
@@ -5710,10 +5757,20 @@ impl App {
         }
         if spline_key {
             // The press made the next B-spline point fixed.
-        } else if pressed(Key::V, cmd) || (paste_event && !shift_held) || pasted_without_text {
-            self.paste_with_event_text(paste_text);
-        } else if paste_event && shift_held {
-            self.paste_in_view();
+        } else if pressed(Key::V, cmd)
+            || pressed(Key::V, cmd | Modifiers::SHIFT)
+            || pressed(Key::Insert, Modifiers::SHIFT)
+            || pressed(Key::Paste, Modifiers::NONE)
+            || paste_event
+            || pasted_without_text.is_some()
+        {
+            if pointer_paste {
+                let pointer = paste_event_pointer(&input.events, self.pointer_screen);
+                let at = self.paste_pointer_target(pointer);
+                self.paste_with_event_text_at(paste_text, Some(at));
+            } else {
+                self.paste_with_event_text(paste_text);
+            }
         }
         if pressed(Key::D, cmd) && !(segments && self.duplicate_segments()) {
             self.duplicate();
@@ -5760,9 +5817,6 @@ impl App {
         }
         if pressed(Key::R, cmd) {
             self.repeat_last();
-        }
-        if pressed(Key::V, cmd | Modifiers::SHIFT) && !paste_event && !spline_key {
-            self.paste_in_view();
         }
         if pressed(Key::M, cmd) {
             self.table_op(crate::table::TableOp::Merge);
@@ -6447,4 +6501,302 @@ pub(crate) fn rotate_drag_scale(shift: bool, start_radius: f64, radius: f64) -> 
         return 1.0;
     }
     (radius / start_radius).max(0.01)
+}
+
+#[cfg(test)]
+mod paste_shortcut_tests {
+    use super::*;
+
+    fn key_event(key: Key, pressed: bool, modifiers: Modifiers) -> egui::Event {
+        egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed,
+            repeat: false,
+            modifiers,
+        }
+    }
+
+    fn frame(ctx: &egui::Context, app: &mut App, events: Vec<egui::Event>) {
+        let input = egui::RawInput {
+            screen_rect: Some(app.canvas_rect),
+            events,
+            ..Default::default()
+        };
+        let mut output = ctx.run_ui(input, |_| app.keyboard(ctx));
+        output.textures_delta.clear();
+    }
+
+    fn picture() -> crate::clipboard::Handed {
+        let image = image::RgbaImage::from_pixel(4, 2, image::Rgba([25, 80, 140, 255]));
+        let mut png = Vec::new();
+        image::DynamicImage::ImageRgba8(image)
+            .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+            .expect("PNG");
+        crate::clipboard::Handed {
+            files: vec![crate::clipboard::PastedFile {
+                name: "pasted.png".into(),
+                mime: "image/png".into(),
+                bytes: png,
+            }],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn pointer_paste_uses_the_event_modifiers_and_pastes_only_once() {
+        let mods = Modifiers::COMMAND | Modifiers::SHIFT;
+        for zoom in [0.75, 3.0, 10.0] {
+            for kind in 0..4 {
+                let ctx = egui::Context::default();
+                let mut app = App::headless();
+                app.canvas_rect =
+                    egui::Rect::from_min_max(egui::pos2(50.0, 50.0), egui::pos2(850.0, 650.0));
+                app.view.zoom = zoom;
+                app.view.origin = egui::pos2(128.0, 540.0);
+                let pointer = egui::pos2(326.0, 210.0);
+                let target = app.view.to_page(pointer);
+                // The canvas hover of the previous frame must not decide.
+                app.pointer_page = Some(Point::new(-100.0, -200.0));
+                let mut events = vec![
+                    egui::Event::ModifiersChanged(mods),
+                    egui::Event::PointerMoved(pointer),
+                ];
+                match kind {
+                    0 => events.push(egui::Event::Paste(String::new())),
+                    1 => events.push(key_event(Key::V, false, mods)),
+                    2 => events.push(key_event(Key::V, true, mods)),
+                    _ => {
+                        events.push(key_event(Key::V, true, mods));
+                        events.push(egui::Event::Paste(String::new()));
+                    }
+                }
+                // A quick release before the next frame still uses Shift.
+                events.push(egui::Event::ModifiersChanged(Modifiers::NONE));
+                crate::clipboard::expect_handed();
+                frame(&ctx, &mut app, events);
+                assert!(app.selection.is_empty());
+                // The pointer and view move while the browser reads the file.
+                app.view.pan(egui::vec2(120.0, -70.0));
+                frame(
+                    &ctx,
+                    &mut app,
+                    vec![egui::Event::PointerMoved(egui::pos2(700.0, 580.0))],
+                );
+                crate::clipboard::hand_over(picture());
+                app.take_handed_pastes();
+                let bounds = app.selection_bounds().expect("pasted picture");
+                assert!(
+                    (bounds.center() - target).hypot() < 1e-6,
+                    "{bounds:?} {target:?}"
+                );
+                let revision = app.engine.revision();
+                frame(
+                    &ctx,
+                    &mut app,
+                    vec![key_event(
+                        Key::V,
+                        false,
+                        if kind == 1 { Modifiers::NONE } else { mods },
+                    )],
+                );
+                assert_eq!(
+                    app.engine.revision(),
+                    revision,
+                    "no second paste on release"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn pointer_paste_without_a_canvas_pointer_uses_the_view_center() {
+        let ctx = egui::Context::default();
+        let mut app = App::headless();
+        app.canvas_rect =
+            egui::Rect::from_min_max(egui::pos2(80.0, 70.0), egui::pos2(780.0, 570.0));
+        let target = app.view_center();
+        crate::clipboard::expect_handed();
+        frame(
+            &ctx,
+            &mut app,
+            vec![
+                egui::Event::ModifiersChanged(Modifiers::COMMAND | Modifiers::SHIFT),
+                egui::Event::PointerMoved(egui::pos2(15.0, 15.0)),
+                egui::Event::Paste(String::new()),
+            ],
+        );
+        crate::clipboard::hand_over(picture());
+        app.take_handed_pastes();
+        let bounds = app.selection_bounds().expect("pasted picture");
+        assert!((bounds.center() - target).hypot() < 1e-6);
+    }
+
+    #[test]
+    fn a_browser_picture_ready_before_the_shortcut_frame_keeps_its_pointer() {
+        let ctx = egui::Context::default();
+        let mut app = App::headless();
+        app.canvas_rect =
+            egui::Rect::from_min_max(egui::pos2(50.0, 50.0), egui::pos2(850.0, 650.0));
+        let pointer = egui::pos2(530.0, 240.0);
+        let target = app.view.to_page(pointer);
+        crate::clipboard::expect_handed();
+        crate::clipboard::hand_over(picture());
+        frame(
+            &ctx,
+            &mut app,
+            vec![
+                egui::Event::ModifiersChanged(Modifiers::COMMAND | Modifiers::SHIFT),
+                egui::Event::PointerMoved(pointer),
+                egui::Event::Paste(String::new()),
+            ],
+        );
+        assert!(
+            app.selection.is_empty(),
+            "the shortcut waits for the handed picture"
+        );
+        app.take_handed_pastes();
+        let bounds = app.selection_bounds().expect("pasted picture");
+        assert!((bounds.center() - target).hypot() < 1e-6);
+        let layer = app
+            .doc()
+            .page(app.page)
+            .expect("page")
+            .layers
+            .first()
+            .expect("layer");
+        assert_eq!(layer.shapes.len(), 1, "one picture per paste");
+    }
+
+    #[test]
+    fn paste_on_press_survives_releasing_ctrl_first_in_one_or_separate_frames() {
+        for pointer_paste in [false, true] {
+            for separate_frames in [false, true] {
+                let ctx = egui::Context::default();
+                let mut app = App::headless();
+                app.canvas_rect =
+                    egui::Rect::from_min_max(egui::pos2(50.0, 50.0), egui::pos2(850.0, 650.0));
+                app.view.zoom = 3.0;
+                app.view.origin = egui::pos2(128.0, 540.0);
+                let pointer = egui::pos2(326.0, 210.0);
+                let target = if pointer_paste {
+                    app.view.to_page(pointer)
+                } else {
+                    app.page_rect().center()
+                };
+                let modifiers = if pointer_paste {
+                    Modifiers::COMMAND | Modifiers::SHIFT
+                } else {
+                    Modifiers::COMMAND
+                };
+                let press = vec![
+                    egui::Event::ModifiersChanged(modifiers),
+                    egui::Event::PointerMoved(pointer),
+                    key_event(Key::V, true, modifiers),
+                ];
+                let mut release = vec![
+                    egui::Event::ModifiersChanged(Modifiers::NONE),
+                    egui::Event::PointerMoved(egui::pos2(700.0, 580.0)),
+                ];
+                crate::clipboard::expect_handed();
+                if separate_frames {
+                    frame(&ctx, &mut app, press);
+                    assert!(app.paste_seen);
+                    frame(&ctx, &mut app, release);
+                    release = vec![key_event(Key::V, false, Modifiers::NONE)];
+                } else {
+                    release.splice(0..0, press);
+                    release.push(key_event(Key::V, false, Modifiers::NONE));
+                }
+                frame(&ctx, &mut app, release);
+                assert!(!app.paste_seen, "a modifier-free release clears the press");
+                assert!(app.selection.is_empty(), "the press waits for its picture");
+                // Completion must keep the press's position and not the release's.
+                app.view.pan(egui::vec2(120.0, -70.0));
+                crate::clipboard::hand_over(picture());
+                app.take_handed_pastes();
+                let bounds = app.selection_bounds().expect("pasted picture");
+                assert!((bounds.center() - target).hypot() < 1e-6);
+                let layer = app
+                    .doc()
+                    .page(app.page)
+                    .expect("page")
+                    .layers
+                    .first()
+                    .expect("layer");
+                assert_eq!(layer.shapes.len(), 1, "one picture per press");
+                let revision = app.engine.revision();
+                frame(
+                    &ctx,
+                    &mut app,
+                    vec![key_event(Key::V, false, Modifiers::NONE)],
+                );
+                assert_eq!(app.engine.revision(), revision, "release never repeats it");
+                assert!(app.clipboard_paste.is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn a_release_owned_by_a_dialog_clears_the_paste_press() {
+        let ctx = egui::Context::default();
+        let mut app = App::headless();
+        app.canvas_rect =
+            egui::Rect::from_min_max(egui::pos2(50.0, 50.0), egui::pos2(850.0, 650.0));
+        app.paste_seen = true;
+        app.dialog = crate::ui::dialogs::Dialog::Options;
+        frame(
+            &ctx,
+            &mut app,
+            vec![key_event(Key::V, false, Modifiers::NONE)],
+        );
+        assert!(!app.paste_seen);
+
+        app.paste_seen = true;
+        frame(
+            &ctx,
+            &mut app,
+            vec![key_event(Key::Insert, false, Modifiers::NONE)],
+        );
+        assert!(
+            !app.paste_seen,
+            "Shift+Insert also ends after Shift was released"
+        );
+    }
+
+    #[test]
+    fn shift_insert_pastes_normally_and_release_preserves_its_modifiers() {
+        let mut seen = false;
+        assert_eq!(
+            paste_without_text(
+                &[key_event(Key::Insert, false, Modifiers::SHIFT)],
+                &mut seen
+            ),
+            Some(false)
+        );
+        assert_eq!(
+            paste_without_text(
+                &[key_event(
+                    Key::V,
+                    false,
+                    Modifiers::COMMAND | Modifiers::SHIFT
+                )],
+                &mut seen
+            ),
+            Some(true)
+        );
+        let modifiers = paste_event_modifiers(
+            &[
+                egui::Event::ModifiersChanged(Modifiers::SHIFT),
+                egui::Event::Paste("text".into()),
+                egui::Event::ModifiersChanged(Modifiers::NONE),
+            ],
+            Modifiers::NONE,
+        );
+        assert!(modifiers.shift && !modifiers.command);
+        assert_eq!(
+            paste_without_text(&[key_event(Key::V, false, Modifiers::COMMAND)], &mut seen),
+            Some(false)
+        );
+    }
 }

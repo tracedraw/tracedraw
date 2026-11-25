@@ -2727,6 +2727,7 @@ menu.edit.duplicate = "Dupliquer"
 menu.edit.find_and_replace = "Rechercher et remplacer"
 menu.edit.paste = "Coller"
 menu.edit.paste_in_view = "Coller dans la vue"
+menu.edit.paste_at_pointer = "Coller au pointeur"
 menu.edit.paste_above_selection = "Coller au-dessus de la sélection" # mt
 menu.edit.paste_special = "Collage spécial..."
 menu.edit.redo = "Rétablir"
@@ -11816,3 +11817,6 @@ same.matches = "{n} objets correspondants sélectionnés" # mt
 same.equal_desc = "La largeur et la hauteur ne diffèrent pas de plus que la tolérance." # mt
 same.larger_desc = "Aucune dimension n’est plus petite au-delà de la tolérance ; au moins une est plus grande au-delà." # mt
 same.smaller_desc = "Aucune dimension n’est plus grande au-delà de la tolérance ; au moins une est plus petite au-delà." # mt
+status.pasting = "Collage en cours..."
+
+status.clipboard_failed = "Impossible de coller depuis le presse-papiers : {e}"

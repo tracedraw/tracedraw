@@ -2727,6 +2727,7 @@ menu.edit.duplicate = "Duplicar"
 menu.edit.find_and_replace = "Buscar y reemplazar"
 menu.edit.paste = "Pegar"
 menu.edit.paste_in_view = "Pegar en la vista"
+menu.edit.paste_at_pointer = "Pegar en el puntero"
 menu.edit.paste_above_selection = "Pegar encima de la selección" # mt
 menu.edit.paste_special = "Pegado especial..."
 menu.edit.redo = "Rehacer"
@@ -11816,3 +11817,6 @@ same.matches = "{n} objetos coincidentes seleccionados" # mt
 same.equal_desc = "La anchura y la altura difieren como máximo en la tolerancia." # mt
 same.larger_desc = "Ninguna dimensión es menor más allá de la tolerancia; al menos una es mayor más allá de ella." # mt
 same.smaller_desc = "Ninguna dimensión es mayor más allá de la tolerancia; al menos una es menor más allá de ella." # mt
+status.pasting = "Pegando..."
+
+status.clipboard_failed = "No se pudo pegar desde el portapapeles: {e}"

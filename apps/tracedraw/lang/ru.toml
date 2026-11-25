@@ -2727,6 +2727,7 @@ menu.edit.duplicate = "Дублировать"
 menu.edit.find_and_replace = "Найти и заменить"
 menu.edit.paste = "Вставить"
 menu.edit.paste_in_view = "Вставить в область просмотра"
+menu.edit.paste_at_pointer = "Вставить у указателя"
 menu.edit.paste_above_selection = "Вставить над выделенным" # mt
 menu.edit.paste_special = "Специальная вставка..."
 menu.edit.redo = "Вернуть"
@@ -11816,3 +11817,6 @@ same.matches = "Выбрано совпадающих объектов: {n}" # m
 same.equal_desc = "Разница ширины и высоты не превышает допуск." # mt
 same.larger_desc = "Ни один размер не меньше за пределами допуска; хотя бы один больше за его пределами." # mt
 same.smaller_desc = "Ни один размер не больше за пределами допуска; хотя бы один меньше за его пределами." # mt
+status.pasting = "Вставка..."
+
+status.clipboard_failed = "Не удалось вставить из буфера обмена: {e}"

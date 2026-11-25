@@ -2727,6 +2727,7 @@ menu.edit.duplicate = "Duplikovat"
 menu.edit.find_and_replace = "Najít a nahradit"
 menu.edit.paste = "Vložit"
 menu.edit.paste_in_view = "Vložit do zobrazení"
+menu.edit.paste_at_pointer = "Vložit u ukazatele"
 menu.edit.paste_above_selection = "Vložit nad výběr" # mt
 menu.edit.paste_special = "Vložit jinak..."
 menu.edit.redo = "Znovu"
@@ -11816,3 +11817,6 @@ same.matches = "Vybráno {n} odpovídajících objektů" # mt
 same.equal_desc = "Šířka i výška se liší nejvýše o toleranci." # mt
 same.larger_desc = "Žádný rozměr není menší nad rámec tolerance; alespoň jeden je větší nad její rámec." # mt
 same.smaller_desc = "Žádný rozměr není větší nad rámec tolerance; alespoň jeden je menší nad její rámec." # mt
+status.pasting = "Vkládání..."
+
+status.clipboard_failed = "Nelze vložit ze schránky: {e}"

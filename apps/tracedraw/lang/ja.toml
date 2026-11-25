@@ -2727,6 +2727,7 @@ menu.edit.duplicate = "複製"
 menu.edit.find_and_replace = "検索と置換"
 menu.edit.paste = "貼り付け"
 menu.edit.paste_in_view = "表示位置に貼り付け"
+menu.edit.paste_at_pointer = "ポインターの位置に貼り付け"
 menu.edit.paste_above_selection = "選択範囲の上に貼り付け" # mt
 menu.edit.paste_special = "形式を選択して貼り付け..."
 menu.edit.redo = "やり直し"
@@ -11816,3 +11817,6 @@ same.matches = "一致する {n} 個のオブジェクトを選択しました" 
 same.equal_desc = "幅と高さの差がどちらも許容差以内です。" # mt
 same.larger_desc = "どちらの寸法も許容差を超えて小さくならず、少なくとも一方が許容差を超えて大きくなります。" # mt
 same.smaller_desc = "どちらの寸法も許容差を超えて大きくならず、少なくとも一方が許容差を超えて小さくなります。" # mt
+status.pasting = "貼り付け中..."
+
+status.clipboard_failed = "クリップボードから貼り付けできませんでした: {e}"

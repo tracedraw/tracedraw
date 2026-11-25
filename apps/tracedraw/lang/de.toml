@@ -2727,6 +2727,7 @@ menu.edit.duplicate = "Duplizieren"
 menu.edit.find_and_replace = "Suchen und ersetzen"
 menu.edit.paste = "Einfügen"
 menu.edit.paste_in_view = "In Ansicht einfügen"
+menu.edit.paste_at_pointer = "Am Mauszeiger einfügen"
 menu.edit.paste_above_selection = "Über der Auswahl einfügen" # mt
 menu.edit.paste_special = "Inhalte einfügen..."
 menu.edit.redo = "Wiederherstellen"
@@ -11816,3 +11817,6 @@ same.matches = "{n} passende Objekte ausgewählt" # mt
 same.equal_desc = "Breite und Höhe weichen höchstens um die Toleranz ab." # mt
 same.larger_desc = "Keine Abmessung ist jenseits der Toleranz kleiner; mindestens eine ist jenseits davon größer." # mt
 same.smaller_desc = "Keine Abmessung ist jenseits der Toleranz größer; mindestens eine ist jenseits davon kleiner." # mt
+status.pasting = "Einfügen..."
+
+status.clipboard_failed = "Einfügen aus der Zwischenablage nicht möglich: {e}"

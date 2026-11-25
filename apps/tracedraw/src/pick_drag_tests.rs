@@ -4145,6 +4145,7 @@ fn copy_cut_and_paste_events_work_on_objects() {
         vec![Event::Paste("<svg/>".into())],
         Modifiers::COMMAND,
     );
+    app.complete_internal_paste_for_test();
     assert_eq!(shape_count(&app), n + 1);
     let copy = app.selection[0];
     assert_ne!(copy, id);
@@ -4158,6 +4159,7 @@ fn copy_cut_and_paste_events_work_on_objects() {
         ],
         Modifiers::COMMAND,
     );
+    app.complete_internal_paste_for_test();
     assert_eq!(shape_count(&app), n + 2);
     // Cut takes the selection away; paste brings it back.
     frame(&ctx, &mut app, vec![Event::Cut], Modifiers::COMMAND);
@@ -4168,6 +4170,7 @@ fn copy_cut_and_paste_events_work_on_objects() {
         vec![Event::Paste("x".into())],
         Modifiers::COMMAND,
     );
+    app.complete_internal_paste_for_test();
     assert_eq!(shape_count(&app), n + 2);
     // With Shift held the paste lands in the middle of the view.
     frame(
@@ -4176,6 +4179,7 @@ fn copy_cut_and_paste_events_work_on_objects() {
         vec![Event::Paste("x".into())],
         Modifiers::COMMAND | Modifiers::SHIFT,
     );
+    app.complete_internal_paste_for_test();
     assert_eq!(shape_count(&app), n + 3);
     let view = app.view.visible_page_rect(app.canvas_rect).center();
     let b = app.selection_bounds().expect("bounds");
@@ -4203,6 +4207,7 @@ fn ctrl_v_pastes_when_only_its_release_comes_through() {
         vec![v_up(Modifiers::COMMAND)],
         Modifiers::COMMAND,
     );
+    app.complete_internal_paste_for_test();
     assert_eq!(shape_count(&app), n + 1);
     // A paste event, then the release in a later frame: one paste.
     frame(
@@ -4211,12 +4216,14 @@ fn ctrl_v_pastes_when_only_its_release_comes_through() {
         vec![Event::Paste("x".into())],
         Modifiers::COMMAND,
     );
+    app.complete_internal_paste_for_test();
     frame(
         &ctx,
         &mut app,
         vec![v_up(Modifiers::COMMAND)],
         Modifiers::COMMAND,
     );
+    app.complete_internal_paste_for_test();
     assert_eq!(shape_count(&app), n + 2);
     // V let go without Ctrl is typing, not a paste.
     frame(&ctx, &mut app, vec![v_up(Modifiers::NONE)], Modifiers::NONE);

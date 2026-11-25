@@ -2727,6 +2727,7 @@ menu.edit.duplicate = "Duplicar"
 menu.edit.find_and_replace = "Localizar e substituir"
 menu.edit.paste = "Colar"
 menu.edit.paste_in_view = "Colar na visualização"
+menu.edit.paste_at_pointer = "Colar no ponteiro"
 menu.edit.paste_above_selection = "Colar acima da seleção" # mt
 menu.edit.paste_special = "Colar especial..."
 menu.edit.redo = "Refazer"
@@ -11816,3 +11817,6 @@ same.matches = "{n} objetos correspondentes selecionados" # mt
 same.equal_desc = "A largura e a altura diferem no máximo pela tolerância." # mt
 same.larger_desc = "Nenhuma dimensão é menor além da tolerância; pelo menos uma é maior além dela." # mt
 same.smaller_desc = "Nenhuma dimensão é maior além da tolerância; pelo menos uma é menor além dela." # mt
+status.pasting = "Colando..."
+
+status.clipboard_failed = "Não foi possível colar da área de transferência: {e}"

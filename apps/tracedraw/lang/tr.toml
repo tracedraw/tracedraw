@@ -2727,6 +2727,7 @@ menu.edit.duplicate = "Çoğalt"
 menu.edit.find_and_replace = "Bul ve Değiştir"
 menu.edit.paste = "Yapıştır"
 menu.edit.paste_in_view = "Görünüme Yapıştır"
+menu.edit.paste_at_pointer = "İşaretçide Yapıştır"
 menu.edit.paste_above_selection = "Seçimin üstüne yapıştır" # mt
 menu.edit.paste_special = "Özel Yapıştır..."
 menu.edit.redo = "Yinele"
@@ -11816,3 +11817,6 @@ same.matches = "{n} eşleşen nesne seçildi" # mt
 same.equal_desc = "Genişlik ve yükseklik farkları toleransı aşmaz." # mt
 same.larger_desc = "Hiçbir boyut toleransın ötesinde küçük değildir; en az biri toleransın ötesinde büyüktür." # mt
 same.smaller_desc = "Hiçbir boyut toleransın ötesinde büyük değildir; en az biri toleransın ötesinde küçüktür." # mt
+status.pasting = "Yapıştırılıyor..."
+
+status.clipboard_failed = "Panodan yapıştırılamadı: {e}"

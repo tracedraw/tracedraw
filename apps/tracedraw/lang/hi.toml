@@ -2727,6 +2727,7 @@ menu.edit.duplicate = "डुप्लिकेट"
 menu.edit.find_and_replace = "खोजें और बदलें"
 menu.edit.paste = "पेस्ट"
 menu.edit.paste_in_view = "दृश्य में पेस्ट करें"
+menu.edit.paste_at_pointer = "पॉइंटर पर चिपकाएँ"
 menu.edit.paste_above_selection = "चयन के ऊपर चिपकाएँ" # mt
 menu.edit.paste_special = "विशेष पेस्ट..."
 menu.edit.redo = "फिर से करें"
@@ -11816,3 +11817,6 @@ same.matches = "{n} मेल खाने वाले ऑब्जेक्ट
 same.equal_desc = "चौड़ाई और ऊँचाई का अंतर सहनशीलता से अधिक नहीं है।" # mt
 same.larger_desc = "कोई आयाम सहनशीलता से आगे छोटा नहीं है; कम से कम एक उससे आगे बड़ा है।" # mt
 same.smaller_desc = "कोई आयाम सहनशीलता से आगे बड़ा नहीं है; कम से कम एक उससे आगे छोटा है।" # mt
+status.pasting = "चिपकाया जा रहा है..."
+
+status.clipboard_failed = "क्लिपबोर्ड से चिपकाया नहीं जा सका: {e}"

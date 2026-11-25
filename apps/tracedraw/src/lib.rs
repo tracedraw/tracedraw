@@ -1227,8 +1227,8 @@ impl eframe::App for Shell {
         app.sync_document_colors();
         // File dialogs that finished in the background.
         files::run_finished(app, ui.ctx());
-        // Pictures, files and text a browser handed over for a paste.
-        app.take_handed_pastes();
+        // Clipboard pictures are read and encoded away from the UI thread.
+        app.poll_clipboard_paste();
         // Files a later start handed over (one try_recv when none came).
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(inbox) = &mut self.handed_over {
@@ -1307,6 +1307,9 @@ impl eframe::App for Shell {
         frame_mark("before the interface");
         ui::root(app, ui);
         ui::text_field_menu::show(ui.ctx());
+        // Keyboard handling captures a browser paste's target before its
+        // files are applied, even if their promise finished before this frame.
+        app.take_handed_pastes();
         frame_mark("the dialogs");
         // The frame around the safe area (#1917).
         ui::screen_margins::paint(ui.ctx(), &app.settings);
@@ -1343,6 +1346,11 @@ impl eframe::App for Shell {
         app.autosave_settings(Some(ui.ctx()));
         // Bitmaps edited outside follow their files.
         app.watch_linked_bitmaps(Some(ui.ctx()), web_time::Instant::now());
+        if app.clipboard_paste_busy() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Progress);
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(16));
+        }
         // A pointer left hidden shows as a blank image on Windows, where
         // hiding it waits for the mouse to move (#1124).
         ui::cursors::finish_frame(ui.ctx());
