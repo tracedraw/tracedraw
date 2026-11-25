@@ -249,6 +249,7 @@ mod effect_drag_preview;
 mod scripting;
 mod segment_delete;
 mod select_region;
+mod select_same;
 mod select_similar;
 mod slices;
 mod settings;

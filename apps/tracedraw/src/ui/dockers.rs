@@ -883,6 +883,14 @@ fn icons_only(tabs: &[DockerTab], chosen: bool) -> bool {
 /// The small picture above a docker tab's name.
 pub(crate) fn tab_icon(tab: DockerTab) -> Option<TabIcon> {
     match tab {
+        DockerTab::SelectSame => Some(|p, r| {
+            crate::ui::menu_glyphs::draw(
+                p,
+                r,
+                crate::ui::menu_glyphs::Glyph::SelectAll,
+                Tokens::icon(),
+            );
+        }),
         DockerTab::Hints => Some(|p, r| {
             // A pointer with a question mark.
             let s = egui::Stroke::new(1.2, Tokens::icon());

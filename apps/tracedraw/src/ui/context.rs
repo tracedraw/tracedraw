@@ -1827,3 +1827,59 @@ mod hidden_canvas_popup_tests {
         assert!(!egui::Popup::is_id_open(&context, id));
     }
 }
+
+#[cfg(test)]
+mod select_same_tests {
+    use super::*;
+
+    fn selected_object() -> App {
+        let mut app = App::headless();
+        let id = app
+            .new_shape(ShapeKind::Rect {
+                rect: tracedraw_core::Rect::new(10.0, 10.0, 30.0, 30.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("reference rectangle");
+        app.select(vec![id]);
+        app
+    }
+
+    #[test]
+    fn object_context_does_not_show_select_same() {
+        crate::i18n::with_thread_language("en", || {
+            let ctx = crate::theme::ui_context();
+            let mut app = selected_object();
+            let selection = app.selection.clone();
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(1400.0, 900.0),
+                    )),
+                    ..Default::default()
+                },
+                |ui| {
+                    let mut close = false;
+                    object_menu(&mut app, ui, &mut close);
+                    assert!(!close);
+                },
+            );
+            let labels: Vec<_> = output
+                .shapes
+                .iter()
+                .filter_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) => Some(text.galley.job.text.as_str()),
+                    _ => None,
+                })
+                .collect();
+            assert!(!labels.is_empty());
+            assert!(!labels
+                .iter()
+                .any(|label| label.contains(&tr("docker.select_same"))));
+            assert_eq!(app.selection, selection);
+            assert!(!app.docker_shown(DockerTab::SelectSame));
+            output.textures_delta.clear();
+        });
+    }
+}

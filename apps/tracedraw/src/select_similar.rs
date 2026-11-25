@@ -427,7 +427,7 @@ impl App {
     }
 
     /// Select `ids` as the selection command `key`, kept on the Undo list.
-    fn selection_command(&mut self, key: &'static str, ids: Vec<ShapeId>) {
+    pub(crate) fn selection_command(&mut self, key: &'static str, ids: Vec<ShapeId>) {
         if !self.has_document() || ids == self.selection {
             return;
         }

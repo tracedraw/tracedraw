@@ -176,6 +176,7 @@ pub fn for_key(key: &str) -> Option<Glyph> {
         "menu.edit.duplicate" => Duplicate,
         "menu.edit.clone" => Clone,
         "menu.edit.select_all_objects" => SelectAll,
+        "docker.select_same" => SelectAll,
         "menu.edit.find_and_replace" => Find,
         "menu.edit.step_and_repeat" => StepRepeat,
         "menu.edit.copy_properties_from" => CopyProperties,

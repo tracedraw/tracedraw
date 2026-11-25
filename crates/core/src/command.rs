@@ -16,6 +16,14 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "cmd", rename_all = "snake_case")]
 pub enum Command {
+    /// Read-only selection query. Run through the engine and retrieve its
+    /// result with `Engine::take_selection_result`; drawing history is untouched.
+    SelectSame {
+        page: PageId,
+        references: Vec<ShapeId>,
+        active_layer: Option<LayerId>,
+        options: crate::select_same::SelectSameOptions,
+    },
     // Document
     SetTitle {
         title: String,
@@ -609,7 +617,9 @@ impl Command {
     pub fn outside_history(&self) -> bool {
         matches!(
             self,
-            Command::SetTimeTracker { .. } | Command::SetSavedView { .. }
+            Command::SetTimeTracker { .. }
+                | Command::SetSavedView { .. }
+                | Command::SelectSame { .. }
         )
     }
 
@@ -677,6 +687,7 @@ impl Command {
     /// Short label for the History panel and the Edit menu ("Undo Move").
     pub fn label(&self) -> &'static str {
         match self {
+            Command::SelectSame { .. } => "Select Same",
             Command::SetTitle { .. } => "Rename Document",
             Command::SetDocumentData { .. } => "Document Data",
             Command::AddPage { .. } | Command::InsertPage { .. } => "Insert Page",
@@ -788,6 +799,16 @@ impl Command {
     /// when it refers to objects that do not exist.
     pub fn apply(&self, doc: &mut Document) -> Result<()> {
         match self {
+            Command::SelectSame {
+                page,
+                references,
+                active_layer,
+                options,
+            } => {
+                // Direct application validates the query; the engine owns its
+                // ephemeral result rather than serializing it into the drawing.
+                crate::select_same::matching_ids(doc, *page, references, *active_layer, options)?;
+            }
             Command::SetTitle { title } => doc.title = title.clone(),
             Command::SetDocumentData { data } => doc.data = data.clone(),
 
