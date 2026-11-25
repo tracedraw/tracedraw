@@ -92,6 +92,26 @@ pub fn export_docker(app: &mut App, ui: &mut Ui) {
             app.add_selection_asset();
         }
     });
+    // Slices: the area of each selected object, whole or cut into a grid,
+    // with everything that shows in it.
+    ui.horizontal(|ui| {
+        if ui
+            .add_enabled(
+                drawing && !app.selection.is_empty(),
+                egui::Button::new(tr("export_docker.add_slices")),
+            )
+            .rich_tip(tr("export_docker.add_slices_tip"))
+            .clicked()
+        {
+            let (r, c) = app.slice_grid;
+            app.add_slice_assets(r, c);
+        }
+        ui.add(NumField::new(&mut app.slice_grid.0).range(1..=50))
+            .rich_tip(crate::ui::tips::keyed("export_docker.slice_rows"));
+        ui.label("x");
+        ui.add(NumField::new(&mut app.slice_grid.1).range(1..=50))
+            .rich_tip(crate::ui::tips::keyed("export_docker.slice_cols"));
+    });
     ui.horizontal(|ui| {
         ui.label(
             egui::RichText::new(tr("export_docker.new_assets"))
@@ -187,6 +207,13 @@ pub fn export_docker(app: &mut App, ui: &mut Ui) {
                                 "export_docker.objects_n",
                                 &[("n", &shapes.len().to_string())],
                             ),
+                            AssetSource::Area { rect, .. } => trf(
+                                "export_docker.area_n",
+                                &[(
+                                    "n",
+                                    &format!("{:.1} x {:.1} mm", rect.width(), rect.height()),
+                                )],
+                            ),
                         };
                         if ui
                             .link(egui::RichText::new(what).size(11.0))
@@ -216,6 +243,11 @@ pub fn export_docker(app: &mut App, ui: &mut Ui) {
                 app.goto_page(idx);
             }
             app.select(shapes);
+        }
+        Some(AssetSource::Area { page, .. }) => {
+            if let Some(idx) = app.doc().pages.iter().position(|pg| pg.id == page) {
+                app.goto_page(idx);
+            }
         }
         None => {}
     }

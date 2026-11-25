@@ -488,6 +488,11 @@ pub fn for_tool_with_ctrl(
         t if t.is_shaping_brush() && app.brush_resize.is_some() => {
             ToolCursor::System(egui::CursorIcon::ResizeHorizontal)
         }
+        // The Symbol Scatter panel's brush over the selected group.
+        _ if !app.symbol_brush_targets().is_empty() => ToolCursor::Nib {
+            radius: nib_px(app.symbol_scatter.brush_radius, app.view.zoom),
+            square: false,
+        },
         Tool::Eraser => ToolCursor::Nib {
             radius: nib_px(app.eraser_width / 2.0, app.view.zoom),
             square: app.eraser_square,

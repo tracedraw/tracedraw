@@ -2062,6 +2062,11 @@ impl App {
             }
             return;
         }
+        // The Symbol Scatter panel's brush, while ticked, takes drags
+        // over the selected group.
+        if !self.transforming() && self.symbol_brush_input(response, p, mods) {
+            return;
+        }
         // File > Import's file waiting for a click, a drag or Space to
         // place it (#1936).
         if self.import_placement_input(response, p) {

@@ -2518,6 +2518,13 @@ pub struct App {
     pub vector_mosaic: crate::vector_mosaic::VectorMosaicSettings,
     /// The Symbol Scatter docker's settings (and picked symbols).
     pub symbol_scatter: crate::symbol_scatter::ScatterSettings,
+    /// The symbol brush's stroke: where the nib was last, and whether the
+    /// stroke has made its undo step yet.
+    pub symbol_brush_last: Option<Point>,
+    pub symbol_brush_stepped: bool,
+    /// The Export docker's Add Slices grid: rows and columns each
+    /// selected object's area is cut into.
+    pub slice_grid: (u32, u32),
     /// The Frame Generator docker's settings.
     pub frame_gen: crate::frame_gen::FrameSettings,
     /// The 3D Revolve and Inflate docker's settings (and picked art).
@@ -3932,6 +3939,9 @@ impl App {
             coords: Default::default(),
             vector_mosaic: Default::default(),
             symbol_scatter: Default::default(),
+            symbol_brush_last: None,
+            symbol_brush_stepped: false,
+            slice_grid: (1, 1),
             frame_gen: Default::default(),
             shape_3d: Default::default(),
             picture_mosaic: Default::default(),

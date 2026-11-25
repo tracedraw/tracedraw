@@ -212,4 +212,61 @@ pub fn symbol_scatter(app: &mut App, ui: &mut Ui) {
         let s = app.symbol_scatter.clone();
         app.apply_symbol_scatter(&s);
     }
+    brush_section(app, ui);
+}
+
+/// The brush: ticked, a drag over the selected group changes the objects
+/// under the nib (`symbol_brush`).
+fn brush_section(app: &mut App, ui: &mut Ui) {
+    use crate::symbol_brush::SymbolBrush;
+    let s = &mut app.symbol_scatter;
+    section(ui, None);
+    indented(ui, |ui| {
+        ui.checkbox(&mut s.brush_on, tr("docker.scatter_brush"))
+            .rich_tip(crate::ui::tips::keyed("docker.scatter_brush"));
+    });
+    if !s.brush_on {
+        return;
+    }
+    row(ui, &tr("docker.scatter_brush_mode"), |ui| {
+        crate::ui::keynav::ComboBox::from_id_salt("symbol_brush_mode")
+            .selected_text(tr(s.brush.key()))
+            .width(ui.available_width().clamp(120.0, 190.0))
+            .show_ui(ui, |ui| {
+                for m in SymbolBrush::ALL {
+                    ui.selectable_value(&mut s.brush, m, tr(m.key()))
+                        .rich_tip(crate::ui::tips::keyed(m.key()));
+                }
+            })
+            .response
+            .rich_tip(crate::ui::tips::keyed(s.brush.key()));
+    });
+    row(ui, &tr("docker.scatter_brush_radius"), |ui| {
+        ui.add(
+            crate::ui::field::NumField::new(&mut s.brush_radius)
+                .range(0.5..=500.0)
+                .speed(0.1)
+                .max_decimals(1)
+                .suffix(" mm"),
+        )
+        .rich_tip(crate::ui::tips::keyed("docker.scatter_brush_radius"));
+    });
+    row(ui, &tr("docker.scatter_brush_strength"), |ui| {
+        ui.add(
+            crate::ui::field::NumField::new(&mut s.brush_strength)
+                .range(1.0..=100.0)
+                .speed(1.0)
+                .max_decimals(0)
+                .suffix(" %"),
+        )
+        .rich_tip(crate::ui::tips::keyed("docker.scatter_brush_strength"));
+    });
+    if s.brush == SymbolBrush::Tint {
+        indented(ui, |ui| {
+            let mut c = s.one_color.to_rgb8();
+            if ui.color_edit_button_srgb(&mut c).changed() {
+                s.one_color = tracedraw_core::Color::rgb8(c[0], c[1], c[2]);
+            }
+        });
+    }
 }
