@@ -299,7 +299,7 @@ impl PreviewMap {
 fn draw_preview(ui: &mut Ui, data: &PreviewData, sense: Sense) -> (egui::Response, PreviewMap) {
     // Never wider than the panel: a box wider than a narrow panel ran
     // past its edge (#4323).
-    let w = ui.available_width().clamp(60.0, 320.0);
+    let w = crate::ui::docker_form::fit_w(ui, 320.0);
     let (r, resp) = ui.allocate_exact_size(Vec2::new(w, w), sense);
     let painter = ui.painter_at(r);
     painter.rect_filled(r, 0.0, Color32::WHITE);
@@ -774,7 +774,8 @@ fn combo<T: Copy + PartialEq>(
 ) {
     crate::ui::keynav::ComboBox::from_id_salt(id)
         .selected_text(tr(key_of(*v)))
-        .width(ui.available_width().clamp(60.0, 190.0))
+        .width(crate::ui::docker_form::fit_w(ui, 190.0))
+        .truncate()
         .show_ui(ui, |ui| {
             for k in all {
                 ui.selectable_value(v, *k, tr(key_of(*k)));
@@ -874,9 +875,7 @@ pub fn shape_generator(app: &mut App, ui: &mut Ui) {
     // The fields fit the panel at any width: fixed widths ran past the
     // edge of a narrow panel, hiding the end of the rows and the names of
     // the buttons below (#4323).
-    ui.set_max_width(ui.available_width());
-    let room = ui.available_width() - crate::ui::docker_form::LABEL_W - 80.0;
-    ui.spacing_mut().slider_width = room.clamp(40.0, 110.0);
+    crate::ui::docker_form::fit_sliders(ui);
     let units = app.units;
     let precision = app.settings.precision.min(10) as usize;
     {
@@ -2361,8 +2360,10 @@ pub fn shape_generator(app: &mut App, ui: &mut Ui) {
     ) {
         app.shape_gen_create();
     }
-    if let Some((_, saved)) = &selected {
-        ui.horizontal(|ui| {
+    // The buttons go onto a second line when a narrow panel has no room
+    // (#4323).
+    ui.horizontal_wrapped(|ui| {
+        if let Some((_, saved)) = &selected {
             if ui
                 .ibutton("shapegen.update")
                 .rich_tip(crate::ui::tips::keyed("shapegen.update"))
@@ -2377,8 +2378,11 @@ pub fn shape_generator(app: &mut App, ui: &mut Ui) {
             {
                 app.shape_gen = saved.clone();
             }
-        });
-    }
+        }
+        if crate::ui::docker_form::reset_button(ui) {
+            app.shape_gen.reset();
+        }
+    });
     if app.shape_gen.kind == GenKind::SliceGrid {
         let can = has_doc && !app.selection.is_empty() && selected.is_none();
         if wide_button(

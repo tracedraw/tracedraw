@@ -1441,7 +1441,7 @@ fn palette_view(app: &mut App, ui: &mut Ui) -> Option<Color> {
     let mut chosen = app.color_docker.palette.min(app.palettes.len() - 1);
     crate::ui::keynav::ComboBox::from_id_salt("col_palette")
         .selected_text(tr(app.palettes[chosen].name_key()))
-        .width(ui.available_width().min(240.0))
+        .width(crate::ui::docker_form::fit_w(ui, 240.0))
         .show_ui(ui, |ui| {
             for (i, pal) in app.palettes.iter().enumerate() {
                 if ui

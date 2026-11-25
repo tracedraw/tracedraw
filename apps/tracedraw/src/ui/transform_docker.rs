@@ -162,7 +162,7 @@ fn iso_faces(app: &mut App, ui: &mut Ui) {
                     }
                 }
             });
-        let width = ui.available_width().min(218.0);
+        let width = crate::ui::docker_form::fit_w(ui, 218.0);
         if ui
             .add_sized([width, 22.0], crate::ui::btn_icons::Ib::new("docker.iso_reset"))
             .rich_tip(tr("docker.iso_reset_tip"))

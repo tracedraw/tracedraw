@@ -78,7 +78,7 @@ fn library(app: &mut App, ui: &mut Ui) {
         let total = job.total.max(1);
         ui.add(
             egui::ProgressBar::new(done as f32 / total as f32)
-                .desired_width(ui.available_width().min(240.0))
+                .desired_width(crate::ui::docker_form::fit_w(ui, 240.0))
                 .text(trf(
                     "docker.picture_mosaic_indexing",
                     &[("n", &done.to_string()), ("total", &job.total.to_string())],
@@ -136,7 +136,7 @@ fn pixels(ui: &mut Ui, label: &str, v: &mut u32, editable: bool, max: u32) -> bo
 }
 
 pub fn picture_mosaic(app: &mut App, ui: &mut Ui) {
-    ui.spacing_mut().slider_width = 110.0;
+    crate::ui::docker_form::fit_sliders(ui);
     let bounds = app.selection_bounds();
     let selected = app.selection.len();
     // Reference.
@@ -196,7 +196,8 @@ pub fn picture_mosaic(app: &mut App, ui: &mut Ui) {
     let combo = |ui: &mut Ui, id: &str, text: String, add: &mut dyn FnMut(&mut Ui)| {
         crate::ui::keynav::ComboBox::from_id_salt(id)
             .selected_text(text)
-            .width(ui.available_width().clamp(120.0, 180.0))
+            .width(crate::ui::docker_form::fit_w(ui, 180.0))
+            .truncate()
             .show_ui(ui, |ui| add(ui))
             .response
             .rich_tip(crate::ui::tips::keyed(&format!("docker.{id}")));
@@ -284,5 +285,8 @@ pub fn picture_mosaic(app: &mut App, ui: &mut Ui) {
     if crate::ui::docker_form::wide_button(ui, "docker.apply", ready, &tip) {
         let s = app.picture_mosaic.clone();
         app.apply_picture_mosaic(&s);
+    }
+    if crate::ui::docker_form::reset_button(ui) {
+        app.picture_mosaic.reset();
     }
 }

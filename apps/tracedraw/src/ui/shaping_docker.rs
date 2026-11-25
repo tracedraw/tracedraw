@@ -158,7 +158,7 @@ pub fn shaping(app: &mut App, ui: &mut Ui) {
     } else {
         op.ready(app.selection.len())
     };
-    let width = ui.available_width().min(240.0);
+    let width = crate::ui::docker_form::fit_w(ui, 240.0);
     let clicked = ui
         .add_enabled_ui(enough, |ui| {
             ui.add_sized([width, 26.0], crate::ui::btn_icons::Ib::new(key))

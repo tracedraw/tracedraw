@@ -239,6 +239,19 @@ impl Default for ScatterSettings {
     }
 }
 
+impl ScatterSettings {
+    /// Every setting back to its default; the symbols picked stay.
+    pub fn reset(&mut self) {
+        *self = Self {
+            source: self.source,
+            builtin: self.builtin,
+            picked: std::mem::take(&mut self.picked),
+            brush_on: self.brush_on,
+            ..Self::default()
+        };
+    }
+}
+
 /// One copy: where its centre goes, its size (longer side, mm), its turn
 /// (radians) and which symbol of the set it is.
 #[derive(Debug, Clone, Copy, PartialEq)]

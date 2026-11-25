@@ -22,7 +22,7 @@ fn slider(ui: &mut Ui, v: &mut f64, lo: f64, hi: f64, key: &str) {
 }
 
 pub fn shape_3d(app: &mut App, ui: &mut Ui) {
-    ui.spacing_mut().slider_width = 110.0;
+    crate::ui::docker_form::fit_sliders(ui);
     // A 3D object selected: the panel shows what it was made with, and
     // Apply makes it again in place.
     let editing = app.selected_3d();
@@ -81,7 +81,8 @@ pub fn shape_3d(app: &mut App, ui: &mut Ui) {
                     let now = position_of(s).map_or_else(|| tr("docker.shape3d_pos_custom"), tr);
                     crate::ui::keynav::ComboBox::from_id_salt("shape3d_position")
                         .selected_text(now)
-                        .width(ui.available_width().clamp(120.0, 190.0))
+                        .width(crate::ui::docker_form::fit_w(ui, 190.0))
+                        .truncate()
                         .show_ui(ui, |ui| {
                             for (key, t, u, r) in POSITIONS {
                                 if ui
@@ -136,7 +137,8 @@ pub fn shape_3d(app: &mut App, ui: &mut Ui) {
         row(ui, &tr("docker.shape3d_surface"), |ui| {
             crate::ui::keynav::ComboBox::from_id_salt("shape3d_surface")
                 .selected_text(tr(s.surface.key()))
-                .width(ui.available_width().clamp(120.0, 190.0))
+                .width(crate::ui::docker_form::fit_w(ui, 190.0))
+                .truncate()
                 .show_ui(ui, |ui| {
                     for m in Surface::ALL {
                         ui.selectable_value(&mut s.surface, m, tr(m.key()));
@@ -231,7 +233,8 @@ pub fn shape_3d(app: &mut App, ui: &mut Ui) {
         row(ui, &tr("docker.shape3d_symbol"), |ui| {
             crate::ui::keynav::ComboBox::from_id_salt("shape3d_symbol")
                 .selected_text(tr("docker.shape3d_symbol_pick"))
-                .width(ui.available_width().clamp(120.0, 190.0))
+                .width(crate::ui::docker_form::fit_w(ui, 190.0))
+                .truncate()
                 .show_ui(ui, |ui| {
                     for (i, n) in names.iter().enumerate() {
                         if ui.selectable_label(false, n).clicked() {
@@ -301,6 +304,9 @@ pub fn shape_3d(app: &mut App, ui: &mut Ui) {
         let s = app.shape_3d.clone();
         app.apply_3d(&s);
     }
+    if crate::ui::docker_form::reset_button(ui) {
+        app.shape_3d.reset();
+    }
     // A lit halftone ball in one click: no selection needed.
     section(ui, None);
     let mut make = false;
@@ -308,7 +314,7 @@ pub fn shape_3d(app: &mut App, ui: &mut Ui) {
         let s = &mut app.shape_3d;
         let mut n = s.halftone_dots;
         if ui
-            .add(crate::ui::field::NumField::new(&mut n).range(6..=80))
+            .add(crate::ui::field::NumField::new(&mut n).range(6..=80).width(44.0))
             .rich_tip(crate::ui::tips::keyed("docker.shape3d_halftone_dots"))
             .changed()
         {

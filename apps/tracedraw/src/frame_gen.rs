@@ -103,6 +103,13 @@ impl Default for FrameSettings {
     }
 }
 
+impl FrameSettings {
+    /// Every setting back to its default.
+    pub fn reset(&mut self) {
+        *self = Self::default();
+    }
+}
+
 /// One piece of the frame: a curve stroked with `width` (mm), or filled
 /// when `width` is 0.
 #[derive(Debug, Clone)]

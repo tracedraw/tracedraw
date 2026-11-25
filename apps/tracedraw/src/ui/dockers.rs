@@ -1472,20 +1472,33 @@ fn docker_page(app: &mut App, ui: &mut Ui, tab: DockerTab) {
     }
     egui::ScrollArea::vertical()
         .id_salt(("docker_scroll", tab.key()))
-        .show(ui, |ui| match tab {
-            DockerTab::Properties => {
-                // The editors it shares with other panels look at the
-                // layout while it draws (the classic one: right-aligned
-                // labels, the colour picker laid open).
-                classic::set_active(ui.ctx(), app.settings.properties_classic);
-                properties(app, ui);
-                classic::set_active(ui.ctx(), false);
-            }
-            DockerTab::Hints | DockerTab::Objects => {}
-            DockerTab::Transformations => crate::ui::transform_docker::transformations(app, ui),
-            DockerTab::Undo => undo_docker(app, ui),
-            other => crate::ui::dockers2::show(app, ui, other),
+        .show(ui, |ui| {
+            // The page is as wide as the panel: sizes taken from the room
+            // left (previews, fields) fit it, rather than the widest row
+            // widening the page past the panel's edge (#4323).
+            ui.set_max_width(ui.available_width());
+            crate::ui::docker_form::begin_page(ui);
+            docker_page_body(app, ui, tab);
+            crate::ui::docker_form::end_page(ui);
         });
+}
+
+/// The page of `tab` inside its scroll area.
+fn docker_page_body(app: &mut App, ui: &mut Ui, tab: DockerTab) {
+    match tab {
+        DockerTab::Properties => {
+            // The editors it shares with other panels look at the
+            // layout while it draws (the classic one: right-aligned
+            // labels, the colour picker laid open).
+            classic::set_active(ui.ctx(), app.settings.properties_classic);
+            properties(app, ui);
+            classic::set_active(ui.ctx(), false);
+        }
+        DockerTab::Hints | DockerTab::Objects => {}
+        DockerTab::Transformations => crate::ui::transform_docker::transformations(app, ui),
+        DockerTab::Undo => undo_docker(app, ui),
+        other => crate::ui::dockers2::show(app, ui, other),
+    }
 }
 
 fn color_row(ui: &mut Ui, label: &str, c: &mut Color) -> bool {
@@ -3581,7 +3594,7 @@ fn fountain_editor(ui: &mut Ui, f: &mut Fountain) -> bool {
     });
     // The whole run as it is drawn: repeats, mirror and inversion in.
     let (r, _) = ui.allocate_exact_size(
-        egui::vec2(ui.available_width().min(240.0), 14.0),
+        egui::vec2(crate::ui::docker_form::fit_w(ui, 240.0), 14.0),
         egui::Sense::hover(),
     );
     gradient_swatch(ui.painter(), r, &f.resolved_stops());
@@ -3989,7 +4002,7 @@ pub(crate) fn pattern_editor(
             // every frame the panel shows a pattern.
             crate::ui::keynav::ComboBox::from_id_salt("pattern_pick")
                 .selected_text(tr("docker.pattern_pick"))
-                .width(ui.available_width().min(220.0))
+                .width(crate::ui::docker_form::fit_w(ui, 220.0))
                 .show_ui(ui, |ui| {
                     let lib = pk.library();
                     let list = if vector { &lib.vector } else { &lib.bitmap };
@@ -7884,5 +7897,169 @@ mod context_menu_settings_tests {
         let title = draw(&mut app, "docker_title");
         assert!(title.iter().any(|(key, _)| key == "bars.right"));
         assert!(title.iter().any(|(key, _)| key == "docker.close_docker"));
+    }
+}
+
+#[cfg(test)]
+mod narrow_panel_tests {
+    use super::*;
+
+    /// The texts of the last frame that run past the left edge of the
+    /// area they are drawn in, cut off there: (panel, text).
+    fn cut_at_left(out: &egui::FullOutput) -> Vec<String> {
+        let mut cut = Vec::new();
+        for c in &out.shapes {
+            if let egui::Shape::Text(t) = &c.shape {
+                let r = t.visual_bounding_rect();
+                if r.is_positive() && r.left() < c.clip_rect.left() - 2.0 && r.right() > c.clip_rect.left() {
+                    cut.push(t.galley.text().to_string());
+                }
+            }
+        }
+        cut
+    }
+
+    /// The pictures and boxes of the last frame (previews) that run past
+    /// the right edge of the area they are drawn in, cut off there.
+    fn cut_at_right(out: &egui::FullOutput) -> Vec<String> {
+        let mut cut = Vec::new();
+        for c in &out.shapes {
+            let r = c.shape.visual_bounding_rect();
+            let wide = matches!(c.shape, egui::Shape::Mesh(_) | egui::Shape::Rect(_));
+            if wide && r.is_positive() && r.width() > 60.0 && r.right() > c.clip_rect.right() + 2.0 && r.left() < c.clip_rect.right() {
+                cut.push(format!("{:?} past {}", r, c.clip_rect.right()));
+            }
+        }
+        cut
+    }
+
+    /// In a narrow panel no name is cut off at the panel's left edge:
+    /// the labels of the form rows wrap or shrink their column instead;
+    /// and nothing of a generator (preview, field, button) runs past the
+    /// right edge (#4323). Every panel is drawn 240 points wide.
+    #[test]
+    fn a_narrow_panel_cuts_no_name_at_its_left_edge() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        let r = app
+            .new_shape(tracedraw_core::ShapeKind::Rect {
+                rect: tracedraw_core::geometry::Rect::new(10.0, 10.0, 60.0, 40.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        app.select(vec![r]);
+        app.shape_gen.kind = crate::shape_gen::GenKind::Voronoi;
+        let mut bad = Vec::new();
+        for tab in DockerTab::ALL {
+            let mut out: egui::FullOutput = Default::default();
+            for _ in 0..2 {
+                out.textures_delta.clear();
+                out = ctx.run_ui(Default::default(), |ui| {
+                    let rect = egui::Rect::from_min_size(egui::pos2(600.0, 40.0), egui::vec2(240.0, 900.0));
+                    let mut page = ui.new_child(egui::UiBuilder::new().max_rect(rect));
+                    page.set_clip_rect(rect);
+                    docker_page(&mut app, &mut page, tab);
+                });
+            }
+            out.textures_delta.clear();
+            for t in cut_at_left(&out) {
+                bad.push(format!("{}: {t}", tab.key()));
+            }
+            // The generators' rows, buttons and previews fit too.
+            let generator = matches!(
+                tab,
+                DockerTab::ShapeGenerator
+                    | DockerTab::FrameGenerator
+                    | DockerTab::SymbolScatter
+                    | DockerTab::Shape3d
+                    | DockerTab::VectorMosaic
+                    | DockerTab::PictureMosaic
+            );
+            if generator {
+                for t in cut_at_right(&out) {
+                    bad.push(format!("{}: picture {t}", tab.key()));
+                }
+            }
+        }
+        assert!(bad.is_empty(), "cut at the edge: {bad:#?}");
+    }
+
+    /// Every generator shows Reset to Defaults, and it puts the settings
+    /// back while what was picked from the drawing (and the kind of
+    /// shape) stays.
+    #[test]
+    fn the_generators_reset_to_their_defaults() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        let name = crate::i18n::tr("docker.reset_defaults");
+        for tab in [
+            DockerTab::ShapeGenerator,
+            DockerTab::FrameGenerator,
+            DockerTab::SymbolScatter,
+            DockerTab::Shape3d,
+            DockerTab::VectorMosaic,
+            DockerTab::PictureMosaic,
+        ] {
+            let mut out: egui::FullOutput = Default::default();
+            for _ in 0..2 {
+                out.textures_delta.clear();
+                out = ctx.run_ui(Default::default(), |ui| {
+                    let rect = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(320.0, 3000.0));
+                    let mut page = ui.new_child(egui::UiBuilder::new().max_rect(rect));
+                    docker_page(&mut app, &mut page, tab);
+                });
+            }
+            out.textures_delta.clear();
+            let shown = out
+                .shapes
+                .iter()
+                .any(|c| matches!(&c.shape, egui::Shape::Text(t) if t.galley.text() == name));
+            assert!(shown, "{}: no Reset to Defaults", tab.key());
+        }
+
+        let kind = crate::shape_gen::GenKind::Voronoi;
+        app.shape_gen.kind = kind;
+        app.shape_gen.width += 77.0;
+        app.shape_gen.reset();
+        let mut want = crate::shape_gen::ShapeGenSettings::default();
+        want.kind = kind;
+        assert_eq!(app.shape_gen, want);
+
+        app.frame_gen.margin += 5.0;
+        app.frame_gen.reset();
+        assert_eq!(app.frame_gen.margin, crate::frame_gen::FrameSettings::default().margin);
+
+        let shape = app
+            .new_shape(tracedraw_core::ShapeKind::Rect {
+                rect: tracedraw_core::geometry::Rect::new(0.0, 0.0, 10.0, 10.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        let picked = app.doc().shape(shape).expect("shape").1.clone();
+        app.symbol_scatter.picked = vec![picked.clone()];
+        app.symbol_scatter.spacing += 9.0;
+        app.symbol_scatter.reset();
+        assert_eq!(app.symbol_scatter.picked.len(), 1);
+        assert_eq!(app.symbol_scatter.spacing, crate::symbol_scatter::ScatterSettings::default().spacing);
+
+        app.shape_3d.art = vec![picked];
+        app.shape_3d.tilt += 12.0;
+        app.shape_3d.reset();
+        assert_eq!(app.shape_3d.art.len(), 1);
+        assert_eq!(app.shape_3d.tilt, crate::shape3d::Settings3d::default().tilt);
+
+        app.vector_mosaic.custom = Some(tracedraw_core::geometry::BezPath::new());
+        app.vector_mosaic.density += 3.0;
+        app.vector_mosaic.reset();
+        assert!(app.vector_mosaic.custom.is_some());
+        assert_eq!(app.vector_mosaic.density, crate::vector_mosaic::VectorMosaicSettings::default().density);
+
+        app.picture_mosaic.library = Some(std::path::PathBuf::from("pictures"));
+        app.picture_mosaic.columns += 4;
+        app.picture_mosaic.reset();
+        assert!(app.picture_mosaic.library.is_some());
+        assert_eq!(app.picture_mosaic.columns, crate::picture_mosaic::PictureMosaicSettings::default().columns);
     }
 }

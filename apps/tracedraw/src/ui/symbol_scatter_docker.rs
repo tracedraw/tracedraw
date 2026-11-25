@@ -16,7 +16,9 @@ use tracedraw_core::geometry::{Affine, BezPath, PathEl};
 /// The symbols' preview: up to five of them side by side in a strip.
 fn preview(ui: &mut Ui, app: &App) {
     let s = &app.symbol_scatter;
-    let (r, _) = ui.allocate_exact_size(Vec2::new(150.0, 40.0), Sense::hover());
+    // Narrower in a narrow panel, never past its edge (#4323).
+    let w = crate::ui::docker_form::fit_w(ui, 150.0);
+    let (r, _) = ui.allocate_exact_size(Vec2::new(w, 40.0), Sense::hover());
     let painter = ui.painter_at(r);
     painter.rect_filled(r, 0.0, Color32::WHITE);
     painter.rect_stroke(
@@ -67,7 +69,7 @@ fn preview(ui: &mut Ui, app: &App) {
 }
 
 pub fn symbol_scatter(app: &mut App, ui: &mut Ui) {
-    ui.spacing_mut().slider_width = 110.0;
+    crate::ui::docker_form::fit_sliders(ui);
     let mut pick = false;
     {
         let s = &mut app.symbol_scatter;
@@ -79,7 +81,8 @@ pub fn symbol_scatter(app: &mut App, ui: &mut Ui) {
             };
             crate::ui::keynav::ComboBox::from_id_salt("symbol_scatter_symbols")
                 .selected_text(name(s.source, s.builtin))
-                .width(ui.available_width().clamp(120.0, 190.0))
+                .width(crate::ui::docker_form::fit_w(ui, 190.0))
+                .truncate()
                 .show_ui(ui, |ui| {
                     for i in 0..=Builtin::ALL.len() {
                         let on = s.source == Source::Builtin && s.builtin == i;
@@ -136,12 +139,15 @@ pub fn symbol_scatter(app: &mut App, ui: &mut Ui) {
             .rich_tip(crate::ui::tips::keyed("docker.scatter_spacing"));
         });
         row(ui, &tr("docker.scatter_size"), |ui| {
+            // The two fields share the room left in a narrow panel (#4323).
+            let w = ((crate::ui::docker_form::fit_w(ui, f32::INFINITY) - 20.0) / 2.0).clamp(36.0, 64.0);
             ui.add(
                 crate::ui::field::NumField::new(&mut s.size_min)
                     .range(1.0..=400.0)
                     .speed(1.0)
                     .max_decimals(0)
-                    .suffix(" %"),
+                    .suffix(" %")
+                    .width(w),
             )
             .rich_tip(crate::ui::tips::keyed("docker.scatter_size"));
             ui.label("-");
@@ -150,7 +156,8 @@ pub fn symbol_scatter(app: &mut App, ui: &mut Ui) {
                     .range(1.0..=400.0)
                     .speed(1.0)
                     .max_decimals(0)
-                    .suffix(" %"),
+                    .suffix(" %")
+                    .width(w),
             )
             .rich_tip(crate::ui::tips::keyed("docker.scatter_size"));
         });
@@ -166,7 +173,8 @@ pub fn symbol_scatter(app: &mut App, ui: &mut Ui) {
         row(ui, &tr("docker.scatter_color"), |ui| {
             crate::ui::keynav::ComboBox::from_id_salt("symbol_scatter_color")
                 .selected_text(tr(s.color.key()))
-                .width(ui.available_width().clamp(120.0, 190.0))
+                .width(crate::ui::docker_form::fit_w(ui, 190.0))
+                .truncate()
                 .show_ui(ui, |ui| {
                     for m in ColorMode::ALL {
                         ui.selectable_value(&mut s.color, m, tr(m.key()));
@@ -184,21 +192,25 @@ pub fn symbol_scatter(app: &mut App, ui: &mut Ui) {
             });
         }
         row(ui, &tr("docker.scatter_seed"), |ui| {
-            let mut seed = s.seed as u32;
-            if ui
-                .add(crate::ui::field::NumField::new(&mut seed).range(0..=999_999))
-                .rich_tip(crate::ui::tips::keyed("docker.scatter_seed"))
-                .changed()
-            {
-                s.seed = seed as u64;
-            }
-            if ui
-                .ibutton("docker.scatter_shuffle")
-                .rich_tip(crate::ui::tips::keyed("docker.scatter_shuffle"))
-                .clicked()
-            {
-                s.seed = (s.seed + 1) % 1_000_000;
-            }
+            // Shuffle goes under the field when a narrow panel has no
+            // room beside it (#4323).
+            ui.horizontal_wrapped(|ui| {
+                let mut seed = s.seed as u32;
+                if ui
+                    .add(crate::ui::field::NumField::new(&mut seed).range(0..=999_999))
+                    .rich_tip(crate::ui::tips::keyed("docker.scatter_seed"))
+                    .changed()
+                {
+                    s.seed = seed as u64;
+                }
+                if ui
+                    .ibutton("docker.scatter_shuffle")
+                    .rich_tip(crate::ui::tips::keyed("docker.scatter_shuffle"))
+                    .clicked()
+                {
+                    s.seed = (s.seed + 1) % 1_000_000;
+                }
+            });
         });
         indented(ui, |ui| {
             ui.checkbox(&mut s.keep_container, tr("docker.scatter_keep"))
@@ -211,6 +223,9 @@ pub fn symbol_scatter(app: &mut App, ui: &mut Ui) {
     if crate::ui::docker_form::wide_button(ui, "docker.apply", ready, &tip) {
         let s = app.symbol_scatter.clone();
         app.apply_symbol_scatter(&s);
+    }
+    if crate::ui::docker_form::reset_button(ui) {
+        app.symbol_scatter.reset();
     }
     brush_section(app, ui);
 }
@@ -231,7 +246,8 @@ fn brush_section(app: &mut App, ui: &mut Ui) {
     row(ui, &tr("docker.scatter_brush_mode"), |ui| {
         crate::ui::keynav::ComboBox::from_id_salt("symbol_brush_mode")
             .selected_text(tr(s.brush.key()))
-            .width(ui.available_width().clamp(120.0, 190.0))
+            .width(crate::ui::docker_form::fit_w(ui, 190.0))
+            .truncate()
             .show_ui(ui, |ui| {
                 for m in SymbolBrush::ALL {
                     ui.selectable_value(&mut s.brush, m, tr(m.key()))

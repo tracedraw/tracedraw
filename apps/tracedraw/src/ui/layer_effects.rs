@@ -1793,7 +1793,7 @@ fn move_marker(range: &mut [f64; 4], marker: usize, together: bool, v: f64) {
 /// fades in over the gap. The values show as 0 to 255.
 fn range_bar(ui: &mut Ui, salt: &str, range: &mut [f64; 4]) -> bool {
     let id = ui.id().with(("blend_if_bar", salt));
-    let width = ui.available_width().clamp(120.0, 240.0);
+    let width = crate::ui::docker_form::fit_w(ui, 240.0);
     let (rect, response) =
         ui.allocate_exact_size(egui::vec2(width, 26.0), egui::Sense::click_and_drag());
     let strip = egui::Rect::from_min_size(rect.min + egui::vec2(6.0, 0.0), egui::vec2(width - 12.0, 10.0));

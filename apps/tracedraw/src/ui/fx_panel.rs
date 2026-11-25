@@ -81,7 +81,7 @@ pub fn panel(app: &mut App, ui: &mut Ui) {
             let mut picked = None;
             crate::ui::keynav::ComboBox::from_id_salt("fx_panel_effect")
                 .selected_text(name)
-                .width(ui.available_width().min(240.0))
+                .width(crate::ui::docker_form::fit_w(ui, 240.0))
                 .show_ui(ui, |ui| {
                     for (group, list) in crate::fx::groups() {
                         ui.label(egui::RichText::new(tr(group)).color(Tokens::text_dim()));

@@ -650,7 +650,7 @@ fn multipoint(
     let rows = c.curve.len().max(1);
     let height = (rows as f32 * row_h).min(8.0 * row_h);
     let (area, area_resp) = ui.allocate_exact_size(
-        Vec2::new(ui.available_width().min(260.0), height + 22.0),
+        Vec2::new(crate::ui::docker_form::fit_w(ui, 260.0), height + 22.0),
         Sense::click(),
     );
     let id = egui::Id::new("coords_points_list");

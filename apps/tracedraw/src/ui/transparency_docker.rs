@@ -890,7 +890,7 @@ fn fountain(ui: &mut Ui, set: &mut TransparencySettings, mixed: &[F], field: &mu
     let n = f.stops.len();
     let mut sel: usize = ui.data(|d| d.get_temp(stop_id())).unwrap_or(0);
     sel = sel.min(n.saturating_sub(1));
-    let width = ui.available_width().min(260.0);
+    let width = crate::ui::docker_form::fit_w(ui, 260.0);
     let (r, resp) = ui.allocate_exact_size(Vec2::new(width, 26.0), Sense::click_and_drag());
     let bar = Rect::from_min_size(r.min, Vec2::new(r.width(), 14.0));
     crate::ui::dockers::gradient_swatch(ui.painter(), bar, &f.sorted_stops());

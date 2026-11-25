@@ -552,7 +552,7 @@ fn exact(key: &str) -> Option<Src> {
         "shapegen.relax_once" => Src::B(B::Smooth),
         "shapegen.growth_stop" | "docker.stop" => Src::B(B::Stop),
         "shapegen.frac_edit" => Src::B(B::Pencil),
-        "shapegen.reset_points" => Src::B(B::Reset),
+        "shapegen.reset_points" | "docker.reset_defaults" => Src::B(B::Reset),
         "shapegen.update" => Src::B(B::Refresh),
         "perspective.put_on_plane" => Src::Glyph(Glyph::Perspective),
         "recolor.reset" => Src::B(B::Reset),

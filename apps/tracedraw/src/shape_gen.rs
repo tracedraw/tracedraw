@@ -783,6 +783,16 @@ impl Default for ShapeGenSettings {
     }
 }
 
+impl ShapeGenSettings {
+    /// Every setting back to its default; the kind of shape stays.
+    pub fn reset(&mut self) {
+        *self = Self {
+            kind: self.kind,
+            ..Self::default()
+        };
+    }
+}
+
 /// How a generated curve is painted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Paint {
