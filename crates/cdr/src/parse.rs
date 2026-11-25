@@ -320,8 +320,53 @@ const OBJ_MESH: u32 = 0x20;
 /// The mesh of an [`OBJ_MESH`] object: its grid lines and node colours
 /// (see [`Ctx::read_mesh`]).
 const ARG_MESH: u32 = 19150;
+/// The merge mode a version 16+ style string's transparency `mode` names.
+/// The codes are those of the merge modes of the scripting interface
+/// (`cdrMergeMode` in `vg_model.js`), which the transparency record of
+/// versions 13 to 15 shares (9 multiplies there, #3222). In the car
+/// drawing of #1238 (version 27) the highlights hold 7 and 29, and the
+/// shades 8 and 9, and drawn so they match its reference picture, where
+/// drawn as Normal they lay over the paint as flat grey patches.
+fn style_merge_mode(code: i64) -> Option<tracedraw_core::live::MergeMode> {
+    use tracedraw_core::live::MergeMode as M;
+    Some(match code {
+        0 => M::Normal,
+        1 => M::And,
+        2 => M::Or,
+        3 => M::Xor,
+        6 => M::Invert,
+        7 => M::Add,
+        8 => M::Subtract,
+        9 => M::Multiply,
+        10 => M::Divide,
+        11 => M::IfLighter,
+        12 => M::IfDarker,
+        13 => M::Texturize,
+        14 => M::Color,
+        15 => M::Hue,
+        16 => M::Saturation,
+        17 => M::Lightness,
+        18 => M::Red,
+        19 => M::Green,
+        20 => M::Blue,
+        24 => M::Difference,
+        27 => M::Behind,
+        28 => M::Screen,
+        29 => M::Overlay,
+        30 => M::SoftLight,
+        31 => M::HardLight,
+        33 => M::ColorDodge,
+        34 => M::ColorBurn,
+        36 => M::Exclusion,
+        _ => return None,
+    })
+}
+
 /// The largest mesh read, in nodes.
 const MESH_MAX_NODES: usize = 250_000;
+/// The mark of mesh records whose node colours are sized records (150 in
+/// version 27 files; 100 in the older layout).
+const MESH_SIZED_COLOURS: u32 = 150;
 /// The tag of records added by version 24 and later at the start of fill
 /// records (a 16-byte id), which files saved for older versions carry too.
 const NEWER_RECORD_TAG: u32 = 2400;
@@ -4143,7 +4188,8 @@ impl<'a> Ctx<'a> {
     /// through them and their handles from the control points next to
     /// them on those lines, so the cells keep the lines' curves. Also the
     /// mesh's edge (the first and last row and column lines), the
-    /// object's outline.
+    /// object's outline. A record marked 150 instead of 100 (version 27,
+    /// #1238) holds the colours as sized records.
     fn read_mesh(
         &mut self,
         d: &'a [u8],
@@ -4154,7 +4200,7 @@ impl<'a> Ctx<'a> {
         // The record's own length: the argument may run a little past it.
         let len = r.u32()? as usize;
         let end = arg.off.checked_add(len)?.min(arg.end);
-        let _tag = r.u32()?;
+        let tag = r.u32()?;
         let cols = r.u32()? as usize;
         let rows = r.u32()? as usize;
         if cols < 2 || rows < 2 || cols.saturating_mul(rows) > MESH_MAX_NODES {
@@ -4224,19 +4270,40 @@ impl<'a> Ctx<'a> {
             }
             lines.push((build_path(&pts, &types).0, first > last));
         }
-        // The colour grid closes the record.
-        let grid = end.checked_sub(12 + rows * cols * 12)?;
-        if grid < r.pos {
-            return None;
-        }
-        let mut g = self.reader_at(data, grid);
-        let _tag = g.u32()?;
-        if g.u32()? as usize != rows || g.u32()? as usize != cols {
-            return None;
-        }
         let mut colours = Vec::with_capacity(rows * cols);
-        for _ in 0..rows * cols {
-            colours.push(self.read_color(&mut g)?);
+        if tag >= MESH_SIZED_COLOURS {
+            // Records marked 150: the transform (six f64), the mark and the
+            // counts follow the lines, then each node's colour as a sized
+            // record (see `read_mesh_sized_colour`); 12 bytes close it.
+            r.skip(48);
+            let _tag = r.u32()?;
+            if r.u32()? as usize != rows || r.u32()? as usize != cols {
+                return None;
+            }
+            for _ in 0..rows * cols {
+                let size = r.u32()? as usize;
+                let at = r.pos;
+                if at.checked_add(size)? > end {
+                    return None;
+                }
+                let mut c = self.reader_at(data, at);
+                colours.push(self.read_mesh_sized_colour(&mut c, size)?);
+                r.skip(size);
+            }
+        } else {
+            // The colour grid closes the record.
+            let grid = end.checked_sub(12 + rows * cols * 12)?;
+            if grid < r.pos {
+                return None;
+            }
+            let mut g = self.reader_at(data, grid);
+            let _tag = g.u32()?;
+            if g.u32()? as usize != rows || g.u32()? as usize != cols {
+                return None;
+            }
+            for _ in 0..rows * cols {
+                colours.push(self.read_color(&mut g)?);
+            }
         }
         let mut nodes = Vec::with_capacity(rows * cols);
         for (i, handles) in handles.into_iter().enumerate() {
@@ -4285,6 +4352,20 @@ impl<'a> Ctx<'a> {
             },
             edge,
         ))
+    }
+
+    /// A mesh node's colour in a record marked 150: byte 1, the colour's
+    /// length (12) and the colour as everywhere else; what follows (byte 7,
+    /// a length of 16 and 16 bytes, zeros in the samples) is not read.
+    fn read_mesh_sized_colour(&mut self, r: &mut Reader, size: usize) -> Option<Color> {
+        if size < 17 {
+            return None;
+        }
+        let _kind = r.u8()?;
+        if r.u32()? != 12 {
+            return None;
+        }
+        self.read_color(r)
     }
 
     fn read_polygon_info(&mut self, d: &'a [u8], arg: Arg) -> Option<PolygonInfo> {
@@ -4865,29 +4946,38 @@ impl<'a> Ctx<'a> {
             s.miter_limit = a;
         }
 
-        // A merge mode the reader does not know yet (#1666) is named, so
-        // a report can say which code the file uses.
-        if let Some(code) = style_string
-            .as_deref()
-            .and_then(text::object_transparency_merge_code)
-        {
-            self.report.warn(format!(
-                "transparency merge mode {code} not read; object merged as Normal"
-            ));
-        }
         // Version 16+: a graded transparency in the object's style string
         // becomes a mask; otherwise its uniform transparency an opacity.
-        let mut mask = v11_mask.or_else(|| {
-            style_string
-                .as_deref()
-                .and_then(text::object_transparency_mask)
-        });
-        // A pattern transparency in the style string (a fill type other
-        // than uniform or fountain) is the pattern its record names, not
-        // the mean of its two amounts (#2960).
         let style_fill_type = style_string
             .as_deref()
             .and_then(text::object_transparency_fill_type);
+        // A transparency section whose fill is of type 0 (none, as in fill
+        // sections) on an object without a transparency record is a
+        // transparency that was taken off: its amounts are leftovers
+        // (#1238: a version 27 mesh object left with "uniformTransparency 1"
+        // is drawn whole in its reference picture).
+        let transparency_off = self.v >= 16
+            && style_fill_type == Some(0)
+            && !l.args.iter().any(|a| a.ty == ARG_OPACITY);
+        let style_transparency = style_string.as_deref().filter(|_| !transparency_off);
+        // Version 16+: how the transparency mixes with what lies beneath
+        // is the style string's `mode` (see `style_merge_mode`); a code
+        // without a mode here is named, so a report can say which one
+        // the file uses (#1666).
+        if let Some(code) = style_transparency.and_then(text::object_transparency_merge_code) {
+            match style_merge_mode(code) {
+                Some(m) => record_merge = m,
+                None => self.report.warn(format!(
+                    "transparency merge mode {code} not read; object merged as Normal"
+                )),
+            }
+        }
+        let style_merges = self.v >= 16 && record_merge != tracedraw_core::live::MergeMode::Normal;
+        let mut mask =
+            v11_mask.or_else(|| style_transparency.and_then(text::object_transparency_mask));
+        // A pattern transparency in the style string (a fill type other
+        // than uniform or fountain) is the pattern its record names, not
+        // the mean of its two amounts (#2960).
         if mask.is_none() && style_fill_type.is_some_and(|t| !matches!(t, 0..=2)) {
             if let Some(RecordTransparency::Mask(m @ (Fill::Pattern(_), _))) = &record_transparency
             {
@@ -4904,7 +4994,7 @@ impl<'a> Ctx<'a> {
             }
         }
         if opacity >= 1.0 && mask.is_none() {
-            if let Some(o) = style_string.as_deref().and_then(text::object_opacity) {
+            if let Some(o) = style_transparency.and_then(text::object_opacity) {
                 opacity = o;
             } else if let Some(o) = record_opacity.filter(|_| {
                 style_string
@@ -4964,11 +5054,11 @@ impl<'a> Ctx<'a> {
                     (Some(u), Some(t)) => (u.bounding_box(), recenter * t),
                     _ => (local.bounding_box(), shape.transform),
                 };
-                // The bands run square to the fill's axis in the object's
-                // own space (its box not stretched to a square).
+                // The bands run along the fill frame's second axis, in
+                // units of the object's box like the first.
                 let start = Fountain::rel_to_page(lb, h.start);
                 let end = Fountain::rel_to_page(lb, h.end);
-                let skew = start + (end - start).turn_90();
+                let skew = Fountain::rel_to_page(lb, h.skew);
                 let place = |p: Point| Fountain::page_to_rel(pb, m * p);
                 let placed = tracedraw_core::style::FountainHandles {
                     start: place(start),
@@ -5102,7 +5192,9 @@ impl<'a> Ctx<'a> {
                     merge: record_merge,
                     target,
                 });
-        } else if record_merge != tracedraw_core::live::MergeMode::Normal && shape.opacity < 1.0 {
+        } else if record_merge != tracedraw_core::live::MergeMode::Normal
+            && (shape.opacity < 1.0 || style_merges)
+        {
             // A uniform transparency that does not merge as Normal: a
             // mask of one grey, whose lightness is the opacity.
             let grey = Color::Gray {
@@ -7605,12 +7697,11 @@ fn radial_frame(d: &[u8]) -> Option<tracedraw_core::style::FountainHandles> {
 /// b, d, f; the offsets zero) in units of the object box's width and
 /// height from its centre, y upwards. The fill runs along the matrix's x
 /// axis `(a, b)`, from the centre less half of it (the first colour) to
-/// the centre plus half of it (the last); the bands run square to that
-/// axis in the object's own space, which `Ctx::read_object` works
-/// out when it places the fill on the object. As
+/// the centre plus half of it (the last); the bands run along its y axis
+/// `(c, d)`, which a skewed fill turns away from square (#1238). As
 /// [`FountainHandles`](tracedraw_core::style::FountainHandles) in the
-/// object's box (half sizes), the skew handle a placeholder; None when the
-/// tail is shorter or the axis has no length.
+/// object's box (half sizes), the skew handle one y axis from the start;
+/// None when the tail is shorter or the x axis has no length.
 fn linear_frame(d: &[u8]) -> Option<tracedraw_core::style::FountainHandles> {
     let f = |k: usize| {
         let b = d.get(8 * k..8 * k + 8)?;
@@ -7618,10 +7709,11 @@ fn linear_frame(d: &[u8]) -> Option<tracedraw_core::style::FountainHandles> {
         v.is_finite().then_some(v)
     };
     let (ox, oy, a, b) = (f(0)?, f(1)?, f(2)?, f(5)?);
-    // The matrix's other entries are read only to know the tail is whole.
-    f(3)?;
+    // The matrix's y axis: the way the bands run. One that is not a
+    // number counts as one of no length.
+    let (c, d2) = (f(3).unwrap_or(0.0), f(6).unwrap_or(0.0));
+    // The offsets are read only to know the tail is whole.
     f(4)?;
-    f(6)?;
     f(7)?;
     let len = a.hypot(b);
     if !(1e-6..=1e3).contains(&len) || ox.abs() > 1e3 || oy.abs() > 1e3 {
@@ -7630,10 +7722,16 @@ fn linear_frame(d: &[u8]) -> Option<tracedraw_core::style::FountainHandles> {
     // Half sizes: twice the box units.
     let start = Point::new(2.0 * ox - a, 2.0 * oy - b);
     let end = Point::new(2.0 * ox + a, 2.0 * oy + b);
+    // A y axis without length (not seen) leaves the bands square.
+    let along = if (1e-6..=1e3).contains(&c.hypot(d2)) {
+        (c, d2)
+    } else {
+        (-b, a)
+    };
     Some(tracedraw_core::style::FountainHandles {
         start,
         end,
-        skew: Point::new(start.x - b, start.y + a),
+        skew: Point::new(start.x + along.0, start.y + along.1),
     })
 }
 
@@ -9194,6 +9292,33 @@ pub(crate) mod tests {
         for (r, g, b) in [(255, 0, 0), (0, 0, 255), (0, 255, 0), (255, 255, 255)] {
             body.extend(color_bgr(r, g, b));
         }
+        // #1238: a record marked 150 (a version 27 file) holds each
+        // colour in a sized record and 12 bytes after the last.
+        let sized = |colours: usize, size: u32| {
+            let lines = body.len() - 4 * 12 - 12;
+            let mut b = u32s(&[150]);
+            b.extend_from_slice(&body[4..lines]);
+            b.extend(u32s(&[150, 2, 2]));
+            for (r, g, bl) in [(255, 0, 0), (0, 0, 255), (0, 255, 0), (255, 255, 255)]
+                .into_iter()
+                .take(colours)
+            {
+                let mut rec = vec![1u8];
+                rec.extend(u32s(&[12]));
+                rec.extend(color_bgr(r, g, bl));
+                rec.push(7);
+                rec.extend(u32s(&[16]));
+                rec.resize(43, 0);
+                b.extend(u32s(&[size]));
+                b.extend(rec);
+            }
+            b.extend(u32s(&[1, 9, 5]));
+            let mut mesh = u32s(&[b.len() as u32 + 4]);
+            mesh.extend(b);
+            mesh
+        };
+        let (mesh_150, mesh_150_short, mesh_150_wide) =
+            (sized(4, 43), sized(3, 43), sized(4, u32::MAX));
         let mut mesh = u32s(&[body.len() as u32 + 4]);
         mesh.extend(body);
         // The coordinates' curve: a triangle far from the mesh.
@@ -9287,6 +9412,24 @@ pub(crate) mod tests {
         // Every shorter cut opens without a panic.
         for cut in 0..mesh.len() {
             let _ = doc_of(obj(mesh[..cut].to_vec()));
+        }
+        // The record marked 150 gives the same colours.
+        let (doc, rep) = doc_of(obj(mesh_150.clone()));
+        let Fill::Mesh(m150) = &first_shape(&doc).fill else {
+            panic!("{:?}", rep.warnings)
+        };
+        for (r, c) in [(0, 0), (0, 1), (1, 0), (1, 1)] {
+            assert_eq!(m150.node(r, c).map(|n| n.color), at(r, c).map(|n| n.1));
+        }
+        // One colour short, or a colour sized past the record: the curve
+        // with a warning, and no cut panics.
+        for bad in [mesh_150_short, mesh_150_wide] {
+            let (doc, rep) = doc_of(obj(bad));
+            assert!(rep.warnings.iter().any(|w| w.contains("mesh")));
+            assert!(!matches!(first_shape(&doc).fill, Fill::Mesh(_)));
+        }
+        for cut in 0..mesh_150.len() {
+            let _ = doc_of(obj(mesh_150[..cut].to_vec()));
         }
     }
 
@@ -17749,13 +17892,28 @@ pub(crate) mod tests {
         assert!((t(3.0, 2.5) - 0.5).abs() < 1e-9, "{}", t(3.0, 2.5));
         assert!((f.angle - 90.0).abs() < 1e-9, "{}", f.angle);
         // Along the box's diagonal, (0.5, 0.5) in box units: on the
-        // object the axis runs (10, 5) mm and the bands square to it.
+        // object the axis runs (10, 5) mm. The bands run along the
+        // frame's other axis, (-0.5, 0.5) in box units, (-10, 5) mm on
+        // the object, which is not square to the first on a box that is
+        // not square (#1238).
         let (f, b) = read(fill(&[0.0, 0.0, 0.5, -0.5, 0.0, 0.5, 0.5, 0.0]));
         let t = |x: f64, y: f64| f.param_at(b, Point::new(c + x, c + y)).expect("a frame");
         assert!((t(10.0, 5.0) - 0.5).abs() < 1e-9);
         assert!((t(15.0, 7.5) - 1.0).abs() < 1e-9, "{}", t(15.0, 7.5));
-        // (1, -2) is square to (10, 5).
-        assert!((t(11.0, 3.0) - 0.5).abs() < 1e-9, "{}", t(11.0, 3.0));
+        assert!((t(8.0, 6.0) - 0.5).abs() < 1e-9, "{}", t(8.0, 6.0));
+        // #1238: a skewed fill. The same axis with the other one lying
+        // along the box's width: the bands are level.
+        let (f, b) = read(fill(&[0.0, 0.0, 0.5, -0.5, 0.0, 0.5, 0.0, 0.0]));
+        let t = |x: f64, y: f64| f.param_at(b, Point::new(c + x, c + y)).expect("a frame");
+        assert!((t(10.0, 5.0) - 0.5).abs() < 1e-9);
+        assert!((t(2.0, 5.0) - 0.5).abs() < 1e-9, "{}", t(2.0, 5.0));
+        assert!((t(15.0, 7.5) - 1.0).abs() < 1e-9, "{}", t(15.0, 7.5));
+        // A second axis of no length, or not a number, falls back to
+        // bands square to the first in box units.
+        for bad in [0.0, f64::NAN, f64::INFINITY] {
+            let (f, _) = read(fill(&[0.0, 0.0, 0.5, bad, 0.0, 0.5, bad, 0.0]));
+            assert!(f.handles.is_some(), "{f:?}");
+        }
         // A tail of four values, or an axis of no length, keeps the angle
         // and the edge pad.
         for tail in [
@@ -17940,6 +18098,109 @@ pub(crate) mod tests {
         let own = r#"{"transparency":{"fill":{"type":"1"},"uniformTransparency":"0.2"}}"#;
         let s = rect(own, transparency_record_v16(0, 40.0, 1));
         assert!((s.opacity - 0.8).abs() < 1e-9, "{}", s.opacity);
+    }
+
+    /// #1238 (a version 27 drawing of a car): a transparency taken off
+    /// leaves its section in the style string with fill type 0 and the
+    /// old amounts, and no transparency argument; the lamps and the
+    /// grille opened see-through or gone. And the section's `mode` is
+    /// the merge mode, which opened as Normal with a warning, so the
+    /// highlights and shades lay over the paint as flat patches.
+    #[test]
+    fn style_string_transparency_taken_off_and_merge_modes() {
+        use tracedraw_core::live::{Effect, MergeMode};
+        let rect = |style: &str, op: Option<Vec<u8>>| {
+            let style = [u32s(&[1, style.len() as u32]), style.as_bytes().to_vec()].concat();
+            let mut args = vec![
+                (ARG_STYLE_STRING, style),
+                (ARG_COORDS, f64s(&[254_000.0, 254_000.0, 1.0, 1.0])),
+            ];
+            if let Some(op) = op {
+                args.insert(0, (ARG_OPACITY, op));
+            }
+            let body = [
+                chunk(b"mcfg", &mcfg(27, 2_540_000, 2_540_000)),
+                list(
+                    b"page",
+                    &list(
+                        b"layr",
+                        &list(b"obj ", &chunk(b"loda", &loda(OBJ_RECT, &args))),
+                    ),
+                ),
+            ]
+            .concat();
+            let (doc, rep) = parse(&riff(b"CDRR", &body), 27);
+            assert_eq!(rep.shapes, 1, "{:?}", rep.warnings);
+            (first_shape(&doc).clone(), rep)
+        };
+        let style = |ty: u8, amount: &str, mode: u8| {
+            format!(
+                r#"{{"transparency":{{"fill":{{"type":"{ty}"}},"uniformTransparency":"{amount}","mode":"{mode}"}}}}"#
+            )
+        };
+        // Taken off: solid, whatever amount and mode were left behind.
+        let (s, rep) = rect(&style(0, "1", 9), None);
+        assert_eq!(s.opacity, 1.0);
+        assert!(s.effects.is_empty(), "{:?}", s.effects);
+        assert!(rep.warnings.is_empty(), "{:?}", rep.warnings);
+        // The same section with the argument is a transparency.
+        let (s, _) = rect(
+            &style(0, "0.3", 0),
+            Some(transparency_record_v16(0, 30.0, 1)),
+        );
+        assert!((s.opacity - 0.7).abs() < 1e-9, "{}", s.opacity);
+        // And type 1 without the argument is one too.
+        let (s, _) = rect(&style(1, "0.3", 0), None);
+        assert!((s.opacity - 0.7).abs() < 1e-9, "{}", s.opacity);
+        // The merge modes seen, each a mask of the opacity so merged.
+        for (code, mode) in [
+            (7, MergeMode::Add),
+            (8, MergeMode::Subtract),
+            (9, MergeMode::Multiply),
+            (29, MergeMode::Overlay),
+        ] {
+            let (s, rep) = rect(
+                &style(1, "0.5", code),
+                Some(transparency_record_v16(0, 50.0, 1)),
+            );
+            assert!(rep.warnings.is_empty(), "{code}: {:?}", rep.warnings);
+            assert_eq!(s.opacity, 1.0, "{code}");
+            match s.effects.as_slice() {
+                [Effect::Transparency {
+                    mask: Fill::Solid(Color::Gray { v }),
+                    merge,
+                    ..
+                }] => {
+                    assert_eq!(*merge, mode, "{code}");
+                    assert!((v - 0.5).abs() < 1e-6, "{code}: {v}");
+                }
+                other => panic!("{code}: {other:?}"),
+            }
+        }
+        // A merge mode on an object that hides nothing still merges.
+        let (s, _) = rect(&style(1, "0", 9), Some(transparency_record_v16(0, 0.0, 1)));
+        assert!(
+            matches!(
+                s.effects.as_slice(),
+                [Effect::Transparency {
+                    merge: MergeMode::Multiply,
+                    ..
+                }]
+            ),
+            "{:?}",
+            s.effects
+        );
+        // A code outside the table: Normal, named in a warning.
+        let (s, rep) = rect(
+            &style(1, "0.5", 99),
+            Some(transparency_record_v16(0, 50.0, 1)),
+        );
+        assert!((s.opacity - 0.5).abs() < 1e-9, "{}", s.opacity);
+        assert!(
+            rep.warnings.iter().any(|w| w.contains("merge mode 99")),
+            "{:?}",
+            rep.warnings
+        );
     }
 
     /// #3095: a fountain transparency in a version 18 file, each kind

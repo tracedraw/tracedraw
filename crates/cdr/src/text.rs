@@ -2317,6 +2317,10 @@ fn apply_style_key(s: &mut RunStyle, key: &str, value: &Json) {
                 }
             }
         }
+    } else if k.contains("axes") {
+        // `font_axes`: the axes of a variable font, not a font's name
+        // (#1238: read as the name, every such text lost its font and
+        // the missing fonts box listed the axes instead). Not read.
     } else if k.contains("font") || k.contains("family") || k.contains("face") {
         match value {
             Json::Num(n) if *n >= 0.0 && *n <= u16::MAX as f64 => s.font_id = Some(*n as u16),
@@ -2546,8 +2550,10 @@ pub(crate) fn object_transparency_is_uniform_fill(style: &str) -> bool {
 }
 
 /// The `type` of the `fill` of an object's version 16+ style string
-/// `transparency` section: 0 or 1 uniform, 2 fountain, others patterns
-/// and textures, as in fill sections (#2960).
+/// `transparency` section: 1 uniform, 2 fountain, others patterns and
+/// textures, as in fill sections (#2960). 0 in an object without the
+/// transparency argument is a transparency taken off, whose amounts are
+/// leftovers (#1238).
 pub(crate) fn object_transparency_fill_type(style: &str) -> Option<i64> {
     let t = style.trim_matches(|c: char| c == '\0' || c.is_whitespace());
     let json = parse_json(t)?;
@@ -2580,11 +2586,10 @@ pub(crate) fn object_transparency_is_empty(style: &str) -> bool {
 }
 
 /// The merge mode code of an object's version 16+ style string
-/// transparency (`transparency` > `mode`), when it is not 0. Every
-/// file seen so far holds 0 there (#1666: 126 files attached to issues,
-/// versions 16 to 27, all with Normal merging), so the other codes are
-/// not known yet; the reader names the code in a warning and draws the
-/// object as Normal.
+/// transparency (`transparency` > `mode`), when it is not 0. The codes
+/// are the merge modes of the scripting interface (#1238: 7 Add, 8
+/// Subtract, 9 Multiply and 29 Overlay in a version 27 drawing, told by
+/// its reference picture); `parse::style_merge_mode` maps them.
 pub(crate) fn object_transparency_merge_code(style: &str) -> Option<i64> {
     let t = style.trim_matches(|c: char| c == '\0' || c.is_whitespace());
     let json = parse_json(t);
@@ -3479,6 +3484,26 @@ mod tests {
         assert_eq!(line_breaks("plain"), "plain");
         assert_eq!(soft_line_breaks("a\rb\r\nc"), "a\u{2028}b\r\nc");
         assert_eq!(soft_line_breaks("plain"), "plain");
+    }
+
+    /// #1238: version 27 style strings hold the axes of a variable font
+    /// in `font_axes` after `font`; read as a font name it replaced the
+    /// real one, so the text was drawn with a substitute and the missing
+    /// fonts box named the axes.
+    #[test]
+    fn font_axes_are_not_a_font_name() {
+        for axes in [
+            "<10>2003265652<29>2003265652 0 400 200 700 400 ",
+            "",
+            "7",
+            "<",
+        ] {
+            let s = parse_style_string(&format!(
+                r#"{{"character":{{"latin":{{"charset":"0","font":"Example Serif","font_axes":"{axes}","italic":"0","size":"136823"}}}}}}"#
+            ));
+            assert_eq!(s.family.as_deref(), Some("Example Serif"), "{axes:?}");
+            assert_eq!(s.font_id, None, "{axes:?}");
+        }
     }
 
     #[test]
