@@ -1050,6 +1050,10 @@ fn draw_page(app: &App, painter: &Painter, rect: ERect, preview: Option<Affine>)
         }
         app.paint_edited_text_overlay(painter, rect);
     }
+    // A contour or shadow being dragged: the object alone, small, until
+    // the page's picture shows the drag's latest state (D#4226).
+    let shown_rev = app.raster.borrow().shown_revision();
+    crate::effect_drag_preview::paint(app, painter, revision, shown_rev);
 
     if !clean_sheet {
         draw_page_margins(app, painter);

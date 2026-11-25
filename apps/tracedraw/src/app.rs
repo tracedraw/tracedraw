@@ -1559,6 +1559,9 @@ pub struct App {
     /// All colours of a palette at once (the expand button): which row.
     pub palette_expanded: Option<crate::ui::palette::Row>,
     pub raster: std::cell::RefCell<crate::raster::Raster>,
+    /// The low-resolution picture of an object whose contour or shadow
+    /// is dragged (D#4226).
+    pub effect_preview: std::cell::RefCell<Option<crate::effect_drag_preview::EffectPreview>>,
     /// The page's picture while nodes or a segment are dragged with the
     /// Shape tool (#1259): the drawing as it was before the drag is
     /// what the page shows, the edited curve following the pointer as
@@ -3544,6 +3547,7 @@ impl App {
             palette_shades: None,
             palette_expanded: None,
             raster: std::cell::RefCell::new(crate::raster::Raster::default()),
+            effect_preview: Default::default(),
             node_drag_shown: None,
             visual_cache: std::cell::RefCell::new((u64::MAX, Default::default())),
             fill_preview: false,

@@ -415,13 +415,62 @@ impl App {
         let part = if areas.is_empty() && open.is_empty() {
             guide_room(&lines, self.builder_guide_bounds(), p)?
         } else {
-            part_at_cut(&areas, &lines, &open, p)?
+            match part_at_cut(&areas, &lines, &open, p) {
+                Some(part) => part,
+                // Off the selection, the rooms of the guidelines are
+                // parts as well, at once, with no click to drop the
+                // selection first (#4223).
+                None => self.builder_free_room(&areas, &lines, p)?,
+            }
         };
         *self.builder.hover.borrow_mut() = Some(Hover {
             key,
             part: part.clone(),
         });
         Some(part)
+    }
+
+    /// With Use Guidelines on, the room of the guidelines around `p` when
+    /// it lies clear of every selected object `areas`.
+    fn builder_free_room(
+        &self,
+        areas: &[BezPath],
+        lines: &[tracedraw_core::document::GuideLine],
+        p: Point,
+    ) -> Option<BezPath> {
+        if lines.is_empty() {
+            return None;
+        }
+        let room = guide_room(lines, self.builder_guide_bounds(), p)?;
+        let b = room.bounding_box();
+        let clear = areas.iter().all(|a| {
+            a.bounding_box().intersect(b).area() <= 0.0
+                || overlay_parts(&room, a, Op::Intersect)
+                    .iter()
+                    .all(|q| tracedraw_core::shaping::filled_area(q, Default::default()) < 1e-6)
+        });
+        clear.then_some(room)
+    }
+
+    /// `p` is in a room of the guidelines off the selected objects: the
+    /// selection is dropped so the room is made as one of guidelines
+    /// alone (#4223).
+    fn builder_off_selection(&self, p: Point) -> bool {
+        if self.selection.is_empty() || self.builder_lines().is_empty() {
+            return false;
+        }
+        let areas: Vec<BezPath> = self
+            .builder_pieces()
+            .into_iter()
+            .map(|q| polygon(&q.area))
+            .collect();
+        let open: Vec<BezPath> = self.builder_open_lines().into_iter().map(|(_, o)| o).collect();
+        if areas.is_empty() && open.is_empty() {
+            return false;
+        }
+        let lines = self.builder_lines();
+        part_at_cut(&areas, &lines, &open, p).is_none()
+            && self.builder_free_room(&areas, &lines, p).is_some()
     }
 
     /// Add the part under `p` to the drag's parts, once.
@@ -502,6 +551,9 @@ impl App {
                 }
                 return;
             }
+            if self.builder_off_selection(p) {
+                self.selection.clear();
+            }
             self.builder.parts.clear();
             self.builder_take(p);
             let remove = mods.alt != self.builder.delete_mode;
@@ -509,6 +561,9 @@ impl App {
             return;
         }
         if response.drag_started_by(PointerButton::Primary) {
+            if self.builder_off_selection(p) {
+                self.selection.clear();
+            }
             self.builder.parts.clear();
             self.builder.alt = mods.alt;
             self.builder.remove = mods.alt != self.builder.delete_mode;
@@ -969,6 +1024,36 @@ pub fn draw(app: &App, painter: &Painter) {
     for part in &shown {
         hatch(app, painter, part, color);
     }
+    // The stretches of lines Alt takes away, in red: those a drag has
+    // crossed, or the one an Alt click under the pointer would (#4223).
+    let scope = Some(&app.selection);
+    let doomed: Vec<BezPath> = match &app.drag {
+        Drag::Freehand { points } if app.builder.alt && app.builder_pieces().is_empty() => {
+            app.virtual_segments_along(points, scope)
+        }
+        Drag::None if painter.ctx().input(|i| i.modifiers.alt) && !app.selection.is_empty() => painter
+            .ctx()
+            .pointer_hover_pos()
+            .filter(|at| painter.clip_rect().contains(*at))
+            .map(|at| app.view.to_page(at))
+            .filter(|p| app.builder_outline_near(*p))
+            .and_then(|p| app.virtual_segment_at(p, scope))
+            .into_iter()
+            .collect(),
+        _ => Vec::new(),
+    };
+    for path in &doomed {
+        for seg in path.segments() {
+            let pts: Vec<egui::Pos2> = (0..=8)
+                .map(|i| app.view.to_screen(seg.eval(i as f64 / 8.0)))
+                .collect();
+            painter.add(egui::Shape::line(
+                pts.clone(),
+                egui::Stroke::new(4.0, Color32::from_white_alpha(200)),
+            ));
+            painter.add(egui::Shape::line(pts, egui::Stroke::new(2.5, REMOVE_RED)));
+        }
+    }
 }
 
 /// The colour of parts about to be taken away.
@@ -1376,6 +1461,82 @@ mod tests {
         let corner = part_at_cut(&areas, &lines, &[], Point::new(15.0, 5.0)).unwrap();
         assert!((area(&corner) - 187.5).abs() < 1e-6, "{}", area(&corner));
         assert!(part_at_cut(&areas, &lines, &[], Point::new(5.0, 10.0)).is_none(), "on a line");
+    }
+
+    /// With Use Guidelines on and an object still selected, a room of
+    /// the guidelines clear of it is a part at once: no click to drop the
+    /// selection first; taking it makes an object of the room (#4223).
+    #[test]
+    fn guideline_rooms_off_the_selection_are_ready_at_once() {
+        use tracedraw_core::document::GuideLine;
+        let mut app = App::headless();
+        let a = square(&mut app, 0.0, 0.0, 10.0, 10.0);
+        let page = app.page;
+        for line in [
+            GuideLine::Vertical { x: 20.0 },
+            GuideLine::Vertical { x: 30.0 },
+            GuideLine::Horizontal { y: 20.0 },
+            GuideLine::Horizontal { y: 30.0 },
+        ] {
+            app.run(Command::AddGuide { page, guide: line.into() });
+        }
+        app.select(vec![a]);
+        app.set_tool(Tool::ShapeBuilder);
+        let p = Point::new(25.0, 25.0);
+        assert!(app.builder_part_at(p).is_none(), "Use Guidelines off");
+        app.builder.use_guides = true;
+        let room = app.builder_part_at(p).expect("the room is ready");
+        assert!((area(&room) - 100.0).abs() < 1e-6, "{}", area(&room));
+        assert!(app.builder_off_selection(p));
+        assert!(!app.builder_off_selection(Point::new(5.0, 5.0)), "on the object");
+        app.selection.clear();
+        app.builder_take(p);
+        app.builder_finish(false);
+        let made = app.selection[0];
+        assert_ne!(made, a);
+        assert!((page_area(&app, made) - 100.0).abs() < 1e-6);
+        assert!((page_area(&app, a) - 100.0).abs() < 1e-6, "the object is untouched");
+    }
+
+    /// An Alt drag over lines shows, before it ends, the stretches it
+    /// takes away: the same ones that go when it ends (#4223).
+    #[test]
+    fn alt_drag_shows_the_stretches_it_takes_away() {
+        let mut app = App::headless();
+        let layer = app.active_layer().unwrap();
+        let mut ids = Vec::new();
+        for (a, b) in [((0.0, 10.0), (30.0, 10.0)), ((10.0, 0.0), (10.0, 30.0)), ((20.0, 0.0), (20.0, 30.0))] {
+            let mut path = BezPath::new();
+            path.move_to(a);
+            path.line_to(b);
+            let id = app.engine.new_shape_id();
+            app.run(Command::AddShape {
+                layer,
+                shape: Shape::new(id, ShapeKind::Path { path, closed: false }),
+            });
+            ids.push(id);
+        }
+        app.select(ids.clone());
+        app.tool = Tool::ShapeBuilder;
+        // Across the horizontal line between the two upright ones.
+        let stroke = [Point::new(15.0, 5.0), Point::new(15.0, 15.0)];
+        let shown = app.virtual_segments_along(&stroke, Some(&app.selection.clone()));
+        assert_eq!(shown.len(), 1, "{shown:?}");
+        let b = shown[0].bounding_box();
+        assert!((b.x0 - 10.0).abs() < 1e-6 && (b.x1 - 20.0).abs() < 1e-6, "{b:?}");
+        // The segment an Alt click would take.
+        let one = app.virtual_segment_at(Point::new(25.0, 10.0), Some(&app.selection.clone())).expect("a segment");
+        let b = one.bounding_box();
+        assert!((b.x0 - 20.0).abs() < 1e-6 && (b.x1 - 30.0).abs() < 1e-6, "{b:?}");
+        app.builder.alt = true;
+        app.builder_drag_end(&stroke);
+        let h = app.doc().find_shape(ids[0]).expect("the line stays in two");
+        let hb = h.page_path().bounding_box();
+        assert!((hb.x0 - 0.0).abs() < 1e-6 && (hb.x1 - 30.0).abs() < 1e-6);
+        assert!(
+            app.doc().find_shape(ids[0]).map(|s| s.page_path().segments().count()).unwrap_or(0) == 2,
+            "the middle stretch went"
+        );
     }
 
     /// With Use Guidelines on, the page's guidelines cut the objects: a

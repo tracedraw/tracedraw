@@ -237,6 +237,7 @@ mod script_filters;
 mod scale_known;
 mod table_shapes;
 mod clip_copy;
+mod effect_drag_preview;
 mod scripting;
 mod segment_delete;
 mod select_region;

@@ -296,7 +296,7 @@ pub fn dialog(app: &mut App, ctx: &egui::Context, st: &mut TableShapes, close: &
         });
         ui.add_space(4.0);
         let headers = st.headers.clone();
-        let mut pick = |ui: &mut egui::Ui, key: &str, salt: &str, v: &mut Option<usize>| {
+        let pick = |ui: &mut egui::Ui, key: &str, salt: &str, v: &mut Option<usize>| {
             ui.label(tr(key));
             let shown = v
                 .and_then(|i| headers.get(i).cloned())
