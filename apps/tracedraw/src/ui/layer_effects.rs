@@ -547,6 +547,48 @@ fn highlighted_id() -> egui::Id {
     egui::Id::new("layer_effects_highlighted")
 }
 
+/// The object the list was last drawn for and the entries it had then.
+fn seen_id() -> egui::Id {
+    egui::Id::new("layer_effects_seen")
+}
+
+/// Highlights `kind` in the list, whose settings then show: the stack's
+/// Edit on an effect set here (#4350).
+pub fn highlight(ctx: &egui::Context, kind: Kind) {
+    if let Some(i) = Kind::ALL.iter().position(|k| *k == kind) {
+        ctx.data_mut(|d| d.insert_temp(highlighted_id(), i));
+    }
+}
+
+/// The entry to highlight for `shape`, whose stack is `stack`, when
+/// `current` was highlighted and the list last showed `seen` (#4350):
+/// an entry the object just gained; else, for another object, `current`
+/// when it has it, or its first effect.
+fn follow(
+    current: Kind,
+    shape: &Shape,
+    stack: &[(Effect, bool)],
+    seen: Option<&(tracedraw_core::ShapeId, Vec<usize>)>,
+) -> Kind {
+    let present: Vec<(usize, Kind)> = Kind::ALL
+        .into_iter()
+        .enumerate()
+        .filter(|(_, k)| find(stack, *k).is_some())
+        .collect();
+    match seen {
+        Some((id, kinds)) if *id == shape.id => present
+            .iter()
+            .filter(|(i, _)| !kinds.contains(i))
+            .max_by_key(|(_, k)| find(stack, *k))
+            .map_or(current, |(_, k)| *k),
+        _ if find(stack, current).is_some() => current,
+        _ => present
+            .iter()
+            .min_by_key(|(_, k)| find(stack, *k))
+            .map_or(current, |(_, k)| *k),
+    }
+}
+
 /// The Layer Effects section of the Effects docker.
 pub fn layer_effects(app: &mut App, ui: &mut Ui) {
     ui.strong(tr("layer_fx.title"));
@@ -555,10 +597,21 @@ pub fn layer_effects(app: &mut App, ui: &mut Ui) {
         return;
     };
     let stack = shape.effect_stack();
-    let mut current = ui
+    let current = ui
         .data(|d| d.get_temp::<usize>(highlighted_id()))
         .and_then(|i| Kind::ALL.get(i).copied())
         .unwrap_or(Kind::Bevel);
+    // The highlight follows the object and the effects it gains, so the
+    // settings below are always those of the entry lit (#4350).
+    let seen = ui.data(|d| d.get_temp::<(tracedraw_core::ShapeId, Vec<usize>)>(seen_id()));
+    let mut current = follow(current, &shape, &stack, seen.as_ref());
+    let kinds: Vec<usize> = Kind::ALL
+        .into_iter()
+        .enumerate()
+        .filter(|(_, k)| find(&stack, *k).is_some())
+        .map(|(i, _)| i)
+        .collect();
+    ui.data_mut(|d| d.insert_temp(seen_id(), (shape.id, kinds)));
     for kind in Kind::ALL {
         let at = find(&stack, kind);
         ui.horizontal(|ui| {
@@ -1927,6 +1980,49 @@ mod tests {
         ctx.data_mut(|d| d.insert_temp(highlighted_id(), Kind::ALL.len() - 1));
         let mut out = ctx.run_ui(Default::default(), |ui| layer_effects(&mut app, ui));
         out.textures_delta.clear();
+    }
+
+    /// The lit entry is always the one whose settings show: it follows
+    /// the selected object and the effect it just gained (#4350).
+    #[test]
+    fn the_highlight_follows_the_object_and_its_new_effect() {
+        let mut app = App::headless();
+        let rect = |app: &mut App, x: f64| {
+            app.new_shape(ShapeKind::Rect {
+                rect: Rect::new(x, 0.0, x + 10.0, 10.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("shape")
+        };
+        let a = rect(&mut app, 0.0);
+        let b = rect(&mut app, 20.0);
+        let ctx = crate::theme::ui_context();
+        let lit = |ctx: &egui::Context, app: &mut App| {
+            let mut out = ctx.run_ui(Default::default(), |ui| layer_effects(app, ui));
+            out.textures_delta.clear();
+            ctx.data(|d| d.get_temp::<usize>(highlighted_id()))
+                .map(|i| Kind::ALL[i])
+        };
+        app.select(vec![a]);
+        app.set_layer_effect_on(Kind::OffsetPath, true, &Kind::OffsetPath.default_effect());
+        assert_eq!(lit(&ctx, &mut app), Some(Kind::OffsetPath));
+        // Halftone added after: it lights up.
+        app.set_layer_effect_on(Kind::Halftone, true, &Kind::Halftone.default_effect());
+        assert_eq!(lit(&ctx, &mut app), Some(Kind::Halftone));
+        // The stack's Edit on the other one lights it.
+        highlight(&ctx, Kind::OffsetPath);
+        assert_eq!(lit(&ctx, &mut app), Some(Kind::OffsetPath));
+        assert_eq!(lit(&ctx, &mut app), Some(Kind::OffsetPath));
+        // Another object without that effect: its own first effect.
+        app.select(vec![b]);
+        app.set_layer_effect_on(Kind::OuterGlow, true, &Kind::OuterGlow.default_effect());
+        app.select(vec![b]);
+        assert_eq!(lit(&ctx, &mut app), Some(Kind::OuterGlow));
+        // Back to the first: it has neither Outer Glow, so its first
+        // effect, Grow Outline.
+        app.select(vec![a]);
+        assert_eq!(lit(&ctx, &mut app), Some(Kind::OffsetPath));
     }
 
     /// An effect taken away with its × keeps its values: ticking the

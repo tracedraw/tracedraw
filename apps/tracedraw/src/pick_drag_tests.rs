@@ -32147,3 +32147,214 @@ fn the_curvature_pen_continues_an_open_curve() {
     };
     assert!(closed_now, "the curve closed");
 }
+
+/// After Combine Live on two overlapping objects (#4322) the live group is
+/// selected; a click on an empty part of the page deselects, a click on
+/// the combined shape selects the group again, and Ctrl+click selects an
+/// object inside it, as with any group.
+#[test]
+fn objects_can_be_picked_after_combine_live() {
+    let (ctx, mut app, a) = setup();
+    let b = app
+        .new_shape(ShapeKind::Rect {
+            rect: Rect::new(40.0, 20.0, 90.0, 60.0),
+            radius: 0.0,
+            corners: None,
+        })
+        .expect("rect");
+    app.select(vec![b]);
+    app.apply_fill(tracedraw_core::Fill::Solid(tracedraw_core::Color::rgb8(
+        30, 30, 200,
+    )));
+    app.select(vec![a, b]);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    // Through the menu's command, as the user runs it.
+    app.combine_live_as(tracedraw_core::shaping::CombineMode::Weld);
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let group = app.selection.first().copied().expect("the live group is selected");
+    assert!(matches!(
+        app.doc().find_shape(group).map(|s| &s.kind),
+        Some(ShapeKind::Group { .. })
+    ));
+    // An empty part of the page: nothing selected.
+    let at = app.view.to_screen(Point::new(150.0, 150.0));
+    click_at(&ctx, &mut app, at, Modifiers::NONE);
+    assert!(app.selection.is_empty(), "a click outside deselects: {:?}", app.selection);
+    // The combined shape: the group.
+    let at = app.view.to_screen(Point::new(20.0, 20.0));
+    click_at(&ctx, &mut app, at, Modifiers::NONE);
+    assert_eq!(app.selection, vec![group], "a click on it picks the group");
+    // Ctrl+click: the object inside.
+    let at = app.view.to_screen(Point::new(80.0, 50.0));
+    click_at(&ctx, &mut app, at, Modifiers::CTRL);
+    assert_eq!(app.selection, vec![b], "Ctrl+click picks the object inside");
+    // Out again.
+    let at = app.view.to_screen(Point::new(150.0, 150.0));
+    click_at(&ctx, &mut app, at, Modifiers::NONE);
+    assert!(app.selection.is_empty());
+}
+
+/// Combine Live on objects picked inside a group, and in focus mode
+/// (#4322): clicks still pick and deselect afterwards.
+#[test]
+fn combine_live_inside_a_group_leaves_picking_working() {
+    for focus in [false, true] {
+        let (ctx, mut app, a) = setup();
+        let b = app
+            .new_shape(ShapeKind::Rect {
+                rect: Rect::new(40.0, 20.0, 90.0, 60.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        app.select(vec![b]);
+        app.apply_fill(tracedraw_core::Fill::Solid(tracedraw_core::Color::rgb8(
+            30, 30, 200,
+        )));
+        app.select(vec![a, b]);
+        app.group_selection();
+        let outer = app.selection[0];
+        if focus {
+            app.focus_on(outer);
+        }
+        app.select(vec![a, b]);
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+        app.combine_live_as(tracedraw_core::shaping::CombineMode::Weld);
+        for _ in 0..3 {
+            frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+        }
+        let at = app.view.to_screen(Point::new(150.0, 150.0));
+        click_at(&ctx, &mut app, at, Modifiers::NONE);
+        assert!(app.selection.is_empty(), "focus {focus}: a click outside deselects");
+        let at = app.view.to_screen(Point::new(20.0, 20.0));
+        click_at(&ctx, &mut app, at, Modifiers::NONE);
+        assert!(!app.selection.is_empty(), "focus {focus}: a click on it picks");
+        let at = app.view.to_screen(Point::new(150.0, 150.0));
+        double_click_at(&ctx, &mut app, at);
+        assert!(app.focus_target().is_none(), "focus {focus}: a double click outside leaves focus");
+        assert!(app.selection.is_empty(), "focus {focus}");
+    }
+}
+
+/// Two objects merged with Effects > Merge Shapes (#4351): one of them
+/// moved inside the merge, by Ctrl+drag or after a double click into the
+/// group, goes back where it was with one Ctrl+Z.
+#[test]
+fn undo_puts_back_an_object_moved_inside_a_merge() {
+    for how in ["ctrl", "focus"] {
+        let (ctx, mut app, a) = setup();
+        let b = app
+            .new_shape(ShapeKind::Rect {
+                rect: Rect::new(70.0, 10.0, 100.0, 40.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        app.select(vec![b]);
+        app.apply_fill(tracedraw_core::Fill::Solid(tracedraw_core::Color::rgb8(
+            30, 30, 200,
+        )));
+        app.select(vec![a, b]);
+        app.merge_shapes();
+        for _ in 0..3 {
+            frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+        }
+        let before = bounds(&app, b);
+        let from = app.view.to_screen(Point::new(85.0, 25.0));
+        let to = app.view.to_screen(Point::new(85.0, 55.0));
+        if how == "ctrl" {
+            click_at(&ctx, &mut app, from, Modifiers::CTRL);
+            assert_eq!(app.selection, vec![b], "Ctrl+click picks the object inside");
+            drag(&ctx, &mut app, from, to, Modifiers::NONE, Vec::new());
+        } else {
+            double_click_at(&ctx, &mut app, from);
+            for _ in 0..2 {
+                frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+            }
+            drag(&ctx, &mut app, from, to, Modifiers::NONE, Vec::new());
+        }
+        let moved = bounds(&app, b);
+        assert!(
+            (moved.y0 - before.y0).abs() > 5.0,
+            "{how}: the object moved: {before:?} -> {moved:?}"
+        );
+        // Ctrl+Z as typed, with the Effects panel Merge Shapes opened.
+        let ctrl = Modifiers::COMMAND | Modifiers::CTRL;
+        frame(&ctx, &mut app, vec![key(egui::Key::Z, ctrl)], ctrl);
+        frame(&ctx, &mut app, vec![key_up(egui::Key::Z, ctrl)], ctrl);
+        for _ in 0..2 {
+            frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+        }
+        let back = bounds(&app, b);
+        assert!(
+            (back.y0 - before.y0).abs() < 0.01 && (back.x0 - before.x0).abs() < 0.01,
+            "{how}: Ctrl+Z puts it back: {before:?} -> {moved:?} -> {back:?}"
+        );
+    }
+}
+
+/// Objects join a merge (#4348): a copy (Ctrl+D, or copy and paste) of
+/// an object of a merged group stays in the group over its original, and
+/// Merge Shapes on the merged group with another object adds it to that
+/// merge rather than nesting a new one. One Ctrl+Z takes each back.
+#[test]
+fn copies_and_merge_shapes_add_objects_to_a_merge() {
+    let (_ctx, mut app, a) = setup();
+    let rect = |app: &mut App, x: f64| {
+        app.new_shape(ShapeKind::Rect {
+            rect: Rect::new(x, 10.0, x + 30.0, 40.0),
+            radius: 0.0,
+            corners: None,
+        })
+        .expect("rect")
+    };
+    let b = rect(&mut app, 70.0);
+    app.select(vec![a, b]);
+    app.merge_shapes();
+    let group = app.selection[0];
+    let children = |app: &App| match &app.doc().find_shape(group).expect("group").kind {
+        ShapeKind::Group { children } => children.iter().map(|c| c.id).collect::<Vec<_>>(),
+        _ => Vec::new(),
+    };
+    assert_eq!(children(&app), vec![a, b]);
+    let page = |app: &App, id| app.doc().shape_on_page(id).expect("shape").bounds();
+    // Ctrl+D on b: the copy lands in the group, just over b, offset as
+    // usual.
+    app.select(vec![b]);
+    app.duplicate();
+    let copy = app.selection[0];
+    assert_eq!(children(&app), vec![a, b, copy]);
+    let (pb, pc) = (page(&app, b), page(&app, copy));
+    let d = app.duplicate_offset;
+    assert!(
+        (pc.x0 - pb.x0 - d.x).abs() < 1e-6 && (pc.y0 - pb.y0 - d.y).abs() < 1e-6,
+        "{pb:?} {pc:?} {d:?}"
+    );
+    app.undo();
+    assert_eq!(children(&app), vec![a, b]);
+    // Copy and paste with b selected: into the group too.
+    app.select(vec![b]);
+    app.copy();
+    app.paste();
+    let pasted = app.selection[0];
+    assert_eq!(children(&app), vec![a, b, pasted]);
+    app.undo();
+    assert_eq!(children(&app), vec![a, b]);
+    // Merge Shapes on the merged group and another object adds it.
+    let c = rect(&mut app, 140.0);
+    app.select(vec![group, c]);
+    app.merge_shapes();
+    assert_eq!(app.selection, vec![group]);
+    assert_eq!(children(&app), vec![a, b, c]);
+    assert!(app.doc().shape(group).is_ok(), "the group stays on the layer");
+    let pc = page(&app, c);
+    assert!((pc.x0 - 140.0).abs() < 1e-6, "{pc:?}");
+    app.undo();
+    assert_eq!(children(&app), vec![a, b]);
+    // A copy of an object not in a merge stays on the layer.
+    app.select(vec![c]);
+    app.duplicate();
+    assert!(app.doc().shape(app.selection[0]).is_ok());
+}

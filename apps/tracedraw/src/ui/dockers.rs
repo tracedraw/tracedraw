@@ -712,7 +712,15 @@ pub fn floating_dockers(app: &mut App, ctx: &egui::Context) {
         let Some(fd) = app.floating_dockers.iter_mut().find(|f| f.tab == tab) else {
             continue;
         };
+        let raise = app.raise_docker == Some(tab);
+        if raise {
+            app.raise_docker = None;
+        }
         if fd.own_window && own_windows {
+            if raise {
+                let id = egui::ViewportId::from_hash_of(("docker_window", tab.key()));
+                ctx.send_viewport_cmd_to(id, egui::ViewportCommand::Focus);
+            }
             own_window(app, ctx, tab);
             continue;
         }
@@ -763,6 +771,9 @@ pub fn floating_dockers(app: &mut App, ctx: &egui::Context) {
             docker_page(app, &mut page, tab);
         });
         if let Some(shown) = shown {
+            if raise {
+                ctx.move_to_top(shown.response.layer_id);
+            }
             if let Some(fd) = app.floating_dockers.iter_mut().find(|f| f.tab == tab) {
                 let r = shown.response.rect;
                 if r.is_finite() && r.width() >= 120.0 && r.height() >= 120.0 {

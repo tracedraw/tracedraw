@@ -322,6 +322,11 @@ pub struct Settings {
     pub recent_files: Vec<PathBuf>,
     pub workspace: String,
     pub show_welcome_on_start: bool,
+    /// Help > Mark New Features, kept across starts and updates (#4325).
+    pub mark_new_features: bool,
+    /// The version of the last start: the first start of a newer one
+    /// opens What's New when Mark New Features is on (#4325).
+    pub last_run_version: String,
     /// The Welcome Screen tab was closed: it shows as its house alone
     /// until the Welcome Screen is shown again (#677).
     pub welcome_tab_closed: bool,
@@ -2663,6 +2668,8 @@ impl Default for Settings {
             recent_files: Vec::new(),
             workspace: "default".into(),
             show_welcome_on_start: true,
+            mark_new_features: false,
+            last_run_version: String::new(),
             welcome_tab_closed: false,
             crop_picture_pixels: true,
             table: Default::default(),

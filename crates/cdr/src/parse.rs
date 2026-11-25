@@ -973,17 +973,20 @@ pub(crate) fn parse_document_kept_data(
                 layer.locked = f[0] & 0x10 != 0;
                 layer.printable = f[0] & 0x08 == 0;
             }
-            // Guides and grid layers hold no drawable content.
+            let mut ids = std::mem::take(doc.ids_mut());
+            layer.shapes = ctx.read_objects(lc, &mut ids, size, 0);
+            doc.set_ids(ids);
+            // Guides and grid layers do not print. Empty, they are hidden;
+            // a guides layer holding artwork (a part of the drawing put
+            // there, one face of a cube in a version 16 file, #4331)
+            // shows as the file has it, as its preview draws it.
             match ctx.layer_type(lc) {
                 Some(t) if t & 0x0f == 0x0a => {
-                    layer.visible = false;
+                    layer.visible = !layer.shapes.is_empty() && !ctx.layer_hidden(lc);
                     layer.printable = false;
                 }
                 _ => layer.visible = !ctx.layer_hidden(lc),
             }
-            let mut ids = std::mem::take(doc.ids_mut());
-            layer.shapes = ctx.read_objects(lc, &mut ids, size, 0);
-            doc.set_ids(ids);
             // Guides, grid and desktop layers, and the master page's layers
             // each page lists again, are no drawing of their own when
             // empty.
@@ -2512,8 +2515,10 @@ impl<'a> Ctx<'a> {
         let Some(tc) = txsm else {
             // A frame the text of another frame continues in keeps no text
             // record: it opens empty, and the text flows into it once the
-            // frames are linked (#4104, #2018).
-            if kind_code == OBJ_PARAGRAPH_TEXT && frame_number.is_some() {
+            // frames are linked (#4104, #2018). So does a paragraph frame
+            // left empty (#4330): an empty text box, not an object that
+            // could not be read.
+            if kind_code == OBJ_PARAGRAPH_TEXT {
                 if frame.is_none() {
                     if let Some((o, size)) = self.frame_from_hints(&hints) {
                         origin = o;
@@ -2538,8 +2543,10 @@ impl<'a> Ctx<'a> {
                     });
                 }
             }
-            self.report
-                .warn("text object without a txsm chunk; skipped");
+            // Text with no text record holds no letters: it draws
+            // nothing, and nothing of the drawing is lost (#4330).
+            log::debug!("text object without a txsm chunk: no text, draws nothing");
+            self.last_drew_nothing = true;
             return None;
         };
         let td = self.data(tc);
@@ -2728,7 +2735,21 @@ impl<'a> Ctx<'a> {
             }
         }
         if spans.is_empty() {
-            self.report.warn("text object with no content; skipped");
+            // An empty text box (#4330): a paragraph frame opens as an
+            // empty frame to type in; artistic text with no letters draws
+            // nothing. Neither is an object that could not be read.
+            if kind_code == OBJ_PARAGRAPH_TEXT && frame.is_some() {
+                return Some(ShapeKind::Text {
+                    spans: Vec::new(),
+                    origin,
+                    frame,
+                    align: TextAlign::Left,
+                    para: ParagraphStyle::default(),
+                    on_path: None,
+                });
+            }
+            log::debug!("text object with no content: draws nothing");
+            self.last_drew_nothing = true;
             return None;
         }
         // 0 none, 1 left, 2 centre, 3 right, 4 full and 5 forced justify
@@ -3472,6 +3493,9 @@ impl<'a> Ctx<'a> {
                     }
                     Some(_) => {}
                     None => {
+                        // An empty cell's text draws nothing: no mark left
+                        // for the next object read (#4330).
+                        self.last_drew_nothing = false;
                         let empty = "text object with no content; skipped";
                         if self.report.warnings.len() > warned
                             && self.report.warnings.last().map(String::as_str) == Some(empty)
@@ -11031,6 +11055,48 @@ pub(crate) mod tests {
         assert_eq!(doc.pages[0].layers[0].shapes.len(), 1);
     }
 
+    /// Artwork on a page's guides layer (#4331): the layer opens visible,
+    /// as the file shows it, and does not print; an empty guides layer
+    /// is left out as before.
+    #[test]
+    fn artwork_on_the_guides_layer_shows() {
+        let rect_obj = list(
+            b"obj ",
+            &chunk(
+                b"loda",
+                &loda(OBJ_RECT, &[(ARG_COORDS, i32s(&[254000, 254000, 0]))]),
+            ),
+        );
+        let layer = |flags: [u8; 4], objs: &[u8]| {
+            list(b"layr", &[chunk(b"flgs", &flags), objs.to_vec()].concat())
+        };
+        let page = list(
+            b"page",
+            &[
+                chunk(b"flgs", &[0, 0, 0, 0x90]),
+                list(
+                    b"gobj",
+                    &[
+                        layer([0x0a, 0, 0, 0x98], &rect_obj),
+                        layer([0, 0, 0, 0x98], &rect_obj),
+                    ]
+                    .concat(),
+                ),
+            ]
+            .concat(),
+        );
+        let body = [chunk(b"mcfg", &mcfg(12, 2_100_000, 2_970_000)), page].concat();
+        let (doc, rep) = parse(&riff(b"CDRC", &body), 12);
+        let layers = &doc.pages[0].layers;
+        assert_eq!(layers.len(), 2, "{:?}", rep.warnings);
+        let guides = layers
+            .iter()
+            .find(|l| !l.printable)
+            .expect("the guides layer is kept");
+        assert_eq!(guides.shapes.len(), 1);
+        assert!(guides.visible, "artwork on the guides layer shows");
+    }
+
     /// Objects on the master page's desktop layer and guidelines on its
     /// guides layer, as the version 7 to 21 files of #1775 hold them
     /// (master layer flags [2, 1, 1, 0x98] guides, [0, 1, 1, 0x98]
@@ -11833,6 +11899,36 @@ pub(crate) mod tests {
             // Two columns, the gutter after the first (zero here).
             assert_eq!(txsm.columns.map(|c| c.0), Some(2), "{v}");
         }
+    }
+
+    /// An empty text object in a version 10 file (#4330): a text with no
+    /// text record and one whose record holds no letters are not counted
+    /// as objects that could not be read.
+    #[test]
+    fn an_empty_text_is_not_an_unread_object() {
+        let obj = list(
+            b"obj ",
+            &chunk(
+                b"loda",
+                &loda(OBJ_ARTISTIC_TEXT, &[(ARG_COORDS, i32s(&[0, 0]))]),
+            ),
+        );
+        let body = [
+            chunk(b"mcfg", &mcfg(10, 2_540_000, 2_540_000)),
+            list(b"page", &list(b"layr", &obj)),
+        ]
+        .concat();
+        let (_, rep) = parse(&riff(b"CDRA", &body), 10);
+        assert_eq!(rep.skipped_objects, 0, "{:?}", rep.warnings);
+        let (_, rep) = text_doc(
+            12,
+            b"CDRC",
+            Vec::new(),
+            OBJ_ARTISTIC_TEXT,
+            &[(ARG_COORDS, i32s(&[0, 0]))],
+            txsm7(12, false, &[], ""),
+        );
+        assert_eq!(rep.skipped_objects, 0, "{:?}", rep.warnings);
     }
 
     fn text_doc(
@@ -14360,8 +14456,10 @@ pub(crate) mod tests {
         }
     }
 
+    /// A text object with no text record holds no letters: nothing is
+    /// drawn and nothing counts as unread (#4330).
     #[test]
-    fn text_object_without_txsm_is_skipped_with_a_warning() {
+    fn text_object_without_txsm_draws_nothing() {
         let obj = list(
             b"obj ",
             &chunk(
@@ -14376,8 +14474,7 @@ pub(crate) mod tests {
         .concat();
         let (_, rep) = parse(&riff(b"CDRD", &body), 13);
         assert_eq!(rep.shapes, 0);
-        assert_eq!(rep.skipped_objects, 1);
-        assert!(rep.warnings.iter().any(|w| w.contains("txsm")));
+        assert_eq!(rep.skipped_objects, 0, "{:?}", rep.warnings);
     }
 
     // Fills: bitmaps, textures, pattern tiles, version 16 fountain transform.
