@@ -178,6 +178,10 @@ mod text_height;
 mod blur_bar;
 mod trace_sketch;
 mod mixed;
+mod mockup;
+mod mockup_photos;
+#[cfg(test)]
+mod mockup_gen_tests;
 #[cfg(test)]
 mod mockup_tests;
 mod multipage;

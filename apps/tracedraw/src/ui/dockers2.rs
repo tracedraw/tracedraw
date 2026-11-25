@@ -62,6 +62,7 @@ pub fn show(app: &mut App, ui: &mut Ui, tab: DockerTab) {
         DockerTab::ShapeGenerator => crate::ui::shape_gen_docker::shape_generator(app, ui),
         DockerTab::SymbolScatter => crate::ui::symbol_scatter_docker::symbol_scatter(app, ui),
         DockerTab::FrameGenerator => crate::ui::frame_gen_docker::frame_generator(app, ui),
+        DockerTab::Mockup => crate::ui::mockup_docker::mockup(app, ui),
         DockerTab::Shape3d => crate::ui::shape3d_docker::shape_3d(app, ui),
         DockerTab::Shelf => crate::ui::shelf_docker::shelf(app, ui),
         DockerTab::Export => crate::ui::export_docker::export_docker(app, ui),

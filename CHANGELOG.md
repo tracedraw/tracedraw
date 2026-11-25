@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Effects > Mockup: lays the selected design on a product photo (white, black or grey T-shirt, white or black mug, steel bottle, tote bag, cushion, framed poster, shop sign, van side, business cards, flyer, flag, phone case, product box; sixteen photos drawn by the program itself) or on a photo of your own, bent onto the print area in perspective or round a cylinder with a mesh, with the photo's folds, shadows and highlights and Multiply on light products; size, place, shading, texture and ink; one undo step, and a selected mockup takes another product the same way; Export JPG saves it for the client's approval with an optional caption.
 - QR code objects: a Pix payment kind (Brazilian instant payments) takes the Pix key, the receiver's name and city, and an optional amount, reference and message, and makes the payment code bank apps read, with its checksum.
 - Contour on pictures: a picture with see-through pixels takes a contour round what shows of it instead of its box, and TraceCut's CutContour puts the cut line round its opaque pixels too (#3245).
 - Guideline presets, user defined grid: Space between rows and Space between columns make a modular grid with a guideline on each side of every gutter, and Inside the margins lays it between the margin guidelines.

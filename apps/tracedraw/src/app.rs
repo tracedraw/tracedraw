@@ -2542,6 +2542,8 @@ pub struct App {
     pub slice_grid: (u32, u32),
     /// The Frame Generator docker's settings.
     pub frame_gen: crate::frame_gen::FrameSettings,
+    /// The Mockup docker's settings (Effects > Mockup).
+    pub mockup: crate::mockup::MockupSettings,
     /// The 3D Revolve and Inflate docker's settings (and picked art).
     pub shape_3d: crate::shape3d::Settings3d,
     /// The Picture Mosaic docker's settings and indexed library.
@@ -2742,6 +2744,7 @@ pub enum DockerTab {
     ShapeGenerator,
     SymbolScatter,
     FrameGenerator,
+    Mockup,
     Shape3d,
     Shelf,
     Export,
@@ -2775,7 +2778,7 @@ impl DockerTab {
         DockerTab::PixelHistogram,
     ];
 
-    pub const ALL: [DockerTab; 48] = [
+    pub const ALL: [DockerTab; 49] = [
         DockerTab::Properties,
         DockerTab::Objects,
         DockerTab::Hints,
@@ -2819,6 +2822,7 @@ impl DockerTab {
         DockerTab::ShapeGenerator,
         DockerTab::SymbolScatter,
         DockerTab::FrameGenerator,
+        DockerTab::Mockup,
         DockerTab::Shape3d,
         DockerTab::Shelf,
         DockerTab::Effects,
@@ -2877,7 +2881,7 @@ impl DockerTab {
     ];
 
     /// Window > Panels > Effects.
-    pub const EFFECTS_MENU: [DockerTab; 14] = [
+    pub const EFFECTS_MENU: [DockerTab; 15] = [
         DockerTab::Effects,
         DockerTab::Blend,
         DockerTab::Contour,
@@ -2891,6 +2895,7 @@ impl DockerTab {
         DockerTab::PictureMosaic,
         DockerTab::SymbolScatter,
         DockerTab::FrameGenerator,
+        DockerTab::Mockup,
         DockerTab::Shape3d,
     ];
 
@@ -2937,6 +2942,7 @@ impl DockerTab {
             DockerTab::ShapeGenerator => "docker.shape_generator",
             DockerTab::SymbolScatter => "docker.symbol_scatter",
             DockerTab::FrameGenerator => "docker.frame_generator",
+            DockerTab::Mockup => "docker.mockup",
             DockerTab::Shape3d => "docker.shape3d",
             DockerTab::Shelf => "docker.shelf",
             DockerTab::Export => "docker.export",
@@ -3964,6 +3970,7 @@ impl App {
             symbol_brush_stepped: false,
             slice_grid: (1, 1),
             frame_gen: Default::default(),
+            mockup: Default::default(),
             shape_3d: Default::default(),
             picture_mosaic: Default::default(),
             picture_mosaic_job: None,

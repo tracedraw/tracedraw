@@ -1039,6 +1039,8 @@ pub(crate) fn tab_icon(tab: DockerTab) -> Option<TabIcon> {
         // The Page Background picture, reused until the panel gets its
         // own (a new picture waits for the maintainer's choice).
         DockerTab::FrameGenerator => Some(|p, r| glyph_pic(p, r, Glyph::PageBackground)),
+        // The Perspective picture: the design laid on a surface.
+        DockerTab::Mockup => Some(|p, r| glyph_pic(p, r, Glyph::Perspective)),
         DockerTab::Guidelines => {
             Some(|p, r| action_pic(p, r, crate::ui::icons::Action::ShowGuidelines))
         }

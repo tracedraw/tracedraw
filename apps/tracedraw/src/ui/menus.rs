@@ -4759,6 +4759,7 @@ fn effects_menu(app: &mut App, ui: &mut Ui) {
         ("menu.effects.vector_mosaic", "", DockerTab::VectorMosaic),
         ("menu.effects.symbol_scatter", "", DockerTab::SymbolScatter),
         ("menu.effects.frame_generator", "", DockerTab::FrameGenerator),
+        ("menu.effects.mockup", "", DockerTab::Mockup),
         ("menu.effects.shape3d", "", DockerTab::Shape3d),
     ] {
         if check(ui, key, shortcut, effect_docker_open(app, tab)) {

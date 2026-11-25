@@ -219,7 +219,7 @@ pub fn for_key(key: &str) -> Option<Glyph> {
         "menu.object.unlock_all" => UnlockAll,
         "menu.object.convert_outline_to_object" => OutlineToObject,
         "menu.object.join_curves" => JoinCurves,
-        "menu.object.add_perspective" => Perspective,
+        "menu.object.add_perspective" | "menu.effects.mockup" => Perspective,
         "menu.object.clear_transformations" => ClearTransform,
         "menu.object.properties" => Properties,
         "menu.object.objects" => ObjectsDocker,

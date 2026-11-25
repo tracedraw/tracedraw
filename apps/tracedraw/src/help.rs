@@ -271,6 +271,7 @@ pub fn docker_topic(t: DockerTab) -> &'static str {
         DockerTab::ShapeGenerator => "objects/shape-generator",
         DockerTab::SymbolScatter => "effects/symbol-scatter",
         DockerTab::FrameGenerator => "effects/frame-generator",
+        DockerTab::Mockup => "effects/mockup",
         DockerTab::Shape3d => "effects/revolve-inflate",
         DockerTab::Shelf => "objects/shelf",
         DockerTab::Export => "web-graphics/export-docker",
