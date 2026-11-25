@@ -679,6 +679,7 @@ pub(crate) fn cmyk_pixels(
     for layer in page.layers.iter_mut() {
         for s in layer.shapes.iter_mut() {
             map_colors(s, &spot_as_cmyk);
+            crate::picture_plates::fit_pictures_to(s, dpi);
         }
     }
     let mut one = doc.clone();

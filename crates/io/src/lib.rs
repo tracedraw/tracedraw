@@ -13,6 +13,7 @@ pub mod html;
 pub mod pdf;
 pub mod pdf_crypt;
 pub(crate) mod pdf_glyphs;
+mod pdf_calc;
 pub mod pdf_import;
 mod pdf_indic;
 mod pdf_indic_shapes;

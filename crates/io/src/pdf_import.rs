@@ -967,6 +967,9 @@ struct TextRun {
     /// Advance along the baseline in text space, for appending.
     end_x: f64,
     fill: Option<Color>,
+    /// The pattern the text is filled with, when it is (#4283: a gold
+    /// gradient on titles came in as grey).
+    pattern: Option<Fill>,
     alpha: f64,
     clip: Clip,
     /// A gap the producer left for a space: a space goes in before the
@@ -3624,10 +3627,27 @@ impl<'a> Importer<'a> {
                     })
                     .collect()
             }
-            _ => {
-                self.warn("PostScript calculator shading function approximated");
-                vec![t]
+            4 => {
+                // A PostScript calculator program (#4283).
+                let range = self
+                    .get(fd, b"Range")
+                    .map(|o| self.nums(o))
+                    .unwrap_or_default();
+                let out = match &obj {
+                    Object::Stream(s) => {
+                        let data = s
+                            .decompressed_content()
+                            .unwrap_or_else(|_| s.content.clone());
+                        crate::pdf_calc::eval(&data, &[x], &range)
+                    }
+                    _ => None,
+                };
+                out.unwrap_or_else(|| {
+                    self.warn("PostScript calculator function not readable; approximated");
+                    vec![t]
+                })
             }
+            _ => vec![t],
         }
     }
 
@@ -3690,9 +3710,39 @@ impl<'a> Importer<'a> {
             if flags & (1 << 6) != 0 {
                 italic = true;
             }
-            if let Some(w) = self.get(desc, b"StemV").and_then(Self::num) {
-                if w >= 120.0 {
-                    bold = true;
+            // The weight the font itself states (an embedded TrueType or
+            // OpenType font's own, else the descriptor's FontWeight) goes
+            // before the stem width, which some producers only estimate
+            // (#4212: a regular font with /StemV 131 came out bold).
+            let stated = self
+                .get(desc, b"FontFile2")
+                .or_else(|| self.get(desc, b"FontFile3"))
+                .and_then(|o| match o {
+                    Object::Stream(s) => {
+                        let data = s
+                            .decompressed_content()
+                            .unwrap_or_else(|_| s.content.clone());
+                        ttf_parser::Face::parse(&data, 0)
+                            .ok()
+                            .filter(|f| f.tables().os2.is_some())
+                            .map(|f| f.weight().to_number())
+                    }
+                    _ => None,
+                })
+                .map(f64::from)
+                .or_else(|| self.get(desc, b"FontWeight").and_then(Self::num));
+            match stated {
+                Some(w) => {
+                    if w >= 600.0 {
+                        bold = true;
+                    }
+                }
+                None => {
+                    if let Some(w) = self.get(desc, b"StemV").and_then(Self::num) {
+                        if w >= 120.0 {
+                            bold = true;
+                        }
+                    }
                 }
             }
             if let Some(mw) = self.get(desc, b"MissingWidth").and_then(Self::num) {
@@ -4364,7 +4414,10 @@ impl<'a> Importer<'a> {
                     shape.fill_rule = tracedraw_core::shaping::FillRule::NonZero;
                 }
                 shape.fill = if text_filled(gs) {
-                    Fill::Solid(gs.fill.unwrap_or(Color::BLACK))
+                    match &gs.fill_pattern {
+                        Some(p) => p.clone(),
+                        None => Fill::Solid(gs.fill.unwrap_or(Color::BLACK)),
+                    }
                 } else {
                     Fill::None
                 };
@@ -4448,6 +4501,7 @@ impl<'a> Importer<'a> {
                     && r.mask == gs.soft_mask
                     && (r.size_pt - size_pt).abs() < 1e-6
                     && r.fill == gs.fill
+                    && r.pattern == gs.fill_pattern
                     && (same_line(&r.matrix, &trm, r.end_x, gs.font_size)
                         || (joins
                             && near_line(
@@ -4500,6 +4554,7 @@ impl<'a> Importer<'a> {
                     matrix: trm,
                     end_x: 0.0,
                     fill: gs.fill,
+                    pattern: gs.fill_pattern.clone(),
                     alpha: gs.fill_alpha,
                     clip: gs.clip.clone(),
                     space_pending: false,
@@ -4701,6 +4756,7 @@ impl<'a> Importer<'a> {
         shape.transform = transform;
         shape.fill = match r.fill {
             _ if !r.filled => Fill::None,
+            _ if r.pattern.is_some() => r.pattern.clone().unwrap_or_default(),
             Some(c) => Fill::Solid(c),
             None => Fill::Solid(Color::BLACK),
         };
@@ -7098,6 +7154,77 @@ mod tests {
         }
     }
 
+    /// A gradient whose function is a PostScript calculator program, and
+    /// one in a Separation space whose tint transform is one, keep their
+    /// colours (#4283: a yellow gradient came in as one grey).
+    #[test]
+    fn calculator_functions_keep_a_gradients_colours() {
+        let yellow = stream(
+            "/FunctionType 4 /Domain [0 1] /Range [0 1 0 1 0 1 0 1]",
+            "{ 0 exch 0 exch 0 }",
+        );
+        let tint = stream(
+            "/FunctionType 4 /Domain [0 1] /Range [0 1 0 1 0 1 0 1]",
+            "{ dup 0 mul exch dup 0.2 mul exch dup 1 mul exch 0 mul }",
+        );
+        let bytes = one_page(
+            "/Pattern cs /P1 scn 0 0 100 100 re f /Pattern cs /P2 scn 100 0 100 100 re f",
+            "<< /Pattern << /P1 << /PatternType 2 /Shading << /ShadingType 2 /ColorSpace /DeviceCMYK /Coords [0 0 100 0] /Function 5 0 R >> >> \
+             /P2 << /PatternType 2 /Shading << /ShadingType 2 /ColorSpace [/Separation /Gold /DeviceCMYK 6 0 R] /Coords [100 0 200 0] /Function << /FunctionType 2 /Domain [0 1] /C0 [0] /C1 [1] /N 1 >> >> >> >> >>",
+            &[yellow, tint],
+        );
+        let mut ids = IdSource::default();
+        let imp = parse(&bytes, &mut ids).expect("parse");
+        let shapes = &imp.pages[0].shapes;
+        let Fill::Fountain(f) = &shapes[0].fill else {
+            panic!("{:?}", shapes[0].fill);
+        };
+        let last = f.stops.last().unwrap().color;
+        assert_eq!(
+            last,
+            Color::Cmyk {
+                c: 0.0,
+                m: 0.0,
+                y: 1.0,
+                k: 0.0
+            },
+            "{:?}",
+            f.stops
+        );
+        assert_eq!(imp.inks.len(), 1);
+        let cmyk = imp.inks[0].cmyk;
+        assert!(
+            cmyk[0].abs() < 1e-6 && (cmyk[1] - 0.2).abs() < 1e-6 && (cmyk[2] - 1.0).abs() < 1e-6,
+            "{cmyk:?}"
+        );
+    }
+
+    /// Text filled with a gradient pattern keeps the gradient, in a text
+    /// and as curves alike (#4283: gold titles came in grey).
+    #[test]
+    fn text_filled_with_a_gradient_keeps_it() {
+        let res = "<< /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >> >> \
+             /Pattern << /P1 << /PatternType 2 /Shading << /ShadingType 2 /ColorSpace /DeviceRGB /Coords [0 40 0 60] /Function << /FunctionType 2 /Domain [0 1] /C0 [0.6 0.45 0.1] /C1 [1 0.85 0.4] /N 1 >> >> >> >> >>";
+        let bytes = one_page(
+            "/Pattern cs /P1 scn BT /F1 20 Tf 20 40 Td (Gold) Tj ET 0 g BT /F1 20 Tf 20 10 Td (Plain) Tj ET",
+            res,
+            &[],
+        );
+        let mut ids = IdSource::default();
+        let imp = parse(&bytes, &mut ids).expect("parse");
+        let texts: Vec<&tracedraw_core::Shape> = imp.pages[0]
+            .shapes
+            .iter()
+            .filter(|s| matches!(s.kind, ShapeKind::Text { .. }))
+            .collect();
+        assert_eq!(texts.len(), 2, "{:?}", imp.warnings);
+        let Fill::Fountain(f) = &texts[0].fill else {
+            panic!("{:?}", texts[0].fill);
+        };
+        assert_eq!(f.stops.len(), 2);
+        assert_eq!(texts[1].fill, Fill::Solid(Color::Gray { v: 0.0 }));
+    }
+
     /// A damaged file opens without taking the program down: a gradient
     /// whose function gives no number (a negative exponent at 0 makes 0
     /// times infinity) has its colours read as no ink, so every output
@@ -7795,6 +7922,69 @@ mod tests {
         // The space is 278 thousandths of an em wide, so the letters
         // start 30 points on, as the reference does.
         assert!((x("Pro") - refx).abs() < 1e-3, "{texts:?}");
+    }
+
+    /// An embedded font's own weight goes before a wide stem width in its
+    /// descriptor (#4212: a regular font whose producer wrote /StemV 131
+    /// came out bold, and so did its WMF export); without an embedded
+    /// font the stem width still tells.
+    #[test]
+    fn an_embedded_fonts_own_weight_decides_bold() {
+        use lopdf::{dictionary, Object, Stream};
+        let quicksand: &[u8] = include_bytes!("../../text/testdata/Quicksand-VF.ttf");
+        let bold_of = |embed: bool| {
+            let mut doc = lopdf::Document::with_version("1.7");
+            let mut desc = dictionary! {
+                "Type" => "FontDescriptor", "FontName" => "ABCDEF+Sans", "Flags" => 131076,
+                "FontBBox" => vec![0.into(), (-15).into(), 875.into(), 750.into()],
+                "ItalicAngle" => 0, "Ascent" => 750, "Descent" => -15, "CapHeight" => 742,
+                "StemV" => 131,
+            };
+            if embed {
+                let file = doc.add_object(Stream::new(dictionary! {}, quicksand.to_vec()));
+                desc.set("FontFile2", file);
+            }
+            let desc = doc.add_object(desc);
+            let font = doc.add_object(dictionary! {
+                "Type" => "Font", "Subtype" => "TrueType", "BaseFont" => "ABCDEF+Sans",
+                "FirstChar" => 65, "LastChar" => 66,
+                "Widths" => vec![600.into(), 600.into()],
+                "Encoding" => "WinAnsiEncoding", "FontDescriptor" => desc,
+            });
+            let contents = doc.add_object(Stream::new(
+                dictionary! {},
+                b"BT /F1 12 Tf 20 20 Td (AB) Tj ET".to_vec(),
+            ));
+            let pages_id = doc.new_object_id();
+            let page = doc.add_object(dictionary! {
+                "Type" => "Page", "Parent" => pages_id,
+                "MediaBox" => vec![0.into(), 0.into(), 200.into(), 100.into()],
+                "Contents" => contents,
+                "Resources" => dictionary! { "Font" => dictionary! { "F1" => font } },
+            });
+            doc.objects.insert(
+                pages_id,
+                Object::Dictionary(
+                    dictionary! { "Type" => "Pages", "Kids" => vec![page.into()], "Count" => 1 },
+                ),
+            );
+            let catalog = doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages_id });
+            doc.trailer.set("Root", catalog);
+            let mut out = Vec::new();
+            doc.save_to(&mut out).expect("writes");
+            let mut ids = IdSource::default();
+            let imp = parse(&out, &mut ids).expect("parse");
+            imp.pages[0]
+                .shapes
+                .iter()
+                .find_map(|s| match &s.kind {
+                    ShapeKind::Text { spans, .. } => Some(spans[0].bold),
+                    _ => None,
+                })
+                .expect("a text")
+        };
+        assert!(!bold_of(true));
+        assert!(bold_of(false));
     }
 
     /// Bold and italic a word processor makes up for a font with no such

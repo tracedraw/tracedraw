@@ -10174,6 +10174,63 @@ fn object_data_and_clone_links_open_again() {
     assert!(all.iter().all(|(_, s)| s.data.is_empty()));
 }
 
+/// The identities another object's data names come back (#4275: a live
+/// fit names its path, objects and copies by them), saved twice; an
+/// object nothing names keeps no saved identity.
+#[test]
+fn identities_named_by_object_data_open_again() {
+    use tracedraw_core::document::Uid;
+    let rect = |id: u64, x: f64, uid: u128| {
+        let mut s = Shape::new(
+            tracedraw_core::ShapeId(id),
+            ShapeKind::Rect {
+                rect: Rect::new(x, 10.0, x + 20.0, 30.0),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        s.fill = Fill::Solid(Color::rgb8(200, 30, 30));
+        s.uid = Some(Uid(uid));
+        s
+    };
+    let (a, b, free) = (0xa1u128 << 64 | 7, 0xb2u128 << 64 | 9, 0xc3u128 << 64 | 1);
+    let mut guide = rect(201, 10.0, 0xd4u128 << 64 | 3);
+    guide.data = vec![(
+        "fit_path.live".into(),
+        format!("{{\"objects\":[\"{:032x}\"],\"copies\":[\"{:032x}\"]}}", a, b),
+    )];
+    let inner = rect(203, 90.0, b);
+    let group = Shape::new(
+        tracedraw_core::ShapeId(204),
+        ShapeKind::Group {
+            children: vec![inner],
+        },
+    );
+    let mut doc = doc_with(vec![guide, rect(202, 50.0, a), group, rect(205, 130.0, free)]);
+    doc.ids_mut().shape();
+    for v in [14u16, 17, 27] {
+        let mut d = doc.clone();
+        for _ in 0..2 {
+            let bytes = document_to_cdr_version(&d, v);
+            d = crate::open_bytes(&bytes, "back").expect("reads back").0;
+        }
+        let mut all = Vec::new();
+        shapes_on_page(&d.pages[0].layers[0].shapes, Affine::IDENTITY, &mut all);
+        let uid_at = |x: f64| {
+            all.iter()
+                .map(|(_, s)| s)
+                .find(|s| {
+                    (s.bounds().x0 - x).abs() < 0.5 && !matches!(s.kind, ShapeKind::Group { .. })
+                })
+                .unwrap_or_else(|| panic!("v{v}: object at {x}"))
+                .uid
+        };
+        assert_eq!(uid_at(50.0), Some(Uid(a)), "v{v}");
+        assert_eq!(uid_at(90.0), Some(Uid(b)), "v{v}");
+        assert_ne!(uid_at(130.0), Some(Uid(free)), "v{v}");
+    }
+}
+
 /// A rectangle with `fill` saved and opened again, alone on the page.
 fn kept_rect(fill: Fill) -> Document {
     let mut doc = effect_rect(Vec::new());
