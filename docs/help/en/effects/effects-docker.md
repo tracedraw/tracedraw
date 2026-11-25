@@ -11,15 +11,18 @@ the order they apply, from the top down. Open it with
 
 Each row of the list has:
 
-- a check box that turns the effect on or off. An effect turned off keeps its
+- an eye that turns the effect on or off. An effect turned off keeps its
   place and settings, but is not drawn, exported or printed;
 - the effect's name, dimmed while it is off;
 - up and down arrows that move the effect earlier or later, which changes the
   result (for example a contour of an envelope, or an envelope of a contour);
+- a pencil that opens the panel that sets the effect (its own panel, such as
+  Contour or Envelope, else this one);
 - a cross that removes the effect.
 
 Every change is one undo step. Each effect is still edited with its own tool
-or panel.
+or panel. The **FX** section of the Properties panel shows the same
+rows, above the object's bitmap effects.
 
 Above the list, the layer effects are switched on with their boxes and set on
 the right, live on the page. **Transform** draws copies of the object,

@@ -925,6 +925,11 @@ fn settings(app: &App, ui: &mut Ui, e: &mut Effect) -> bool {
                         "layer_fx.combine_cut_desc",
                     ),
                     (
+                        CombineMode::FrontMinusBack,
+                        "menu.object.front_minus_back",
+                        "layer_fx.combine_front_cut_desc",
+                    ),
+                    (
                         CombineMode::Intersect,
                         "menu.object.intersect",
                         "layer_fx.combine_intersect_desc",

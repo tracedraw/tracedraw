@@ -898,6 +898,12 @@ pub fn effect_dialog(app: &mut App, ctx: &Context, st: &mut EffectState, close: 
         crate::ui::lab_dialog::lab_dialog(app, ctx, st, close);
         return;
     }
+    // Settings in the Effects panel (#4253): the docker takes the effect
+    // and the dialog closes, leaving the drawing in view.
+    if crate::ui::fx_panel::take_over(app, st) {
+        *close = true;
+        return;
+    }
     if spec.id == "tone_curve" {
         if let Some(path) = crate::files::take_picked(PRESET_PICK) {
             match crate::files::read_to_string(&path)
@@ -1119,7 +1125,7 @@ fn effect_settings(
 
 /// The effect's presets (#1129): a list that puts a saved preset's
 /// settings in the dialog, the name for a new one, Save and Delete.
-fn presets_row(ui: &mut Ui, app: &mut App, st: &mut EffectState) {
+pub(crate) fn presets_row(ui: &mut Ui, app: &mut App, st: &mut EffectState) {
     let presets: Vec<(usize, FxPreset)> = presets_of(&app.settings.fx_presets, &st.effect.id)
         .into_iter()
         .map(|(i, p)| (i, p.clone()))
@@ -1230,6 +1236,19 @@ fn original_row(ui: &mut Ui, app: &mut App, st: &mut EffectState) {
             }
             app.settings.save();
         }
+        // The settings beside the drawing in the Effects docker instead
+        // (#4253): the next frame moves them there.
+        if crate::ui::fx_panel::fits(&st.effect.id) {
+            let mut panel = app.settings.fx_in_panel;
+            if ui
+                .checkbox(&mut panel, tr("dialog.fx_in_panel"))
+                .rich_tip(crate::ui::tips::keyed("dialog.fx_in_panel"))
+                .changed()
+            {
+                app.settings.fx_in_panel = panel;
+                app.settings.save();
+            }
+        }
     });
 }
 
@@ -1284,7 +1303,12 @@ pub fn choose_effect(app: &mut App, id: &str) {
 /// show/hide, edit, move up and down and delete, and Add effect.
 pub fn fx_section(app: &mut App, ui: &mut Ui, id: ShapeId) {
     let effects = app.bitmap_effects(id);
-    if effects.is_empty() {
+    // Live effects listed above it count as effects too (#4231).
+    let live = app
+        .doc()
+        .find_shape(id)
+        .is_some_and(|s| !s.effect_stack().is_empty());
+    if effects.is_empty() && !live {
         ui.label(
             egui::RichText::new(tr("docker.no_effects"))
                 .color(crate::theme::Tokens::text_dim())
@@ -1294,11 +1318,12 @@ pub fn fx_section(app: &mut App, ui: &mut Ui, id: ShapeId) {
     let n = effects.len();
     for (i, e) in effects.iter().enumerate() {
         ui.horizontal(|ui| {
-            let mut vis = e.visible;
-            if ui
-                .checkbox(&mut vis, "")
+            // An eye, as the stack's effects above and the objects in
+            // the Objects docker (#4231).
+            let vis = !e.visible;
+            if crate::ui::effects_docker::eye_button(ui, e.visible)
                 .rich_tip(tr("docker.show_hide_effect"))
-                .changed()
+                .clicked()
             {
                 app.edit_bitmap_effects(id, "Show or Hide Effect", move |l| {
                     if let Some(x) = l.get_mut(i) {

@@ -838,7 +838,7 @@ fn menu_pic(key: &str) -> Option<crate::ui::propbar::Pic> {
         "menu.text.encode" => Pic::Encode,
         "menu.bitmaps.convert_to_bitmap" => Pic::ConvertToBitmap,
         "menu.bitmaps.straighten_image" => Pic::StraightenImage,
-        "menu.bitmaps.edit_bitmap" => Pic::EditBitmap,
+        "menu.bitmaps.edit_bitmap" | "menu.bitmaps.edit_bitmap_with" => Pic::EditBitmap,
         "menu.bitmaps.crop_bitmap" => Pic::CropBitmap,
         "menu.bitmaps.crop_to_frame" => Pic::CropBitmap,
         "menu.bitmaps.resample" => Pic::Resample,
@@ -1498,7 +1498,7 @@ pub(crate) mod replay {
 
     /// Items that would block on a native file chooser, start another
     /// program (an editor or the web browser) or close the window.
-    const SKIP: [&str; 21] = [
+    const SKIP: [&str; 22] = [
         "menu.tools.plugin_install",
         "menu.object.insert_object_add",
         "menu.object.insert_object_file",
@@ -1516,6 +1516,7 @@ pub(crate) mod replay {
         "menu.file.save_pages_as_files",
         "menu.file.exit",
         "menu.bitmaps.edit_bitmap",
+        "menu.bitmaps.edit_bitmap_with",
         "menu.tools.scripts_run",
         "menu.window.palette_open",
         "menu.window.workspace_export",
@@ -4362,14 +4363,23 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
                 app.pieces(op);
             }
         }
-        let can_live = app.selection.len() >= 2
-            || app
-                .selected_shapes()
-                .first()
-                .is_some_and(|s| app.selection.len() == 1 && matches!(s.kind, ShapeKind::Group { .. }));
-        if item(ui, "menu.object.combine_live", "", can_live) {
-            app.combine_live();
-        }
+        // Combine Live in each mode (#4266): the objects stay, editable,
+        // and the group draws as the one curve the mode makes.
+        let can_live = app.combine_live_ready();
+        sub(ui, "menu.object.combine_live", |ui| {
+            use tracedraw_core::shaping::CombineMode as M;
+            for (key, mode) in [
+                ("menu.object.weld", M::Weld),
+                ("menu.object.back_minus_front", M::BackMinusFront),
+                ("menu.object.front_minus_back", M::FrontMinusBack),
+                ("menu.object.intersect", M::Intersect),
+                ("menu.object.exclude", M::Exclude),
+            ] {
+                if item(ui, key, "", can_live) {
+                    app.combine_live_as(mode);
+                }
+            }
+        });
         sep(ui);
         if item(ui, "menu.object.cut_below", "", app.cut_below_ready()) {
             app.cut_objects_below();
@@ -4640,6 +4650,19 @@ fn bitmaps_menu(app: &mut App, ui: &mut Ui) {
         app.selected_bitmap().is_some(),
     ) {
         app.edit_bitmap_externally();
+    }
+    // The same in a program picked now, which Edit Bitmap then keeps
+    // using (#4273). A browser and Android have no programs to pick.
+    if !crate::files::WEB
+        && !cfg!(target_os = "android")
+        && item(
+            ui,
+            "menu.bitmaps.edit_bitmap_with",
+            "",
+            app.selected_bitmap().is_some(),
+        )
+    {
+        app.edit_bitmap_with();
     }
     // The picture's pixels edited in place, in the drawing window.
     if item(

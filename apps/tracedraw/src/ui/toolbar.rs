@@ -14,6 +14,19 @@ fn vsep(ui: &mut Ui) {
     ui.add(egui::Separator::default().vertical().spacing(6.0));
 }
 
+/// A toolbar's row: its items centred across the band the bar is given
+/// (#4205). `ui.horizontal` centres them on the height of one line of
+/// text, which left the buttons against the top of a taller band.
+pub(crate) fn bar_row<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
+    let h = ui.available_height().max(1.0);
+    ui.allocate_ui_with_layout(
+        Vec2::new(ui.available_width(), h),
+        egui::Layout::left_to_right(egui::Align::Center),
+        add,
+    )
+    .inner
+}
+
 /// Standard toolbar buttons: 32 px square with a 20 px icon at the
 /// medium button size.
 fn std_btn() -> f32 {
@@ -299,7 +312,7 @@ pub fn standard_toolbar(app: &mut App, ui: &mut Ui) {
         crate::ui::pixel_mode::standard_bar(app, ui);
         return;
     }
-    ui.horizontal(|ui| {
+    bar_row(ui, |ui| {
         ui.spacing_mut().item_spacing.x = 1.0;
         ui.set_min_height(std_btn());
         crate::ui::bar_items::draw_bar(app, ui, crate::ui::bar_items::ItemBar::Standard, draw_item);
@@ -1089,7 +1102,7 @@ fn ai_button(app: &mut App, ui: &mut Ui) {
 
 /// Window > Toolbars > Text: font controls as a standalone bar.
 pub fn text_toolbar(app: &mut App, ui: &mut Ui) {
-    ui.horizontal(|ui| {
+    bar_row(ui, |ui| {
         ui.spacing_mut().item_spacing.x = 4.0;
         text_properties(app, ui);
     });
@@ -1098,7 +1111,7 @@ pub fn text_toolbar(app: &mut App, ui: &mut Ui) {
 /// Window > Toolbars > Zoom: the zoom levels and the zoom commands as
 /// pictures, as on the Zoom tool's property bar (#563).
 pub fn zoom_toolbar(app: &mut App, ui: &mut Ui) {
-    ui.horizontal(|ui| {
+    bar_row(ui, |ui| {
         ui.spacing_mut().item_spacing.x = 1.0;
         ui.set_min_height(std_btn());
         crate::ui::bar_items::draw_bar(app, ui, crate::ui::bar_items::ItemBar::Zoom, draw_item);
@@ -1110,7 +1123,7 @@ pub fn zoom_toolbar(app: &mut App, ui: &mut Ui) {
 /// a line saying how to give it some (which is also where they drop).
 pub fn custom_toolbar(app: &mut App, ui: &mut Ui, slot: u8) {
     let bar = crate::ui::bar_items::ItemBar::Custom(slot);
-    ui.horizontal(|ui| {
+    bar_row(ui, |ui| {
         ui.spacing_mut().item_spacing.x = 1.0;
         ui.set_min_height(std_btn());
         if crate::ui::bar_items::items(app, bar).is_empty() {
@@ -1126,7 +1139,7 @@ pub fn custom_toolbar(app: &mut App, ui: &mut Ui, slot: u8) {
 
 /// Window > Toolbars > Transform.
 pub fn transform_toolbar(app: &mut App, ui: &mut Ui) {
-    ui.horizontal(|ui| {
+    bar_row(ui, |ui| {
         let has = !app.selection.is_empty();
         let mut b = app.selection_bounds().unwrap_or_default();
         let (x0, y0, w, h) = (b.x0, b.y0, b.width(), b.height());
@@ -1526,7 +1539,7 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
         crate::ui::pixel_mode::property_bar(app, ui);
         return;
     }
-    ui.horizontal(|ui| {
+    bar_row(ui, |ui| {
         ui.spacing_mut().item_spacing.x = 4.0;
         ui.set_min_height(crate::ui::propbar::BAR_H);
         // The Welcome Screen has no page to set: the bar shows pale.

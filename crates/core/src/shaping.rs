@@ -1207,12 +1207,15 @@ pub enum CombineMode {
     Intersect,
     /// Where an odd number of objects overlap: overlaps of two cut out.
     Exclude,
+    /// The top object with the others cut out of it (#4266).
+    FrontMinusBack,
 }
 
 impl CombineMode {
-    pub const ALL: [CombineMode; 4] = [
+    pub const ALL: [CombineMode; 5] = [
         CombineMode::Weld,
         CombineMode::BackMinusFront,
+        CombineMode::FrontMinusBack,
         CombineMode::Intersect,
         CombineMode::Exclude,
     ];
@@ -1223,6 +1226,17 @@ impl CombineMode {
 pub fn combine_areas(areas: &[BezPath], mode: CombineMode) -> BezPath {
     let empty = BezPath::new();
     let mut it = areas.iter().filter(|a| !a.elements().is_empty());
+    if mode == CombineMode::FrontMinusBack {
+        // The top area less everything beneath it.
+        let live: Vec<&BezPath> = it.collect();
+        let Some((top, below)) = live.split_last() else {
+            return BezPath::new();
+        };
+        let start = overlay(top, &empty, Op::Weld);
+        return below
+            .iter()
+            .fold(start, |acc, a| overlay(&acc, a, Op::Trim));
+    }
     let Some(first) = it.next() else {
         return BezPath::new();
     };
@@ -1230,7 +1244,7 @@ pub fn combine_areas(areas: &[BezPath], mode: CombineMode) -> BezPath {
     it.fold(start, |acc, a| {
         let op = match mode {
             CombineMode::Weld => Op::Weld,
-            CombineMode::BackMinusFront => Op::Trim,
+            CombineMode::BackMinusFront | CombineMode::FrontMinusBack => Op::Trim,
             CombineMode::Intersect => Op::Intersect,
             CombineMode::Exclude => Op::Exclude,
         };
@@ -3501,6 +3515,12 @@ mod tests {
         assert_eq!(area(CombineMode::BackMinusFront), 50.0);
         assert_eq!(area(CombineMode::Intersect), 50.0);
         assert_eq!(area(CombineMode::Exclude), 100.0);
+        // The top square less the bottom one (#4266).
+        assert_eq!(area(CombineMode::FrontMinusBack), 50.0);
+        let front = combine_areas(&areas, CombineMode::FrontMinusBack).bounding_box();
+        assert!((front.x0 - 10.0).abs() < 1e-6 && (front.x1 - 15.0).abs() < 1e-6, "{front:?}");
+        let back = combine_areas(&areas, CombineMode::BackMinusFront).bounding_box();
+        assert!(back.x0.abs() < 1e-6 && (back.x1 - 5.0).abs() < 1e-6, "{back:?}");
     }
 
 

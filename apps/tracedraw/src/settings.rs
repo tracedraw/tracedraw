@@ -897,6 +897,15 @@ pub struct Settings {
     /// seen on the drawing instead of in Before and After panes (#2799).
     #[serde(default)]
     pub fx_settings_only: bool,
+    /// A bitmap effect's settings open in the Effects docker beside the
+    /// drawing, the effect seen on the drawing, instead of in a dialog
+    /// (#4253). Off: the dialog, as before.
+    #[serde(default)]
+    pub fx_in_panel: bool,
+    /// The Shaping docker's Weld, Intersect and the two Minus operations
+    /// make a live combine that keeps the objects (#4266).
+    #[serde(default)]
+    pub shaping_live: bool,
     /// The programs of Object > Insert > Insert Object, each opened with
     /// one click (#1025).
     pub object_apps: Vec<crate::insert_object::ObjectApp>,
@@ -2676,6 +2685,8 @@ impl Default for Settings {
             outline_presets: Vec::new(),
             fx_presets: Vec::new(),
             fx_settings_only: false,
+            fx_in_panel: false,
+            shaping_live: false,
             object_apps: Vec::new(),
             object_apps_insert_saved: false,
             picture_captions: Default::default(),

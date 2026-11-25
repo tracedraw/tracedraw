@@ -2258,6 +2258,15 @@ fn properties(app: &mut App, ui: &mut Ui) {
             }
             "effects" => {
                 let id = first.id;
+                // Every effect the object wears, the live ones of its
+                // stack (envelope, contour, extrusion, shadows...) first,
+                // each with its eye and Edit as the bitmap effects
+                // under them (#4231).
+                if !first.effect_stack().is_empty() {
+                    let shape = first.clone();
+                    crate::ui::effects_docker::stack_rows(app, ui, &shape);
+                    ui.add_space(2.0);
+                }
                 crate::ui::effect_dialog::fx_section(app, ui, id);
             }
             "shadow" => {

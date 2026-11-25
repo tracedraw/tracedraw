@@ -82,6 +82,7 @@ pub mod menu_glyphs;
 pub mod menu_pics;
 pub mod menus;
 pub mod missing_fonts;
+pub mod fx_panel;
 pub mod objects_docker;
 pub mod options;
 pub mod options_global;

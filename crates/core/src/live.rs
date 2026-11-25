@@ -2503,6 +2503,9 @@ fn combine_group(main: &mut Shape, mode: crate::shaping::CombineMode) {
     let filled = |s: &&(BezPath, Shape)| !matches!(s.1.fill, crate::style::Fill::None);
     let paint = if mode == crate::shaping::CombineMode::BackMinusFront {
         areas.first()
+    } else if mode == crate::shaping::CombineMode::FrontMinusBack {
+        // The object cut is the top one.
+        areas.last()
     } else {
         areas.iter().rev().find(filled).or(areas.last())
     };

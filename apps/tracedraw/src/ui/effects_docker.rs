@@ -82,6 +82,11 @@ fn changed_stack(s: &Shape, change: Change) -> Option<Vec<(Effect, bool)>> {
 }
 
 pub fn effects_docker(app: &mut App, ui: &mut Ui) {
+    // A bitmap effect being set here rather than in its dialog (#4253).
+    if app.fx_panel.is_some() {
+        crate::ui::fx_panel::panel(app, ui);
+        ui.add_space(4.0);
+    }
     // The stackable looks with their values (#1141), then the whole stack.
     crate::ui::layer_effects::layer_effects(app, ui);
     ui.separator();
@@ -236,21 +241,60 @@ fn effect_stack(app: &mut App, ui: &mut Ui) {
         ui.label(egui::RichText::new(tr("effects.select_hint")).color(Tokens::text_dim()));
         return;
     };
-    let stack = shape.effect_stack();
-    if stack.is_empty() {
+    if shape.effect_stack().is_empty() {
         ui.label(egui::RichText::new(tr("effects.none")).color(Tokens::text_dim()));
         return;
     }
+    stack_rows(app, ui, &shape);
+    ui.add_space(4.0);
+    ui.label(egui::RichText::new(tr("effects.order_hint")).color(Tokens::text_dim()));
+}
+
+/// The side of an eye button.
+const EYE: f32 = 18.0;
+
+/// An eye that shows whether something is drawn, open when `on`; a
+/// click on it is the response's click.
+pub fn eye_button(ui: &mut Ui, on: bool) -> egui::Response {
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(EYE, EYE), egui::Sense::click());
+    if resp.hovered() {
+        ui.painter().rect_filled(rect, 2.0, Tokens::tool_hover());
+    }
+    crate::ui::objects_docker::paint_eye(ui, rect, on);
+    resp
+}
+
+/// The panel whose settings edit an effect of the stack: the effect's own
+/// docker where it has one, else the Effects docker (Layer Effects).
+pub fn edit_docker(e: &Effect) -> crate::app::DockerTab {
+    use crate::app::DockerTab as D;
+    match e {
+        Effect::Contour { .. } => D::Contour,
+        Effect::Blend { .. } => D::Blend,
+        Effect::Envelope { .. } | Effect::MeshEnvelope { .. } => D::Envelope,
+        Effect::Extrude { .. } => D::Extrude,
+        Effect::Bevel { .. } => D::Bevel,
+        Effect::Lens(_) => D::Lens,
+        _ => D::Effects,
+    }
+}
+
+/// A row per effect of `shape`'s stack, in the order they apply (#4231):
+/// the eye that draws it or keeps it switched off at its place, its name
+/// (dragged onto another object, it gives that object a copy), Edit,
+/// which opens the panel that sets it, up, down and remove. The
+/// Properties docker shows the same rows as the Effects docker.
+pub fn stack_rows(app: &mut App, ui: &mut Ui, shape: &Shape) {
+    let stack = shape.effect_stack();
     let n = stack.len();
+    let mut edit = None;
     let mut change = None;
     let mut dropped = None;
     for (i, (effect, on)) in stack.iter().enumerate() {
         ui.horizontal(|ui| {
-            let mut shown = *on;
-            if ui
-                .checkbox(&mut shown, "")
-                .rich_tip(tr("effects.toggle"))
-                .changed()
+            if eye_button(ui, *on)
+                .rich_tip(crate::ui::tips::pair("docker.show_hide_effect", "effects.toggle"))
+                .clicked()
             {
                 change = Some(Change::Toggle(i));
             }
@@ -308,11 +352,19 @@ fn effect_stack(app: &mut App, ui: &mut Ui) {
                 {
                     change = Some(Change::Up(i));
                 }
+                if ui
+                    .small_button("\u{270F}")
+                    .rich_tip(crate::ui::tips::pair("docker.edit_effect", "effects.edit_desc"))
+                    .clicked()
+                {
+                    edit = Some(edit_docker(effect));
+                }
             });
         });
     }
-    ui.add_space(4.0);
-    ui.label(egui::RichText::new(tr("effects.order_hint")).color(Tokens::text_dim()));
+    if let Some(tab) = edit {
+        app.open_docker(tab);
+    }
     // An effect taken away keeps its values for Layer Effects (#4242).
     if let Some(Change::Remove(i)) = &change {
         if let Some((e, _)) = shape.effect_stack().get(*i) {

@@ -105,7 +105,7 @@ fn paint_play_pause(p: &Painter, r: Rect, running: bool, color: Color32) {
 pub fn toolbar(app: &mut App, ui: &mut Ui) {
     let doc = app.has_document() && !app.show_welcome;
     let now = ui.input(|i| i.time);
-    ui.horizontal(|ui| {
+    crate::ui::toolbar::bar_row(ui, |ui| {
         ui.set_height(28.0);
         // A click on the stopwatch switches between the full bar and its
         // mini form (#3261).

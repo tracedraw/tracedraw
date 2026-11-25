@@ -1267,6 +1267,10 @@ pub struct App {
     /// The view each page of the drawing was last shown with in this
     /// window, so going back to a page shows it as it was left (#3434).
     pub page_views: std::collections::HashMap<PageId, crate::view::View>,
+    /// A bitmap effect whose settings the Effects docker holds instead of
+    /// its dialog (#4253), and the selection it was opened for.
+    pub fx_panel: Option<crate::ui::effect_dialog::EffectState>,
+    pub fx_panel_sel: Vec<ShapeId>,
     /// The values each Layer Effects entry was last given, so an effect
     /// taken away with its × (or a new object's) starts again from them
     /// instead of the defaults (#4242).
@@ -3387,6 +3391,8 @@ impl App {
             status_opens_options: None,
             fit_pending: true,
             page_views: Default::default(),
+            fx_panel: None,
+            fx_panel_sel: Vec::new(),
             layer_fx_last: Default::default(),
             open_view_pending: true,
             units: Units::Millimeters,

@@ -2253,9 +2253,12 @@ pub fn show(app: &mut App, ctx: &Context) {
     if !matches!(app.dialog, Dialog::Trace(_)) && app.trace_live.is_active() {
         app.trace_live.clear();
     }
-    // And for a bitmap effect's dialog: the effect leaves the drawing.
+    // And for a bitmap effect's dialog: the effect leaves the drawing,
+    // unless the Effects docker holds its settings now (#4253).
+    crate::ui::fx_panel::watch(app);
     if (app.fx_preview.shown.is_some() || app.fx_preview.busy())
         && !matches!(app.dialog, Dialog::Effect(_))
+        && app.fx_panel.is_none()
     {
         app.end_bitmap_effect_preview();
     }

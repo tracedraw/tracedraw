@@ -1305,7 +1305,7 @@ impl App {
 
     // ----- external bitmap editing -------------------------------------------------
 
-    fn bitmap_link(&self, id: ShapeId) -> Option<String> {
+    pub(crate) fn bitmap_link(&self, id: ShapeId) -> Option<String> {
         self.doc()
             .find_shape(id)?
             .data
@@ -1481,6 +1481,26 @@ impl App {
             Ok(()) => self.status = tr("status.bitmap_sent_to_editor"),
             Err(e) => self.status = e,
         }
+    }
+
+    /// Image > Edit Bitmap With (#4273): pick the image editor's program
+    /// file, keep it as the program Edit Bitmap uses (Options > Global
+    /// shows it), and open the picture in it. Saving there updates the
+    /// picture here (see [`App::watch_linked_bitmaps`]).
+    pub fn edit_bitmap_with(&mut self) {
+        if crate::files::WEB || cfg!(target_os = "android") || self.selected_bitmap().is_none() {
+            return;
+        }
+        crate::files::Dialog::new()
+            .set_title(tr("menu.bitmaps.edit_bitmap_with"))
+            .pick_file(self, |app, path| app.edit_bitmap_in(&path));
+    }
+
+    /// Keep `program` as the image editor and open the selected picture
+    /// in it (Edit Bitmap With, once the program is picked).
+    pub fn edit_bitmap_in(&mut self, program: &std::path::Path) {
+        self.settings.bitmap_editor = program.display().to_string();
+        self.edit_bitmap_externally();
     }
 
     /// Image > Replace Image (#2598): a picture file picked takes the place
