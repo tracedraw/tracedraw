@@ -2776,7 +2776,7 @@ fn draw_selection(app: &App, painter: &Painter, preview: Option<Affine>) {
     // that define its outline are visible. For multiple shapes retain the
     // first-node marks used to tell the objects apart (#1145).
     if matches!(app.tool, Tool::Pick | Tool::FreeformPick) {
-        for p in pick_node_marks(&shapes) {
+        for p in pick_node_marks(&shapes, app.settings.nodes.mark_every_node) {
             let p = view.to_screen(match preview {
                 Some(t) => t * p,
                 None => p,
@@ -2811,12 +2811,23 @@ fn draw_selection(app: &App, painter: &Painter, preview: Option<Affine>) {
 const PICK_NODE_MARKS_MAX: usize = 1000;
 
 /// Where the Pick tool marks the selected `shapes` (#1145), in page
-/// space. A single object shows all its nodes; a multiple selection shows
+/// space: [`pick_node_marks_every`] when Options > Nodes and Handles >
+/// "Mark every node of one selected object" is on (#3258), else
+/// [`pick_node_marks_first`], as before.
+pub(crate) fn pick_node_marks(shapes: &[tracedraw_core::Shape], every: bool) -> Vec<Point> {
+    if every {
+        pick_node_marks_every(shapes)
+    } else {
+        pick_node_marks_first(shapes)
+    }
+}
+
+/// The marks with the option on (#3258). A single object shows all its nodes; a multiple selection shows
 /// one first-node mark per object. Bitmaps use their corners and clip
 /// frames use their frame's nodes, without marking their contents. Groups,
 /// texts and other objects without nodes show none; selections with more
 /// than [`PICK_NODE_MARKS_MAX`] marks show none.
-pub(crate) fn pick_node_marks(shapes: &[tracedraw_core::Shape]) -> Vec<Point> {
+pub(crate) fn pick_node_marks_every(shapes: &[tracedraw_core::Shape]) -> Vec<Point> {
     let mut out = Vec::new();
     let limit = if shapes.len() == 1 {
         PICK_NODE_MARKS_MAX + 1
@@ -2861,6 +2872,31 @@ pub(crate) fn pick_node_marks(shapes: &[tracedraw_core::Shape]) -> Vec<Point> {
                         .map(|(_, p)| parent * p),
                 );
             }
+        }
+        if out.len() > PICK_NODE_MARKS_MAX {
+            return Vec::new();
+        }
+    }
+    out
+}
+
+/// The default marks (#1145), in page space: the first node of each subpath of a curve, and the first node
+/// of a rectangle (its first corner), an ellipse (its start), a polygon
+/// or a B-spline. Groups, texts, pictures and other objects show none;
+/// nor does a selection of more than [`PICK_NODE_MARKS_MAX`] subpaths.
+pub(crate) fn pick_node_marks_first(shapes: &[tracedraw_core::Shape]) -> Vec<Point> {
+    let mut out = Vec::new();
+    for s in shapes {
+        match &s.kind {
+            ShapeKind::Path { path, .. } if s.spline.is_none() => {
+                out.extend(
+                    tracedraw_core::nodes::nodes(path)
+                        .into_iter()
+                        .filter(|n| n.is_start)
+                        .map(|n| s.transform * n.pos),
+                );
+            }
+            _ => out.extend(crate::kind_nodes::nodes(s).first().map(|(_, p)| *p)),
         }
         if out.len() > PICK_NODE_MARKS_MAX {
             return Vec::new();
@@ -5929,6 +5965,58 @@ mod tests {
         assert_eq!(drop_frame_hints((false, false), false).len(), 3);
     }
 
+    /// #1145 (default, the option of #3258 off): with the Pick tool a selected object marks the first node
+    /// of each of its subpaths (the outer and inner ring of a letter O
+    /// each), as the reference program does; an ellipse its start, a
+    /// rectangle its first corner; a group nothing.
+    #[test]
+    fn by_default_the_pick_tool_marks_only_where_outlines_start() {
+        use tracedraw_core::ShapeKind;
+        let mut app = App::headless();
+        let mut path = BezPath::new();
+        path.move_to(Point::new(0.0, 0.0));
+        path.line_to(Point::new(50.0, 0.0));
+        path.line_to(Point::new(50.0, 30.0));
+        path.close_path();
+        path.move_to(Point::new(10.0, 5.0));
+        path.line_to(Point::new(40.0, 5.0));
+        path.line_to(Point::new(40.0, 20.0));
+        path.close_path();
+        let curve = app
+            .new_shape(ShapeKind::Path { path, closed: true })
+            .expect("curve");
+        let ring = app
+            .new_shape(ShapeKind::Ellipse {
+                rect: Rect::new(100.0, 0.0, 140.0, 40.0),
+                arc: None,
+            })
+            .expect("ellipse");
+        let rect = app
+            .new_shape(ShapeKind::Rect {
+                rect: Rect::new(200.0, 0.0, 240.0, 40.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        let marks = |app: &App, id| {
+            let s = app.doc().find_shape(id).expect("shape").clone();
+            pick_node_marks_first(&[s])
+        };
+        assert_eq!(
+            marks(&app, curve),
+            vec![Point::new(0.0, 0.0), Point::new(10.0, 5.0)]
+        );
+        assert_eq!(marks(&app, ring).len(), 1);
+        assert_eq!(marks(&app, rect).len(), 1);
+        app.select(vec![curve, ring]);
+        app.group_selection();
+        let group = app.selection[0];
+        assert!(marks(&app, group).is_empty());
+    }
+
+    /// #1906: View > Page > Page Border and Page Shadow are two options:
+    /// each draws its part of the page's edge alone, and both are kept
+    /// with the view's preferences.
     /// #1145, #3258: a single selected object marks all its nodes; a
     /// multiple selection marks only each object's first node, even for
     /// compound paths. A group has no marks.
@@ -5963,7 +6051,7 @@ mod tests {
             .expect("rect");
         let marks = |app: &App, id| {
             let s = app.doc().find_shape(id).expect("shape").clone();
-            pick_node_marks(&[s])
+            pick_node_marks_every(&[s])
         };
         assert_eq!(
             marks(&app, curve),
@@ -5991,7 +6079,7 @@ mod tests {
         app.select(vec![curve, ring]);
         let selected = app.selected_rc();
         assert_eq!(
-            pick_node_marks(selected.as_slice()),
+            pick_node_marks_every(selected.as_slice()),
             vec![Point::new(0.0, 0.0), Point::new(120.0, 40.0),]
         );
         app.group_selection();
@@ -6053,7 +6141,7 @@ mod tests {
         // Rotate a quarter turn, scale each axis and translate.
         bitmap.transform = Affine::new([0.0, 2.0, -3.0, 0.0, 100.0, 200.0]);
         assert_eq!(
-            pick_node_marks(std::slice::from_ref(&bitmap)),
+            pick_node_marks_every(std::slice::from_ref(&bitmap)),
             vec![
                 Point::new(-80.0, 220.0),
                 Point::new(-80.0, 280.0),
@@ -6065,7 +6153,7 @@ mod tests {
         other.id = ShapeId(2);
         other.transform = Affine::translate((8.0, -4.0));
         assert_eq!(
-            pick_node_marks(&[bitmap, other]),
+            pick_node_marks_every(&[bitmap, other]),
             vec![Point::new(-80.0, 220.0), Point::new(18.0, 56.0)]
         );
     }
@@ -6101,7 +6189,7 @@ mod tests {
             Point::new(79.0, 270.0),
             Point::new(19.0, 230.0),
         ];
-        assert_eq!(pick_node_marks(std::slice::from_ref(&clip)), expected);
+        assert_eq!(pick_node_marks_every(std::slice::from_ref(&clip)), expected);
         let mut nested = Shape::new(
             ShapeId(4),
             ShapeKind::ClipFrame {
@@ -6118,11 +6206,11 @@ mod tests {
             },
         );
         assert_eq!(
-            pick_node_marks(&[nested.clone(), other]),
+            pick_node_marks_every(&[nested.clone(), other]),
             vec![Point::new(87.0, 206.0), Point::new(20.0, 40.0)]
         );
         assert_eq!(
-            pick_node_marks(&[nested]),
+            pick_node_marks_every(&[nested]),
             expected
                 .into_iter()
                 .map(|p| p + tracedraw_core::geometry::Vec2::new(8.0, -4.0))
@@ -6159,7 +6247,7 @@ mod tests {
             },
         );
         assert_eq!(
-            pick_node_marks(std::slice::from_ref(&frame)),
+            pick_node_marks_every(std::slice::from_ref(&frame)),
             vec![
                 Point::new(10.0, 60.0),
                 Point::new(40.0, 60.0),
@@ -6168,7 +6256,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            pick_node_marks(&[frame.clone(), bitmap.clone()]),
+            pick_node_marks_every(&[frame.clone(), bitmap.clone()]),
             vec![Point::new(10.0, 60.0), Point::new(50.0, 60.0)]
         );
         let mut filled = frame.clone();
@@ -6178,7 +6266,7 @@ mod tests {
             contents.push(bitmap.clone());
         }
         assert_eq!(
-            pick_node_marks(&[rect, frame, bitmap, filled]),
+            pick_node_marks_every(&[rect, frame, bitmap, filled]),
             vec![
                 Point::new(10.0, 60.0),
                 Point::new(10.0, 60.0),
@@ -6204,13 +6292,13 @@ mod tests {
             },
         );
         assert_eq!(
-            pick_node_marks(std::slice::from_ref(&curve)).len(),
+            pick_node_marks_every(std::slice::from_ref(&curve)).len(),
             PICK_NODE_MARKS_MAX
         );
         if let ShapeKind::Path { path, .. } = &mut curve.kind {
             path.line_to((PICK_NODE_MARKS_MAX as f64, 0.0));
         }
-        assert!(pick_node_marks(std::slice::from_ref(&curve)).is_empty());
+        assert!(pick_node_marks_every(std::slice::from_ref(&curve)).is_empty());
         let mut selected: Vec<_> = (0..PICK_NODE_MARKS_MAX)
             .map(|i| {
                 let mut shape = curve.clone();
@@ -6219,11 +6307,11 @@ mod tests {
                 shape
             })
             .collect();
-        let marks = pick_node_marks(&selected);
+        let marks = pick_node_marks_every(&selected);
         assert_eq!(marks.len(), PICK_NODE_MARKS_MAX);
         assert_eq!(marks.last(), Some(&Point::new(999.0, 0.0)));
         selected.push(curve);
-        assert!(pick_node_marks(&selected).is_empty());
+        assert!(pick_node_marks_every(&selected).is_empty());
     }
 
     /// #1906: View > Page > Page Border and Page Shadow are two options:

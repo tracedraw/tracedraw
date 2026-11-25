@@ -1785,6 +1785,9 @@ fn nodes_page(app: &mut App, ui: &mut Ui) {
             "options.show_curve_direction",
             "options.show_curve_direction_tip",
         ));
+    // The Pick tool's node marks (#3258); off keeps the start marks only.
+    ui.checkbox(&mut n.mark_every_node, tr("options.mark_every_node"))
+        .rich_tip(tr("options.mark_every_node_tip"));
     ui.checkbox(&mut n.corner_widgets, tr("options.corner_widgets"))
         .rich_tip(tr("options.corner_widgets_tip"));
     ui.add_enabled_ui(n.corner_widgets, |ui| {

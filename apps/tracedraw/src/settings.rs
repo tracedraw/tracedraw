@@ -1565,6 +1565,12 @@ pub struct NodePrefs {
     /// (#3038). On by default, so the parts of a broken curve show which
     /// way a cutting plotter follows them (#2578).
     pub show_direction: bool,
+    /// With the Pick tool, one selected object marks every node (a
+    /// picture its four corners, a clip frame its own outline) and a
+    /// selection of several marks each object once at its first node,
+    /// pictures and clip frames too (#3258). Off by default: only where
+    /// each outline starts is marked, as before (#1145).
+    pub mark_every_node: bool,
     /// How near, in screen pixels, a press must land on a node or a
     /// control handle to take it (Shape tool, and the curve tools'
     /// nodes).
@@ -1610,6 +1616,7 @@ impl Default for NodePrefs {
             secondary_rgb: [0xFF, 0x00, 0x00],
             unselected_filled: true,
             show_direction: true,
+            mark_every_node: false,
             pick_distance: 6.0,
             object_pick_distance: 3.0,
             corner_widgets: true,
