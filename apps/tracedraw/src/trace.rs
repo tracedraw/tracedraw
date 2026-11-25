@@ -100,6 +100,7 @@ impl Preset {
             recolored: Vec::new(),
             pixel_scale: 1.0,
             clean_sketch: false,
+            geometric: false,
         }
     }
 }
@@ -193,6 +194,13 @@ pub struct Settings {
     /// made solid, construction lines and specks gone, edges smoothed)
     /// and traced black on white: see [`crate::trace_sketch`].
     pub clean_sketch: bool,
+    /// Geometric shapes: the thin bands a compressed picture leaves along
+    /// an edge cleaned away, every border fitted with straight lines, arcs
+    /// and sharp corners, rings
+    /// that nearly mirror themselves made symmetric, and whole circles,
+    /// ellipses and rounded rectangles drawn as such (see
+    /// [`crate::trace_shapes`]). Off, the trace is as before.
+    pub geometric: bool,
 }
 
 impl Settings {
@@ -236,6 +244,7 @@ impl Settings {
             t.remove_overlap = false;
             t.merged.clear();
             t.optimize = false;
+            t.geometric = false;
         }
         t
     }
@@ -887,6 +896,13 @@ fn outline(img: &RgbaImage, s: &Settings, cancel: Option<&Cancel>) -> Option<Vec
         &palette,
         &colors,
         FRINGE_WIDTH * enlarged,
+        // Geometric shapes: the thin bands of other colours a compressed
+        // picture leaves along an edge go too, so the edge is one border.
+        if s.geometric {
+            LOOSE_FRINGE_WIDTH * enlarged
+        } else {
+            0.0
+        },
         cancel,
     )?;
     // An end takes the label the cleaning left it when that is its
@@ -1008,6 +1024,20 @@ fn outline(img: &RgbaImage, s: &Settings, cancel: Option<&Cancel>) -> Option<Vec
             &palette,
             &raw_colors,
             area(SHADE_AREA),
+            cancel,
+        )?;
+    }
+    // Geometric shapes: the fringes the ends gave back go again, so a
+    // shape's edge with the colour beside it is one border.
+    if s.geometric {
+        dissolve_fringes_of(
+            &mut labels,
+            w,
+            h,
+            &palette,
+            &colors,
+            0.0,
+            LOOSE_FRINGE_WIDTH * enlarged,
             cancel,
         )?;
     }
@@ -1282,7 +1312,7 @@ fn outline(img: &RgbaImage, s: &Settings, cancel: Option<&Cancel>) -> Option<Vec
         // curve beside the first (#611, #1250).
         // An enlarged picture's borders are fitted faithfully, each checked
         // against the border it was made from (`trace_fit`).
-        let faithful = (enlarged > 1.0).then(|| crate::trace_fit::Faithful {
+        let faithful = (enlarged > 1.0 || s.geometric).then(|| crate::trace_fit::Faithful {
             k: fine as f64,
             tolerance: FAITHFUL_TOLERANCE * fit.tolerance / ENLARGED_TOLERANCE,
             corner: fit.corner,
@@ -1318,7 +1348,8 @@ fn outline(img: &RgbaImage, s: &Settings, cancel: Option<&Cancel>) -> Option<Vec
             redrawn: redrawn.as_deref(),
         });
         report(cancel, Step::Curves, 0.0);
-        let shared = SharedBorders::new(&regions, w, h, &fit, source.as_ref(), cancel)?;
+        let geometric = s.geometric.then_some(fine as f64 * enlarged);
+        let shared = SharedBorders::new(&regions, w, h, &fit, source.as_ref(), geometric, cancel)?;
         report(cancel, Step::Curves, 0.5);
         let mut out = Vec::new();
         let colours = order.len().max(1);
@@ -1865,6 +1896,7 @@ fn rings_path(
         h,
         &crate::trace_fine::Fit::of(s, 1.0, true, 0.0),
         None,
+        None,
         cancel,
     )?;
     let path = fitted.rings(mask, (0, 0), w, h, cancel)?;
@@ -2064,6 +2096,7 @@ impl SharedBorders {
         h: usize,
         fit: &crate::trace_fine::Fit,
         faithful: Option<&FaithfulSource>,
+        geometric: Option<f64>,
         cancel: Option<&Cancel>,
     ) -> Option<SharedBorders> {
         let borders = borders(labels, w, h, cancel)?;
@@ -2072,7 +2105,7 @@ impl SharedBorders {
             if k % 256 == 0 && cancelled(cancel) {
                 return None;
             }
-            curves.push(fit_border(b, fit, faithful, labels));
+            curves.push(fit_border(b, fit, faithful, geometric, labels));
         }
         let tiles_across = w / BORDER_TILE as usize + 1;
         let mut tiles = vec![Vec::new(); tiles_across * (h / BORDER_TILE as usize + 1)];
@@ -2274,12 +2307,36 @@ fn fit_border(
     b: &Border,
     fit: &crate::trace_fine::Fit,
     faithful: Option<&FaithfulSource>,
+    geometric: Option<f64>,
     labels: &[usize],
 ) -> BezPath {
     let mut pts = b.corners();
     if b.closed {
         pts.pop();
     }
+    // Geometric shapes (`trace_shapes`): a ring all round one region is
+    // made symmetric where it nearly is, and a whole circle, ellipse or
+    // rounded rectangle where it draws one. `geometric` is the border's
+    // points per pixel of the art.
+    let Some(unit) = geometric.filter(|_| b.closed) else {
+        return fit_border_points(b, &pts, fit, faithful, labels);
+    };
+    let curve = match crate::trace_shapes::mirrored(&pts, unit) {
+        Some(even) => fit_border_points(b, &even, fit, faithful, labels),
+        None => fit_border_points(b, &pts, fit, faithful, labels),
+    };
+    crate::trace_shapes::snapped(&pts, &curve, unit).unwrap_or(curve)
+}
+
+/// [`fit_border`] of the border `b` walked along `pts` (its corners, the
+/// last one left out of a closed border).
+fn fit_border_points(
+    b: &Border,
+    pts: &[Point],
+    fit: &crate::trace_fine::Fit,
+    faithful: Option<&FaithfulSource>,
+    labels: &[usize],
+) -> BezPath {
     if let Some(f) = faithful {
         let side = |pixel: Option<usize>| {
             pixel
@@ -2314,9 +2371,9 @@ fn fit_border(
                 .any(|i| r.get(*i) == Some(&true))
         });
         let picture = (!drawn).then_some(&picture);
-        return crate::trace_fit::fit(&pts, b.closed, f.fit, picture).path;
+        return crate::trace_fit::fit(pts, b.closed, f.fit, picture).path;
     }
-    crate::trace_fine::fit(&pts, b.closed, fit)
+    crate::trace_fine::fit(pts, b.closed, fit)
 }
 
 /// Call `f` with the pixels of each hole of `mask` (`w` x `h`): each
@@ -2661,6 +2718,11 @@ fn open_gaps(
 /// How thick (twice the area over the edge count, pixels) a band along
 /// the edge of two colours can be and still be their soft edge.
 const FRINGE_WIDTH: f64 = 5.0;
+/// The thickest band (pixels) of any colour along an edge between two
+/// others that Geometric shapes takes for a fringe, and how much darker
+/// or lighter than both sides it may be.
+const LOOSE_FRINGE_WIDTH: f64 = 2.5;
+const LOOSE_FRINGE_LUMA: f64 = 40.0;
 
 /// Give the patches that are the soft edge of two colours to those two
 /// colours, each pixel to the one its own colour is nearer: a band no
@@ -2681,11 +2743,15 @@ fn dissolve_fringes(
     colors: &[[u8; 3]],
     cancel: Option<&Cancel>,
 ) -> Option<()> {
-    dissolve_fringes_of(labels, w, h, palette, colors, FRINGE_WIDTH, cancel)
+    dissolve_fringes_of(labels, w, h, palette, colors, FRINGE_WIDTH, 0.0, cancel)
 }
 
 /// [`dissolve_fringes`] for bands up to `width` thick (a picture
-/// enlarged has its soft edges as many times wider).
+/// enlarged has its soft edges as many times wider). Bands up to `loose`
+/// thick go whatever their colour, as long as it is neither much darker
+/// nor much lighter than both sides (an outline drawn between them
+/// stays).
+#[allow(clippy::too_many_arguments)]
 fn dissolve_fringes_of(
     labels: &mut [usize],
     w: usize,
@@ -2693,6 +2759,7 @@ fn dissolve_fringes_of(
     palette: &[[u8; 3]],
     colors: &[[u8; 3]],
     width: f64,
+    loose: f64,
     cancel: Option<&Cancel>,
 ) -> Option<()> {
     if labels.len() != w * h || colors.len() != w * h || w < 3 || h < 3 {
@@ -2716,7 +2783,8 @@ fn dissolve_fringes_of(
     for (k, t) in to.iter_mut().enumerate() {
         let (area, edges) = (p.area[k] as f64, p.edges[k] as f64);
         let touch = &p.touches[k];
-        if edges <= 0.0 || touch.len() < 2 || 2.0 * area / edges > width {
+        let thick = if edges > 0.0 { 2.0 * area / edges } else { f64::MAX };
+        if edges <= 0.0 || touch.len() < 2 || thick > width.max(loose) {
             continue;
         }
         let ((a, na, sa), (b, nb, sb)) = (touch[0], touch[1]);
@@ -2728,7 +2796,16 @@ fn dissolve_fringes_of(
         // The band's colour lies between the two, or near one of them
         // (the ringing of a compressed edge overshoots the colour beside
         // it: a cream band along a yellow's edge with black).
-        let explained = between_loosely(cl, ca, cb, 2.0)
+        let lum = |c: [u8; 3]| 0.299 * c[0] as f64 + 0.587 * c[1] as f64 + 0.114 * c[2] as f64;
+        let (la, lb, ll) = (lum(ca), lum(cb), lum(cl));
+        let loosely = thick <= loose
+            && ll >= la.min(lb) - LOOSE_FRINGE_LUMA
+            && ll <= la.max(lb) + LOOSE_FRINGE_LUMA;
+        if thick > width && !loosely {
+            continue;
+        }
+        let explained = loosely
+            || between_loosely(cl, ca, cb, 2.0)
             || within_blend(cl, ca, cb)
             || distance2(cl, ca) < EDGE_CONTRAST * EDGE_CONTRAST
             || distance2(cl, cb) < EDGE_CONTRAST * EDGE_CONTRAST;
@@ -6187,6 +6264,122 @@ mod tests {
             .flat_map(|y| (2..5).map(move |x| y * w + x))
             .collect();
         assert_eq!(found[0], want);
+    }
+
+    /// A logo of flat shapes saved with noise: a red dot, and a blue badge
+    /// with rounded corners holding a green dot.
+    fn shapes_logo() -> RgbaImage {
+        const W: u32 = 240;
+        const H: u32 = 150;
+        let mut seed = 777u32;
+        let mut noise = move || {
+            seed = seed.wrapping_mul(1_103_515_245).wrapping_add(12345);
+            ((seed >> 16) % 13) as i32 - 6
+        };
+        let in_badge = |x: f32, y: f32| {
+            let (dx, dy) = ((x - 160.0).abs() - 60.0 + 12.0, (y - 75.0).abs() - 40.0 + 12.0);
+            let out = dx.max(0.0).hypot(dy.max(0.0));
+            out + dx.max(dy).min(0.0) - 12.0 < 0.0
+        };
+        ImageBuffer::from_fn(W, H, |x, y| {
+            let (mut c, mut n) = ([0.0f32; 3], 0.0);
+            for sy in 0..4 {
+                for sx in 0..4 {
+                    let (px, py) = (x as f32 + (sx as f32 + 0.5) / 4.0, y as f32 + (sy as f32 + 0.5) / 4.0);
+                    let col = if (px - 50.0).hypot(py - 75.0) < 30.0 {
+                        [220.0, 30.0, 40.0]
+                    } else if (px - 160.0).hypot(py - 75.0) < 22.0 {
+                        [30.0, 170.0, 60.0]
+                    } else if in_badge(px, py) {
+                        [30.0, 60.0, 200.0]
+                    } else {
+                        [255.0, 255.0, 255.0]
+                    };
+                    for k in 0..3 {
+                        c[k] += col[k];
+                    }
+                    n += 1.0;
+                }
+            }
+            let mut v = |k: usize| ((c[k] / n) as i32 + noise()).clamp(0, 255) as u8;
+            Rgba([v(0), v(1), v(2), 255])
+        })
+    }
+
+    /// How far the points along `path` lie from the circle round `c`.
+    fn off_circle(path: &BezPath, c: Point, r: f64) -> f64 {
+        crate::trace_shapes::sampled(path, 0.25)
+            .iter()
+            .map(|p| ((*p - c).hypot() - r).abs())
+            .fold(0.0, f64::max)
+    }
+
+    #[test]
+    fn geometric_shapes_draw_true_circles_and_rounded_rectangles() {
+        use tracedraw_core::geometry::PathEl;
+        let img = shapes_logo();
+        let plain = Preset::Logo.settings();
+        assert!(!plain.geometric, "off at first");
+        let s = Settings {
+            geometric: true,
+            ..plain.clone()
+        };
+        let t = trace(&img, &s);
+        let of = |want: [u8; 3]| {
+            t.iter()
+                .find(|t| distance2(t.color.to_rgb8(), want) < 60 * 60)
+                .unwrap_or_else(|| panic!("no {want:?} in {:?}", t.iter().map(|t| t.color.to_rgb8()).collect::<Vec<_>>()))
+        };
+        let count = |p: &BezPath, curves: bool| {
+            p.elements()
+                .iter()
+                .filter(|e| {
+                    if curves {
+                        matches!(e, PathEl::CurveTo(..))
+                    } else {
+                        matches!(e, PathEl::LineTo(..))
+                    }
+                })
+                .count()
+        };
+        // The red dot: a true circle, four cubics and no lines.
+        let red = of([220, 30, 40]);
+        assert_eq!((count(&red.path, true), count(&red.path, false)), (4, 0), "{:?}", red.path);
+        assert!(off_circle(&red.path, Point::new(50.0, 75.0), 30.0) < 0.35);
+        // The green dot inside the badge too.
+        let green = of([30, 170, 60]);
+        assert_eq!(count(&green.path, true), 4, "{:?}", green.path);
+        assert!(off_circle(&green.path, Point::new(160.0, 75.0), 22.0) < 0.35);
+        // The badge: straight sides, four rounded corners.
+        let blue = of([30, 60, 200]);
+        let outer = blue
+            .path
+            .elements()
+            .iter()
+            .skip(1)
+            .take_while(|e| !matches!(e, PathEl::MoveTo(_)))
+            .copied()
+            .collect::<Vec<_>>();
+        let cubics = outer.iter().filter(|e| matches!(e, PathEl::CurveTo(..))).count();
+        assert!(cubics == 4 || cubics == 8, "{outer:?}");
+        let b = blue.path.bounding_box();
+        assert!((b.x0 - 100.0).abs() < 0.5 && (b.x1 - 220.0).abs() < 0.5, "{b:?}");
+        assert!((b.y0 - 35.0).abs() < 0.5 && (b.y1 - 115.0).abs() < 0.5, "{b:?}");
+        // The green dot and the badge share their edge: no page between.
+        for k in 0..360 {
+            let a = (k as f64).to_radians();
+            for r in [21.5, 22.0, 22.5] {
+                let p = Point::new(160.0 + r * a.cos(), 75.0 + r * a.sin());
+                assert!(top_colour_at(&t, p).is_some(), "page shows at {p:?}");
+            }
+        }
+        // Off, the shapes are traced as before: not whole circles.
+        let before = trace(&img, &plain);
+        let red = before
+            .iter()
+            .find(|t| distance2(t.color.to_rgb8(), [220, 30, 40]) < 60 * 60)
+            .expect("red");
+        assert!(red.path.elements().len() > 0);
     }
 
     /// The colour of the topmost curve whose fill holds `p` (even-odd).

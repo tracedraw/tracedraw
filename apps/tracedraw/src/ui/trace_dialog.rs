@@ -874,6 +874,14 @@ fn settings_tab(app: &mut App, ui: &mut Ui, st: &mut TraceState) {
         )
         .rich_tip(crate::ui::tips::keyed("dialog.trace_clean_sketch"));
     });
+    // Geometric shapes: straight lines, arcs, circles and rounded
+    // rectangles drawn as such, symmetry kept; off at first.
+    ui.add_enabled_ui(outline, |ui| {
+        let r = ui
+            .checkbox(&mut st.settings.geometric, tr("dialog.trace_geometric"))
+            .rich_tip(crate::ui::tips::keyed("dialog.trace_geometric"));
+        mark(ui, "geometric", r.rect);
+    });
     // With AI turned on and a service that makes pictures, the sketch can
     // be redrawn by the AI service from words instead, then traced (Sketch
     // to Curves); hidden while AI is off.

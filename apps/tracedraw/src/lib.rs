@@ -329,6 +329,7 @@ mod trace_fonts;
 mod trace_job;
 mod trace_preview;
 mod trace_progress;
+mod trace_shapes;
 mod trace_strokes;
 mod trace_text;
 mod tracecut;
