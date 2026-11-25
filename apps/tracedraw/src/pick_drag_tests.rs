@@ -29510,6 +29510,54 @@ fn dragging_a_chosen_drop_shadow_moves_it() {
     );
 }
 
+#[test]
+fn a_palette_click_recolours_the_chosen_drop_shadow() {
+    use tracedraw_core::{geometry::Vec2, Shadow};
+
+    let (ctx, mut app, id) = setup();
+    let original = Shadow {
+        offset: Vec2::new(30.0, -30.0),
+        blur: 3.0,
+        ..Shadow::default()
+    };
+    app.set_shadow(Some(original), false);
+    let fill = app.doc().find_shape(id).expect("rectangle").fill.clone();
+    let color = app
+        .palette
+        .iter()
+        .find(|(name, _)| name == "Blue")
+        .map(|(_, color)| *color)
+        .expect("blue swatch");
+    let blue = swatch_of(&ctx, &mut app, "Blue");
+    let on_shadow = app.view.to_screen(Point::new(80.0, 0.0));
+    let shadow = |app: &App| app.doc().find_shape(id).and_then(|s| s.shadow);
+
+    for tool in [Tool::Pick, Tool::DropShadow] {
+        app.set_tool(tool);
+        app.select(Vec::new());
+        click_at(&ctx, &mut app, on_shadow, Modifiers::NONE);
+        assert_eq!(app.selection, vec![id]);
+        if tool == Tool::Pick {
+            assert_eq!(app.picked_shadow(), Some(id));
+        }
+        let steps = app.engine.history_labels().0.len();
+        click_at(&ctx, &mut app, blue, Modifiers::NONE);
+        let shape = app.doc().find_shape(id).expect("rectangle");
+        assert_eq!(shadow(&app), Some(Shadow { color, ..original }), "{tool:?}");
+        assert_eq!(shape.fill, fill, "{tool:?}");
+        assert_eq!(app.engine.history_labels().0.len(), steps + 1);
+        app.undo();
+        assert_eq!(shadow(&app), Some(original));
+    }
+
+    app.set_tool(Tool::Pick);
+    let on_object = app.view.to_screen(Point::new(20.0, 30.0));
+    click_at(&ctx, &mut app, on_object, Modifiers::NONE);
+    click_at(&ctx, &mut app, blue, Modifiers::NONE);
+    assert!(filled_with(&app, id, "Blue"));
+    assert_eq!(shadow(&app), Some(original));
+}
+
 /// The Inner Shadow tool, in the Shadow tool's group: a drag from an
 /// object gives it an inner shadow cast as far as the drag, in the
 /// tool's style (#2473); a second drag moves it, one shadow still.

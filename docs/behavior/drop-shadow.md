@@ -180,7 +180,10 @@ half each.
   pointer is the move cursor over the line
   (`effect_line_tests::the_shadow_line_moves_the_shadow`).
 - A palette colour dropped on the end square becomes the shadow colour
-  (one undo step).
+  (one undo step). Click a palette colour to recolour a shadow being
+  edited with the Drop Shadow tool or selected on its own with Pick.
+  The colour change is one undo step
+  (`pick_drag_tests::a_palette_click_recolours_the_chosen_drop_shadow`).
 - Each drag of a handle or the line is one undo step of its own.
 
 The squares are 12 pixels wide and a press within 11 pixels of one

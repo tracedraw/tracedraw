@@ -763,12 +763,23 @@ impl App {
     /// node of the gradient transparency picked, that node takes the
     /// colour's grey, its own transparency, and the object's fill stays
     /// (#2827: the object took the colour as its fill); otherwise it
-    /// fills the selection.
+    /// fills the selection. A drop shadow edited with Drop Shadow or
+    /// picked on its own takes the colour instead.
     pub fn palette_fill(&mut self, c: tracedraw_core::Color) {
         // The image editing mode: the colour the brush paints.
         if let Some(pe) = self.pixel_edit.as_mut() {
             let [r, g, b] = c.to_rgb8();
             pe.opts.color = [r, g, b, 255];
+            return;
+        }
+        use crate::tools::Tool;
+        let shadow = match self.tool {
+            Tool::Pick => self.picked_shadow(),
+            Tool::DropShadow => self.selected_shadow().map(|(id, ..)| id),
+            _ => None,
+        };
+        if let Some(id) = shadow {
+            self.set_shadow_color(id, c);
             return;
         }
         if self.tool == crate::tools::Tool::InteractiveFill {

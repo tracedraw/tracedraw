@@ -583,7 +583,8 @@ impl App {
         }
     }
 
-    /// A colour dropped on the end handle: the shadow takes it (one step).
+    /// A palette colour clicked or dropped on the end handle: the shadow
+    /// takes it (one step).
     pub fn set_shadow_color(&mut self, shape: ShapeId, color: Color) {
         let Some(mut sh) = self.doc().find_shape(shape).and_then(|s| s.shadow) else {
             return;
