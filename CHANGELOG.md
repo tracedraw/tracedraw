@@ -34,6 +34,7 @@ full, row-by-row status.
 - Guideline presets: Apply to chooses the pages: the guidelines being edited, every page mirrored (the left and right margins swapped on left-hand pages, as for a book), odd pages or even pages, each laid out on its own page size (#4118, #4219).
 - Margin and bleed guidelines made by a preset keep their distance from the page edges and move with them when the page is resized (#4268).
 - Recolor: colours of the list can be picked (a click each, Pick All, or Pick Similar with a closeness slider) and given one colour at once with Replace Picked (#4203).
+- Customization: a command or a button dragged with a finger or a pen onto a toolbar on a touch screen joins it; the drop was lost when the finger lifted (#4259).
 - Text boxes: on a touch screen, a finger resting on a text box (the font size, a font name, a field of a dialog box) opens its Cut, Copy, Paste, Select All and Delete menu, as a right click does with a mouse (#4262).
 - Canvas: while a drop shadow, a fill or a handle is dragged on a picture or a heavy page, the drawing follows the drag instead of showing the change only when the mouse stops: a picture still drawing for an earlier step of the drag now finishes and shows, and only once the drag rests is it given up for the latest one (#4233).
 - Interface: file, layer, page and object names written in Malayalam, Tamil, Telugu, Kannada, Gujarati or Gurmukhi show their letters instead of boxes when the system has a font for them (#4277).
