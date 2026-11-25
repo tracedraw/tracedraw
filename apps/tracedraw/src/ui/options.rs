@@ -4520,7 +4520,18 @@ fn capture_keys(app: &mut App, ui: &mut Ui) {
                 pressed: true,
                 modifiers,
                 ..
-            } if !crate::shortcuts::is_modifier(*key) => Some((*key, *modifiers)),
+            } if !crate::shortcuts::is_modifier(*key) => {
+                // Ctrl is missing from C, X and V's own key event (their
+                // copy/cut/paste translation strips it): `i.modifiers`,
+                // kept from the separate `ModifiersChanged` event their
+                // own Ctrl key-down still sends, has it.
+                let mods = if matches!(key, egui::Key::C | egui::Key::X | egui::Key::V) {
+                    i.modifiers
+                } else {
+                    *modifiers
+                };
+                Some((*key, mods))
+            }
             _ => None,
         })
     });
@@ -7655,6 +7666,40 @@ mod tests {
         frame(&ctx, &mut app, vec![key(Key::F7, Modifiers::COMMAND)]);
         assert!(app.shortcut_editor.capture.is_none());
         assert_eq!(export_keys(&app), ["Ctrl+E"]);
+    }
+
+    /// Ctrl is missing from C, X and V's own key event on Windows (their
+    /// copy/cut/paste translation strips it): a real Ctrl held, reported
+    /// through a `ModifiersChanged` event as it really is, is still
+    /// captured with C, X and V, not silently as the bare letter.
+    #[test]
+    fn ctrl_is_not_lost_capturing_a_shortcut_with_c_x_or_v() {
+        use crate::ui::dialogs::Dialog;
+        use egui::{Event, Key, Modifiers};
+        let ctx = crate::theme::ui_context();
+        for letter in [Key::C, Key::X, Key::V] {
+            let mut app = App::headless();
+            app.show_welcome = false;
+            app.dialog = Dialog::Options;
+            app.options_page = OptionsPage::Commands;
+            frame(&ctx, &mut app, vec![]);
+            app.shortcut_editor.capture = Some("menu.file.export".into());
+            frame(
+                &ctx,
+                &mut app,
+                vec![
+                    Event::ModifiersChanged(Modifiers::COMMAND),
+                    key(letter, Modifiers::NONE),
+                ],
+            );
+            let export_keys =
+                crate::shortcuts::keys_for(&app.settings.shortcuts, "menu.file.export", None);
+            let wanted = format!("Ctrl+{}", crate::shortcuts::key_name(letter));
+            assert!(
+                export_keys.contains(&wanted),
+                "{letter:?}: {export_keys:?}"
+            );
+        }
     }
 
     /// A tool takes a second key without losing its first; either picks
