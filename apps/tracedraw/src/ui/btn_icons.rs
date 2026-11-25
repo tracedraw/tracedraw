@@ -508,6 +508,9 @@ fn exact(key: &str) -> Option<Src> {
         "tracker.export_text" => Src::Action(Action::Export),
         // Cutting.
         "tracecut.test_cut" => Src::B(B::Flask),
+        "tracecut.laser_frame" => Src::B(B::Border),
+        "tracecut.laser_test" => Src::B(B::Cells),
+        "tracecut.laser_dxf" => Src::Action(Action::Export),
         "menu.tools.tracecut" => Src::Glyph(Glyph::TraceCut),
         // Merge.
         "merge.place_inside" => Src::Glyph(Glyph::ClipInside),

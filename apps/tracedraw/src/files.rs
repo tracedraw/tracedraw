@@ -617,9 +617,19 @@ pub fn write_creating(path: impl AsRef<Path>, bytes: impl AsRef<[u8]>) -> std::i
 #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
 pub fn write_device(path: &str, bytes: &[u8]) -> std::io::Result<()> {
     use std::io::Write as _;
+    let device = device_path(path);
+    let mut f = std::fs::OpenOptions::new().write(true).open(device)?;
+    f.write_all(bytes)?;
+    f.flush()
+}
+
+/// The path a port name opens: a bare Windows port name (`COM10`)
+/// through the device namespace (`\\.\COM10`).
+#[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+fn device_path(path: &str) -> String {
     let path = path.trim();
     let upper = path.to_ascii_uppercase();
-    let device = if cfg!(windows)
+    if cfg!(windows)
         && upper.starts_with("COM")
         && upper.len() > 3
         && upper[3..].bytes().all(|b| b.is_ascii_digit())
@@ -627,10 +637,17 @@ pub fn write_device(path: &str, bytes: &[u8]) -> std::io::Result<()> {
         format!("\\\\.\\{path}")
     } else {
         path.to_string()
-    };
-    let mut f = std::fs::OpenOptions::new().write(true).open(device)?;
-    f.write_all(bytes)?;
-    f.flush()
+    }
+}
+
+/// Open a device (a serial or USB-serial port) to write and read, the
+/// way [`write_device`] finds it; nothing is created.
+#[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+pub fn open_device(path: &str) -> std::io::Result<std::fs::File> {
+    std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(device_path(path))
 }
 
 /// Delete a file (in a browser, only in the auto-backup folder and the

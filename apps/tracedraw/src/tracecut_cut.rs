@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use tracedraw_core::geometry::{Affine, BezPath, PathEl, Point, Rect, Shape as _};
 use tracedraw_core::{Color, Command, Fill, LayerId, Shape, ShapeId, ShapeKind, Stroke};
 use tracedraw_tracecut::cnc::{self, CncSpec, Program};
+use tracedraw_tracecut::laser::{self, LaserItem, LaserSpec};
 use tracedraw_tracecut::cut::bridges::{self, BridgeCount, BridgeSpec};
 use tracedraw_tracecut::cut::hpgl::{self, Plot, Profile};
 use tracedraw_tracecut::cut::marks::{self, RegSpec};
@@ -61,6 +62,45 @@ impl Default for PlotterSettings {
 
 impl PlotterSettings {
     /// The port path or the host the job goes to.
+    pub fn target(&self) -> String {
+        match self.destination.usable() {
+            Destination::Port => self.port.trim().to_string(),
+            Destination::Network => self.host.trim().to_string(),
+            Destination::File => String::new(),
+        }
+    }
+}
+
+/// Laser Output: the laser layers' settings, the frame, the material
+/// test and where the program goes.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LaserSettings {
+    pub spec: LaserSpec,
+    pub destination: Destination,
+    /// The port path: `/dev/ttyUSB0`, `COM3`.
+    pub port: String,
+    /// The laser on the network: `host` or `host:port`.
+    pub host: String,
+    /// Send one line at a time and wait for the controller's `ok`, as
+    /// GRBL and Marlin need (else the program goes out in one piece).
+    pub wait_ok: bool,
+}
+
+impl Default for LaserSettings {
+    fn default() -> Self {
+        LaserSettings {
+            spec: LaserSpec::default(),
+            destination: Destination::File,
+            port: crate::tracecut_send::default_port(),
+            host: String::new(),
+            wait_ok: true,
+        }
+    }
+}
+
+impl LaserSettings {
+    /// The port path or the host the program goes to.
     pub fn target(&self) -> String {
         match self.destination.usable() {
             Destination::Port => self.port.trim().to_string(),
@@ -419,6 +459,134 @@ impl App {
                 crate::tracecut_send::start(dest, target, bytes, ctx);
             }
         }
+    }
+
+    /// The laser items of the selection, each part of a group by its own
+    /// colour or by the layer its object is on.
+    pub fn tracecut_laser_items(&self, by: laser::GroupBy) -> Vec<LaserItem> {
+        let doc = self.doc();
+        let layers = self.page_layers();
+        let layer_of = |id: ShapeId| -> String {
+            fn holds(s: &Shape, id: ShapeId) -> bool {
+                s.id == id
+                    || match &s.kind {
+                        ShapeKind::Group { children } => children.iter().any(|c| holds(c, id)),
+                        ShapeKind::ClipFrame { frame, .. } => holds(frame, id),
+                        _ => false,
+                    }
+            }
+            layers
+                .iter()
+                .find(|l| l.shapes.iter().any(|s| holds(s, id)))
+                .map(|l| l.name.clone())
+                .unwrap_or_default()
+        };
+        let mut out = Vec::new();
+        for id in self.tracecut_targets() {
+            if let Some(s) = doc.shape_on_page(id) {
+                out.extend(laser::items(&s, &layer_of(id), by));
+            }
+        }
+        out
+    }
+
+    /// Laser Output: the G-code program of the selection.
+    pub fn tracecut_laser(&self, s: &LaserSettings) -> laser::Program {
+        let items = self.tracecut_laser_items(s.spec.group_by);
+        laser::program(&items, &s.spec, self.ruler_origin())
+    }
+
+    /// The laser program's line for the status strip.
+    pub fn tracecut_laser_summary(&self, p: &laser::Program) -> String {
+        if p.layers == 0 {
+            return tr("tracecut.nothing_to_cut");
+        }
+        let (w, h) = p.bounds.map(|b| (b.width(), b.height())).unwrap_or_default();
+        trf(
+            "tracecut.laser_found",
+            &[
+                ("layers", &p.layers.to_string()),
+                ("burn", &fmt_len(self.units, p.burn_length)),
+                ("w", &fmt_len(self.units, w)),
+                ("h", &fmt_len(self.units, h)),
+                ("min", &format!("{:.1}", p.minutes)),
+            ],
+        )
+    }
+
+    /// Send or save a laser program: a G-code file where the user says,
+    /// or the port or the network on a thread of its own.
+    pub fn tracecut_laser_output(
+        &mut self,
+        s: &LaserSettings,
+        gcode: String,
+        file_name: &str,
+        ctx: Option<egui::Context>,
+    ) {
+        match s.destination.usable() {
+            Destination::File => {
+                let bytes = gcode.into_bytes();
+                crate::files::Dialog::new()
+                    .add_filter("G-code", &["gcode", "nc", "ngc", "gc"])
+                    .set_file_name(file_name)
+                    .save_file(self, move |app, path| {
+                        app.status = match crate::files::write(&path, bytes) {
+                            Ok(()) => {
+                                trf("tracecut.saved", &[("path", &path.display().to_string())])
+                            }
+                            Err(e) => e.to_string(),
+                        };
+                    });
+            }
+            dest => {
+                let target = s.target();
+                if target.is_empty() {
+                    self.status = tr("tracecut.no_target");
+                    return;
+                }
+                self.status = trf("tracecut.sending", &[("to", &target)]);
+                if s.wait_ok {
+                    crate::tracecut_send::start_gcode(dest, target, gcode, ctx);
+                } else {
+                    crate::tracecut_send::start(dest, target, gcode.into_bytes(), ctx);
+                }
+            }
+        }
+    }
+
+    /// Run the frame of the selection's laser job.
+    pub fn tracecut_laser_frame(&mut self, s: &LaserSettings, ctx: Option<egui::Context>) {
+        let items = self.tracecut_laser_items(s.spec.group_by);
+        match laser::frame(&items, &s.spec, self.ruler_origin()) {
+            Some(g) => self.tracecut_laser_output(s, g, "frame.gcode", ctx),
+            None => self.status = tr("tracecut.nothing_to_cut"),
+        }
+    }
+
+    /// Run the material test grid.
+    pub fn tracecut_laser_test(&mut self, s: &LaserSettings, ctx: Option<egui::Context>) {
+        let (items, spec) = laser::test_job(&s.spec);
+        let p = laser::program(&items, &spec, Point::ZERO);
+        self.tracecut_laser_output(s, p.gcode, "material-test.gcode", ctx);
+    }
+
+    /// Save the selection's laser lines as a clean DXF where the user says.
+    pub fn tracecut_laser_dxf(&mut self, s: &LaserSettings) {
+        let items = self.tracecut_laser_items(s.spec.group_by);
+        if items.is_empty() {
+            self.status = tr("tracecut.nothing_to_cut");
+            return;
+        }
+        let bytes = laser::dxf(&items, &s.spec, self.ruler_origin()).into_bytes();
+        crate::files::Dialog::new()
+            .add_filter("DXF", &["dxf"])
+            .set_file_name("laser.dxf")
+            .save_file(self, move |app, path| {
+                app.status = match crate::files::write(&path, bytes) {
+                    Ok(()) => trf("tracecut.saved", &[("path", &path.display().to_string())]),
+                    Err(e) => e.to_string(),
+                };
+            });
     }
 
     /// CNC Toolpath: the G-code program of the selection, X0 Y0 at the
@@ -1156,6 +1324,63 @@ mod tests {
         assert_eq!(
             app.tracecut_cnc_summary(&p),
             trf("tracecut.cnc_skipped", &[("n", "1")])
+        );
+    }
+
+    #[test]
+    fn the_laser_program_goes_by_colour_and_cuts_last() {
+        let mut app = App::headless();
+        let plate = rect(&mut app, 10.0, 10.0, 100.0, 60.0);
+        let logo = rect(&mut app, 40.0, 30.0, 20.0, 20.0);
+        let blue = Stroke {
+            color: Color::rgb8(0, 0, 255),
+            ..Stroke::default()
+        };
+        app.engine
+            .run(&Command::SetStroke {
+                shapes: vec![logo],
+                stroke: Some(blue),
+            })
+            .expect("stroke");
+        app.select(vec![plate, logo]);
+        let items = app.tracecut_laser_items(laser::GroupBy::Color);
+        let keys: Vec<String> = laser::layer_keys(&items).into_iter().map(|(k, _)| k).collect();
+        // The plate keeps the default outline colour, the logo is blue.
+        assert_eq!(keys.len(), 2);
+        assert_eq!(keys[1], "#0000FF");
+        let plate_key = keys[0].clone();
+        let by_layer = app.tracecut_laser_items(laser::GroupBy::Layer);
+        assert_eq!(laser::layer_keys(&by_layer).len(), 1);
+        let mut s = LaserSettings::default();
+        *s.spec.layer_mut("#0000FF") = laser::LayerSpec::for_mode(laser::Mode::Engrave);
+        let p = app.tracecut_laser(&s);
+        assert_eq!(p.layers, 2);
+        let eng = p.gcode.find("; Layer #0000FF").expect("engrave layer");
+        let cut = p
+            .gcode
+            .find(&format!("; Layer {plate_key}"))
+            .expect("cut layer");
+        assert!(eng < cut, "engraving runs before cutting");
+        assert_eq!(p.zero, Point::new(10.0, 10.0));
+        assert!(app.tracecut_laser_summary(&p).contains('2'));
+        // Working it out and showing it change nothing.
+        let rev = app.engine.revision();
+        let mut settings = crate::tracecut::ToolSettings::default();
+        settings.laser = s.clone();
+        let w = app.tracecut_work_out(crate::tracecut::ToolId::LaserOutput, &settings);
+        let scene = app.tracecut_scene(Some(&w));
+        assert_eq!(scene.marked.len(), 1, "the cut outline");
+        assert!(!scene.scored.is_empty(), "the engraving lines");
+        assert_eq!(app.engine.revision(), rev);
+        // The layer settings are kept with the tool's presets.
+        let json = settings.to_json(crate::tracecut::ToolId::LaserOutput);
+        let mut back = crate::tracecut::ToolSettings::default();
+        assert!(back.load_json(crate::tracecut::ToolId::LaserOutput, &json));
+        assert_eq!(back.laser.spec.layer("#0000FF").mode, laser::Mode::Engrave);
+        app.select(Vec::new());
+        assert_eq!(
+            app.tracecut_laser_summary(&app.tracecut_laser(&s)),
+            tr("tracecut.nothing_to_cut")
         );
     }
 
