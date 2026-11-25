@@ -54,6 +54,8 @@ pub fn effect_key(e: &Effect) -> &'static str {
         Effect::ShapeFrame { .. } => "effect.shape_frame",
         Effect::TrimMarks { .. } => "effect.trim_marks",
         Effect::Feather { .. } => "effect.feather",
+        Effect::RoundCorners { .. } => "effect.round_corners",
+        Effect::Slice { .. } => "effect.slice",
     }
 }
 

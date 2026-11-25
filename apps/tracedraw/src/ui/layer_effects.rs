@@ -20,6 +20,7 @@ use crate::ui::tips::RichTip;
 use egui::Ui;
 use tracedraw_core::geometry::{Affine, Vec2};
 use tracedraw_core::live::{Effect, MergeMode, SurfaceShade, BLEND_IF_ALL};
+use tracedraw_core::outline_fx::CornerSide;
 use tracedraw_core::{Color, Command, Shape};
 
 /// An entry of the list.
@@ -48,10 +49,12 @@ pub enum Kind {
     TrimMarks,
     Feather,
     Halftone,
+    RoundCorners,
+    Slice,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 23] = [
+    pub const ALL: [Kind; 25] = [
         Kind::Bevel,
         Kind::Outline,
         Kind::ThreeD,
@@ -75,6 +78,8 @@ impl Kind {
         Kind::TrimMarks,
         Kind::Feather,
         Kind::Halftone,
+        Kind::RoundCorners,
+        Kind::Slice,
     ];
 
     pub fn key(self) -> &'static str {
@@ -102,6 +107,8 @@ impl Kind {
             Kind::TrimMarks => "effect.trim_marks",
             Kind::Feather => "effect.feather",
             Kind::Halftone => "effect.halftone",
+            Kind::RoundCorners => "effect.round_corners",
+            Kind::Slice => "effect.slice",
         }
     }
 
@@ -140,6 +147,8 @@ impl Kind {
                 | (Kind::TrimMarks, Effect::TrimMarks { .. })
                 | (Kind::Feather, Effect::Feather { .. })
                 | (Kind::Halftone, Effect::Halftone { .. })
+                | (Kind::RoundCorners, Effect::RoundCorners { .. })
+                | (Kind::Slice, Effect::Slice { .. })
         )
     }
 
@@ -311,6 +320,21 @@ impl Kind {
                 center_y: 0.5,
                 clip: true,
                 color: Color::BLACK,
+            },
+            Kind::RoundCorners => Effect::RoundCorners {
+                radius: 1.0,
+                max_angle: 180.0,
+                side: CornerSide::Both,
+            },
+            Kind::Slice => Effect::Slice {
+                count: 6,
+                angle: 0.0,
+                gap: 0.6,
+                shift: 1.5,
+                alternate: true,
+                turn: 0.0,
+                seed: 1,
+                radius: 0.0,
             },
         }
     }
@@ -1239,6 +1263,91 @@ fn settings(app: &App, ui: &mut Ui, e: &mut Effect) -> bool {
                 if map.is_none() {
                     ui.label(egui::RichText::new(tr("layer_fx.displace_no_photo")).color(Tokens::text_dim()));
                 }
+            });
+        }
+        Effect::RoundCorners {
+            radius,
+            max_angle,
+            side,
+        } => {
+            ui.horizontal(|ui| {
+                changed |= length(app, ui, "layer_fx.radius", radius, 100.0);
+                ui.label(tr("layer_fx.max_angle"));
+                if ui
+                    .add(
+                        NumField::new(max_angle)
+                            .range(1.0..=180.0)
+                            .suffix("\u{00B0}"),
+                    )
+                    .rich_tip(tr("layer_fx.max_angle_desc"))
+                    .changed()
+                {
+                    changed = true;
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label(tr("layer_fx.corners"));
+                for (v, key) in [
+                    (CornerSide::Both, "layer_fx.corners_all"),
+                    (CornerSide::Convex, "layer_fx.corners_convex"),
+                    (CornerSide::Concave, "layer_fx.corners_concave"),
+                ] {
+                    changed |= ui
+                        .selectable_value(side, v, tr(key))
+                        .rich_tip(tr(key))
+                        .changed();
+                }
+            });
+        }
+        Effect::Slice {
+            count,
+            angle,
+            gap,
+            shift,
+            alternate,
+            turn,
+            seed,
+            radius,
+        } => {
+            ui.horizontal(|ui| {
+                ui.label(tr("layer_fx.slices"));
+                if ui
+                    .add(NumField::new(count).range(1..=tracedraw_core::outline_fx::MAX_SLICES))
+                    .rich_tip(tr("layer_fx.slices_desc"))
+                    .changed()
+                {
+                    changed = true;
+                }
+                changed |= degrees(ui, "layer_fx.angle", angle);
+            });
+            ui.horizontal(|ui| {
+                changed |= length(app, ui, "layer_fx.gap", gap, 100.0);
+                changed |= length(app, ui, "layer_fx.shift", shift, 200.0);
+            });
+            ui.horizontal(|ui| {
+                changed |= ui
+                    .checkbox(alternate, tr("layer_fx.alternate"))
+                    .rich_tip(tr("layer_fx.alternate_desc"))
+                    .changed();
+                ui.label(tr("layer_fx.turn"));
+                if ui
+                    .add(NumField::new(turn).range(0.0..=90.0).suffix("\u{00B0}"))
+                    .rich_tip(tr("layer_fx.slice_turn_desc"))
+                    .changed()
+                {
+                    changed = true;
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label(tr("layer_fx.seed"));
+                if ui
+                    .add(NumField::new(seed).range(0..=9999))
+                    .rich_tip(tr("layer_fx.seed_desc"))
+                    .changed()
+                {
+                    changed = true;
+                }
+                changed |= length(app, ui, "layer_fx.round", radius, 100.0);
             });
         }
         _ => {}

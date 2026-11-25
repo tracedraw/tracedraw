@@ -33,6 +33,7 @@ pub mod linked_text;
 pub mod live;
 pub mod live_paint;
 pub mod nodes;
+pub mod outline_fx;
 pub mod page_range;
 pub mod painterly;
 pub mod paragraphs;

@@ -467,6 +467,38 @@ pub enum Effect {
         #[serde(default)]
         strength: f64,
     },
+    /// Round Corners: every corner of the outline (a curve, a group's
+    /// curves, a text's letters) filleted with `radius` mm, only those
+    /// whose sides meet at less than `max_angle` degrees (180: all) and
+    /// only those on `side`. The object itself stays as it is.
+    #[serde(rename = "roundcorners")]
+    RoundCorners {
+        radius: f64,
+        #[serde(default = "straight_angle")]
+        max_angle: f64,
+        #[serde(default)]
+        side: crate::outline_fx::CornerSide,
+    },
+    /// Slice: the outline cut into `count` parallel strips across its box,
+    /// the cuts at `angle` degrees and `gap` mm wide, each strip slid by
+    /// `shift` mm along the cut (one way and the other in turn with
+    /// `alternate`, otherwise by a share from `seed`), turned by a share
+    /// of `turn` degrees and its corners rounded with `radius` mm.
+    Slice {
+        count: u32,
+        angle: f64,
+        gap: f64,
+        #[serde(default)]
+        shift: f64,
+        #[serde(default)]
+        alternate: bool,
+        #[serde(default)]
+        turn: f64,
+        #[serde(default)]
+        seed: u32,
+        #[serde(default)]
+        radius: f64,
+    },
     /// Lens over everything beneath (evaluated by the renderer).
     Lens(Lens),
     /// Non-uniform transparency: the fill's luminance is the opacity.
@@ -813,6 +845,8 @@ impl Effect {
                 | Effect::Roughen { .. }
                 | Effect::JitterNodes { .. }
                 | Effect::ShapeFrame { .. }
+                | Effect::RoundCorners { .. }
+                | Effect::Slice { .. }
         )
     }
 
@@ -1216,7 +1250,51 @@ fn warp_outline(e: &Effect, p: &BezPath, b: Rect) -> Option<BezPath> {
         Effect::ShapeFrame { form, pad, radius } => {
             Some(crate::rough::shape_frame(b, *form, *pad, *radius))
         }
+        Effect::RoundCorners { .. } | Effect::Slice { .. } => {
+            Some(rebuild_outline(e, p, b, crate::shaping::FillRule::EvenOdd))
+        }
         _ => None,
+    }
+}
+
+fn straight_angle() -> f64 {
+    180.0
+}
+
+/// Round Corners or Slice on the outline `p` (read with `fill`) in the
+/// box `b` of the whole outline; `p` itself for other effects.
+fn rebuild_outline(e: &Effect, p: &BezPath, b: Rect, fill: crate::shaping::FillRule) -> BezPath {
+    match *e {
+        Effect::RoundCorners {
+            radius,
+            max_angle,
+            side,
+        } => crate::outline_fx::round_corners(p, radius, max_angle, side),
+        Effect::Slice {
+            count,
+            angle,
+            gap,
+            shift,
+            alternate,
+            turn,
+            seed,
+            radius,
+        } => crate::outline_fx::slice(
+            p,
+            b,
+            &crate::outline_fx::SliceParams {
+                count,
+                angle,
+                gap,
+                shift,
+                alternate,
+                turn,
+                seed,
+                radius,
+            },
+            fill,
+        ),
+        _ => p.clone(),
     }
 }
 
@@ -1940,6 +2018,16 @@ fn warp_shape(main: &mut Shape, effect: &Effect) {
             }
             reshape(main, &|p, b| crate::envelope::apply_mesh(p, b, cols, rows, points));
         }
+        Effect::RoundCorners { .. } | Effect::Slice { .. } => {
+            // Letters overlap and fill with the nonzero rule, as the
+            // text does.
+            let fill = if matches!(main.kind, ShapeKind::Text { .. }) {
+                crate::shaping::FillRule::NonZero
+            } else {
+                main.fill_rule
+            };
+            reshape(main, &|p, b| rebuild_outline(effect, p, b, fill));
+        }
         _ => {}
     }
 }
@@ -2019,7 +2107,9 @@ fn evaluate_now(shape: &Shape) -> Evaluated {
             | Effect::Combine { .. }
             | Effect::Roughen { .. }
             | Effect::JitterNodes { .. }
-            | Effect::ShapeFrame { .. } => {
+            | Effect::ShapeFrame { .. }
+            | Effect::RoundCorners { .. }
+            | Effect::Slice { .. } => {
                 // An extrusion before it already took it into its outline.
                 if !warped_ahead {
                     warp_shape(&mut main, effect);
@@ -5442,6 +5532,64 @@ mod tests {
         assert!(matches!(min, Effect::OffsetPath { smooth, merge: false, .. } if smooth == 0.0));
         let baked = bake_outline_warps(&g).expect("bake");
         assert!(baked.effects.is_empty());
+    }
+
+    /// Round Corners and Slice rebuild the outline live: the object keeps
+    /// its own kind, the drawn outline is rounded or cut into strips, the
+    /// effects survive a save, and Convert to Curves takes them in.
+    #[test]
+    fn round_corners_and_slice_are_live_outline_effects() {
+        let mut s = rect_shape();
+        s.effects.push(Effect::RoundCorners {
+            radius: 2.0,
+            max_angle: 180.0,
+            side: crate::outline_fx::CornerSide::Both,
+        });
+        let main = evaluate(&s).main;
+        let lost = 400.0 - main.local_path().area().abs();
+        assert!(
+            (lost - 4.0 * (4.0 - std::f64::consts::PI)).abs() < 0.05,
+            "{lost}"
+        );
+        assert!(matches!(s.kind, ShapeKind::Rect { .. }));
+        s.effects.push(Effect::Slice {
+            count: 4,
+            angle: 0.0,
+            gap: 1.0,
+            shift: 1.0,
+            alternate: true,
+            turn: 0.0,
+            seed: 0,
+            radius: 0.0,
+        });
+        let main = evaluate(&s).main;
+        let parts = main
+            .local_path()
+            .elements()
+            .iter()
+            .filter(|e| matches!(e, PathEl::MoveTo(_)))
+            .count();
+        assert_eq!(parts, 4);
+        let json = serde_json::to_string(&s.effects).expect("json");
+        assert!(
+            json.contains("\"roundcorners\"") && json.contains("\"slice\""),
+            "{json}"
+        );
+        let back: Vec<Effect> = serde_json::from_str(&json).expect("read");
+        assert_eq!(back, s.effects);
+        // Older-style minimal entries read with their defaults.
+        let min: Effect =
+            serde_json::from_str(r#"{"effect":"slice","count":3,"angle":0,"gap":0.5}"#)
+                .expect("min");
+        assert!(
+            matches!(min, Effect::Slice { shift, radius, .. } if shift == 0.0 && radius == 0.0)
+        );
+        let min: Effect =
+            serde_json::from_str(r#"{"effect":"roundcorners","radius":1}"#).expect("min");
+        assert!(matches!(min, Effect::RoundCorners { max_angle, .. } if max_angle == 180.0));
+        let baked = bake_outline_warps(&s).expect("bake");
+        assert!(baked.effects.is_empty());
+        assert!(matches!(baked.kind, ShapeKind::Path { .. }));
     }
 
     fn rect_shape() -> Shape {
