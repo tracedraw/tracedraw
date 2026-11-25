@@ -1795,8 +1795,33 @@ impl Renderer<'_> {
             shape.kind,
             ShapeKind::Table(_) | ShapeKind::SymbolInstance { .. }
         ) {
-            for c in shape.expand(self.symbols) {
-                self.draw_shape(&c, transform);
+            let mut children = shape.expand(self.symbols);
+            // The shadow and transparency of the instance itself, laid over
+            // what its definition draws: a lone instance's silhouette is a
+            // unit box, so the shadow is cast by what the definition draws.
+            if !self.flags.wireframe && shape.opacity > 0.0 {
+                if let Some(sh) = shape.shadow.as_ref().filter(|sh| sh.opacity > 0.0) {
+                    let group = Shape::new(
+                        ShapeId(0),
+                        ShapeKind::Group {
+                            children: children.clone(),
+                        },
+                    );
+                    self.draw_group_shadow(sh, &group, transform);
+                }
+            }
+            if shape.opacity < 1.0 && !self.flags.wireframe {
+                if shape.opacity <= 0.0 {
+                    return;
+                }
+                for c in &mut children {
+                    c.absorb_opacity(shape.opacity);
+                    self.draw_shape(c, transform);
+                }
+                return;
+            }
+            for c in &children {
+                self.draw_shape(c, transform);
             }
             return;
         }
@@ -14122,6 +14147,143 @@ mod inner_shadow_view_tests {
             }
             assert!(worst <= 1, "zoom {zoom}: {worst}");
         }
+    }
+}
+
+/// A symbol instance carries its own transparency and shadow, on top of
+/// what its definition draws. The branch for instances drew the
+/// definition alone, so a see-through instance came out solid and one
+/// with a shadow cast none; found while checking what Find Same and
+/// Replace must keep of an instance's look (#3497).
+#[cfg(test)]
+mod symbol_instance_style_tests {
+    use super::*;
+
+    /// A red square 10..40 mm on a white page, as a plain shape or
+    /// through an instance, with the asked opacity and shadow.
+    fn doc(opacity: f64, shadow: bool, instance: bool) -> (Document, PageId) {
+        let mut square = Shape::new(
+            ShapeId(1),
+            ShapeKind::Rect {
+                rect: Rect::new(10.0, 10.0, 40.0, 40.0),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        square.fill = Fill::Solid(Color::rgb8(200, 30, 30));
+        square.stroke = None;
+        let mut doc = Document::new("t", tracedraw_core::geometry::Size::new(100.0, 100.0));
+        let mut s = if instance {
+            doc.symbols.push(tracedraw_core::Symbol {
+                name: "S".into(),
+                shape: square,
+            });
+            let mut i = Shape::new(ShapeId(2), ShapeKind::SymbolInstance { index: 0 });
+            i.opacity = opacity;
+            i
+        } else {
+            let mut p = square;
+            p.id = ShapeId(2);
+            p.opacity = opacity;
+            p
+        };
+        if shadow {
+            s.shadow = Some(tracedraw_core::Shadow {
+                offset: tracedraw_core::geometry::Vec2::new(2.0, 2.0),
+                blur: 2.0,
+                color: Color::BLACK,
+                opacity: 0.8,
+                ..Default::default()
+            });
+        }
+        let mut bg = Shape::new(
+            ShapeId(3),
+            ShapeKind::Rect {
+                rect: Rect::new(0.0, 0.0, 100.0, 100.0),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        bg.fill = Fill::Solid(Color::WHITE);
+        bg.stroke = None;
+        let layer = doc.pages[0].layers[0].id;
+        doc.layer_mut(layer).expect("layer").shapes.push(bg);
+        doc.layer_mut(layer).expect("layer").shapes.push(s);
+        let page = doc.pages[0].id;
+        (doc, page)
+    }
+
+    fn opts() -> RenderOptions {
+        RenderOptions {
+            width: 100,
+            height: 100,
+            view: ViewTransform {
+                zoom: 1.0,
+                origin_x: 0.0,
+                origin_y: 100.0,
+                stretch_y: 1.0,
+            },
+            ..Default::default()
+        }
+    }
+
+    fn diff(a: &Pixmap, b: &Pixmap) -> u32 {
+        let mut m = 0;
+        for y in 0..a.height() {
+            for x in 0..a.width() {
+                let p = a.pixel(x, y).expect("pixel");
+                let q = b.pixel(x, y).expect("pixel");
+                m = m.max(u32::from(p.red().abs_diff(q.red())));
+                m = m.max(u32::from(p.green().abs_diff(q.green())));
+                m = m.max(u32::from(p.blue().abs_diff(q.blue())));
+                m = m.max(u32::from(p.alpha().abs_diff(q.alpha())));
+            }
+        }
+        m
+    }
+
+    #[test]
+    fn an_instance_draws_its_own_opacity_and_shadow_like_a_plain_shape() {
+        for (opacity, shadow) in [(1.0, false), (0.5, false), (1.0, true), (0.0, false)] {
+            let (d1, p1) = doc(opacity, shadow, false);
+            let (d2, p2) = doc(opacity, shadow, true);
+            let a = render_page(&d1, p1, &opts()).expect("plain");
+            let b = render_page(&d2, p2, &opts()).expect("instance");
+            assert_eq!(
+                diff(&a, &b),
+                0,
+                "opacity {opacity}, shadow {shadow}: the instance drew otherwise"
+            );
+        }
+    }
+
+    #[test]
+    fn an_instance_with_a_shadow_casts_one() {
+        let (d, p) = doc(1.0, true, true);
+        let px = render_page(&d, p, &opts()).expect("instance");
+        let square = px.pixel(25, 65).expect("pixel").red();
+        assert_eq!(square, 200, "the square itself changed");
+        // Screen (41, 75) is page (41, 25): beside the square, inside the
+        // shadow's reach.
+        let beside = px.pixel(41, 75).expect("pixel").red();
+        assert!(beside < 200, "no shadow beside the square: {beside}");
+    }
+
+    #[test]
+    fn a_see_through_instance_stays_see_through() {
+        let (d, p) = doc(0.5, false, true);
+        let px = render_page(&d, p, &opts()).expect("instance");
+        // Half of the red over the white page beneath.
+        let square = px.pixel(25, 65).expect("pixel").red();
+        assert_eq!(square, 228, "the instance drew solid");
+    }
+
+    #[test]
+    fn a_fully_see_through_instance_draws_nothing() {
+        let (d, p) = doc(0.0, false, true);
+        let px = render_page(&d, p, &opts()).expect("instance");
+        let square = px.pixel(25, 65).expect("pixel").red();
+        assert_eq!(square, 255, "the empty instance drew");
     }
 }
 
