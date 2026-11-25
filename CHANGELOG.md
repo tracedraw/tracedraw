@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Options > Customization > Context Menus shows, hides and reorders the items of 32 right-click menu locations: submenus expand to show their children, a drag handle or Move Up and Move Down reorders items at the same level, search keeps the parent path visible, and Restore resets one menu or all of them. OK saves the choices and Cancel brings back the ones from when Options opened; main menus, shortcuts and command search keep every command (PR #3170 by muchenkezhan).
 - Properties panel, FX section: every effect of the selected object, the live effects of its stack (contour, envelope, extrusion, inner shadow, block shadow, glows and the others) above its bitmap effects, each with an eye that hides it and keeps its place, Edit (the panel that sets it), up, down and remove. The Effects panel's stack and the bitmap effects use the same eye instead of a check box (#4231).
 - Combine Live in every mode: Object > Combine Shapes > Combine Live has Weld, Back Minus Front, Front Minus Back (new), Intersect and Exclude, and the Shaping panel has Keep live for Weld, Intersect and the two Minus operations. The objects stay as they are in a group, still movable and editable, the group shows the result, and removing the effect gives them back (#4266).
 - Image > Edit Bitmap With: pick the image editor's program, which Edit Bitmap then keeps using; saving the picture there updates it in the drawing. The status line no longer asks for Update from Link, since the update comes by itself (#4273).
