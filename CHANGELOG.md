@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Properties panel: a classic layout, switched on with the new button at the end of the row of section buttons. It shows one section at a time, picked by those buttons as tabs, under a plain title, and lays the outline out in short rows: the colour as a swatch that opens every kind of paint, the width as a box with a list of widths (None and Hairline too) and its unit, the line style as a list of dash pictures with its editor, how dashes meet at corners, a fold with the mitre limit, corners, caps and position, the arrowheads with an arrow before each list, and the calligraphic nib with stretch, angle, the nib picture and a reset. The grouped layout stays the default.
 - Text tool: a drag that starts on a text already on the page goes into it and selects from the press, and a press held a moment on a text does the same as a click, where the drag started a new paragraph frame over the text (#4240).
 - Pages keep one zoom: going back to a page shows it at the zoom in use, where each page came back at the zoom it was left at; in the Multipage View a page gone to (Go To Page, the page tabs) comes into view at the same zoom when it was out of sight (#4241).
 - Layer Effects: an effect taken away with its × keeps its values, and ticking it again, on that object or on another, starts from them instead of the defaults (#4242).

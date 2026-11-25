@@ -706,6 +706,13 @@ pub struct Settings {
     /// The Properties docker's sections closed ("outline", "fill" ...).
     #[serde(default)]
     pub properties_closed: Vec<String>,
+    /// The Properties docker in its classic layout: one section at a
+    /// time, picked by the tabs at the top, the outline in short rows.
+    #[serde(default)]
+    pub properties_classic: bool,
+    /// The section the classic layout shows ("outline", "fill" ...).
+    #[serde(default)]
+    pub properties_tab: String,
     /// The Properties docker marks a section whose values come from the
     /// object's linked object style (#1439).
     #[serde(default = "default_true")]
@@ -2614,6 +2621,8 @@ impl Default for Settings {
             show_recent_fonts: true,
             recent_font_count: default_recent_font_count(),
             properties_closed: Vec::new(),
+            properties_classic: false,
+            properties_tab: String::new(),
             style_indicators: true,
             saved_transparencies: Vec::new(),
             text_sections_closed: Vec::new(),

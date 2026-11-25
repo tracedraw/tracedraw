@@ -7,6 +7,9 @@ use crate::ui::pattern_pick::{PatternAction, PatternPickers};
 use crate::ui::slider::Settled;
 use crate::ui::tips::RichTip;
 use egui::Ui;
+
+#[path = "properties_classic.rs"]
+mod classic;
 use tracedraw_core::document::FillLook;
 use tracedraw_core::patch::{FillField, FillMix, StrokeField, StrokeMix};
 use tracedraw_core::{
@@ -1885,7 +1888,18 @@ fn properties(app: &mut App, ui: &mut Ui) {
             ui.add_space(2.0);
             let mut stroke = app.default_stroke();
             let custom = crate::ui::line_style::OutlineLib::of(app);
-            if outline_editor(ui, &mut stroke, &custom) {
+            let edited = if app.settings.properties_classic {
+                classic::outline_editor(
+                    ui,
+                    &mut stroke,
+                    &custom,
+                    &StrokeMix::default(),
+                    &mut Vec::new(),
+                )
+            } else {
+                outline_editor(ui, &mut stroke, &custom)
+            };
+            if edited {
                 app.set_default_properties(tracedraw_core::DefaultKind::Graphic, |p| {
                     p.stroke = stroke
                 });
@@ -1955,6 +1969,7 @@ fn properties(app: &mut App, ui: &mut Ui) {
     if let Some(i) = app.properties_open.take() {
         let id = if i == 0 { "fill" } else { "outline" };
         app.settings.properties_closed.retain(|c| c != id);
+        app.settings.properties_tab = id.to_string();
     }
     // The sections this object has, in the docker's order, with the
     // buttons that open and close them.
@@ -2007,10 +2022,18 @@ fn properties(app: &mut App, ui: &mut Ui) {
         ));
     }
     sections.push(("summary", "docker.summary", SectionIcon::Summary));
+    // The classic layout shows one section, picked by its tab.
+    let classic = app.settings.properties_classic;
+    let ids: Vec<&str> = sections.iter().map(|(id, _, _)| *id).collect();
+    let tab = classic::shown_tab(app, &ids);
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 2.0;
         for (id, key, icon) in &sections {
-            let open = !app.settings.properties_closed.iter().any(|c| c == id);
+            let open = if classic {
+                tab == Some(*id)
+            } else {
+                !app.settings.properties_closed.iter().any(|c| c == id)
+            };
             let (rect, resp) = ui.allocate_exact_size(egui::vec2(28.0, 26.0), egui::Sense::click());
             let fill = if open {
                 Some(Tokens::tool_active())
@@ -2029,20 +2052,37 @@ fn properties(app: &mut App, ui: &mut Ui) {
             // A click shows the section alone, so the docker's content
             // is what was picked at the top; with Ctrl or Shift it opens
             // or closes beside the others, as the headers do (#2200).
-            let tip = crate::ui::tips::pair(key, "docker.section_pick_hint");
+            let tip = if classic {
+                tr(key)
+            } else {
+                crate::ui::tips::pair(key, "docker.section_pick_hint")
+            };
             #[cfg(test)]
             ui.ctx()
                 .data_mut(|d| d.insert_temp(section_button_id(id), rect));
-            if resp.rich_tip(tip).clicked() {
+            let clicked = resp.rich_tip(tip).clicked();
+            if clicked && classic {
+                app.settings.properties_tab = id.to_string();
+            } else if clicked {
                 let beside = ui.input(|i| i.modifiers.command || i.modifiers.shift);
                 let shown: Vec<&str> = sections.iter().map(|(id, _, _)| *id).collect();
                 pick_section(app, id, &shown, beside);
             }
         }
+        // The switch between the grouped layout and the classic one, at
+        // the end of the row.
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            classic::layout_button(app, ui);
+        });
     });
     ui.add_space(2.0);
     for (id, key, _) in sections {
-        if !section_header(app, ui, id, &tr(key)) {
+        if classic {
+            if tab != Some(id) {
+                continue;
+            }
+            classic::title(ui, &tr(key));
+        } else if !section_header(app, ui, id, &tr(key)) {
             continue;
         }
         ui.add_space(2.0);
@@ -2058,7 +2098,18 @@ fn properties(app: &mut App, ui: &mut Ui) {
                 let old = app.text_selection_stroke().unwrap_or(None);
                 let mut stroke = old.clone();
                 let custom = crate::ui::line_style::OutlineLib::of(app);
-                if outline_editor(ui, &mut stroke, &custom) {
+                let edited = if classic {
+                    classic::outline_editor(
+                        ui,
+                        &mut stroke,
+                        &custom,
+                        &StrokeMix::default(),
+                        &mut Vec::new(),
+                    )
+                } else {
+                    outline_editor(ui, &mut stroke, &custom)
+                };
+                if edited {
                     app.text_apply_outline(stroke);
                 }
             }
@@ -2074,7 +2125,12 @@ fn properties(app: &mut App, ui: &mut Ui) {
                 let mut stroke = old.clone();
                 let custom = crate::ui::line_style::OutlineLib::of(app);
                 let mut touched = Vec::new();
-                if outline_editor_mixed(ui, &mut stroke, &custom, &mix, &mut touched, true) {
+                let edited = if classic {
+                    classic::outline_editor(ui, &mut stroke, &custom, &mix, &mut touched)
+                } else {
+                    outline_editor_mixed(ui, &mut stroke, &custom, &mix, &mut touched, true)
+                };
+                if edited {
                     // Dragging in the picker (or a slider): one step, and
                     // a new colour joins the document palette on release.
                     let live = app.live_stroke.is_some() || ui.input(|i| i.pointer.any_down());
@@ -2085,7 +2141,11 @@ fn properties(app: &mut App, ui: &mut Ui) {
                     }
                 }
                 let has = stroke.is_some() || mix.presence;
-                group_heading(ui, "docker.group_opacity");
+                if classic {
+                    ui.separator();
+                } else {
+                    group_heading(ui, "docker.group_opacity");
+                }
                 object_opacity_row(app, ui, "outline");
                 extra_strokes(app, ui, first, has);
                 // Overprint and the dialog's button on one row (#1200).
@@ -4306,10 +4366,13 @@ pub(crate) fn arrow_combo(
     mixed: bool,
 ) -> bool {
     let mut changed = false;
-    let shown = if mixed {
-        format!("{label}:")
-    } else {
-        format!("{label}: {}", a.name())
+    // Without a label (the classic Properties layout puts an arrow
+    // picture before it) the list shows the arrowhead's name alone.
+    let shown = match (label.is_empty(), mixed) {
+        (true, true) => String::new(),
+        (true, false) => a.name().to_string(),
+        (false, true) => format!("{label}:"),
+        (false, false) => format!("{label}: {}", a.name()),
     };
     let tip = if id.to_lowercase().ends_with("end") {
         "toolbar.end_arrow"
@@ -7169,6 +7232,111 @@ pub(crate) mod tests {
         assert_eq!(open(&app), ["fill"]);
         click(&mut app, "fill", egui::Modifiers::NONE);
         assert!(app.settings.properties_closed.is_empty(), "all again");
+    }
+
+    /// The classic layout: the button at the end of the section row
+    /// switches to it; the docker then shows one section, the one whose
+    /// tab was clicked, under a plain title, with the outline in short
+    /// rows (width list, arrowheads, calligraphy); the button switches
+    /// back to the grouped layout.
+    #[test]
+    fn the_classic_layout_shows_one_section_per_tab() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        app.settings.autocorrect.enabled = false;
+        let id = app
+            .new_shape(ShapeKind::Rect {
+                rect: tracedraw_core::geometry::Rect::new(10.0, 10.0, 60.0, 40.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        app.select(vec![id]);
+        app.show_dockers = true;
+        app.docker_tab = DockerTab::Properties;
+        draw(&ctx, &mut app);
+        let click = |app: &mut App, rect: egui::Rect| {
+            let at = rect.center();
+            for pressed in [true, false] {
+                let input = egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(1400.0, 900.0),
+                    )),
+                    events: vec![
+                        egui::Event::PointerMoved(at),
+                        egui::Event::PointerButton {
+                            pos: at,
+                            button: egui::PointerButton::Primary,
+                            pressed,
+                            modifiers: egui::Modifiers::NONE,
+                        },
+                    ],
+                    ..Default::default()
+                };
+                let mut out = ctx.run_ui(input, |ui| crate::ui::root(app, ui));
+                out.textures_delta.clear();
+            }
+            draw(&ctx, app);
+        };
+        let layout_button = |ctx: &egui::Context| -> egui::Rect {
+            ctx.data(|d| d.get_temp(egui::Id::new("properties_layout_button")))
+                .expect("the layout button is drawn")
+        };
+        assert!(!app.settings.properties_classic, "grouped by default");
+        click(&mut app, layout_button(&ctx));
+        assert!(app.settings.properties_classic);
+        // The outline first, in its classic rows.
+        let texts = painted_texts(&ctx, &mut app);
+        let has = |t: &[String], key: &str| {
+            let want = tr(key);
+            let want = want.trim_end_matches(':');
+            t.iter().any(|s| s.trim_end_matches(':') == want)
+        };
+        assert!(has(&texts, "docker.outline"), "{texts:?}");
+        assert!(has(&texts, "outline_pen.calligraphy"), "{texts:?}");
+        assert!(has(&texts, "docker.group_arrowheads"), "{texts:?}");
+        assert!(has(&texts, "docker.miter_limit"), "{texts:?}");
+        assert!(!has(&texts, "docker.group_caps_corners"), "no grouped headings");
+        assert!(!has(&texts, "docker.transparency"), "one section: {texts:?}");
+        // The fill tab: the fill alone.
+        let fill_tab: egui::Rect = ctx
+            .data(|d| d.get_temp(section_button_id("fill")))
+            .expect("the fill tab is drawn");
+        click(&mut app, fill_tab);
+        assert_eq!(app.settings.properties_tab, "fill");
+        let texts = painted_texts(&ctx, &mut app);
+        assert!(has(&texts, "docker.fill"), "{texts:?}");
+        assert!(!has(&texts, "outline_pen.calligraphy"), "{texts:?}");
+        // A jump to the outline (from the status bar) picks its tab.
+        app.properties_open = Some(1);
+        draw(&ctx, &mut app);
+        assert_eq!(app.settings.properties_tab, "outline");
+        // And back to the grouped layout.
+        click(&mut app, layout_button(&ctx));
+        assert!(!app.settings.properties_classic);
+        let texts = painted_texts(&ctx, &mut app);
+        assert!(has(&texts, "docker.group_caps_corners"), "{texts:?}");
+    }
+
+    /// The classic outline's width list: None takes the outline away, a
+    /// width gives one back in black, and changes an outline's width.
+    #[test]
+    fn the_classic_outline_width_list_sets_none_and_widths() {
+        let black = tracedraw_core::Color::BLACK;
+        let mut stroke = Some(Stroke {
+            width: 1.0,
+            color: tracedraw_core::Color::rgb8(255, 0, 0),
+            ..Stroke::default()
+        });
+        let red = tracedraw_core::Color::rgb8(255, 0, 0);
+        let seen = |s: &Option<Stroke>| s.as_ref().map(|s| (s.width, s.color));
+        classic::pick_width(&mut stroke, Some(2.0), black);
+        assert_eq!(seen(&stroke), Some((2.0, red)));
+        classic::pick_width(&mut stroke, None, black);
+        assert!(stroke.is_none());
+        classic::pick_width(&mut stroke, Some(Stroke::HAIRLINE), black);
+        assert_eq!(seen(&stroke), Some((Stroke::HAIRLINE, black)));
     }
 
     /// The arrows beside a further fill or outline move it one place in
