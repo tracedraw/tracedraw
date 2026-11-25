@@ -1140,6 +1140,57 @@ const UI_SCRIPT_FONTS: &[&[&str]] = &[
         "Norasi",
         "FreeSerif",
     ],
+    // The other scripts of India, for file, layer and page names typed in
+    // them, which showed as boxes (#4277): Malayalam, Tamil, Telugu,
+    // Kannada, Gujarati and Gurmukhi.
+    &[
+        "Noto Sans Malayalam",
+        "Nirmala UI",
+        "Kartika",
+        "Malayalam Sangam MN",
+        "Malayalam MN",
+        "Lohit Malayalam",
+    ],
+    &[
+        "Noto Sans Tamil",
+        "Nirmala UI",
+        "Latha",
+        "Tamil Sangam MN",
+        "Tamil MN",
+        "Lohit Tamil",
+    ],
+    &[
+        "Noto Sans Telugu",
+        "Nirmala UI",
+        "Gautami",
+        "Telugu Sangam MN",
+        "Telugu MN",
+        "Lohit Telugu",
+    ],
+    &[
+        "Noto Sans Kannada",
+        "Nirmala UI",
+        "Tunga",
+        "Kannada Sangam MN",
+        "Kannada MN",
+        "Lohit Kannada",
+    ],
+    &[
+        "Noto Sans Gujarati",
+        "Nirmala UI",
+        "Shruti",
+        "Gujarati Sangam MN",
+        "Gujarati MT",
+        "Lohit Gujarati",
+    ],
+    &[
+        "Noto Sans Gurmukhi",
+        "Nirmala UI",
+        "Raavi",
+        "Gurmukhi Sangam MN",
+        "Gurmukhi MN",
+        "Lohit Gurmukhi",
+    ],
 ];
 
 /// The first family of the CJK group the interface language `code` reads
@@ -1336,6 +1387,25 @@ mod theme_tests {
             .find(|g| g.first() == Some(&"Noto Sans Thai"));
         for family in ["Leelawadee UI", "Tahoma", "Thonburi", "Loma"] {
             assert!(thai.is_some_and(|g| g.contains(&family)), "{family}");
+        }
+    }
+
+    /// Names typed in Malayalam and the other scripts of India have an
+    /// interface font on every system (#4277).
+    #[test]
+    fn the_scripts_of_india_have_interface_fonts() {
+        for (lead, families) in [
+            ("Noto Sans Malayalam", ["Nirmala UI", "Malayalam Sangam MN", "Lohit Malayalam"]),
+            ("Noto Sans Tamil", ["Nirmala UI", "Tamil Sangam MN", "Lohit Tamil"]),
+            ("Noto Sans Telugu", ["Nirmala UI", "Telugu Sangam MN", "Lohit Telugu"]),
+            ("Noto Sans Kannada", ["Nirmala UI", "Kannada Sangam MN", "Lohit Kannada"]),
+            ("Noto Sans Gujarati", ["Nirmala UI", "Gujarati Sangam MN", "Lohit Gujarati"]),
+            ("Noto Sans Gurmukhi", ["Nirmala UI", "Gurmukhi Sangam MN", "Lohit Gurmukhi"]),
+        ] {
+            let group = UI_SCRIPT_FONTS.iter().find(|g| g.first() == Some(&lead));
+            for family in families {
+                assert!(group.is_some_and(|g| g.contains(&family)), "{lead}: {family}");
+            }
         }
     }
 
