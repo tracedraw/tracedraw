@@ -658,17 +658,46 @@ pub fn objects(app: &mut App, ui: &mut Ui) {
                     act.goto = Some(page.id);
                 }
             }
-            resp.context_menu(|ui| {
-                if !current && ui.ibutton("docker.go_to_page").clicked() {
-                    act.goto = Some(page.id);
-                    ui.close();
-                }
-                if ui.ibutton("docker.rename").clicked() {
-                    act.rename_page = Some(page.name.clone());
-                    if !current {
-                        act.goto = Some(page.id);
+            filter_page_row_popup(
+                egui::Popup::context_menu(&resp),
+                &app.settings.context_menus,
+                current,
+            )
+            .show(|ui| {
+                use crate::ui::context_menus::show_item;
+                let _scope = crate::ui::context_menus::Scope::new(
+                    &app.settings.context_menus,
+                    "objects_page",
+                );
+                for menu_key in crate::ui::context_menu_filter::ordered_keys(&[
+                    "docker.go_to_page",
+                    "docker.rename",
+                ])
+                .iter()
+                .copied()
+                {
+                    match menu_key {
+                        "docker.go_to_page" => {
+                            if !current
+                                && show_item(ui, "docker.go_to_page")
+                                && ui.ibutton("docker.go_to_page").clicked()
+                            {
+                                act.goto = Some(page.id);
+                                ui.close();
+                            }
+                        }
+                        "docker.rename"
+                            if show_item(ui, "docker.rename")
+                                && ui.ibutton("docker.rename").clicked() =>
+                        {
+                            act.rename_page = Some(page.name.clone());
+                            if !current {
+                                act.goto = Some(page.id);
+                            }
+                            ui.close();
+                        }
+                        _ => {}
                     }
-                    ui.close();
                 }
             });
             if page_open {
@@ -962,13 +991,23 @@ fn layer_rows(
         act.goto = elsewhere;
         act.pick = Some(layer.id);
     }
-    resp.context_menu(|ui| {
-        if ui.ibutton("docker.rename").clicked() {
-            act.rename_layer = Some((layer.id, layer.name.clone()));
-            ui.close();
-        }
-        // A new layer beside this one: on its page, or a master layer
-        // showing on the same pages.
+    crate::ui::context_menus::filter_popup(
+        egui::Popup::context_menu(&resp),
+        &app.settings.context_menus,
+        "objects_layer",
+    )
+    .show(|ui| {
+        use crate::ui::context_menus::show_item;
+        let _scope =
+            crate::ui::context_menus::Scope::new(&app.settings.context_menus, "objects_layer");
+        let new_key = if at.master && layer.page_range.is_some() {
+            "docker.new_range_layer"
+        } else if at.master {
+            "docker.new_master_layer_short"
+        } else {
+            "docker.new_layer"
+        };
+        // With several layers picked, the commands act on them all (#3966).
         let aimed = target_layers(app, layer.id);
         let has = aimed
             .iter()
@@ -978,37 +1017,6 @@ fn layer_rows(
                 .layer(*id)
                 .is_ok_and(|l| !l.shapes.is_empty() && !l.locked)
         });
-        let new_key = if at.master && layer.page_range.is_some() {
-            "docker.new_range_layer"
-        } else if at.master {
-            "docker.new_master_layer_short"
-        } else {
-            "docker.new_layer"
-        };
-        if ui.ibutton(new_key).clicked() {
-            if at.master {
-                if layer.page_range.is_some() {
-                    act.new_range = true;
-                } else {
-                    act.new_master = Some(layer.scope);
-                }
-            } else {
-                act.goto = elsewhere;
-                act.new_layer = true;
-            }
-            ui.close();
-        }
-        if ui
-            .add_enabled(has, crate::ui::btn_icons::Ib::new("docker.select_layer_objects"))
-            .clicked()
-        {
-            act.goto = elsewhere;
-            act.select_layer = Some(layer.id);
-            ui.close();
-        }
-        // The layer's objects to the clipboard, or the clipboard's onto
-        // the layer (#1992).
-        ui.separator();
         let range_available = layer
             .page_range
             .as_ref()
@@ -1016,158 +1024,321 @@ fn layer_rows(
         let range_visible = layer.page_range.is_none() || layer.visible;
         let can_paste =
             app.clipboard.is_some() && !layer.locked && range_available && range_visible;
-        for (what, key, on) in [
-            (LayerClip::Cut, "menu.edit.cut", cuttable),
-            (LayerClip::Copy, "menu.edit.copy", has),
-            (LayerClip::Paste, "menu.edit.paste", can_paste),
-        ] {
-            let action = ui.add_enabled(on, crate::ui::btn_icons::Ib::new(key));
-            let action = if what == LayerClip::Paste && !range_available {
-                action.rich_disabled_tip(tr("docker.range_no_current_page"))
-            } else {
-                action
-            };
-            if action.clicked() {
-                act.goto = elsewhere;
-                act.layer_clip = Some((layer.id, what));
-                ui.close();
-            }
-        }
-        ui.separator();
-        let mut visible = layer.visible;
-        if ui.checkbox(&mut visible, tr("docker.show_hide")).clicked() {
-            act.visible = Some((layer.id, visible));
-            ui.close();
-        }
-        let mut printable = layer.printable;
-        if ui
-            .checkbox(&mut printable, tr("docker.print_layer"))
-            .clicked()
+        for key in crate::ui::context_menu_filter::ordered_keys(&[
+            "docker.rename",
+            new_key,
+            "docker.select_layer_objects",
+            "menu.edit.cut",
+            "menu.edit.copy",
+            "menu.edit.paste",
+            "docker.show_hide",
+            "docker.print_layer",
+            "docker.lock_layer",
+            "docker.edit_across_layers",
+            "docker.move_up",
+            "docker.move_down",
+            "docker.show_on",
+            "docker.master_in_front",
+            "docker.desktop_takes_beside_page",
+            "docker.master_to_page",
+            "docker.layer_to_master",
+            "docker.move_to_page",
+            "docker.layer_properties",
+            "docker.delete_layer",
+        ])
+        .iter()
+        .copied()
         {
-            act.printable = Some((layer.id, printable));
-            ui.close();
-        }
-        let mut locked = layer.locked;
-        if ui.checkbox(&mut locked, tr("docker.lock_layer")).clicked() {
-            act.locked = Some((layer.id, locked));
-            ui.close();
-        }
-        // Off: a click, a marquee and Select All take the objects of the
-        // active layer alone (#3276).
-        let mut across = app.settings.edit_across_layers;
-        if ui
-            .checkbox(&mut across, tr("docker.edit_across_layers"))
-            .rich_tip(crate::ui::tips::pair(
-                "docker.edit_across_layers",
-                "docker.edit_across_layers_tip",
-            ))
-            .clicked()
-        {
-            act.across = Some(across);
-            ui.close();
-        }
-        ui.separator();
-        if ui
-            .add_enabled(
-                at.index + 1 < at.count,
-                crate::ui::btn_icons::Ib::new("docker.move_up"),
-            )
-            .clicked()
-        {
-            act.reorder = Some((layer.id, at.index + 1));
-            ui.close();
-        }
-        if ui
-            .add_enabled(at.index > 0, crate::ui::btn_icons::Ib::new("docker.move_down"))
-            .clicked()
-        {
-            act.reorder = Some((layer.id, at.index.saturating_sub(1)));
-            ui.close();
-        }
-        if at.master {
-            ui.imenu_button("docker.show_on", |ui| {
-                for scope in [MasterScope::All, MasterScope::Odd, MasterScope::Even] {
-                    if ui
-                        .selectable_label(
-                            layer.page_range.is_none() && layer.scope == scope,
-                            tr(scope_key(scope)),
-                        )
-                        .clicked()
+            match key {
+                "docker.rename" => {
+                    if show_item(ui, "docker.rename") && ui.ibutton("docker.rename").clicked() {
+                        act.rename_layer = Some((layer.id, layer.name.clone()));
+                        ui.close();
+                    }
+                }
+                candidate if candidate == new_key => {
+                    if show_item(ui, new_key) && ui.ibutton(new_key).clicked() {
+                        if at.master && layer.page_range.is_some() {
+                            act.new_range = true;
+                        } else if at.master {
+                            act.new_master = Some(layer.scope);
+                        } else {
+                            act.goto = elsewhere;
+                            act.new_layer = true;
+                        }
+                        ui.close();
+                    }
+                }
+                "docker.select_layer_objects" => {
+                    if show_item(ui, "docker.select_layer_objects")
+                        && ui
+                            .add_enabled(
+                                has,
+                                crate::ui::btn_icons::Ib::new("docker.select_layer_objects"),
+                            )
+                            .clicked()
                     {
-                        act.scope = Some((layer.id, scope));
+                        act.goto = elsewhere;
+                        act.select_layer = Some(layer.id);
                         ui.close();
                     }
                 }
-                if !layer.desktop
-                    && ui
-                        .selectable_label(layer.page_range.is_some(), tr("docker.range_pages"))
-                        .clicked()
-                {
-                    act.edit_range = Some(layer.id);
-                    ui.close();
+                "menu.edit.cut" | "menu.edit.copy" | "menu.edit.paste" => {
+                    if key == "menu.edit.cut" {
+                        crate::ui::menus::sep(ui);
+                    }
+                    if let Some((what, _, on)) = [
+                        (LayerClip::Cut, "menu.edit.cut", cuttable),
+                        (LayerClip::Copy, "menu.edit.copy", has),
+                        (LayerClip::Paste, "menu.edit.paste", can_paste),
+                    ]
+                    .into_iter()
+                    .find(|(_, candidate, _)| *candidate == key)
+                    {
+                        if !show_item(ui, key) {
+                            continue;
+                        }
+                        let action = ui.add_enabled(on, crate::ui::btn_icons::Ib::new(key));
+                        let action = if what == LayerClip::Paste && !range_available {
+                            action.rich_disabled_tip(tr("docker.range_no_current_page"))
+                        } else {
+                            action
+                        };
+                        if action.clicked() {
+                            act.goto = elsewhere;
+                            act.layer_clip = Some((layer.id, what));
+                            ui.close();
+                        }
+                    }
                 }
-            });
-            let mut front = layer.in_front;
-            if ui
-                .checkbox(&mut front, tr("docker.master_in_front"))
-                .clicked()
-            {
-                act.in_front = Some((layer.id, front));
-                ui.close();
-            }
-            if layer.desktop {
-                let mut takes = app.settings.desktop_takes_objects_beside_page;
-                if ui
-                    .checkbox(&mut takes, tr("docker.desktop_takes_beside_page"))
-                    .on_hover_text(tr("docker.desktop_takes_beside_page_tip"))
-                    .clicked()
-                {
-                    act.desktop_takes = Some(takes);
-                    ui.close();
-                }
-            }
-            // Its objects become a layer of the page shown (#1477).
-            if ui.ibutton("docker.master_to_page").clicked() {
-                act.master_to_page = Some(layer.id);
-                ui.close();
-            }
-        } else if ui.ibutton("docker.layer_to_master").clicked() {
-            act.layer_to_master = Some(layer.id);
-            ui.close();
-        }
-        // To another page, with its objects and look (#1477).
-        let others: Vec<(PageId, String)> = app
-            .doc()
-            .pages
-            .iter()
-            .filter(|p| Some(p.id) != at.page)
-            .map(|p| (p.id, p.name.clone()))
-            .collect();
-        if !others.is_empty() {
-            ui.imenu_button("docker.move_to_page", |ui| {
-                for (page, name) in &others {
-                    if ui.button(name).clicked() {
-                        act.layer_to_page = Some((layer.id, *page));
+                "docker.show_hide" => {
+                    crate::ui::menus::sep(ui);
+                    let mut visible = layer.visible;
+                    if show_item(ui, "docker.show_hide")
+                        && ui.checkbox(&mut visible, tr("docker.show_hide")).clicked()
+                    {
+                        act.visible = Some((layer.id, visible));
                         ui.close();
                     }
                 }
-            });
-        }
-        ui.separator();
-        if ui.ibutton("docker.layer_properties").clicked() {
-            act.layer_props = Some(layer.id);
-            ui.close();
-        }
-        ui.separator();
-        if ui
-            .add_enabled(
-                !deletable_layers_from(app.doc(), &target_layers(app, layer.id)).is_empty(),
-                crate::ui::btn_icons::Ib::new("docker.delete_layer"),
-            )
-            .clicked()
-        {
-            act.delete_layer = Some(layer.id);
-            ui.close();
+                "docker.print_layer" => {
+                    let mut printable = layer.printable;
+                    if show_item(ui, "docker.print_layer")
+                        && ui
+                            .checkbox(&mut printable, tr("docker.print_layer"))
+                            .clicked()
+                    {
+                        act.printable = Some((layer.id, printable));
+                        ui.close();
+                    }
+                }
+                "docker.lock_layer" => {
+                    let mut locked = layer.locked;
+                    if show_item(ui, "docker.lock_layer")
+                        && ui.checkbox(&mut locked, tr("docker.lock_layer")).clicked()
+                    {
+                        act.locked = Some((layer.id, locked));
+                        ui.close();
+                    }
+                }
+                "docker.edit_across_layers" => {
+                    let mut across = app.settings.edit_across_layers;
+                    if show_item(ui, key)
+                        && ui
+                            .checkbox(&mut across, tr(key))
+                            .rich_tip(crate::ui::tips::pair(
+                                "docker.edit_across_layers",
+                                "docker.edit_across_layers_tip",
+                            ))
+                            .clicked()
+                    {
+                        act.across = Some(across);
+                        ui.close();
+                    }
+                }
+                "docker.move_up" => {
+                    crate::ui::menus::sep(ui);
+                    if show_item(ui, "docker.move_up")
+                        && ui
+                            .add_enabled(
+                                at.index + 1 < at.count,
+                                crate::ui::btn_icons::Ib::new("docker.move_up"),
+                            )
+                            .clicked()
+                    {
+                        act.reorder = Some((layer.id, at.index + 1));
+                        ui.close();
+                    }
+                }
+                "docker.move_down" => {
+                    if show_item(ui, "docker.move_down")
+                        && ui
+                            .add_enabled(
+                                at.index > 0,
+                                crate::ui::btn_icons::Ib::new("docker.move_down"),
+                            )
+                            .clicked()
+                    {
+                        act.reorder = Some((layer.id, at.index.saturating_sub(1)));
+                        ui.close();
+                    }
+                }
+                "docker.show_on" => {
+                    if at.master {
+                        let has_scope = [
+                            "options.scope_all",
+                            "options.scope_odd",
+                            "options.scope_even",
+                        ]
+                        .iter()
+                        .any(|key| app.settings.context_menus.is_visible("objects_layer", key))
+                            || (!layer.desktop
+                                && app
+                                    .settings
+                                    .context_menus
+                                    .is_visible("objects_layer", "docker.range_pages"));
+                        if has_scope && show_item(ui, "docker.show_on") {
+                            ui.imenu_button("docker.show_on", |ui| {
+                                let _branch =
+                                    crate::ui::context_menu_filter::Branch::new("docker.show_on");
+                                let scopes =
+                                    [MasterScope::All, MasterScope::Odd, MasterScope::Even];
+                                let keys = scopes.map(scope_key);
+                                for key in crate::ui::context_menu_filter::ordered_keys(&keys)
+                                    .iter()
+                                    .copied()
+                                {
+                                    let Some(scope) =
+                                        scopes.into_iter().find(|scope| scope_key(*scope) == key)
+                                    else {
+                                        continue;
+                                    };
+                                    if show_item(ui, scope_key(scope))
+                                        && ui
+                                            .selectable_label(
+                                                layer.page_range.is_none() && layer.scope == scope,
+                                                tr(scope_key(scope)),
+                                            )
+                                            .clicked()
+                                    {
+                                        act.scope = Some((layer.id, scope));
+                                        ui.close();
+                                    }
+                                }
+                                if !layer.desktop
+                                    && show_item(ui, "docker.range_pages")
+                                    && ui
+                                        .selectable_label(
+                                            layer.page_range.is_some(),
+                                            tr("docker.range_pages"),
+                                        )
+                                        .clicked()
+                                {
+                                    act.edit_range = Some(layer.id);
+                                    ui.close();
+                                }
+                            });
+                        }
+                    }
+                }
+                "docker.master_in_front" => {
+                    if at.master {
+                        let mut front = layer.in_front;
+                        if show_item(ui, "docker.master_in_front")
+                            && ui
+                                .checkbox(&mut front, tr("docker.master_in_front"))
+                                .clicked()
+                        {
+                            act.in_front = Some((layer.id, front));
+                            ui.close();
+                        }
+                    }
+                }
+                "docker.desktop_takes_beside_page" => {
+                    if at.master && layer.desktop && show_item(ui, key) {
+                        let mut takes = app.settings.desktop_takes_objects_beside_page;
+                        if ui
+                            .checkbox(&mut takes, tr(key))
+                            .on_hover_text(tr("docker.desktop_takes_beside_page_tip"))
+                            .clicked()
+                        {
+                            act.desktop_takes = Some(takes);
+                            ui.close();
+                        }
+                    }
+                }
+                "docker.master_to_page" => {
+                    if at.master
+                        && show_item(ui, "docker.master_to_page")
+                        && ui.ibutton("docker.master_to_page").clicked()
+                    {
+                        act.master_to_page = Some(layer.id);
+                        ui.close();
+                    }
+                }
+                "docker.layer_to_master" => {
+                    if !at.master
+                        && show_item(ui, "docker.layer_to_master")
+                        && ui.ibutton("docker.layer_to_master").clicked()
+                    {
+                        act.layer_to_master = Some(layer.id);
+                        ui.close();
+                    }
+                }
+                "docker.move_to_page" => {
+                    // To another page, with its objects and look (#1477).
+                    let others: Vec<(PageId, String)> = app
+                        .doc()
+                        .pages
+                        .iter()
+                        .filter(|p| Some(p.id) != at.page)
+                        .map(|p| (p.id, p.name.clone()))
+                        .collect();
+                    if !others.is_empty() && show_item(ui, "docker.move_to_page") {
+                        ui.imenu_button("docker.move_to_page", |ui| {
+                            let _branch =
+                                crate::ui::context_menu_filter::Branch::new("docker.move_to_page");
+                            for (page, name) in &others {
+                                if crate::ui::menus::item_label_keyed(
+                                    ui,
+                                    "docker.move_to_page",
+                                    name,
+                                    "",
+                                    true,
+                                ) {
+                                    act.layer_to_page = Some((layer.id, *page));
+                                    ui.close();
+                                }
+                            }
+                        });
+                    }
+                }
+                "docker.layer_properties" => {
+                    crate::ui::menus::sep(ui);
+                    if show_item(ui, "docker.layer_properties")
+                        && ui.ibutton("docker.layer_properties").clicked()
+                    {
+                        act.layer_props = Some(layer.id);
+                        ui.close();
+                    }
+                }
+                "docker.delete_layer" => {
+                    crate::ui::menus::sep(ui);
+                    if show_item(ui, "docker.delete_layer")
+                        && ui
+                            .add_enabled(
+                                !deletable_layers_from(app.doc(), &target_layers(app, layer.id))
+                                    .is_empty(),
+                                crate::ui::btn_icons::Ib::new("docker.delete_layer"),
+                            )
+                            .clicked()
+                    {
+                        act.delete_layer = Some(layer.id);
+                        ui.close();
+                    }
+                }
+                _ => {}
+            }
         }
     });
     if open {
@@ -1294,55 +1465,72 @@ fn layer_targets(app: &App) -> Vec<(Option<String>, LayerId, String)> {
 }
 
 /// The Objects docker's own commands at the top of an object row's
-/// context menu (#2601): Rename, and Move to Layer for the selection
+/// context menu (#2601): Rename, Move to Layer and Copy to Layer for the selection
 /// (or the object when it is not selected).
+#[cfg(test)]
 pub(crate) fn row_menu_items(app: &mut App, ui: &mut Ui, id: ShapeId, close: &mut bool) {
+    for key in crate::ui::context_menu_filter::ordered_keys(&[
+        "docker.rename",
+        "docker.move_to_layer",
+        "docker.copy_to_layer",
+    ])
+    .iter()
+    .copied()
+    {
+        row_menu_item(app, ui, id, close, key);
+    }
+}
+
+/// Draw one docker action so the shared object menu can order every root row.
+pub(crate) fn row_menu_item(app: &mut App, ui: &mut Ui, id: ShapeId, close: &mut bool, key: &str) {
     use crate::ui::menus::{item, sub};
-    let Some(name) = app.doc().find_shape(id).map(object_label) else {
-        return;
-    };
-    let ids: Vec<ShapeId> = if app.selection.contains(&id) {
-        app.selection.clone()
-    } else {
-        vec![id]
-    };
-    if item(ui, "docker.rename", "", true) {
-        *close = true;
-        app.dialog = crate::ui::dialogs::Dialog::RenameObject { shape: id, name };
-    }
-    let own = layer_holding(app, id);
-    let targets = layer_targets(app);
-    let mut to = None;
-    sub(ui, "docker.move_to_layer", |ui| {
-        if let Some(l) = layer_list(ui, &targets, |l| own != Some(l)) {
-            to = Some(l);
+    match key {
+        "docker.rename" => {
+            let Some(name) = app.doc().find_shape(id).map(object_label) else {
+                return;
+            };
+            if item(ui, "docker.rename", "", true) {
+                *close = true;
+                app.dialog = crate::ui::dialogs::Dialog::RenameObject { shape: id, name };
+            }
         }
-    });
-    // Copies on another layer, the originals staying where they are
-    // (#3277).
-    let mut copy_to = None;
-    sub(ui, "docker.copy_to_layer", |ui| {
-        if let Some(l) = layer_list(ui, &targets, |_| true) {
-            copy_to = Some(l);
+        "docker.move_to_layer" | "docker.copy_to_layer" => {
+            let ids: Vec<ShapeId> = if app.selection.contains(&id) {
+                app.selection.clone()
+            } else {
+                vec![id]
+            };
+            let own = layer_holding(app, id);
+            let targets = layer_targets(app);
+            let mut to = None;
+            let copying = key == "docker.copy_to_layer";
+            sub(ui, key, |ui| {
+                to = layer_list(ui, key, &targets, |layer| copying || own != Some(layer));
+            });
+            if let Some(layer) = to {
+                *close = true;
+                if copying {
+                    copy_to_layer(app, &ids, layer);
+                } else {
+                    move_to_layer(app, &ids, layer);
+                }
+            }
         }
-    });
-    if let Some(layer) = to {
-        *close = true;
-        move_to_layer(app, &ids, layer);
-    }
-    if let Some(layer) = copy_to {
-        *close = true;
-        copy_to_layer(app, &ids, layer);
+        _ => {}
     }
 }
 
 /// The layers of [`layer_targets`] under their page names; the one
 /// clicked, if any. `enabled` greys out the layers that cannot be picked.
-pub(crate) fn layer_list(
+fn layer_list(
     ui: &mut Ui,
+    key: &str,
     targets: &[(Option<String>, LayerId, String)],
     enabled: impl Fn(LayerId) -> bool,
 ) -> Option<LayerId> {
+    if !crate::ui::context_menus::show_item(ui, key) {
+        return None;
+    }
     let mut picked = None;
     let mut heading: Option<Option<String>> = None;
     for (page, layer, name) in targets {
@@ -1356,7 +1544,7 @@ pub(crate) fn layer_list(
             );
             heading = Some(page.clone());
         }
-        if crate::ui::menus::item_label(ui, name, "", enabled(*layer)) {
+        if crate::ui::menus::item_label_keyed(ui, key, name, "", enabled(*layer)) {
             picked = Some(*layer);
         }
     }
@@ -1515,7 +1703,13 @@ fn guides_row(
         ui.data_mut(|d| d.insert_temp(open_id, true));
     }
     if !guides.is_empty() {
-        let (ar, a) = hot(ui, rect, rect.left() + 3.0 + INDENT, 14.0, base.with("arrow"));
+        let (ar, a) = hot(
+            ui,
+            rect,
+            rect.left() + 3.0 + INDENT,
+            14.0,
+            base.with("arrow"),
+        );
         let a = a.rich_tip_with(|| crate::ui::tips::keyed("docker.expand_row"));
         paint_arrow(ui, ar, open);
         if a.clicked() {
@@ -1633,34 +1827,14 @@ fn guide_rows(
         }
         // Right-click: Delete, Cut, Copy, Paste, Lock or Unlock, Hide or
         // Show (#3012).
-        resp.context_menu(|ui| {
-            let can_paste = app.clipboard.as_ref().is_some_and(|c| !c.guides.is_empty());
-            let lock_key = if g.locked {
-                "guides.unlock"
-            } else {
-                "guides.lock"
-            };
-            let hide_key = if g.hidden {
-                "guides.show"
-            } else {
-                "menu.object.hide"
-            };
-            for (key, enabled, cmd) in [
-                ("menu.edit.delete", !g.locked, GuideCmd::Delete),
-                ("menu.edit.cut", !g.locked, GuideCmd::Cut),
-                ("menu.edit.copy", true, GuideCmd::Copy),
-                ("menu.edit.paste", can_paste, GuideCmd::Paste),
-                (lock_key, true, GuideCmd::Lock(!g.locked)),
-                (hide_key, true, GuideCmd::Hide(!g.hidden)),
-                ("docker.rename", true, GuideCmd::Rename),
-            ] {
-                if ui
-                    .add_enabled(enabled, crate::ui::btn_icons::Ib::new(key))
-                    .clicked()
-                {
-                    done = Some(GuideRowAct::Menu(cmd));
-                    ui.close();
-                }
+        crate::ui::context_menus::filter_popup(
+            egui::Popup::context_menu(&resp),
+            &app.settings.context_menus,
+            "objects_guide",
+        )
+        .show(|ui| {
+            if let Some(cmd) = guide_menu_items(app, ui, g) {
+                done = Some(GuideRowAct::Menu(cmd));
             }
         });
         if let Some(d) = done {
@@ -1670,6 +1844,63 @@ fn guide_rows(
             }
         }
     }
+}
+
+/// The row keeps its existing commands; preferences only choose their visibility
+/// and sibling order. Conditional lock and visibility actions use their own keys.
+fn guide_menu_items(
+    app: &App,
+    ui: &mut Ui,
+    guide: &tracedraw_core::document::Guide,
+) -> Option<GuideCmd> {
+    let _scope = crate::ui::context_menus::Scope::new(&app.settings.context_menus, "objects_guide");
+    let can_paste = app.clipboard.as_ref().is_some_and(|c| !c.guides.is_empty());
+    let lock_key = if guide.locked {
+        "guides.unlock"
+    } else {
+        "guides.lock"
+    };
+    let hide_key = if guide.hidden {
+        "guides.show"
+    } else {
+        "menu.object.hide"
+    };
+    let actions = [
+        ("menu.edit.delete", !guide.locked, GuideCmd::Delete),
+        ("menu.edit.cut", !guide.locked, GuideCmd::Cut),
+        ("menu.edit.copy", true, GuideCmd::Copy),
+        ("menu.edit.paste", can_paste, GuideCmd::Paste),
+        (lock_key, true, GuideCmd::Lock(!guide.locked)),
+        (hide_key, true, GuideCmd::Hide(!guide.hidden)),
+        ("docker.rename", true, GuideCmd::Rename),
+    ];
+    let keys = actions.map(|(key, _, _)| key);
+    let mut chosen = None;
+    for key in crate::ui::context_menu_filter::ordered_keys(&keys)
+        .iter()
+        .copied()
+    {
+        let Some(&(_, enabled, cmd)) = actions.iter().find(|(candidate, _, _)| *candidate == key)
+        else {
+            continue;
+        };
+        if !crate::ui::context_menus::show_item(ui, key) {
+            continue;
+        }
+        let response = ui.add_enabled(enabled, crate::ui::btn_icons::Ib::new(key));
+        #[cfg(test)]
+        ui.ctx().data_mut(|data| {
+            data.insert_temp(
+                egui::Id::new(("objects_guide_menu_row", key)),
+                response.rect,
+            );
+        });
+        if response.clicked() {
+            chosen = Some(cmd);
+            ui.close();
+        }
+    }
+    chosen
 }
 
 /// A command of a guideline row's menu (#3012), on the selected
@@ -2073,25 +2304,64 @@ fn bottom_bar(app: &mut App, ui: &mut Ui) {
     paint_bin(p, icon(delete_r), can_delete);
     let mut scoped = None;
     let mut new_range = false;
-    master.context_menu(|ui| {
-        for (scope, key) in [
+    crate::ui::context_menus::filter_popup(
+        egui::Popup::context_menu(&master),
+        &app.settings.context_menus,
+        "objects_new_master",
+    )
+    .show(|ui| {
+        use crate::ui::context_menus::show_item;
+        let _scope =
+            crate::ui::context_menus::Scope::new(&app.settings.context_menus, "objects_new_master");
+        const NEW_LAYERS: [(MasterScope, &str); 3] = [
             (MasterScope::All, "options.new_master_all"),
             (MasterScope::Odd, "options.new_master_odd"),
             (MasterScope::Even, "options.new_master_even"),
-        ] {
-            if ui.ibutton(key).clicked() {
-                scoped = Some(scope);
-                ui.close();
+        ];
+        for key in crate::ui::context_menu_filter::ordered_keys(&[
+            "options.new_master_all",
+            "options.new_master_odd",
+            "options.new_master_even",
+            "docker.new_range_layer",
+            "docker.master_in_front",
+        ])
+        .iter()
+        .copied()
+        {
+            if let Some((scope, _)) = NEW_LAYERS
+                .iter()
+                .copied()
+                .find(|(_, candidate)| *candidate == key)
+            {
+                if show_item(ui, key) && ui.ibutton(key).clicked() {
+                    scoped = Some(scope);
+                    ui.close();
+                }
+            } else if key == "docker.new_range_layer" {
+                if show_item(ui, key) && ui.ibutton(key).clicked() {
+                    new_range = true;
+                    ui.close();
+                }
+            } else {
+                // Which kinds of master layer are drawn over the page's own
+                // layers: the ones the drawing has and the new ones (#1132).
+                crate::ui::menus::sep(ui);
+                let has_scope = [
+                    "options.scope_all",
+                    "options.scope_odd",
+                    "options.scope_even",
+                ]
+                .iter()
+                .any(|key| {
+                    app.settings
+                        .context_menus
+                        .is_visible("objects_new_master", key)
+                });
+                if has_scope && show_item(ui, "docker.master_in_front") {
+                    master_front_choices(app, ui);
+                }
             }
         }
-        if ui.ibutton("docker.new_range_layer").clicked() {
-            new_range = true;
-            ui.close();
-        }
-        // Which kinds of master layer are drawn over the page's own
-        // layers: the ones the drawing has and the new ones (#1132).
-        ui.separator();
-        master_front_choices(app, ui);
     });
     if new.clicked() {
         new_layer(app);
@@ -2419,22 +2689,36 @@ pub fn set_master_front(app: &mut App, scope: MasterScope, front: bool) {
 /// checkboxes (the New Master Layer menu and Options > Page).
 pub fn master_front_choices(app: &mut App, ui: &mut Ui) {
     ui.label(egui::RichText::new(tr("docker.master_in_front")).strong());
-    for (scope, key) in [
+    let _branch = crate::ui::context_menu_filter::Branch::new("docker.master_in_front");
+    let scopes = [
         (MasterScope::All, "options.scope_all"),
         (MasterScope::Odd, "options.scope_odd"),
         (MasterScope::Even, "options.scope_even"),
-    ] {
+    ];
+    let keys = scopes.map(|(_, key)| key);
+    for key in crate::ui::context_menu_filter::ordered_keys(&keys)
+        .iter()
+        .copied()
+    {
+        let Some((scope, _)) = scopes
+            .iter()
+            .copied()
+            .find(|(_, candidate)| *candidate == key)
+        else {
+            continue;
+        };
         let mut on = master_front_default(app, scope);
-        if ui
-            .checkbox(&mut on, tr(key))
-            .rich_tip_with(|| {
-                format!(
-                    "{}\n{}",
-                    tr("docker.master_in_front"),
-                    tr(&format!("{key}_tip"))
-                )
-            })
-            .clicked()
+        if crate::ui::context_menus::show_item(ui, key)
+            && ui
+                .checkbox(&mut on, tr(key))
+                .rich_tip_with(|| {
+                    format!(
+                        "{}\n{}",
+                        tr("docker.master_in_front"),
+                        tr(&format!("{key}_tip"))
+                    )
+                })
+                .clicked()
         {
             set_master_front(app, scope, on);
         }
@@ -3581,7 +3865,8 @@ fn drag_rows(
         .data(|d| d.get_temp::<(ShapeId, Pos2, Option<PageId>)>(hold_id));
     let Some(dragged) = ui.ctx().data(|d| d.get_temp::<ShapeId>(id)) else {
         if !down {
-            ui.ctx().data_mut(|d| d.remove::<(ShapeId, Pos2, Option<PageId>)>(hold_id));
+            ui.ctx()
+                .data_mut(|d| d.remove::<(ShapeId, Pos2, Option<PageId>)>(hold_id));
             return held.filter(|_| released);
         }
         return None;
@@ -4331,7 +4616,8 @@ pub(crate) mod tests {
         let base = egui::Id::new("objects_guides");
         run(&mut app, Vec::new());
         assert!(
-            ctx.read_response(base.with(("guide", 0)).with("eye")).is_none(),
+            ctx.read_response(base.with(("guide", 0)).with("eye"))
+                .is_none(),
             "closed at first"
         );
         click(&mut app, base.with("arrow"));
@@ -7032,5 +7318,337 @@ mod range_layer_tests {
             assert_eq!(app.doc().layer(destination).expect("layer").shapes.len(), 1);
             assert!(app.doc().layer(layer).is_err());
         }
+    }
+}
+
+/// A current page omits Go to Page instead of showing it disabled.
+fn filter_page_row_popup<'a>(
+    popup: egui::Popup<'a>,
+    preferences: &crate::ui::context_menus::Preferences,
+    current: bool,
+) -> egui::Popup<'a> {
+    let visible = preferences.is_visible("objects_page", "docker.rename")
+        || !current && preferences.is_visible("objects_page", "docker.go_to_page");
+    if crate::ui::menus::invoke::active() || visible {
+        popup
+    } else {
+        egui::Popup::close_id(popup.ctx(), popup.get_id());
+        popup.open(false)
+    }
+}
+
+#[cfg(test)]
+mod conditional_page_popup_tests {
+    use super::*;
+
+    fn popup_drawn(preferences: &crate::ui::context_menus::Preferences, current: bool) -> bool {
+        let context = crate::theme::ui_context();
+        let id = egui::Id::new("conditional_objects_page_popup");
+        egui::Popup::open_id(&context, id);
+        let mut drawn = false;
+        let mut output = context.run_ui(Default::default(), |ui| {
+            let popup = egui::Popup::new(
+                id,
+                context.clone(),
+                egui::PopupAnchor::Position(egui::pos2(20.0, 20.0)),
+                ui.layer_id(),
+            )
+            .open_memory(None);
+            drawn = filter_page_row_popup(popup, preferences, current)
+                .show(|ui| {
+                    let _ = ui.add_enabled(false, egui::Button::new("Visible row"));
+                })
+                .is_some();
+        });
+        output.textures_delta.clear();
+        assert_eq!(egui::Popup::is_id_open(&context, id), drawn);
+        drawn
+    }
+
+    #[test]
+    fn hidden_rename_closes_the_current_page_popup_but_keeps_other_pages_available() {
+        let mut preferences = crate::ui::context_menus::Preferences::default();
+        assert!(popup_drawn(&preferences, true));
+        preferences.set_visible("objects_page", "docker.rename", false);
+        assert!(!popup_drawn(&preferences, true));
+        assert!(popup_drawn(&preferences, false));
+        preferences.set_visible("objects_page", "docker.go_to_page", false);
+        assert!(!popup_drawn(&preferences, false));
+        preferences.set_visible("objects_page", "docker.rename", true);
+        assert!(popup_drawn(&preferences, true));
+    }
+}
+
+#[cfg(test)]
+mod context_menu_settings_tests {
+    use super::*;
+
+    #[test]
+    fn hiding_the_object_move_group_preserves_direct_layer_actions() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        let id = app
+            .new_shape(ShapeKind::Rect {
+                rect: tracedraw_core::Rect::new(0.0, 0.0, 10.0, 10.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("object");
+        let own = layer_holding(&app, id);
+        new_layer(&mut app);
+        let destination = app.active_layer();
+        app.select(vec![id]);
+        app.settings
+            .context_menus
+            .set_visible("objects_object", "docker.move_to_layer", false);
+        let run = |app: &mut App, scoped: bool| {
+            crate::ui::menus::replay::start(1);
+            let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+                let _scope = scoped.then(|| {
+                    crate::ui::context_menus::Scope::new(
+                        &app.settings.context_menus,
+                        "objects_object",
+                    )
+                });
+                let mut close = false;
+                row_menu_items(app, ui, id, &mut close);
+            });
+            out.textures_delta.clear();
+            crate::ui::menus::replay::finish()
+        };
+        let (hit, _) = run(&mut app, true);
+        assert_eq!(hit.as_deref(), Some("docker.copy_to_layer"));
+        assert_eq!(layer_holding(&app, id), own);
+        let [copy] = app.selection.as_slice() else {
+            panic!("one copy should be selected");
+        };
+        assert_ne!(*copy, id);
+        assert_eq!(layer_holding(&app, *copy), destination);
+        app.undo();
+        app.select(vec![id]);
+        app.settings
+            .context_menus
+            .set_visible("objects_object", "docker.copy_to_layer", false);
+        let (hit, rows) = run(&mut app, true);
+        assert!(hit.is_none());
+        assert_eq!(rows, 1, "only Rename remains");
+        assert_eq!(layer_holding(&app, id), own);
+        let (hit, _) = run(&mut app, false);
+        assert_eq!(hit.as_deref(), Some("docker.move_to_layer"));
+        assert_eq!(layer_holding(&app, id), destination);
+    }
+
+    fn contains_text(shape: &egui::Shape, expected: &str) -> bool {
+        match shape {
+            egui::Shape::Text(text) => text.galley.text() == expected,
+            egui::Shape::Vec(children) => {
+                children.iter().any(|child| contains_text(child, expected))
+            }
+            _ => false,
+        }
+    }
+
+    #[test]
+    fn hidden_master_menu_choices_remain_in_options_controls() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        app.settings
+            .context_menus
+            .set_visible("objects_new_master", "options.scope_odd", false);
+        let expected = tr("options.scope_odd");
+        let draw = |app: &mut App, scoped: bool| {
+            let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+                let _scope = scoped.then(|| {
+                    crate::ui::context_menus::Scope::new(
+                        &app.settings.context_menus,
+                        "objects_new_master",
+                    )
+                });
+                master_front_choices(app, ui);
+            });
+            out.textures_delta.clear();
+            out.shapes
+                .iter()
+                .any(|shape| contains_text(&shape.shape, &expected))
+        };
+        assert!(!draw(&mut app, true));
+        assert!(draw(&mut app, false));
+    }
+}
+
+#[cfg(test)]
+mod guide_context_menu_settings_tests {
+    use super::*;
+    use tracedraw_core::document::Guide;
+
+    fn frame(
+        app: &App,
+        ctx: &egui::Context,
+        guide: &Guide,
+        events: Vec<egui::Event>,
+    ) -> Option<GuideCmd> {
+        let mut chosen = None;
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(600.0, 500.0),
+                )),
+                events,
+                ..Default::default()
+            },
+            |ui| chosen = guide_menu_items(app, ui, guide),
+        );
+        output.textures_delta.clear();
+        chosen
+    }
+
+    fn row_rect(ctx: &egui::Context, key: &str) -> Rect {
+        ctx.data(|data| data.get_temp(egui::Id::new(("objects_guide_menu_row", key))))
+            .expect("drawn guideline menu row")
+    }
+
+    #[test]
+    fn context_menu_guide_defaults_retain_order_and_other_locations_are_independent() {
+        let mut app = App::headless();
+        let ctx = crate::theme::ui_context();
+        let guide = Guide::vertical(50.0);
+        app.settings.context_menus.set_order(
+            "canvas_guide",
+            "",
+            &["menu.object.properties", "menu.edit.delete"],
+        );
+        app.settings
+            .context_menus
+            .set_visible("canvas_guide", "menu.edit.delete", false);
+        assert!(frame(&app, &ctx, &guide, Vec::new()).is_none());
+        let keys = [
+            "menu.edit.delete",
+            "menu.edit.cut",
+            "menu.edit.copy",
+            "menu.edit.paste",
+            "guides.lock",
+            "menu.object.hide",
+        ];
+        for pair in keys.windows(2) {
+            assert!(row_rect(&ctx, pair[0]).bottom() <= row_rect(&ctx, pair[1]).top());
+        }
+        app.settings
+            .context_menus
+            .set_visible("objects_guide", "menu.edit.copy", false);
+        assert!(app
+            .settings
+            .context_menus
+            .is_visible("canvas_guide", "menu.edit.copy"));
+        assert!(!app
+            .settings
+            .context_menus
+            .is_visible("canvas_guide", "menu.edit.delete"));
+    }
+
+    #[test]
+    fn context_menu_guide_reordered_button_click_runs_its_original_command() {
+        let mut app = App::headless();
+        app.choose_master_guides(false);
+        app.add_guide(Guide::vertical(50.0));
+        app.settings.context_menus.set_order(
+            "objects_guide",
+            "",
+            &["guides.lock", "menu.edit.copy"],
+        );
+        let ctx = crate::theme::ui_context();
+        let guide = app.page_guides().first().expect("guide").clone();
+        assert!(frame(&app, &ctx, &guide, Vec::new()).is_none());
+        let lock = row_rect(&ctx, "guides.lock");
+        assert!(lock.bottom() <= row_rect(&ctx, "menu.edit.copy").top());
+        assert!(
+            row_rect(&ctx, "menu.edit.copy").bottom() <= row_rect(&ctx, "menu.edit.delete").top()
+        );
+        let at = lock.center();
+        let mut chosen = None;
+        for pressed in [true, false] {
+            chosen = frame(
+                &app,
+                &ctx,
+                &guide,
+                vec![
+                    egui::Event::PointerMoved(at),
+                    egui::Event::PointerButton {
+                        pos: at,
+                        button: egui::PointerButton::Primary,
+                        pressed,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+            )
+            .or(chosen);
+        }
+        assert_eq!(chosen, Some(GuideCmd::Lock(true)));
+        guide_menu_command(&mut app, 0, chosen.expect("clicked command"));
+        assert!(app.page_guides().first().expect("guide").locked);
+    }
+
+    fn popup(app: &App, guide: &Guide) -> bool {
+        let ctx = crate::theme::ui_context();
+        let id = egui::Id::new("customized_guideline_menu");
+        egui::Popup::open_id(&ctx, id);
+        let mut shown = false;
+        let mut output = ctx.run_ui(Default::default(), |ui| {
+            let popup = egui::Popup::new(
+                id,
+                ctx.clone(),
+                egui::PopupAnchor::Position(egui::pos2(20.0, 20.0)),
+                ui.layer_id(),
+            )
+            .open_memory(None);
+            shown = crate::ui::context_menus::filter_popup(
+                popup,
+                &app.settings.context_menus,
+                "objects_guide",
+            )
+            .show(|ui| guide_menu_items(app, ui, guide))
+            .is_some();
+        });
+        output.textures_delta.clear();
+        assert_eq!(egui::Popup::is_id_open(&ctx, id), shown);
+        shown
+    }
+
+    #[test]
+    fn context_menu_guide_inapplicable_variants_close_empty_popups_but_disabled_rows_remain() {
+        let mut app = App::headless();
+        let definition = crate::ui::context_menus::CATALOG
+            .iter()
+            .find(|menu| menu.id == "objects_guide")
+            .expect("guide location");
+        for key in definition.items {
+            app.settings
+                .context_menus
+                .set_visible(definition.id, key, false);
+        }
+        app.settings
+            .context_menus
+            .set_visible(definition.id, "guides.unlock", true);
+        app.settings
+            .context_menus
+            .set_visible(definition.id, "guides.show", true);
+        let mut guide = Guide::vertical(50.0);
+        assert!(
+            !popup(&app, &guide),
+            "only unavailable conditional variants remain"
+        );
+        guide.locked = true;
+        assert!(popup(&app, &guide), "unlock is now offered");
+        app.settings
+            .context_menus
+            .set_visible(definition.id, "guides.unlock", false);
+        assert!(!popup(&app, &guide));
+        app.settings
+            .context_menus
+            .set_visible(definition.id, "menu.edit.delete", true);
+        assert!(
+            popup(&app, &guide),
+            "disabled Delete is still a visible operation"
+        );
     }
 }

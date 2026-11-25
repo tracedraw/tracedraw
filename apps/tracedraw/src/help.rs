@@ -177,6 +177,7 @@ pub fn options_topic(p: OptionsPage) -> &'static str {
         Appearance => "customize/customization#appearance",
         Commands => "customize/customization#commands",
         CommandBars => "customize/customization#command-bars",
+        ContextMenus => "customize/customization#context-menus",
         ColorPalette => "customize/customization#color-palette",
         Pick => "customize/tool-options#pick",
         ZoomPan => "customize/tool-options#zoom-pan",

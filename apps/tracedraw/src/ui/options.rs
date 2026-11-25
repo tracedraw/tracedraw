@@ -45,6 +45,7 @@ pub enum OptionsPage {
     Appearance,
     Commands,
     CommandBars,
+    ContextMenus,
     ColorPalette,
     // Tools > Options > Tools.
     Pick,
@@ -129,7 +130,13 @@ impl OptionsSet {
                 Save,
                 Text,
             ],
-            OptionsSet::Customization => &[Appearance, CommandBars, Commands, ColorPalette],
+            OptionsSet::Customization => &[
+                Appearance,
+                CommandBars,
+                Commands,
+                ContextMenus,
+                ColorPalette,
+            ],
             OptionsSet::Tools => &[
                 Pick,
                 Eraser,
@@ -231,6 +238,7 @@ impl OptionsPage {
             Appearance => "options.appearance",
             Commands => "options.commands",
             CommandBars => "options.command_bars",
+            ContextMenus => "options.context_menus",
             ColorPalette => "options.color_palette",
             Pick => "tool.pick",
             ZoomPan => "options.zoom_pan",
@@ -474,28 +482,41 @@ pub fn options_dialog(app: &mut App, ctx: &Context, close: &mut bool) {
         app.settings.spelling.dictionary_folder = Some(dir);
     }
     let set = app.options_page.set();
+    let width = if app.options_page == OptionsPage::ContextMenus {
+        (ctx.content_rect().width() - 16.0).clamp(200.0, 887.0)
+    } else {
+        887.0
+    };
+    let compact = width < 887.0;
     let mut ok = false;
     let mut cancel = false;
     let x_closed = chrome::dialog(
         ctx,
         "options_dialog",
         &set.title(),
-        egui::vec2(887.0, 663.0 + TABS_H),
+        egui::vec2(width, 663.0 + TABS_H),
         |ui| {
             let body = ui.max_rect();
+            let content_width = if compact { body.width() - 28.0 } else { 859.0 };
             let tabs = egui::Rect::from_min_size(
                 body.min + egui::vec2(14.0, 8.0),
-                egui::vec2(859.0, TABS_H - 6.0),
+                egui::vec2(content_width, TABS_H - 6.0),
             );
-            set_tabs(app, ui, tabs, set);
-            let top = 10.0 + TABS_H;
+            let tabs_height = set_tabs(app, ui, tabs, set, compact);
+            let top = 10.0 + TABS_H + (tabs_height - (TABS_H - 6.0));
+            let page_height = 566.0 - (top - (10.0 + TABS_H));
+            let list_width = if compact {
+                (content_width * 0.26).clamp(150.0, 225.0)
+            } else {
+                225.0
+            };
             let list = egui::Rect::from_min_size(
                 body.min + egui::vec2(14.0, top),
-                egui::vec2(225.0, 566.0),
+                egui::vec2(list_width, page_height),
             );
             let page = egui::Rect::from_min_size(
-                body.min + egui::vec2(251.0, top),
-                egui::vec2(622.0, 566.0),
+                body.min + egui::vec2(14.0 + list_width + 12.0, top),
+                egui::vec2(content_width - list_width - 12.0, page_height),
             );
             page_list(app, ui, list, set);
             ui.scope_builder(egui::UiBuilder::new().max_rect(page), |ui| {
@@ -530,8 +551,8 @@ pub fn options_dialog(app: &mut App, ctx: &Context, close: &mut bool) {
                     });
             });
             let buttons = egui::Rect::from_min_size(
-                body.min + egui::vec2(14.0, top + 566.0 + 15.0),
-                egui::vec2(859.0, 27.0),
+                body.min + egui::vec2(14.0, top + page_height + 15.0),
+                egui::vec2(content_width, 27.0),
             );
             ui.scope_builder(egui::UiBuilder::new().max_rect(buttons), |ui| {
                 ui.horizontal(|ui| {
@@ -555,11 +576,17 @@ pub fn options_dialog(app: &mut App, ctx: &Context, close: &mut bool) {
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         // The buttons bring their own tips (#2367).
-                        if chrome::button(ui, &tr("dialog.cancel")).clicked() {
+                        let cancel_button = chrome::button(ui, &tr("dialog.cancel"));
+                        #[cfg(test)]
+                        remember_dialog_control(ui, "cancel", &cancel_button);
+                        if cancel_button.clicked() {
                             cancel = true;
                         }
                         ui.add_space(5.0);
-                        if chrome::button(ui, &tr("dialog.ok")).clicked() {
+                        let ok_button = chrome::button(ui, &tr("dialog.ok"));
+                        #[cfg(test)]
+                        remember_dialog_control(ui, "ok", &ok_button);
+                        if ok_button.clicked() {
                             ok = true;
                         }
                     });
@@ -595,6 +622,16 @@ pub(crate) fn save_as_default(app: &mut App) {
     app.status = tr("status.settings_saved");
 }
 
+#[cfg(test)]
+fn remember_dialog_control(ui: &Ui, key: &str, response: &egui::Response) {
+    ui.ctx().data_mut(|data| {
+        data.insert_temp(
+            egui::Id::new(("options_dialog_test_control", key)),
+            (response.rect, ui.clip_rect()),
+        );
+    });
+}
+
 /// How far the page drawn last reached past the right edge of its
 /// panel (for tests).
 #[cfg(test)]
@@ -608,12 +645,12 @@ const TABS_H: f32 = 32.0;
 /// The tabs along the top: one per set of pages (Document Setup while
 /// a drawing is open), the current one selected. A tab opens the page of
 /// its set shown last, else its first page (#633).
-fn set_tabs(app: &mut App, ui: &mut Ui, rect: egui::Rect, set: OptionsSet) {
+fn set_tabs(app: &mut App, ui: &mut Ui, rect: egui::Rect, set: OptionsSet, wrap: bool) -> f32 {
     let last = |s: OptionsSet| egui::Id::new(("options_last_page", s as u8));
     let page = app.options_page;
     ui.ctx().data_mut(|d| d.insert_temp(last(set), page));
-    ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
-        ui.horizontal(|ui| {
+    let rows = ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
+        let add_tabs = |ui: &mut Ui| {
             for s in OptionsSet::ALL {
                 if s == OptionsSet::Document && !app.has_document() {
                     continue;
@@ -632,13 +669,24 @@ fn set_tabs(app: &mut App, ui: &mut Ui, rect: egui::Rect, set: OptionsSet) {
                         .unwrap_or_default();
                 }
             }
-        });
+        };
+        if wrap {
+            ui.horizontal_wrapped(add_tabs)
+        } else {
+            ui.horizontal(add_tabs)
+        }
     });
+    let bottom = if wrap {
+        rows.inner.response.rect.bottom().max(rect.bottom())
+    } else {
+        rect.bottom()
+    };
     ui.painter().hline(
         rect.x_range(),
-        rect.bottom() + 2.0,
+        bottom + 2.0,
         egui::Stroke::new(1.0, crate::theme::Tokens::border()),
     );
+    bottom - rect.top()
 }
 
 /// Where the tab of `set` was drawn last (for tests).
@@ -729,6 +777,7 @@ fn draw_page(app: &mut App, ui: &mut Ui) {
         Appearance => appearance_page(app, ui),
         Commands => commands_page(app, ui),
         CommandBars => command_bars_page(app, ui),
+        ContextMenus => crate::ui::context_menu_editor::show(app, ui),
         ColorPalette => color_palette_page(app, ui),
         Pick => pick_page(app, ui),
         ZoomPan => zoom_pan_page(app, ui),
@@ -7188,7 +7237,13 @@ mod tests {
         use OptionsPage::*;
         assert_eq!(
             OptionsSet::Customization.pages(),
-            &[Appearance, CommandBars, Commands, ColorPalette]
+            &[
+                Appearance,
+                CommandBars,
+                Commands,
+                ContextMenus,
+                ColorPalette
+            ]
         );
         let mut app = App::headless();
         assert!(app.settings.center_dialogs);
@@ -7624,6 +7679,151 @@ mod tests {
             }
             assert!(wide.is_empty(), "wider than the panel: {wide:?}");
         }
+    }
+
+    fn context_menu_dialog_frame(
+        app: &mut App,
+        ctx: &Context,
+        screen: egui::Vec2,
+        events: Vec<egui::Event>,
+    ) -> bool {
+        let mut close = false;
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, screen)),
+                events,
+                ..Default::default()
+            },
+            |ui| options_dialog(app, ui.ctx(), &mut close),
+        );
+        output.textures_delta.clear();
+        close
+    }
+
+    #[test]
+    fn context_menu_dialog_keeps_actions_visible_on_narrow_desktop_screens() {
+        for screen in [
+            egui::vec2(780.0, 760.0),
+            egui::vec2(640.0, 760.0),
+            egui::vec2(560.0, 760.0),
+        ] {
+            let ctx = crate::theme::ui_context();
+            let mut app = App::headless();
+            app.options_page = OptionsPage::ContextMenus;
+            app.settings
+                .context_menus
+                .set_visible("canvas_object", "menu.edit.copy", false);
+            for _ in 0..4 {
+                assert!(!context_menu_dialog_frame(
+                    &mut app,
+                    &ctx,
+                    screen,
+                    Vec::new()
+                ));
+            }
+            let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, screen);
+            let assert_visible = |name: &str, rect: egui::Rect, clip: egui::Rect| {
+                assert!(
+                    screen_rect.expand(0.5).contains_rect(rect),
+                    "{name} at {rect:?} exceeds screen {screen:?}"
+                );
+                assert!(
+                    clip.expand(0.5).contains_rect(rect),
+                    "{name} at {rect:?} is clipped by {clip:?} on screen {screen:?}"
+                );
+            };
+            let dialog = ctx
+                .memory(|memory| memory.area_rect(egui::Id::new("options_dialog")))
+                .expect("settings dialog is drawn");
+            assert!(screen_rect.expand(0.5).contains_rect(dialog), "{dialog:?}");
+            for name in ["ok", "cancel"] {
+                let (rect, clip): (egui::Rect, egui::Rect) = ctx.data(|data| {
+                    data.get_temp(egui::Id::new(("options_dialog_test_control", name)))
+                        .expect("dialog action is drawn")
+                });
+                assert_visible(name, rect, clip);
+            }
+            for name in ["scene", "search", "reset_menu", "reset_all"] {
+                let (rect, clip) = ctx.data(|data| {
+                    (
+                        data.get_temp::<egui::Rect>(egui::Id::new((
+                            "context_menu_editor_test",
+                            name,
+                        )))
+                        .expect("editor control is drawn"),
+                        data.get_temp::<egui::Rect>(egui::Id::new((
+                            "context_menu_editor_test_clip",
+                            name,
+                        )))
+                        .expect("editor control has a clipping rectangle"),
+                    )
+                });
+                assert_visible(name, rect, clip);
+            }
+            for set in OptionsSet::ALL {
+                if set != OptionsSet::Document || app.has_document() {
+                    let rect = ctx.data(|data| {
+                        data.get_temp::<egui::Rect>(tab_rect_id(set))
+                            .expect("settings tab is drawn")
+                    });
+                    assert!(
+                        screen_rect.expand(0.5).contains_rect(rect),
+                        "{} tab at {rect:?} exceeds screen {screen:?}",
+                        set.tab_label()
+                    );
+                }
+            }
+            let overflow: f32 =
+                ctx.data(|data| data.get_temp(page_overflow_id()).expect("page is drawn"));
+            assert!(
+                overflow < 0.5,
+                "page exceeds screen {screen:?} by {overflow}"
+            );
+        }
+    }
+
+    #[test]
+    fn narrow_context_menu_dialog_cancel_is_clickable_and_restores_preferences() {
+        let screen = egui::vec2(640.0, 760.0);
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        app.options_page = OptionsPage::ContextMenus;
+        for _ in 0..4 {
+            assert!(!context_menu_dialog_frame(
+                &mut app,
+                &ctx,
+                screen,
+                Vec::new()
+            ));
+        }
+        app.settings
+            .context_menus
+            .set_visible("canvas_object", "menu.edit.copy", false);
+        let (rect, _): (egui::Rect, egui::Rect) = ctx.data(|data| {
+            data.get_temp(egui::Id::new(("options_dialog_test_control", "cancel")))
+                .expect("cancel is drawn")
+        });
+        let pos = rect.center();
+        let mut closed = false;
+        for pressed in [true, false] {
+            closed = context_menu_dialog_frame(
+                &mut app,
+                &ctx,
+                screen,
+                vec![
+                    egui::Event::PointerMoved(pos),
+                    egui::Event::PointerButton {
+                        pos,
+                        button: egui::PointerButton::Primary,
+                        pressed,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+            );
+        }
+        assert!(closed, "the visible Cancel button takes the click");
+        assert!(app.settings.context_menus.is_default());
+        assert!(app.options_snapshot.is_none());
     }
 
     /// A frame of the whole window with `events` as its input.

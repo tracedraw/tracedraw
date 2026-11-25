@@ -4,6 +4,7 @@
 //! `$XDG_CONFIG_HOME/tracedraw`).
 
 use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 /// How large the buttons of the bars are (the bars' menu > Customize),
@@ -140,6 +141,175 @@ pub struct PageSizePreset {
     pub name: String,
     pub width_mm: f64,
     pub height_mm: f64,
+}
+
+/// Right-click menu visibility and sibling order, keyed by stable identifiers.
+/// Empty preferences preserve all existing rows, including later commands.
+/// Order paths name each enclosing submenu, so repeated actions are independent.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(from = "ContextMenuPreferencesData")]
+pub struct ContextMenuPreferences {
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    hidden: BTreeMap<String, BTreeSet<String>>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    order: BTreeMap<String, BTreeMap<String, Vec<String>>>,
+}
+
+/// Read the original visibility-only map as well as the extended preferences.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum ContextMenuPreferencesData {
+    Legacy(BTreeMap<String, BTreeSet<String>>),
+    Structured {
+        #[serde(default)]
+        hidden: BTreeMap<String, BTreeSet<String>>,
+        #[serde(default)]
+        order: BTreeMap<String, BTreeMap<String, Vec<String>>>,
+    },
+}
+
+impl From<ContextMenuPreferencesData> for ContextMenuPreferences {
+    fn from(data: ContextMenuPreferencesData) -> Self {
+        let (mut hidden, mut order) = match data {
+            ContextMenuPreferencesData::Legacy(hidden) => (hidden, BTreeMap::new()),
+            ContextMenuPreferencesData::Structured { hidden, order } => (hidden, order),
+        };
+        hidden.retain(|_, items| !items.is_empty());
+        order.retain(|_, branches| {
+            branches.retain(|_, items| {
+                let mut seen = BTreeSet::new();
+                items.retain(|key| !key.is_empty() && seen.insert(key.clone()));
+                !items.is_empty()
+            });
+            !branches.is_empty()
+        });
+        Self { hidden, order }
+    }
+}
+
+impl ContextMenuPreferences {
+    /// Whether a row is shown in this menu. Other menus are independent.
+    pub fn is_visible(&self, menu: &str, item: &str) -> bool {
+        self.hidden
+            .get(menu)
+            .is_none_or(|items| !items.contains(item))
+    }
+
+    /// Whether this menu has any saved changes, including newer operations.
+    pub fn has_overrides(&self, menu: &str) -> bool {
+        self.hidden.get(menu).is_some_and(|items| !items.is_empty()) || self.has_order(menu)
+    }
+
+    /// Whether any sibling group in this menu has a custom order.
+    pub fn has_order(&self, menu: &str) -> bool {
+        self.order
+            .get(menu)
+            .is_some_and(|branches| !branches.is_empty())
+    }
+
+    /// The root has an empty path; nested paths join stable parent keys with `/`.
+    pub fn order(&self, menu: &str, parent_path: &str) -> &[String] {
+        self.order
+            .get(menu)
+            .and_then(|branches| branches.get(parent_path))
+            .map_or(&[], Vec::as_slice)
+    }
+
+    /// Save sibling keys once. An empty order restores this branch's defaults.
+    pub fn set_order(&mut self, menu: &str, parent_path: &str, items: &[&str]) {
+        let mut seen = BTreeSet::new();
+        let mut items: Vec<String> = items
+            .iter()
+            .filter(|key| !key.is_empty() && seen.insert(**key))
+            .map(|key| (*key).to_owned())
+            .collect();
+        if items.is_empty() {
+            if let Some(branches) = self.order.get_mut(menu) {
+                branches.remove(parent_path);
+                if branches.is_empty() {
+                    self.order.remove(menu);
+                }
+            }
+        } else {
+            // Editing in an older version must not discard keys it cannot
+            // display. Resetting the branch explicitly still clears them.
+            let retained: Vec<_> = self
+                .order(menu, parent_path)
+                .iter()
+                .filter(|key| !items.contains(key))
+                .cloned()
+                .collect();
+            items.extend(retained);
+            self.order
+                .entry(menu.to_owned())
+                .or_default()
+                .insert(parent_path.to_owned(), items);
+        }
+    }
+
+    /// Unknown saved keys stay in storage but never create rows. New operations
+    /// follow the saved siblings in their own default order.
+    pub fn ordered_items<'a>(
+        &self,
+        menu: &str,
+        parent_path: &str,
+        defaults: &[&'a str],
+    ) -> Vec<&'a str> {
+        let saved = self.order(menu, parent_path);
+        let mut items = defaults.to_vec();
+        if !saved.is_empty() {
+            items.sort_by_key(|key| {
+                saved
+                    .iter()
+                    .position(|item| item == key)
+                    .unwrap_or(usize::MAX)
+            });
+        }
+        items
+    }
+
+    /// Change only this row's visibility, keeping default preferences compact.
+    pub fn set_visible(&mut self, menu: &str, item: &str, visible: bool) {
+        if visible {
+            if let Some(items) = self.hidden.get_mut(menu) {
+                items.remove(item);
+                if items.is_empty() {
+                    self.hidden.remove(menu);
+                }
+            }
+        } else {
+            self.hidden
+                .entry(menu.to_owned())
+                .or_default()
+                .insert(item.to_owned());
+        }
+    }
+
+    /// Restore this menu without affecting any other menu's choices.
+    pub fn reset_menu(&mut self, menu: &str) {
+        self.hidden.remove(menu);
+        self.order.remove(menu);
+    }
+
+    /// Restore every menu's default visibility and sibling order.
+    pub fn reset_all(&mut self) {
+        self.hidden.clear();
+        self.order.clear();
+    }
+
+    pub fn is_default(&self) -> bool {
+        self.hidden.is_empty() && self.order.is_empty()
+    }
+
+    /// A menu drawing scope owns its filters without borrowing the app.
+    pub(crate) fn hidden_items(&self, menu: &str) -> BTreeSet<String> {
+        self.hidden.get(menu).cloned().unwrap_or_default()
+    }
+
+    /// A drawing scope owns its orders without retaining an app borrow.
+    pub(crate) fn menu_orders(&self, menu: &str) -> BTreeMap<String, Vec<String>> {
+        self.order.get(menu).cloned().unwrap_or_default()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -386,6 +556,9 @@ pub struct Settings {
     /// changed (see ui/bar_items.rs).
     #[serde(default)]
     pub bar_items: std::collections::BTreeMap<String, Vec<String>>,
+    /// Customization > Context Menus: hidden rows for each right-click location.
+    #[serde(default, skip_serializing_if = "ContextMenuPreferences::is_default")]
+    pub context_menus: ContextMenuPreferences,
     /// The main window as it was left: maximized, else its inner size in
     /// points ([0, 0] until the first exit).
     #[serde(default = "default_true")]
@@ -2618,6 +2791,7 @@ impl Default for Settings {
             theme: String::new(),
             bars: crate::ui::bars::BarLayout::default(),
             bar_items: Default::default(),
+            context_menus: ContextMenuPreferences::default(),
             window_maximized: true,
             window_size: [0.0, 0.0],
             time_tracker: TimeTrackerPrefs::default(),
@@ -3972,5 +4146,190 @@ mod tests {
         app.settings = Settings::default();
         app.save_as_dialog();
         assert!(matches!(app.dialog, crate::ui::dialogs::Dialog::SaveAs(_)));
+    }
+}
+
+#[cfg(test)]
+mod context_menu_preference_tests {
+    use super::{ContextMenuPreferences, Settings};
+
+    #[test]
+    fn older_settings_show_existing_and_future_context_menu_rows() {
+        let settings: Settings = serde_json::from_str("{}").expect("old settings");
+        assert!(settings.context_menus.is_default());
+        assert!(settings
+            .context_menus
+            .is_visible("canvas_object", "menu.edit.copy"));
+        assert!(settings
+            .context_menus
+            .is_visible("future_menu", "future.command"));
+    }
+
+    #[test]
+    fn hidden_context_menu_rows_survive_settings_serialization() {
+        let mut settings = Settings::default();
+        settings
+            .context_menus
+            .set_visible("canvas_object", "menu.edit.copy", false);
+        settings
+            .context_menus
+            .set_visible("page_tabs", "menu.layout.rename_page", false);
+        let encoded = serde_json::to_string(&settings).expect("saved settings");
+        let restored: Settings = serde_json::from_str(&encoded).expect("restored settings");
+        assert_eq!(settings.context_menus, restored.context_menus);
+        assert!(!restored
+            .context_menus
+            .is_visible("canvas_object", "menu.edit.copy"));
+        assert!(restored
+            .context_menus
+            .is_visible("canvas_text", "menu.edit.copy"));
+        assert!(restored
+            .context_menus
+            .is_visible("canvas_object", "new.command"));
+    }
+
+    #[test]
+    fn restoring_one_context_menu_keeps_other_hidden_rows() {
+        let mut prefs = ContextMenuPreferences::default();
+        prefs.set_visible("canvas_object", "menu.edit.copy", false);
+        prefs.set_visible("canvas_text", "menu.edit.copy", false);
+        prefs.reset_menu("canvas_object");
+        assert!(prefs.is_visible("canvas_object", "menu.edit.copy"));
+        assert!(!prefs.is_visible("canvas_text", "menu.edit.copy"));
+        prefs.reset_all();
+        assert!(prefs.is_default());
+        assert!(prefs.is_visible("canvas_text", "menu.edit.copy"));
+    }
+
+    #[test]
+    fn menu_overrides_include_unknown_operations_but_not_empty_sets() {
+        let mut prefs: ContextMenuPreferences = serde_json::from_str(
+            r#"{"canvas_page":["future.command"],"canvas_object":[],"future_menu":["future.other"]}"#,
+        )
+        .expect("preferences from a newer version");
+        assert!(prefs.has_overrides("canvas_page"));
+        assert!(prefs.has_overrides("future_menu"));
+        assert!(!prefs.has_overrides("canvas_object"));
+        assert!(!prefs.has_overrides("canvas_text"));
+        prefs.reset_menu("canvas_page");
+        assert!(!prefs.has_overrides("canvas_page"));
+        assert!(prefs.is_visible("canvas_page", "future.command"));
+        assert!(prefs.has_overrides("future_menu"));
+        assert!(!prefs.is_visible("future_menu", "future.other"));
+    }
+
+    #[test]
+    fn showing_the_last_hidden_row_removes_the_menu_override() {
+        let mut prefs = ContextMenuPreferences::default();
+        prefs.set_visible("canvas_object", "menu.edit.copy", true);
+        assert!(prefs.is_default());
+        prefs.set_visible("canvas_object", "menu.edit.copy", false);
+        prefs.set_visible("canvas_object", "menu.edit.copy", false);
+        assert_eq!(prefs.hidden_items("canvas_object").len(), 1);
+        prefs.set_visible("canvas_object", "menu.edit.copy", true);
+        assert!(prefs.is_default());
+        assert_eq!(serde_json::to_string(&prefs).expect("preferences"), "{}");
+    }
+
+    #[test]
+    fn stable_context_menu_action_keys_do_not_depend_on_target_names() {
+        let prefs: ContextMenuPreferences =
+            serde_json::from_str(r#"{"objects_object":["docker.move_to_layer"]}"#)
+                .expect("stable action keys");
+        assert!(!prefs.is_visible("objects_object", "docker.move_to_layer"));
+        assert!(prefs.is_visible("objects_object", "Layer 1"));
+        assert!(prefs.is_visible("objects_object", "Layer 2"));
+        assert!(prefs.is_visible("canvas_object", "docker.move_to_layer"));
+    }
+
+    #[test]
+    fn context_menu_orders_round_trip_without_changing_legacy_visibility() {
+        let mut prefs: ContextMenuPreferences =
+            serde_json::from_str(r#"{"canvas_object":["menu.edit.copy"]}"#)
+                .expect("legacy visibility preferences");
+        prefs.set_order("canvas_object", "", &["menu.edit.delete", "menu.edit.copy"]);
+        prefs.set_order(
+            "canvas_object",
+            "menu.object.order",
+            &["menu.object.back_one", "menu.object.forward_one"],
+        );
+        let encoded = serde_json::to_string(&prefs).expect("saved preferences");
+        let restored: ContextMenuPreferences = serde_json::from_str(&encoded).expect("preferences");
+        assert_eq!(prefs, restored);
+        assert!(!restored.is_visible("canvas_object", "menu.edit.copy"));
+        assert!(restored.is_visible("canvas_object", "menu.edit.delete"));
+        assert_eq!(
+            restored.order("canvas_object", ""),
+            ["menu.edit.delete", "menu.edit.copy"]
+        );
+        assert!(restored.has_order("canvas_object"));
+        assert!(!restored.has_order("canvas_text"));
+    }
+
+    #[test]
+    fn context_menu_sibling_order_is_isolated_by_complete_parent_path() {
+        let mut prefs = ContextMenuPreferences::default();
+        let first = "bars.customize/bars.default_button_size";
+        let second = "bars.customize/bars.toolbox_toolbar/bars.button_size";
+        let defaults = ["bars.size_small", "bars.size_medium", "bars.size_large"];
+        prefs.set_order(
+            "toolbar",
+            first,
+            &["bars.size_large", "bars.size_small", "bars.size_medium"],
+        );
+        assert_eq!(
+            prefs.ordered_items("toolbar", first, &defaults),
+            ["bars.size_large", "bars.size_small", "bars.size_medium"]
+        );
+        assert_eq!(prefs.ordered_items("toolbar", second, &defaults), defaults);
+        assert_eq!(prefs.ordered_items("palette", first, &defaults), defaults);
+        assert_eq!(prefs.menu_orders("toolbar").len(), 1);
+        assert!(prefs.has_overrides("toolbar"));
+    }
+
+    #[test]
+    fn context_menu_order_ignores_unknown_keys_and_keeps_new_rows_in_default_order() {
+        let mut prefs = ContextMenuPreferences::default();
+        prefs.set_order("menu", "", &["future.action", "c", "a", "c", ""]);
+        assert_eq!(prefs.order("menu", ""), ["future.action", "c", "a"]);
+        assert_eq!(
+            prefs.ordered_items("menu", "", &["a", "b", "c", "d"]),
+            ["c", "a", "b", "d"]
+        );
+        prefs.set_order("menu", "", &["a", "c", "b", "d"]);
+        assert!(prefs
+            .order("menu", "")
+            .contains(&"future.action".to_owned()));
+        prefs.set_order("menu", "", &[]);
+        assert!(prefs.is_default());
+    }
+
+    #[test]
+    fn context_menu_order_input_normalizes_duplicate_and_empty_entries() {
+        let prefs: ContextMenuPreferences = serde_json::from_str(
+            r#"{"hidden":{"empty":[]},"order":{"menu":{"": ["b","a","b",""]},"empty":{"":[]}}}"#,
+        )
+        .expect("preferences with redundant entries");
+        assert_eq!(prefs.order("menu", ""), ["b", "a"]);
+        assert!(!prefs.has_overrides("empty"));
+        assert_eq!(prefs.ordered_items("menu", "", &["a", "b"]), ["b", "a"]);
+    }
+
+    #[test]
+    fn resetting_context_menus_restores_order_and_visibility_together() {
+        let mut prefs = ContextMenuPreferences::default();
+        prefs.set_visible("first", "a", false);
+        prefs.set_order("first", "", &["b", "a"]);
+        prefs.set_order("first", "branch", &["d", "c"]);
+        prefs.set_visible("second", "x", false);
+        prefs.set_order("second", "", &["y", "x"]);
+        prefs.reset_menu("first");
+        assert!(!prefs.has_overrides("first"));
+        assert!(prefs.is_visible("first", "a"));
+        assert!(prefs.has_order("second"));
+        assert!(!prefs.is_visible("second", "x"));
+        prefs.reset_all();
+        assert!(prefs.is_default());
+        assert_eq!(serde_json::to_string(&prefs).expect("preferences"), "{}");
     }
 }

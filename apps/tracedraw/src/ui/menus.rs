@@ -298,6 +298,13 @@ pub(crate) fn sep(ui: &mut Ui) {
     if invoke::active() {
         return;
     }
+    if !crate::ui::context_menu_filter::defer_separator(ui) {
+        paint_separator(ui);
+    }
+}
+
+/// Draws a separator after filtering has found its following visible row.
+pub(crate) fn paint_separator(ui: &mut Ui) {
     let width = ui.min_rect().width().max(MENU_WIDTH);
     let (rect, _) =
         ui.allocate_exact_size(egui::vec2(width, SEPARATOR_HEIGHT), egui::Sense::hover());
@@ -333,6 +340,17 @@ pub(crate) fn item_tip(
 /// A menu item with a ready label (a style name, a file).
 pub(crate) fn item_label(ui: &mut Ui, label: &str, shortcut: &str, enabled: bool) -> bool {
     item_text(ui, label, shortcut, enabled, None, label)
+}
+
+/// A dynamic target with a stable visibility key and its own allocated widget ID.
+pub(crate) fn item_label_keyed(
+    ui: &mut Ui,
+    key: &str,
+    label: &str,
+    shortcut: &str,
+    enabled: bool,
+) -> bool {
+    item_text(ui, label, shortcut, enabled, None, key)
 }
 
 /// Object > Clip to Frame's Fit Contents rows, the clip bar's choices
@@ -437,12 +455,24 @@ thread_local! {
         const { std::cell::RefCell::new(Vec::new()) };
 }
 
+#[cfg(test)]
+thread_local! {
+    static ROW_IDS: std::cell::RefCell<Vec<(String, egui::Id)>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[cfg(test)]
+fn record_row(response: &egui::Response, key: &str) {
+    ROWS.with(|rows| rows.borrow_mut().push((key.to_owned(), response.rect)));
+    ROW_IDS.with(|rows| rows.borrow_mut().push((key.to_owned(), response.id)));
+}
+
 /// A right-click on the menu row `id`, greyed or not, closes the menu and
 /// asks for the row's properties: Options > Customization > Commands at
 /// that command, on its Shortcut Keys tab (#2504).
 fn row_properties(ui: &mut Ui, r: &egui::Response, id: &str, enabled: bool) {
     #[cfg(test)]
-    ROWS.with(|rows| rows.borrow_mut().push((id.to_string(), r.rect)));
+    record_row(r, id);
     let right = if enabled {
         r.secondary_clicked()
     } else {
@@ -535,6 +565,9 @@ fn item_text_tip(
     if invoke::active() {
         return invoke::hit(id, shortcut, enabled);
     }
+    if !crate::ui::context_menu_filter::show_item(ui, id) {
+        return false;
+    }
     let shortcut = invoke::shown_shortcut(id, shortcut);
     let (r, _) = menu_row(ui, label, &shortcut, enabled, Mark::None);
     row_properties(ui, &r, id, enabled);
@@ -546,7 +579,7 @@ fn item_text_tip(
         paint_new_mark(ui, r.rect);
     }
     #[cfg(test)]
-    if replay::hit(id, enabled) {
+    if replay::hit_with_label(id, label, enabled) {
         return true;
     }
     let _ = id;
@@ -614,6 +647,9 @@ fn item_picture(
 ) -> bool {
     if invoke::active() {
         return invoke::hit(label, shortcut, enabled);
+    }
+    if !crate::ui::context_menu_filter::show_item(ui, label) {
+        return false;
     }
     let shortcut = invoke::shown_shortcut(label, shortcut);
     let (r, _) = menu_row(ui, label, &shortcut, enabled, Mark::None);
@@ -869,7 +905,12 @@ pub(crate) fn check_label(ui: &mut Ui, label: &str, id: &str, on: bool) -> bool 
     if invoke::active() {
         return invoke::hit(id, "", true);
     }
+    if !crate::ui::context_menu_filter::show_item(ui, id) {
+        return false;
+    }
     let (r, _) = menu_row(ui, label, "", true, Mark::Check(on));
+    #[cfg(test)]
+    record_row(&r, id);
     #[cfg(test)]
     if replay::hit(id, true) {
         return true;
@@ -901,6 +942,9 @@ pub(crate) fn check_pic(
         invoke::note_state(key, on);
         return invoke::hit(key, shortcut, true);
     }
+    if !crate::ui::context_menu_filter::show_item(ui, key) {
+        return false;
+    }
     #[cfg(test)]
     if pic.is_some() {
         PICTURED.with(|p| p.borrow_mut().push(key.to_string()));
@@ -917,6 +961,8 @@ pub(crate) fn check_pic(
     if marked_new(key) {
         paint_new_mark(ui, r.rect);
     }
+    #[cfg(test)]
+    record_row(&r, key);
     #[cfg(test)]
     if replay::hit(key, true) {
         return true;
@@ -960,11 +1006,16 @@ fn mark_item_if(ui: &mut Ui, key: &str, shortcut: &str, mark: Mark, enabled: boo
         }
         return invoke::hit(key, shortcut, enabled);
     }
+    if !crate::ui::context_menu_filter::show_item(ui, key) {
+        return false;
+    }
     let shortcut = invoke::shown_shortcut(key, shortcut);
     let (r, _) = menu_row(ui, &tr(key), &shortcut, enabled, mark);
     if marked_new(key) {
         paint_new_mark(ui, r.rect);
     }
+    #[cfg(test)]
+    record_row(&r, key);
     #[cfg(test)]
     if replay::hit(key, enabled) {
         return true;
@@ -978,7 +1029,12 @@ fn todo_sub(ui: &mut Ui, key: &str) {
     if invoke::active() {
         return;
     }
+    if !crate::ui::context_menu_filter::show_item(ui, key) {
+        return;
+    }
     let (r, _) = menu_row(ui, &tr(key), "", false, Mark::Submenu);
+    #[cfg(test)]
+    record_row(&r, key);
     row_picture(ui, r.rect, key, false);
 }
 
@@ -1005,8 +1061,12 @@ pub(crate) fn sub_if<R>(ui: &mut Ui, key: &str, enabled: bool, add: impl FnOnce(
     let replaying = false;
     if enabled || invoke::active() || replaying {
         sub(ui, key, add);
-    } else {
+    } else if crate::ui::context_menu_filter::submenu_visible(key, false)
+        && crate::ui::context_menu_filter::show_item(ui, key)
+    {
         let (r, _) = menu_row(ui, &tr(key), "", false, Mark::Submenu);
+        #[cfg(test)]
+        record_row(&r, key);
         row_picture(ui, r.rect, key, false);
     }
 }
@@ -1016,14 +1076,42 @@ pub(crate) fn sub<R>(ui: &mut Ui, key: &str, add: impl FnOnce(&mut Ui) -> R) {
     let _ = sub_row(ui, key, add);
 }
 
+/// A submenu whose dynamic target list can keep its static branch available.
+pub(crate) fn sub_dynamic<R>(
+    ui: &mut Ui,
+    key: &str,
+    has_dynamic_items: bool,
+    add: impl FnOnce(&mut Ui) -> R,
+) {
+    let _ = sub_row_dynamic(ui, key, has_dynamic_items, add);
+}
+
 /// [`sub`], returning the row when it was drawn.
 fn sub_row<R>(ui: &mut Ui, key: &str, add: impl FnOnce(&mut Ui) -> R) -> Option<egui::Response> {
+    sub_row_dynamic(ui, key, false, add)
+}
+
+fn sub_row_dynamic<R>(
+    ui: &mut Ui,
+    key: &str,
+    has_dynamic_items: bool,
+    add: impl FnOnce(&mut Ui) -> R,
+) -> Option<egui::Response> {
+    let add = |ui: &mut Ui| {
+        let _branch = crate::ui::context_menu_filter::Branch::new(key);
+        add(ui)
+    };
     if invoke::active() {
         // Walked without the menus on screen: the submenu's items count
         // as if it were open.
         invoke::enter(key);
         let _ = add(ui);
         invoke::leave();
+        return None;
+    }
+    if !crate::ui::context_menu_filter::submenu_visible(key, has_dynamic_items)
+        || !crate::ui::context_menu_filter::show_item(ui, key)
+    {
         return None;
     }
     #[cfg(test)]
@@ -1033,6 +1121,8 @@ fn sub_row<R>(ui: &mut Ui, key: &str, add: impl FnOnce(&mut Ui) -> R) -> Option<
         return None;
     }
     let (resp, slot) = menu_row(ui, &tr(key), "", true, Mark::Submenu);
+    #[cfg(test)]
+    record_row(&resp, key);
     row_picture(ui, resp.rect, key, true);
     if marked_new(key) {
         // Left of the submenu arrow.
@@ -1494,6 +1584,7 @@ pub(crate) mod replay {
         static TARGET: Cell<Option<usize>> = const { Cell::new(None) };
         static COUNTER: Cell<usize> = const { Cell::new(0) };
         static HIT: RefCell<Option<String>> = const { RefCell::new(None) };
+        static HIT_LABEL: RefCell<Option<String>> = const { RefCell::new(None) };
     }
 
     /// Items that would block on a native file chooser, start another
@@ -1527,16 +1618,32 @@ pub(crate) mod replay {
         TARGET.set(Some(target));
         COUNTER.set(0);
         HIT.replace(None);
+        HIT_LABEL.replace(None);
     }
 
     /// Stop replaying; returns the key that was hit and how many rows were seen.
     pub fn finish() -> (Option<String>, usize) {
+        let (key, _, count) = finish_labelled();
+        (key, count)
+    }
+
+    /// Dynamic rows share an operation key but keep distinct displayed labels.
+    pub fn finish_labelled() -> (Option<String>, Option<String>, usize) {
         TARGET.set(None);
-        (HIT.take(), COUNTER.get())
+        (HIT.take(), HIT_LABEL.take(), COUNTER.get())
     }
 
     pub fn active() -> bool {
         TARGET.get().is_some()
+    }
+
+    pub fn hit_with_label(key: &str, label: &str, enabled: bool) -> bool {
+        if hit(key, enabled) {
+            HIT_LABEL.replace(Some(label.to_owned()));
+            true
+        } else {
+            false
+        }
     }
 
     pub fn hit(key: &str, enabled: bool) -> bool {
@@ -5387,61 +5494,50 @@ fn tools_menu(app: &mut App, ui: &mut Ui) {
 /// property bar, the toolbox, the colour palette, the AI prompt bar, the
 /// status bar, the Text, Zoom and Transform toolbars and the time
 /// tracker's bar.
+pub(crate) const TOOLBAR_KEYS: &[&str] = &[
+    "menu.window.toolbar_menu_bar",
+    "menu.window.toolbar_standard",
+    "menu.window.toolbar_property_bar",
+    "menu.window.toolbar_toolbox",
+    "bars.palette",
+    "bars.ai_prompt",
+    "menu.window.toolbar_status_bar",
+    "menu.window.toolbar_text",
+    "menu.window.toolbar_zoom",
+    "menu.window.toolbar_transform",
+    "menu.window.toolbar_time_tracker",
+];
+
 pub(crate) fn toolbars_list(app: &mut App, ui: &mut Ui) {
-    check(ui, "menu.window.toolbar_menu_bar", "", true);
-    if check(
-        ui,
-        "menu.window.toolbar_standard",
-        "",
-        app.show_standard_toolbar,
-    ) {
-        app.show_standard_toolbar = !app.show_standard_toolbar;
+    for key in crate::ui::context_menu_filter::ordered_keys(TOOLBAR_KEYS)
+        .iter()
+        .copied()
+    {
+        toolbar_item(app, ui, key);
     }
-    if check(
-        ui,
-        "menu.window.toolbar_property_bar",
-        "",
-        app.show_property_bar,
-    ) {
-        app.show_property_bar = !app.show_property_bar;
+}
+
+/// One toolbar toggle, shared by the main menu and the reordered context menu.
+pub(crate) fn toolbar_item(app: &mut App, ui: &mut Ui, key: &str) {
+    if key == "menu.window.toolbar_menu_bar" {
+        check(ui, key, "", true);
+        return;
     }
-    if check(ui, "menu.window.toolbar_toolbox", "", app.show_toolbox) {
-        app.show_toolbox = !app.show_toolbox;
-    }
-    let palette = app.settings.palette.show_palette;
-    if check(ui, "bars.palette", "", palette) {
-        app.settings.palette.show_palette = !palette;
-    }
-    // Shown while an AI service is set up (AI Drawing).
-    let ai_bar = app.settings.ai.show_bar;
-    if check(ui, "bars.ai_prompt", "", ai_bar) {
-        app.settings.ai.show_bar = !ai_bar;
-    }
-    if check(
-        ui,
-        "menu.window.toolbar_status_bar",
-        "",
-        app.show_status_bar,
-    ) {
-        app.show_status_bar = !app.show_status_bar;
-    }
-    if check(ui, "menu.window.toolbar_text", "", app.show_text_toolbar) {
-        app.show_text_toolbar = !app.show_text_toolbar;
-    }
-    if check(ui, "menu.window.toolbar_zoom", "", app.show_zoom_toolbar) {
-        app.show_zoom_toolbar = !app.show_zoom_toolbar;
-    }
-    if check(
-        ui,
-        "menu.window.toolbar_transform",
-        "",
-        app.show_transform_toolbar,
-    ) {
-        app.show_transform_toolbar = !app.show_transform_toolbar;
-    }
-    let tracker = app.settings.time_tracker.show_bar;
-    if check(ui, "menu.window.toolbar_time_tracker", "", tracker) {
-        app.settings.time_tracker.show_bar = !tracker;
+    let visible = match key {
+        "menu.window.toolbar_standard" => &mut app.show_standard_toolbar,
+        "menu.window.toolbar_property_bar" => &mut app.show_property_bar,
+        "menu.window.toolbar_toolbox" => &mut app.show_toolbox,
+        "bars.palette" => &mut app.settings.palette.show_palette,
+        "bars.ai_prompt" => &mut app.settings.ai.show_bar,
+        "menu.window.toolbar_status_bar" => &mut app.show_status_bar,
+        "menu.window.toolbar_text" => &mut app.show_text_toolbar,
+        "menu.window.toolbar_zoom" => &mut app.show_zoom_toolbar,
+        "menu.window.toolbar_transform" => &mut app.show_transform_toolbar,
+        "menu.window.toolbar_time_tracker" => &mut app.settings.time_tracker.show_bar,
+        _ => return,
+    };
+    if check(ui, key, "", *visible) {
+        *visible = !*visible;
     }
     // The toolbars the user made, by their names (#3264).
     let slots: Vec<u8> = app.settings.bars.custom.iter().map(|c| c.slot).collect();
@@ -5842,5 +5938,425 @@ mod options_items_tests {
         }
         assert!(!run_in_options(&mut app, "menu.layout.document_options"));
         assert!(matches!(app.dialog, Dialog::None));
+    }
+}
+
+#[cfg(test)]
+mod context_menu_filter_tests {
+    use super::*;
+    use crate::ui::context_menu_filter::{Preferences, Scope};
+
+    #[test]
+    fn replay_keeps_the_selected_dynamic_label_with_its_shared_operation_key() {
+        let context = crate::theme::ui_context();
+        let mut first = false;
+        let mut second = false;
+        replay::start(1);
+        let mut output = context.run_ui(Default::default(), |ui| {
+            first = item_label_keyed(ui, "palette.add_from_bitmap", "Eight colors", "", true);
+            second = item_label_keyed(ui, "palette.add_from_bitmap", "Sixteen colors", "", true);
+        });
+        output.textures_delta.clear();
+        let (key, label, count) = replay::finish_labelled();
+        assert!(!first);
+        assert!(second);
+        assert_eq!(key.as_deref(), Some("palette.add_from_bitmap"));
+        assert_eq!(label.as_deref(), Some("Sixteen colors"));
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn hidden_items_remain_collectable_and_executable_commands() {
+        const KEY: &str = "menu.edit.copy";
+        let context = crate::theme::ui_context();
+        let mut preferences = Preferences::default();
+        preferences.set_visible("canvas_object", KEY, false);
+        let mut output = context.run_ui(Default::default(), |ui| {
+            let _scope = Scope::new(&preferences, "canvas_object");
+            let _invocation = invoke::Guard;
+            invoke::start_collect();
+            assert!(!item(ui, KEY, "Ctrl+C", true));
+            let collected = invoke::finish().0;
+            assert_eq!(collected.len(), 1);
+            assert_eq!(collected.first().map(|entry| entry.key.as_str()), Some(KEY),);
+            invoke::start_trigger(KEY);
+            assert!(item(ui, KEY, "Ctrl+C", true));
+            assert!(invoke::finish().1);
+            assert!(!item(ui, KEY, "Ctrl+C", true));
+        });
+        output.textures_delta.clear();
+    }
+
+    #[test]
+    fn every_check_radio_and_disabled_submenu_respects_visibility() {
+        let context = crate::theme::ui_context();
+        let mut preferences = Preferences::default();
+        for key in [
+            "ordinary",
+            "ready",
+            "check",
+            "check_label",
+            "check_pic",
+            "radio",
+            "check_disabled",
+            "radio_disabled",
+            "unfinished",
+            "disabled_sub",
+            "hidden_sub",
+        ] {
+            preferences.set_visible("canvas", key, false);
+        }
+        let mut output = context.run_ui(Default::default(), |ui| {
+            ROWS.with(|rows| rows.borrow_mut().clear());
+            let _scope = Scope::new(&preferences, "canvas");
+            assert!(!item(ui, "ordinary", "", true));
+            assert!(!item_label_keyed(ui, "ready", "A layer", "", true));
+            assert!(!check(ui, "check", "", true));
+            assert!(!check_label(ui, "A palette", "check_label", false));
+            assert!(!check_pic(ui, "check_pic", "", false, None));
+            assert!(!radio(ui, "radio", "", false));
+            assert!(!check_if(ui, "check_disabled", false, false));
+            assert!(!radio_if(ui, "radio_disabled", "", false, false));
+            todo_sub(ui, "unfinished");
+            sub_if(ui, "disabled_sub", false, |_| ());
+            sub(ui, "hidden_sub", |_| ());
+            ROWS.with(|rows| assert!(rows.borrow().is_empty()));
+            let _ = item(ui, "visible", "", true);
+            ROWS.with(|rows| {
+                let rows = rows.borrow();
+                assert_eq!(rows.len(), 1);
+                assert_eq!(rows.first().map(|row| row.0.as_str()), Some("visible"));
+            });
+        });
+        output.textures_delta.clear();
+    }
+
+    #[test]
+    fn dynamic_targets_with_one_visibility_key_keep_distinct_widget_ids() {
+        let context = crate::theme::ui_context();
+        let mut output = context.run_ui(Default::default(), |ui| {
+            ROW_IDS.with(|rows| rows.borrow_mut().clear());
+            let _scope = Scope::new(&Preferences::default(), "objects_object");
+            let _ = item_label_keyed(ui, "docker.move_to_layer", "First layer", "", true);
+            let _ = item_label_keyed(ui, "docker.move_to_layer", "Second layer", "", true);
+            ROW_IDS.with(|rows| {
+                let rows = rows.borrow();
+                assert_eq!(rows.len(), 2);
+                let mut ids = rows.iter().map(|row| row.1);
+                assert_ne!(ids.next(), ids.next());
+            });
+        });
+        output.textures_delta.clear();
+    }
+
+    #[test]
+    fn hiding_a_submenu_keeps_its_command_walk_single_and_executable() {
+        let context = crate::theme::ui_context();
+        let mut preferences = Preferences::default();
+        preferences.set_visible("canvas", "hidden.submenu", false);
+        preferences.set_visible("canvas", "child.command", false);
+        let mut output = context.run_ui(Default::default(), |ui| {
+            let _scope = Scope::new(&preferences, "canvas");
+            let _invocation = invoke::Guard;
+            invoke::start_trigger("child.command");
+            let mut visits = 0;
+            sub(ui, "hidden.submenu", |ui| {
+                visits += 1;
+                assert!(item(ui, "child.command", "", true));
+            });
+            assert_eq!(visits, 1);
+            assert!(invoke::finish().1);
+        });
+        output.textures_delta.clear();
+    }
+}
+
+#[cfg(test)]
+mod empty_context_submenu_tests {
+    use super::*;
+    use crate::ui::context_menu_filter::{Preferences, Scope};
+
+    fn draw(
+        context: &egui::Context,
+        preferences: &Preferences,
+        scene: &str,
+        key: &str,
+        dynamic: bool,
+    ) -> bool {
+        let mut drawn = false;
+        let mut output = context.run_ui(Default::default(), |ui| {
+            let _scope = Scope::new(preferences, scene);
+            drawn = sub_row_dynamic(ui, key, dynamic, |_| ()).is_some();
+        });
+        output.textures_delta.clear();
+        drawn
+    }
+
+    #[test]
+    fn all_hidden_static_children_remove_the_parent_without_running_its_body() {
+        let context = crate::theme::ui_context();
+        let cases: &[(&str, &[&str])] = &[
+            ("context.internet_links", &["docker.hyperlink"]),
+            ("docker.color_styles", &["docker.new_from_selection"]),
+            (
+                "context.frame_type",
+                &[
+                    "context.frame_none",
+                    "context.frame_empty_clip_frame",
+                    "context.frame_text",
+                ],
+            ),
+            (
+                "menu.object.order",
+                &[
+                    "menu.object.to_front_of_page",
+                    "menu.object.to_back_of_page",
+                    "menu.object.forward_one",
+                    "menu.object.back_one",
+                    "menu.object.in_front_of",
+                    "menu.object.behind",
+                    "menu.object.reverse_order",
+                ],
+            ),
+            (
+                "context.wrap_paragraph_text",
+                &[
+                    "context.wrap_text_on",
+                    "context.wrap_contour_left",
+                    "context.wrap_contour_right",
+                    "context.wrap_contour_straddle",
+                    "context.wrap_square_left",
+                    "context.wrap_square_right",
+                    "context.wrap_square_straddle",
+                    "context.wrap_square_above_below",
+                    "context.wrap_offset",
+                ],
+            ),
+        ];
+        for scene in ["canvas_object", "objects_object"] {
+            for &(parent, children) in cases {
+                let mut preferences = Preferences::default();
+                for child in children {
+                    preferences.set_visible(scene, child, false);
+                }
+                let mut output = context.run_ui(Default::default(), |ui| {
+                    let _scope = Scope::new(&preferences, scene);
+                    assert!(sub_row(ui, parent, |_| panic!("hidden body ran")).is_none());
+                });
+                output.textures_delta.clear();
+                preferences.set_visible(scene, children[0], true);
+                assert!(draw(&context, &preferences, scene, parent, false));
+            }
+        }
+    }
+
+    #[test]
+    fn dynamic_object_styles_keep_a_branch_and_hiding_its_parent_hides_the_group() {
+        let context = crate::theme::ui_context();
+        let mut preferences = Preferences::default();
+        for key in [
+            "docker.new_style_from_selection",
+            "docker.break_style_link",
+            "docker.open_object_styles",
+        ] {
+            preferences.set_visible("canvas_object", key, false);
+        }
+        assert!(!draw(
+            &context,
+            &preferences,
+            "canvas_object",
+            "docker.object_styles",
+            false
+        ));
+        assert!(draw(
+            &context,
+            &preferences,
+            "canvas_object",
+            "docker.object_styles",
+            true
+        ));
+        preferences.set_visible("canvas_object", "docker.object_styles", false);
+        assert!(!draw(
+            &context,
+            &preferences,
+            "canvas_object",
+            "docker.object_styles",
+            true
+        ));
+    }
+
+    #[test]
+    fn nested_toolbar_and_palette_branches_follow_visible_leaf_operations() {
+        let context = crate::theme::ui_context();
+        let mut preferences = Preferences::default();
+        for key in [
+            "bars.size_default",
+            "bars.size_extra_small",
+            "bars.size_small",
+            "bars.size_medium",
+            "bars.size_large",
+            "bars.size_extra_large",
+            "bars.toolbox_reset",
+            "bars.image_only",
+            "bars.caption_only",
+            "bars.caption_right",
+            "menu.window.workspace_export",
+            "menu.window.workspace_import",
+            "bars.customize_options",
+        ] {
+            preferences.set_visible("toolbar", key, false);
+        }
+        assert!(!draw(
+            &context,
+            &preferences,
+            "toolbar",
+            "bars.customize",
+            false
+        ));
+        preferences.set_visible("toolbar", "bars.size_small", true);
+        assert!(draw(
+            &context,
+            &preferences,
+            "toolbar",
+            "bars.customize",
+            false
+        ));
+        for scene in ["palette", "palette_swatch", "palette_document"] {
+            for key in [
+                "palette.size_xs",
+                "palette.size_s",
+                "palette.size_m",
+                "palette.size_l",
+                "palette.size_xl",
+                "palette.rows_1",
+                "palette.rows_2",
+                "palette.rows_3",
+                "palette.rows_4",
+                "palette.rows_5",
+                "palette.rows_6",
+                "palette.rows_7",
+                "palette.rows_8",
+                "palette.rows_fit",
+                "bars.top",
+                "bars.bottom",
+                "bars.left",
+                "bars.right",
+                "palette.float",
+                "palette.open_as_bar",
+                "palette.reset",
+                "palette.rename",
+            ] {
+                preferences.set_visible(scene, key, false);
+            }
+            for parent in [
+                "palette.size",
+                "palette.rows",
+                "palette.position",
+                "palette.open_bar",
+                "palette.palette",
+            ] {
+                assert!(!draw(&context, &preferences, scene, parent, false));
+            }
+            assert!(draw(
+                &context,
+                &preferences,
+                scene,
+                "palette.position",
+                true
+            ));
+        }
+    }
+
+    #[test]
+    fn hidden_branch_is_walked_once_in_command_mode_and_unscoped_rows_are_preserved() {
+        let context = crate::theme::ui_context();
+        let mut preferences = Preferences::default();
+        preferences.set_visible("canvas_object", "docker.hyperlink", false);
+        let mut visits = 0;
+        let mut output = context.run_ui(Default::default(), |ui| {
+            {
+                let _scope = Scope::new(&preferences, "canvas_object");
+                assert!(sub_row(ui, "context.internet_links", |_| {
+                    visits += 1;
+                })
+                .is_none());
+                assert_eq!(visits, 0);
+                let _guard = invoke::Guard;
+                invoke::start_trigger("docker.hyperlink");
+                sub(ui, "context.internet_links", |ui| {
+                    visits += 1;
+                    assert!(item(ui, "docker.hyperlink", "", true));
+                });
+                assert_eq!(visits, 1);
+                assert!(invoke::finish().1);
+            }
+            assert!(sub_row(ui, "context.internet_links", |_| ()).is_some());
+        });
+        output.textures_delta.clear();
+    }
+}
+
+#[cfg(test)]
+mod context_menu_order_tests {
+    use super::*;
+    use crate::ui::context_menu_filter::{ordered_menu, Preferences, Scope};
+
+    #[test]
+    fn context_menu_order_does_not_change_command_collection_or_repeat_actions() {
+        let context = crate::theme::ui_context();
+        let mut preferences = Preferences::default();
+        preferences.set_order("canvas_object", "", &["menu.edit.delete", "menu.edit.copy"]);
+        preferences.set_visible("canvas_object", "menu.edit.copy", false);
+        let mut output = context.run_ui(Default::default(), |ui| {
+            let _scope = Scope::new(&preferences, "canvas_object");
+            let _invocation = invoke::Guard;
+            invoke::start_collect();
+            ordered_menu! { ui;
+                "menu.edit.copy" => { assert!(!item(ui, "menu.edit.copy", "", true)); },
+                "menu.edit.delete" => { assert!(!item(ui, "menu.edit.delete", "", true)); },
+            }
+            let entries = invoke::finish().0;
+            assert_eq!(
+                entries
+                    .iter()
+                    .map(|entry| entry.key.as_str())
+                    .collect::<Vec<_>>(),
+                ["menu.edit.copy", "menu.edit.delete"]
+            );
+            invoke::start_trigger("menu.edit.copy");
+            let mut executed = 0;
+            ordered_menu! { ui;
+                "menu.edit.copy" => { if item(ui, "menu.edit.copy", "", true) { executed += 1; } },
+                "menu.edit.delete" => { if item(ui, "menu.edit.delete", "", true) { executed += 1; } },
+            }
+            assert_eq!(executed, 1);
+            assert!(invoke::finish().1);
+        });
+        output.textures_delta.clear();
+    }
+
+    #[test]
+    fn context_menu_order_submenus_apply_their_own_saved_sibling_sequence() {
+        let context = crate::theme::ui_context();
+        let mut preferences = Preferences::default();
+        preferences.set_order(
+            "canvas_object",
+            "menu.object.order",
+            &["menu.object.back_one", "menu.object.forward_one"],
+        );
+        let mut output = context.run_ui(Default::default(), |ui| {
+            let _scope = Scope::new(&preferences, "canvas_object");
+            replay::start(usize::MAX);
+            let mut visits = Vec::new();
+            sub(ui, "menu.object.order", |_ui| {
+                ordered_menu! { _ui;
+                    "menu.object.forward_one" => { visits.push("forward"); },
+                    "menu.object.back_one" => { visits.push("back"); },
+                }
+            });
+            let _ = replay::finish();
+            assert_eq!(visits, ["back", "forward"]);
+        });
+        output.textures_delta.clear();
     }
 }

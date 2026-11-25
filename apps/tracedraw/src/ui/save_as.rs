@@ -915,9 +915,9 @@ pub fn dialog(app: &mut App, ctx: &Context, st: &mut SaveAsState, close: &mut bo
                 ui.set_min_height(LIST_H);
                 ui.set_max_height(LIST_H);
                 ui.horizontal_top(|ui| {
-                    places(ui, st);
+                    places(ui, st, &app.settings.context_menus);
                     ui.separator();
-                    listing(ui, st);
+                    listing(ui, st, &app.settings.context_menus);
                 });
             });
             ui.add_space(6.0);
@@ -1045,7 +1045,11 @@ fn folder_bar(ui: &mut Ui, st: &mut SaveAsState) {
 /// folders and roots, then Drives (mounted drives, memory cards, network
 /// shares), Bookmarks (the desktop's, then those made here with a right
 /// click on a folder, which a right click removes) and Recent (#1391).
-fn places(ui: &mut Ui, st: &mut SaveAsState) {
+fn places(
+    ui: &mut Ui,
+    st: &mut SaveAsState,
+    context_menu_prefs: &crate::ui::context_menus::Preferences,
+) {
     let mut open: Option<PathBuf> = None;
     let mut unbookmark: Option<PathBuf> = None;
     ui.vertical(|ui| {
@@ -1097,8 +1101,19 @@ fn places(ui: &mut Ui, st: &mut SaveAsState) {
                         if r.clicked() {
                             open = Some(path.clone());
                         }
-                        r.context_menu(|ui| {
-                            if ui.ibutton("dialog.remove_bookmark").clicked() {
+                        crate::ui::context_menus::filter_popup(
+                            egui::Popup::context_menu(&r),
+                            context_menu_prefs,
+                            "save_bookmark",
+                        )
+                        .show(|ui| {
+                            let _menu = crate::ui::context_menus::Scope::new(
+                                context_menu_prefs,
+                                "save_bookmark",
+                            );
+                            if crate::ui::context_menus::show_item(ui, "dialog.remove_bookmark")
+                                && ui.ibutton("dialog.remove_bookmark").clicked()
+                            {
                                 unbookmark = Some(path.clone());
                                 ui.close();
                             }
@@ -1127,11 +1142,34 @@ fn places(ui: &mut Ui, st: &mut SaveAsState) {
     }
 }
 
+/// Only operations offered for this file or folder keep its popup open.
+fn filter_save_entry_popup<'a>(
+    popup: egui::Popup<'a>,
+    preferences: &crate::ui::context_menus::Preferences,
+    directory: bool,
+    bookmarked: bool,
+) -> egui::Popup<'a> {
+    let visible = preferences.is_visible("save_entry", "dialog.rename_entry")
+        || directory
+            && (preferences.is_visible("save_entry", "dialog.open_entry")
+                || !bookmarked && preferences.is_visible("save_entry", "dialog.add_bookmark"));
+    if crate::ui::menus::invoke::active() || visible {
+        popup
+    } else {
+        egui::Popup::close_id(popup.ctx(), popup.get_id());
+        popup.open(false)
+    }
+}
+
 /// The folder's contents: a click picks an entry (a file's name becomes
 /// the name), a double click on a folder opens it, a right click offers
 /// Open and Rename. With the list picked, letters jump to entries, F2
 /// renames, Enter opens a folder and the arrows move.
-fn listing(ui: &mut Ui, st: &mut SaveAsState) {
+fn listing(
+    ui: &mut Ui,
+    st: &mut SaveAsState,
+    context_menu_prefs: &crate::ui::context_menus::Preferences,
+) {
     let tz = jiff::tz::TimeZone::system();
     let mut open: Option<PathBuf> = None;
     let mut pick: Option<PathBuf> = None;
@@ -1227,21 +1265,53 @@ fn listing(ui: &mut Ui, st: &mut SaveAsState) {
                                 } else if r.clicked() || r.secondary_clicked() {
                                     pick = Some(e.path.clone());
                                 }
-                                r.context_menu(|ui| {
-                                    if e.is_dir && ui.ibutton("dialog.open_entry").clicked() {
-                                        open = Some(e.path.clone());
-                                        ui.close();
-                                    }
-                                    if ui.ibutton("dialog.rename_entry").clicked() {
-                                        rename = Some(e.path.clone());
-                                        ui.close();
-                                    }
-                                    if e.is_dir
-                                        && !st.bookmarks.contains(&e.path)
-                                        && ui.ibutton("dialog.add_bookmark").clicked()
-                                    {
-                                        bookmark = Some(e.path.clone());
-                                        ui.close();
+                                filter_save_entry_popup(
+                                    egui::Popup::context_menu(&r),
+                                    context_menu_prefs,
+                                    e.is_dir,
+                                    st.bookmarks.contains(&e.path),
+                                )
+                                .show(|ui| {
+                                    let _menu = crate::ui::context_menus::Scope::new(
+                                        context_menu_prefs,
+                                        "save_entry",
+                                    );
+                                    crate::ui::context_menu_filter::ordered_menu! { ui;
+                                        "dialog.open_entry" => {
+                                            if e.is_dir
+                                                && crate::ui::context_menus::show_item(
+                                                    ui,
+                                                    "dialog.open_entry",
+                                                )
+                                                && ui.ibutton("dialog.open_entry").clicked()
+                                            {
+                                                open = Some(e.path.clone());
+                                                ui.close();
+                                            }
+                                        },
+                                        "dialog.rename_entry" => {
+                                            if crate::ui::context_menus::show_item(
+                                                ui,
+                                                "dialog.rename_entry",
+                                            ) && ui.ibutton("dialog.rename_entry").clicked()
+                                            {
+                                                rename = Some(e.path.clone());
+                                                ui.close();
+                                            }
+                                        },
+                                        "dialog.add_bookmark" => {
+                                            if e.is_dir
+                                                && !st.bookmarks.contains(&e.path)
+                                                && crate::ui::context_menus::show_item(
+                                                    ui,
+                                                    "dialog.add_bookmark",
+                                                )
+                                                && ui.ibutton("dialog.add_bookmark").clicked()
+                                            {
+                                                bookmark = Some(e.path.clone());
+                                                ui.close();
+                                            }
+                                        }
                                     }
                                 });
                             }
@@ -1670,6 +1740,55 @@ fn fields(ui: &mut Ui, st: &mut SaveAsState) {
         });
         ui.end_row();
     });
+}
+
+#[cfg(test)]
+mod conditional_entry_popup_tests {
+    use super::*;
+
+    fn popup_drawn(
+        preferences: &crate::ui::context_menus::Preferences,
+        directory: bool,
+        bookmarked: bool,
+    ) -> bool {
+        let context = crate::theme::ui_context();
+        let id = egui::Id::new("conditional_save_entry_popup");
+        egui::Popup::open_id(&context, id);
+        let mut drawn = false;
+        let mut output = context.run_ui(Default::default(), |ui| {
+            let popup = egui::Popup::new(
+                id,
+                context.clone(),
+                egui::PopupAnchor::Position(egui::pos2(20.0, 20.0)),
+                ui.layer_id(),
+            )
+            .open_memory(None);
+            drawn = filter_save_entry_popup(popup, preferences, directory, bookmarked)
+                .show(|ui| {
+                    let _ = ui.add_enabled(false, egui::Button::new("Visible row"));
+                })
+                .is_some();
+        });
+        output.textures_delta.clear();
+        assert_eq!(egui::Popup::is_id_open(&context, id), drawn);
+        drawn
+    }
+
+    #[test]
+    fn hidden_rename_does_not_leave_directory_only_actions_in_a_file_popup() {
+        let mut preferences = crate::ui::context_menus::Preferences::default();
+        assert!(popup_drawn(&preferences, false, false));
+        preferences.set_visible("save_entry", "dialog.rename_entry", false);
+        assert!(!popup_drawn(&preferences, false, false));
+        assert!(popup_drawn(&preferences, true, false));
+        preferences.set_visible("save_entry", "dialog.open_entry", false);
+        assert!(popup_drawn(&preferences, true, false));
+        assert!(!popup_drawn(&preferences, true, true));
+        preferences.set_visible("save_entry", "dialog.add_bookmark", false);
+        assert!(!popup_drawn(&preferences, true, false));
+        preferences.set_visible("save_entry", "dialog.rename_entry", true);
+        assert!(popup_drawn(&preferences, false, false));
+    }
 }
 
 #[cfg(test)]

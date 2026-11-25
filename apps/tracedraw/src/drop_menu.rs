@@ -382,6 +382,12 @@ pub fn drop_menu_ui(app: &mut App, ui: &mut Ui) {
     let id = egui::Id::new("canvas_drop_menu");
     let ctx = ui.ctx().clone();
     let pos_id = id.with("pos");
+    if !crate::ui::context_menus::has_visible_items(&app.settings.context_menus, "drop") {
+        egui::Popup::close_id(&ctx, id);
+        app.drop_menu = None;
+        ctx.data_mut(|data| data.remove::<egui::Pos2>(pos_id));
+        return;
+    }
     if ctx.data(|d| d.get_temp::<egui::Pos2>(pos_id)) != Some(menu.screen) {
         ctx.data_mut(|d| d.insert_temp(pos_id, menu.screen));
         egui::Popup::open_id(&ctx, id);
@@ -399,9 +405,20 @@ pub fn drop_menu_ui(app: &mut App, ui: &mut Ui) {
     .open_memory(None)
     .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
     .show(|ui| {
+        let _scope = crate::ui::context_menus::Scope::new(&app.settings.context_menus, "drop");
         ui.set_min_width(190.0);
         crate::ui::menus::body(ui, |ui| {
-            for action in DropAction::ALL {
+            let keys = DropAction::ALL.map(DropAction::key);
+            for key in crate::ui::context_menu_filter::ordered_keys(&keys)
+                .iter()
+                .copied()
+            {
+                let Some(action) = DropAction::ALL
+                    .into_iter()
+                    .find(|action| action.key() == key)
+                else {
+                    continue;
+                };
                 if matches!(action, DropAction::CopyFill | DropAction::Cancel) {
                     crate::ui::menus::sep(ui);
                 }
@@ -750,5 +767,125 @@ mod tests {
                 .iter()
                 .all(|n| bb.inflate(1e-6, 1e-6).contains(s.transform * n.pos)));
         }
+    }
+}
+
+#[cfg(test)]
+mod context_menu_settings_tests {
+    use super::*;
+    use tracedraw_core::{Color, Fill, ShapeKind};
+
+    #[test]
+    fn hiding_copy_here_does_not_disable_the_copy_action() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        let id = app
+            .new_shape(ShapeKind::Rect {
+                rect: tracedraw_core::Rect::new(0.0, 0.0, 10.0, 10.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("object");
+        app.select(vec![id]);
+        app.settings
+            .context_menus
+            .set_visible("drop", "drop.copy_here", false);
+        let menu = DropMenu {
+            screen: egui::pos2(32.0, 32.0),
+            offset: Vec2::new(20.0, 5.0),
+            target: None,
+        };
+        app.drop_menu = Some(menu);
+        crate::ui::menus::ROWS.with(|rows| rows.borrow_mut().clear());
+        for _ in 0..2 {
+            let mut out = ctx.run_ui(egui::RawInput::default(), |ui| drop_menu_ui(&mut app, ui));
+            out.textures_delta.clear();
+        }
+        let rows = crate::ui::menus::ROWS.with(|rows| rows.borrow().clone());
+        assert!(!rows.iter().any(|(key, _)| key == "drop.copy_here"));
+        assert!(rows.iter().any(|(key, _)| key == "drop.move_here"));
+        app.drop_action(menu, DropAction::Copy);
+        assert_eq!(app.selection.len(), 1);
+        assert_ne!(app.selection[0], id);
+        assert_eq!(app.doc().find_shape(id).expect("original").bounds().x0, 0.0);
+    }
+
+    #[test]
+    fn hidden_drop_rows_leave_modifier_drag_gestures_unchanged() {
+        let mut app = App::headless();
+        let source = app
+            .new_shape(ShapeKind::Rect {
+                rect: tracedraw_core::Rect::new(0.0, 0.0, 10.0, 10.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("source");
+        let target = app
+            .new_shape(ShapeKind::Rect {
+                rect: tracedraw_core::Rect::new(50.0, 0.0, 70.0, 20.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("target");
+        let color = Color::rgb8(180, 25, 40);
+        app.run(Command::SetFill {
+            shapes: vec![source],
+            fill: Fill::Solid(color),
+        });
+        app.select(vec![source]);
+        app.settings
+            .context_menus
+            .set_visible("drop", "drop.copy_fill_here", false);
+        app.right_drag_released(
+            RightDrag {
+                start: Point::new(5.0, 5.0),
+                current: Point::new(60.0, 10.0),
+            },
+            egui::Modifiers {
+                alt: true,
+                ..Default::default()
+            },
+        );
+        assert!(app.drop_menu.is_none());
+        assert_eq!(
+            app.doc().find_shape(target).expect("target").fill,
+            Fill::Solid(color)
+        );
+    }
+}
+
+#[cfg(test)]
+mod hidden_root_popup_tests {
+    use super::*;
+
+    #[test]
+    fn hiding_every_operation_clears_the_popup_and_pending_menu() {
+        let mut app = App::headless();
+        let position = egui::pos2(30.0, 30.0);
+        app.drop_menu = Some(DropMenu {
+            screen: position,
+            offset: Vec2::new(1.0, 2.0),
+            target: None,
+        });
+        let definition = crate::ui::context_menus::CATALOG
+            .iter()
+            .find(|menu| menu.id == "drop")
+            .expect("menu");
+        for key in definition.items {
+            app.settings
+                .context_menus
+                .set_visible(definition.id, key, false);
+        }
+        let context = crate::theme::ui_context();
+        let id = egui::Id::new("canvas_drop_menu");
+        egui::Popup::open_id(&context, id);
+        context.data_mut(|data| data.insert_temp(id.with("pos"), position));
+        let mut output = context.run_ui(Default::default(), |ui| drop_menu_ui(&mut app, ui));
+        output.textures_delta.clear();
+        assert!(app.drop_menu.is_none());
+        assert!(!egui::Popup::is_id_open(&context, id));
+        assert!(context
+            .data(|data| data.get_temp::<egui::Pos2>(id.with("pos")))
+            .is_none());
     }
 }

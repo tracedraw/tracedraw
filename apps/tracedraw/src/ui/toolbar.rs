@@ -4205,14 +4205,45 @@ fn my_shapes_grid(app: &mut App, ui: &mut Ui) {
                         if r.clicked() {
                             picked = Some(s.uid);
                         }
-                        r.context_menu(|ui| {
-                            if ui.ibutton("shapes.mine_rename").clicked() {
-                                rename = Some(s.uid);
-                                ui.close();
-                            }
-                            if ui.ibutton("shapes.mine_remove").clicked() {
-                                remove = Some(s.uid);
-                                ui.close();
+                        crate::ui::context_menus::filter_popup(
+                            egui::Popup::context_menu(&r),
+                            &app.settings.context_menus,
+                            "my_shapes",
+                        )
+                        .show(|ui| {
+                            let _scope = crate::ui::context_menus::Scope::new(
+                                &app.settings.context_menus,
+                                "my_shapes",
+                            );
+                            for menu_key in crate::ui::context_menu_filter::ordered_keys(&[
+                                "shapes.mine_rename",
+                                "shapes.mine_remove",
+                            ])
+                            .iter()
+                            .copied()
+                            {
+                                match menu_key {
+                                    "shapes.mine_rename" => {
+                                        if crate::ui::context_menus::show_item(
+                                            ui,
+                                            "shapes.mine_rename",
+                                        ) && ui.ibutton("shapes.mine_rename").clicked()
+                                        {
+                                            rename = Some(s.uid);
+                                            ui.close();
+                                        }
+                                    }
+                                    "shapes.mine_remove"
+                                        if crate::ui::context_menus::show_item(
+                                            ui,
+                                            "shapes.mine_remove",
+                                        ) && ui.ibutton("shapes.mine_remove").clicked() =>
+                                    {
+                                        remove = Some(s.uid);
+                                        ui.close();
+                                    }
+                                    _ => {}
+                                }
                             }
                         });
                         if i % 9 == 8 {
@@ -4285,13 +4316,13 @@ pub fn my_shape_name_dialog(app: &mut App, ctx: &egui::Context) {
         ui.add_space(8.0);
         ui.horizontal(|ui| {
             if ui
-                .add_sized([100.0, 26.0], egui::Button::new(tr("dialog.ok")))
+                .add_sized([100.0, 26.0], crate::ui::btn_icons::Ib::new("dialog.ok"))
                 .clicked()
             {
                 done = Some(true);
             }
             if ui
-                .add_sized([100.0, 26.0], egui::Button::new(tr("dialog.skip")))
+                .add_sized([100.0, 26.0], crate::ui::btn_icons::Ib::new("dialog.skip"))
                 .clicked()
             {
                 done = Some(false);

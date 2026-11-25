@@ -12339,7 +12339,18 @@ fn the_context_menu_breaks_an_enveloped_text_apart() {
     app.select(vec![id]);
     app.apply_envelope_preset(crate::envelope_edit::Preset::Arch);
     frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
-    let at = app.view.to_screen(bounds(&app, id).center());
+    let area = app.selection_bounds().expect("enveloped text bounds");
+    let point = (1..10)
+        .flat_map(|y| (1..20).map(move |x| (x, y)))
+        .map(|(x, y)| {
+            Point::new(
+                area.x0 + area.width() * f64::from(x) / 20.0,
+                area.y0 + area.height() * f64::from(y) / 10.0,
+            )
+        })
+        .find(|point| app.hit_test(*point) == Some(id))
+        .expect("a point on a drawn letter");
+    let at = app.view.to_screen(point);
     frame(
         &ctx,
         &mut app,
@@ -12359,13 +12370,15 @@ fn the_context_menu_breaks_an_enveloped_text_apart() {
         Modifiers::NONE,
     );
     assert!(app.context_menu.is_some());
+    assert_eq!(app.selection, vec![id]);
     frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
     let (_, texts) = painted(&ctx, &mut app);
+    let label = crate::i18n::tr("menu.object.break_apart");
     let item = texts
-        .into_iter()
-        .find(|(t, _)| t.trim() == "Break Apart")
-        .map(|(_, p)| p)
-        .expect("Break Apart in the context menu");
+        .iter()
+        .find(|(t, _)| t.trim() == label)
+        .map(|(_, p)| *p)
+        .unwrap_or_else(|| panic!("Break Apart in the context menu: {texts:?}"));
     click_at(&ctx, &mut app, item, Modifiers::NONE);
     assert_eq!(app.selection.len(), 3, "a curve per letter");
     for p in &app.selection {

@@ -191,21 +191,22 @@ pub fn tab_strip(app: &mut App, ui: &mut Ui, place: DockerPlace) {
                     click_tab(app, place, tab);
                 }
             }
-            egui::Popup::context_menu(&resp)
-                .id(egui::Id::new(("docker_tab_menu", tab.key())))
-                .style(crate::ui::menus::menu_popup_style)
-                .show(|ui| {
-                    crate::ui::menus::body(ui, |ui| {
-                        place_menu(app, ui, tab);
-                        stack_item(app, ui, tab);
-                        lock_item(app, ui, tab);
-                        crate::ui::menus::sep(ui);
-                        let open = !app.docker_locked(tab);
-                        if crate::ui::menus::item(ui, "docker.close_docker", "", open) {
-                            app.close_docker(tab);
-                        }
-                    })
-                });
+            crate::ui::context_menus::filter_popup(
+                egui::Popup::context_menu(&resp)
+                    .id(egui::Id::new(("docker_tab_menu", tab.key())))
+                    .style(crate::ui::menus::menu_popup_style),
+                &app.settings.context_menus,
+                "docker_tabs",
+            )
+            .show(|ui| {
+                let _scope = crate::ui::context_menus::Scope::new(
+                    &app.settings.context_menus,
+                    "docker_tabs",
+                );
+                crate::ui::menus::body(ui, |ui| {
+                    docker_context_menu(app, ui, tab);
+                })
+            });
         }
         // Where the tabs lie this frame, within the part of the column on
         // screen: a tab dragged onto the column goes in between the two
@@ -366,20 +367,58 @@ fn strip_drop(
 /// a docker's title menu). A side's second column is offered while the
 /// column at that side's edge holds another docker (a docker alone in
 /// it would only come back there).
-fn place_menu(app: &mut App, ui: &mut Ui, tab: DockerTab) {
-    let current = app.docker_place(tab);
-    for (key, place) in [
+fn docker_context_menu(app: &mut App, ui: &mut Ui, tab: DockerTab) {
+    const PLACES: [(&str, DockerPlace); 5] = [
         ("bars.right", DockerPlace::Right),
         ("docker.right_inner", DockerPlace::RightInner),
         ("bars.left", DockerPlace::Left),
         ("docker.left_inner", DockerPlace::LeftInner),
         ("bars.floating", DockerPlace::Floating),
-    ] {
-        let enabled = !place.is_inner() || can_take_inner(app, place, tab);
-        if crate::ui::menus::radio_if(ui, key, "", current == Some(place), enabled)
-            && current != Some(place)
+    ];
+    let current = app.docker_place(tab);
+    // A floating panel docks back where it was, first in its menu
+    // (#3950, #4247).
+    if current == Some(DockerPlace::Floating) {
+        if crate::ui::menus::item(ui, "docker.dock_back", "", true) {
+            app.dock_back(tab);
+        }
+        crate::ui::menus::sep(ui);
+    }
+    for key in crate::ui::context_menu_filter::ordered_keys(&[
+        "bars.right",
+        "docker.right_inner",
+        "bars.left",
+        "docker.left_inner",
+        "bars.floating",
+        "docker.stack_below",
+        "docker.lock_docker",
+        "docker.close_docker",
+    ])
+    .iter()
+    .copied()
+    {
+        if let Some((_, place)) = PLACES
+            .iter()
+            .copied()
+            .find(|(candidate, _)| *candidate == key)
         {
-            app.move_docker(tab, place, None);
+            let enabled = !place.is_inner() || can_take_inner(app, place, tab);
+            if crate::ui::menus::radio_if(ui, key, "", current == Some(place), enabled)
+                && current != Some(place)
+            {
+                app.move_docker(tab, place, None);
+            }
+        } else if key == "docker.stack_below" {
+            stack_item(app, ui, tab);
+        } else if key == "docker.lock_docker" {
+            lock_item(app, ui, tab);
+        } else if key == "docker.close_docker" {
+            crate::ui::menus::sep(ui);
+            // A locked docker cannot be closed (#3953).
+            let open = !app.docker_locked(tab);
+            if crate::ui::menus::item(ui, key, "", open) {
+                app.close_docker(tab);
+            }
         }
     }
     // A window of its own, for another monitor (#2884); grey where the
@@ -396,7 +435,10 @@ fn place_menu(app: &mut App, ui: &mut Ui, tab: DockerTab) {
 /// back among the tabs (#2312). Offered for a docker of a column that
 /// holds another docker.
 fn stack_item(app: &mut App, ui: &mut Ui, tab: DockerTab) {
-    let Some(place) = app.docker_place(tab).filter(|p| *p != DockerPlace::Floating) else {
+    let Some(place) = app
+        .docker_place(tab)
+        .filter(|p| *p != DockerPlace::Floating)
+    else {
         return;
     };
     let below = app.docker_below(place) == Some(tab);
@@ -1182,8 +1224,15 @@ pub fn stack_rects(full: egui::Rect, split: f32) -> (egui::Rect, egui::Rect, egu
 pub fn dockers(app: &mut App, ui: &mut Ui, place: DockerPlace) {
     let full = ui.max_rect();
     let nr = ui.ctx().cumulative_frame_nr();
-    ui.ctx()
-        .data_mut(|d| d.insert_temp(body_id(place), ColumnBody { frame: nr, rect: full }));
+    ui.ctx().data_mut(|d| {
+        d.insert_temp(
+            body_id(place),
+            ColumnBody {
+                frame: nr,
+                rect: full,
+            },
+        )
+    });
     let (_, front, _) = app.docker_column(place);
     let stacked = app
         .docker_below(place)
@@ -1307,32 +1356,24 @@ fn docker_title(app: &mut App, ui: &mut Ui, tab: DockerTab, place: DockerPlace) 
     // A floating panel, in the main window or in a window of its own,
     // docks back where it was with a double click on its title or with
     // Dock Back, first in its title's menu (#3950, #4247).
-    let floating = place == DockerPlace::Floating;
-    if floating && resp.double_clicked_by(egui::PointerButton::Primary) {
+    if place == DockerPlace::Floating && resp.double_clicked_by(egui::PointerButton::Primary) {
         app.docker_drag = None;
         app.dock_back(tab);
     }
-    egui::Popup::context_menu(&resp)
-        .id(egui::Id::new(("docker_title_menu", tab.key())))
-        .style(crate::ui::menus::menu_popup_style)
-        .show(|ui| {
-            crate::ui::menus::body(ui, |ui| {
-                if floating {
-                    if crate::ui::menus::item(ui, "docker.dock_back", "", true) {
-                        app.dock_back(tab);
-                    }
-                    crate::ui::menus::sep(ui);
-                }
-                place_menu(app, ui, tab);
-                stack_item(app, ui, tab);
-                lock_item(app, ui, tab);
-                crate::ui::menus::sep(ui);
-                let open = !app.docker_locked(tab);
-                if crate::ui::menus::item(ui, "docker.close_docker", "", open) {
-                    app.close_docker(tab);
-                }
-            })
-        });
+    crate::ui::context_menus::filter_popup(
+        egui::Popup::context_menu(&resp)
+            .id(egui::Id::new(("docker_title_menu", tab.key())))
+            .style(crate::ui::menus::menu_popup_style),
+        &app.settings.context_menus,
+        "docker_title",
+    )
+    .show(|ui| {
+        let _scope =
+            crate::ui::context_menus::Scope::new(&app.settings.context_menus, "docker_title");
+        crate::ui::menus::body(ui, |ui| {
+            docker_context_menu(app, ui, tab);
+        })
+    });
     let grey = crate::theme::Tokens::text_dim();
     // Close, at the right end.
     let close = egui::Rect::from_center_size(
@@ -3866,7 +3907,10 @@ pub(crate) fn pattern_editor(
                 .selected_text(pattern_tile_name(*tile))
                 .show_ui(ui, |ui| {
                     for t in PatternTile::ALL {
-                        if ui.selectable_label(*tile == t, pattern_tile_name(t)).clicked() {
+                        if ui
+                            .selectable_label(*tile == t, pattern_tile_name(t))
+                            .clicked()
+                        {
                             *tile = t;
                             changed = true;
                         }
@@ -5272,30 +5316,55 @@ pub(crate) mod tests {
             modifiers: egui::Modifiers::NONE,
         };
         // Over the upper part the docker joins the column in front.
-        assert!(stack_drop(&app, &ctx, body.center() - egui::vec2(0.0, 100.0), DockerTab::Properties).is_none());
+        assert!(stack_drop(
+            &app,
+            &ctx,
+            body.center() - egui::vec2(0.0, 100.0),
+            DockerTab::Properties
+        )
+        .is_none());
         app.docker_drag = Some(DockerDrag {
             tab: DockerTab::Properties,
             grab: egui::vec2(10.0, 10.0),
             last: None,
         });
         let at = egui::pos2(body.center().x, body.bottom() - 40.0);
-        run(&mut app, vec![egui::Event::PointerMoved(at), press(at, true)]);
+        run(
+            &mut app,
+            vec![egui::Event::PointerMoved(at), press(at, true)],
+        );
         assert!(app.docker_drag.is_some());
         run(&mut app, vec![press(at, false)]);
         assert!(app.docker_drag.is_none());
-        assert_eq!(app.docker_place(DockerTab::Properties), Some(DockerPlace::Right));
+        assert_eq!(
+            app.docker_place(DockerTab::Properties),
+            Some(DockerPlace::Right)
+        );
         assert_eq!(app.docker_tab, DockerTab::Objects);
-        assert_eq!(app.docker_below(DockerPlace::Right), Some(DockerTab::Properties));
+        assert_eq!(
+            app.docker_below(DockerPlace::Right),
+            Some(DockerTab::Properties)
+        );
         run(&mut app, Vec::new());
         // The divider dragged up gives the lower docker more room.
         let (_, div, _) = stack_rects(body, app.docker_stacks[0].split);
         let from = div.center();
         let to = from - egui::vec2(0.0, 150.0);
-        run(&mut app, vec![egui::Event::PointerMoved(from), press(from, true)]);
-        run(&mut app, vec![egui::Event::PointerMoved(from - egui::vec2(0.0, 20.0))]);
+        run(
+            &mut app,
+            vec![egui::Event::PointerMoved(from), press(from, true)],
+        );
+        run(
+            &mut app,
+            vec![egui::Event::PointerMoved(from - egui::vec2(0.0, 20.0))],
+        );
         run(&mut app, vec![egui::Event::PointerMoved(to)]);
         run(&mut app, vec![press(to, false)]);
-        assert!(app.docker_stacks[0].split < crate::app::DockerStack::DEFAULT_SPLIT - 0.1, "{}", app.docker_stacks[0].split);
+        assert!(
+            app.docker_stacks[0].split < crate::app::DockerStack::DEFAULT_SPLIT - 0.1,
+            "{}",
+            app.docker_stacks[0].split
+        );
         // A click on either tab keeps the split (#3524): the lower one's
         // tab sits last in the strip; a click on it closes the column, a
         // click again opens it split as it was; another tab comes to the
@@ -7740,5 +7809,38 @@ pub(crate) mod tests {
             |ui| properties(&mut app, ui),
         );
         out.textures_delta.clear();
+    }
+}
+
+#[cfg(test)]
+mod context_menu_settings_tests {
+    use super::*;
+
+    #[test]
+    fn hidden_panel_tab_actions_remain_in_the_title_menu() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        for key in ["bars.right", "docker.close_docker"] {
+            app.settings
+                .context_menus
+                .set_visible("docker_tabs", key, false);
+        }
+        let draw = |app: &mut App, scene| {
+            crate::ui::menus::ROWS.with(|rows| rows.borrow_mut().clear());
+            let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+                let _scope =
+                    crate::ui::context_menus::Scope::new(&app.settings.context_menus, scene);
+                docker_context_menu(app, ui, DockerTab::Hints);
+            });
+            out.textures_delta.clear();
+            crate::ui::menus::ROWS.with(|rows| rows.borrow().clone())
+        };
+        let tabs = draw(&mut app, "docker_tabs");
+        assert!(!tabs.iter().any(|(key, _)| key == "bars.right"));
+        assert!(!tabs.iter().any(|(key, _)| key == "docker.close_docker"));
+        assert!(tabs.iter().any(|(key, _)| key == "bars.left"));
+        let title = draw(&mut app, "docker_title");
+        assert!(title.iter().any(|(key, _)| key == "bars.right"));
+        assert!(title.iter().any(|(key, _)| key == "docker.close_docker"));
     }
 }
