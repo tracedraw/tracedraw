@@ -825,7 +825,7 @@ fn blur_pins(app: &App, ui: &mut Ui, radius: f64, pins: &mut Vec<BlurPin>) -> bo
     }
     let room = pins.len() < MAX_BLUR_PINS;
     if ui
-        .add_enabled(room, egui::Button::new(tr("layer_fx.add_pin")))
+        .add_enabled(room, crate::ui::btn_icons::Ib::new("layer_fx.add_pin"))
         .rich_tip(tr("layer_fx.add_pin_desc"))
         .clicked()
     {
@@ -1042,7 +1042,7 @@ fn settings(app: &App, ui: &mut Ui, e: &mut Effect) -> bool {
                     .rich_tip(tr("layer_fx.mono"))
                     .changed();
                 if ui
-                    .button(tr("layer_fx.new_grain"))
+                    .add(crate::ui::btn_icons::Ib::new("layer_fx.new_grain"))
                     .rich_tip(tr("layer_fx.new_grain"))
                     .clicked()
                 {

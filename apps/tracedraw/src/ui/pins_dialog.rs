@@ -214,7 +214,7 @@ pub fn dialog(app: &mut App, ctx: &Context, st: &mut PinsState, close: &mut bool
             ui.add(egui::Slider::new(&mut st.reach, 1.0..=3.0).step_by(0.1))
                 .rich_tip(crate::ui::tips::keyed("pins.reach"));
             if ui
-                .add_enabled(!st.pins.is_empty(), egui::Button::new(tr("pins.clear")))
+                .add_enabled(!st.pins.is_empty(), crate::ui::btn_icons::Ib::new("pins.clear"))
                 .rich_tip(crate::ui::tips::keyed("pins.clear"))
                 .clicked()
             {

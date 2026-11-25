@@ -317,7 +317,8 @@ fn exact(key: &str) -> Option<Src> {
         }
         "toolbar.delete_color_point" => Src::Pic(Pic::DeleteNode),
         "toolbar.mesh_shuffle" | "docker.scatter_shuffle" => Src::B(B::Shuffle),
-        "toolbar.action_reseed" | "layer_fx.reseed" | "shapegen.new_seed" | "merge.random_draw" => {
+        "toolbar.action_reseed" | "layer_fx.reseed" | "layer_fx.new_grain" | "shapegen.new_seed"
+        | "merge.random_draw" => {
             Src::B(B::Dice)
         }
         "toolbar.builder_add" => Src::B(B::Plus),

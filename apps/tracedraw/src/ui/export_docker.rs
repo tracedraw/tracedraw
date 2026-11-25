@@ -98,7 +98,7 @@ pub fn export_docker(app: &mut App, ui: &mut Ui) {
         if ui
             .add_enabled(
                 drawing && !app.selection.is_empty(),
-                egui::Button::new(tr("export_docker.add_slices")),
+                crate::ui::btn_icons::Ib::new("export_docker.add_slices"),
             )
             .rich_tip(tr("export_docker.add_slices_tip"))
             .clicked()
