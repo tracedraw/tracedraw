@@ -1955,6 +1955,37 @@ pub(crate) fn selection_area_mm2(s: &tracedraw_core::Shape) -> Option<f64> {
     a.is_finite().then_some(a)
 }
 
+/// The curve length or perimeter of one vector object on the page, mm,
+/// and whether the object is closed (perimeter vs open curve length):
+/// rectangles, ellipses, arcs and pies, polygons and stars, and curves
+/// (all subpaths summed, including inner holes); `None` for anything
+/// else (text, pictures, tables, groups).
+pub(crate) fn selection_length_mm(s: &tracedraw_core::Shape) -> Option<(f64, bool)> {
+    use kurbo::{ParamCurveArclen, Shape as _};
+    use tracedraw_core::ShapeKind as K;
+    let supported = matches!(
+        &s.kind,
+        K::Rect { .. } | K::Ellipse { .. } | K::Polygon { .. } | K::Path { .. }
+    );
+    if !supported {
+        return None;
+    }
+    let closed = !s.kind.is_open_curve();
+    // A whole ellipse is drawn with four cubic curves a little off the
+    // true ellipse; measure the true ellipse perimeter directly.
+    if let K::Ellipse { rect, arc: None } = &s.kind {
+        let e = s.transform * kurbo::Ellipse::from_rect(kurbo::Rect::new(rect.x0, rect.y0, rect.x1, rect.y1));
+        let len = e.perimeter(1e-6);
+        return len.is_finite().then_some((len, true));
+    }
+    let len: f64 = s
+        .page_path()
+        .segments()
+        .map(|seg| seg.arclen(1e-6))
+        .sum();
+    len.is_finite().then_some((len, closed))
+}
+
 fn properties(app: &mut App, ui: &mut Ui) {
     let cc = app.current_colors;
     ui.data_mut(|d| d.insert_temp(current_colors_id(), cc));
@@ -2044,6 +2075,28 @@ fn properties(app: &mut App, ui: &mut Ui) {
             .size(11.0),
         )
         .rich_tip(crate::ui::tips::keyed("docker.area"));
+    }
+    if let Some((length, closed)) = shapes
+        .first()
+        .filter(|_| shapes.len() == 1)
+        .and_then(selection_length_mm)
+    {
+        let key = if closed {
+            "docker.perimeter"
+        } else {
+            "docker.length"
+        };
+        ui.label(
+            egui::RichText::new(format!(
+                "{} {:.2} {}",
+                tr(key),
+                app.units.world_from_mm(length),
+                app.units.short()
+            ))
+            .monospace()
+            .size(11.0),
+        )
+        .rich_tip(crate::ui::tips::keyed(key));
     }
 
     ui.separator();
@@ -7864,6 +7917,71 @@ pub(crate) mod tests {
             |ui| properties(&mut app, ui),
         );
         out.textures_delta.clear();
+    }
+
+    #[test]
+    fn the_length_of_closed_open_and_holed_objects() {
+        use tracedraw_core::geometry::Rect;
+        let rect = tracedraw_core::Shape::new(
+            tracedraw_core::ShapeId(1),
+            ShapeKind::Rect {
+                rect: Rect::new(0.0, 0.0, 20.0, 10.0),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        let (len, closed) = selection_length_mm(&rect).expect("rect");
+        assert!(closed);
+        assert!((len - 60.0).abs() < 1e-6, "{len}");
+
+        let circle = tracedraw_core::Shape::new(
+            tracedraw_core::ShapeId(2),
+            ShapeKind::Ellipse {
+                rect: Rect::new(0.0, 0.0, 20.0, 20.0),
+                arc: None,
+            },
+        );
+        let (len, closed) = selection_length_mm(&circle).expect("circle");
+        assert!(closed);
+        assert!((len - std::f64::consts::TAU * 10.0).abs() < 1e-5, "{len}");
+
+        let mut poly_line = tracedraw_core::geometry::BezPath::new();
+        poly_line.move_to((0.0, 0.0));
+        poly_line.line_to((3.0, 4.0));
+        poly_line.line_to((3.0, 0.0));
+        let open = tracedraw_core::Shape::new(
+            tracedraw_core::ShapeId(3),
+            ShapeKind::Path {
+                path: poly_line,
+                closed: false,
+            },
+        );
+        let (len, closed) = selection_length_mm(&open).expect("open");
+        assert!(!closed);
+        assert!((len - 9.0).abs() < 1e-6, "{len}");
+
+        // Closed path with an inner hole: outer 20x20 (80) + inner 10x10 (40) = 120.
+        let mut holed = tracedraw_core::geometry::BezPath::new();
+        holed.move_to((0.0, 0.0));
+        holed.line_to((20.0, 0.0));
+        holed.line_to((20.0, 20.0));
+        holed.line_to((0.0, 20.0));
+        holed.close_path();
+        holed.move_to((5.0, 5.0));
+        holed.line_to((15.0, 5.0));
+        holed.line_to((15.0, 15.0));
+        holed.line_to((5.0, 15.0));
+        holed.close_path();
+        let combined = tracedraw_core::Shape::new(
+            tracedraw_core::ShapeId(4),
+            ShapeKind::Path {
+                path: holed,
+                closed: true,
+            },
+        );
+        let (len, closed) = selection_length_mm(&combined).expect("holed");
+        assert!(closed);
+        assert!((len - 120.0).abs() < 1e-6, "{len}");
     }
 }
 
