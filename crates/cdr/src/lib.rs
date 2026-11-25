@@ -108,6 +108,24 @@ pub fn open_bytes(bytes: &[u8], title: &str) -> Result<(tracedraw_core::Document
     open_bytes_keeping(bytes, title).map(|(doc, report, _)| (doc, report))
 }
 
+/// [`open_bytes`] for a file refused as damaged ([`Error::Damaged`]),
+/// opened anyway at the user's word (#4332): the damaged streams give
+/// what could be read, the report's warnings name them and the objects
+/// that could not be read from them are counted as skipped.
+pub fn open_bytes_damaged(
+    bytes: &[u8],
+    title: &str,
+) -> Result<(tracedraw_core::Document, ParseReport)> {
+    let (read, damaged) = container::accept_damaged(|| open_bytes(bytes, title));
+    let (doc, mut report) = read?;
+    for d in damaged {
+        report
+            .warnings
+            .push(format!("damaged stream read as far as it goes: {d}"));
+    }
+    Ok((doc, report))
+}
+
 /// [`open_bytes`] that also hands back the records the reader left
 /// uninterpreted (the chunks and `loda` arguments it does not read),
 /// keyed by object, as bytes shared with the file's streams. Empty for

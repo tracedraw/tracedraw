@@ -32147,3 +32147,93 @@ fn the_curvature_pen_continues_an_open_curve() {
     };
     assert!(closed_now, "the curve closed");
 }
+
+/// After Combine Live on two overlapping objects (#4322) the live group is
+/// selected; a click on an empty part of the page deselects, a click on
+/// the combined shape selects the group again, and Ctrl+click selects an
+/// object inside it, as with any group.
+#[test]
+fn objects_can_be_picked_after_combine_live() {
+    let (ctx, mut app, a) = setup();
+    let b = app
+        .new_shape(ShapeKind::Rect {
+            rect: Rect::new(40.0, 20.0, 90.0, 60.0),
+            radius: 0.0,
+            corners: None,
+        })
+        .expect("rect");
+    app.select(vec![b]);
+    app.apply_fill(tracedraw_core::Fill::Solid(tracedraw_core::Color::rgb8(
+        30, 30, 200,
+    )));
+    app.select(vec![a, b]);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    // Through the menu's command, as the user runs it.
+    app.combine_live_as(tracedraw_core::shaping::CombineMode::Weld);
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let group = app.selection.first().copied().expect("the live group is selected");
+    assert!(matches!(
+        app.doc().find_shape(group).map(|s| &s.kind),
+        Some(ShapeKind::Group { .. })
+    ));
+    // An empty part of the page: nothing selected.
+    let at = app.view.to_screen(Point::new(150.0, 150.0));
+    click_at(&ctx, &mut app, at, Modifiers::NONE);
+    assert!(app.selection.is_empty(), "a click outside deselects: {:?}", app.selection);
+    // The combined shape: the group.
+    let at = app.view.to_screen(Point::new(20.0, 20.0));
+    click_at(&ctx, &mut app, at, Modifiers::NONE);
+    assert_eq!(app.selection, vec![group], "a click on it picks the group");
+    // Ctrl+click: the object inside.
+    let at = app.view.to_screen(Point::new(80.0, 50.0));
+    click_at(&ctx, &mut app, at, Modifiers::CTRL);
+    assert_eq!(app.selection, vec![b], "Ctrl+click picks the object inside");
+    // Out again.
+    let at = app.view.to_screen(Point::new(150.0, 150.0));
+    click_at(&ctx, &mut app, at, Modifiers::NONE);
+    assert!(app.selection.is_empty());
+}
+
+/// Combine Live on objects picked inside a group, and in focus mode
+/// (#4322): clicks still pick and deselect afterwards.
+#[test]
+fn combine_live_inside_a_group_leaves_picking_working() {
+    for focus in [false, true] {
+        let (ctx, mut app, a) = setup();
+        let b = app
+            .new_shape(ShapeKind::Rect {
+                rect: Rect::new(40.0, 20.0, 90.0, 60.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        app.select(vec![b]);
+        app.apply_fill(tracedraw_core::Fill::Solid(tracedraw_core::Color::rgb8(
+            30, 30, 200,
+        )));
+        app.select(vec![a, b]);
+        app.group_selection();
+        let outer = app.selection[0];
+        if focus {
+            app.focus_on(outer);
+        }
+        app.select(vec![a, b]);
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+        app.combine_live_as(tracedraw_core::shaping::CombineMode::Weld);
+        for _ in 0..3 {
+            frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+        }
+        let at = app.view.to_screen(Point::new(150.0, 150.0));
+        click_at(&ctx, &mut app, at, Modifiers::NONE);
+        assert!(app.selection.is_empty(), "focus {focus}: a click outside deselects");
+        let at = app.view.to_screen(Point::new(20.0, 20.0));
+        click_at(&ctx, &mut app, at, Modifiers::NONE);
+        assert!(!app.selection.is_empty(), "focus {focus}: a click on it picks");
+        let at = app.view.to_screen(Point::new(150.0, 150.0));
+        double_click_at(&ctx, &mut app, at);
+        assert!(app.focus_target().is_none(), "focus {focus}: a double click outside leaves focus");
+        assert!(app.selection.is_empty(), "focus {focus}");
+    }
+}
