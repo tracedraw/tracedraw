@@ -1232,6 +1232,36 @@ mod tests {
         assert!(app.page_on_screen());
     }
 
+    /// Options > Zoom, Pan, Same view on every page: going to another
+    /// page shows the same part of it at the same zoom, even when that
+    /// page was left elsewhere; off, each page comes back as it was left.
+    #[test]
+    fn the_same_view_shows_on_every_page_when_asked() {
+        let mut app = App::headless();
+        app.show_welcome = false;
+        app.canvas_rect = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(800.0, 600.0));
+        app.add_page();
+        app.page = app.doc().pages[0].id;
+        app.fit_pending = false;
+        assert!(!app.settings.same_view_on_every_page, "off by default");
+        app.settings.same_view_on_every_page = true;
+        // The second page left somewhere else at another zoom.
+        app.goto_page(1);
+        app.view.zoom = 0.5;
+        app.view.origin = egui::pos2(300.0, 200.0);
+        app.goto_page(0);
+        // The top right corner of the first page, at 3x.
+        app.view.zoom = 3.0;
+        app.view.origin = egui::pos2(-1200.0, 700.0);
+        let before = app.view;
+        let corner = app.view.to_page(egui::pos2(700.0, 100.0));
+        app.goto_page(1);
+        assert_eq!(app.view.zoom, 3.0);
+        let there = app.view.to_page(egui::pos2(700.0, 100.0));
+        assert!((there.x - corner.x).abs() < 1e-3 && (there.y - corner.y).abs() < 1e-3);
+        assert_eq!(app.view.origin, before.origin);
+    }
+
     /// The space between pages of a drawing that sets none.
     const GAP_MM: f64 = tracedraw_core::document::DEFAULT_PAGE_SPACING;
     use tracedraw_core::geometry::Point;

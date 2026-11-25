@@ -4505,6 +4505,16 @@ impl Shape {
         self.opacity = (self.opacity * parent).clamp(0.0, 1.0);
     }
 
+    /// A clip frame whose transparency fades only the frame's fill and
+    /// outline, the objects inside keeping their own (#4360).
+    pub fn clip_contents_opaque(&self) -> bool {
+        matches!(self.kind, ShapeKind::ClipFrame { .. })
+            && self
+                .data
+                .iter()
+                .any(|(k, v)| k == CLIP_CONTENTS_OPAQUE && v == "1")
+    }
+
     /// A clip frame whose frame is a group: Ungroup takes it apart into
     /// the group's objects, each a clip frame holding the contents (#1605).
     pub fn is_clip_frame_of_group(&self) -> bool {
@@ -6080,6 +6090,11 @@ pub struct ColorStyle {
     #[serde(default)]
     pub harmony: Option<String>,
 }
+
+/// The data key of a clip frame whose transparency fades the frame's own
+/// fill and outline only, the objects inside keeping their own opacity
+/// (#4360: as `.cdr` files draw a see-through container).
+pub const CLIP_CONTENTS_OPAQUE: &str = "clip.contents_opaque";
 
 /// A symbol definition; instances reference it by index.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

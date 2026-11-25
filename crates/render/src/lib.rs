@@ -571,6 +571,20 @@ pub fn render_page_on_one_thread(
     render_page_whole(doc, page, opts, None)
 }
 
+/// [`render_page_on_one_thread`] that gives up, returning `None`, once
+/// `cancel` is set: a backdrop nobody waits for any more (#4361).
+pub fn render_page_on_one_thread_cancellable(
+    doc: &Document,
+    page: PageId,
+    opts: &RenderOptions,
+    cancel: &std::sync::atomic::AtomicBool,
+) -> Option<Pixmap> {
+    if (opts.width.max(1) as u64) * (opts.height.max(1) as u64) > MAX_PIXELS {
+        return None;
+    }
+    render_page_whole(doc, page, opts, Some(cancel))
+}
+
 /// Rows `y0..y1` of the image `opts` describes, the same as those rows of
 /// the whole image drawn at once: drawn with rows of margin above and
 /// below as far as shadow blurs reach (every row when the page has a
@@ -2478,7 +2492,13 @@ impl Renderer<'_> {
                 sub.draw_shape(c, t);
             }
         }
-        let opacity = clip.opacity.clamp(0.0, 1.0) as f32;
+        // A container from a `.cdr` file fades its own fill and outline
+        // alone; the objects inside keep their opacity (#4360).
+        let opacity = if clip.clip_contents_opaque() {
+            1.0
+        } else {
+            clip.opacity.clamp(0.0, 1.0) as f32
+        };
         let src = layer.data();
         let dst = self.pixmap.data_mut();
         for y in y0..y1 {
@@ -8002,6 +8022,49 @@ mod tests {
         assert_eq!(pm.pixel(25, 50).unwrap().alpha(), 0);
         assert_eq!(pm.pixel(75, 50).unwrap().alpha(), 255);
         assert_eq!(pm.pixel(5, 50).unwrap().alpha(), 0);
+    }
+
+    /// #4360: a see-through container from a `.cdr` file fades its own
+    /// fill; the opaque object inside shows fully. Without the mark the
+    /// whole clip frame fades, as a frame made in the program does.
+    #[test]
+    fn a_see_through_cdr_container_keeps_its_contents_opaque() {
+        let blue = Color::rgb8(0, 0, 255);
+        let contents = rect(1, Rect::new(40.0, 40.0, 60.0, 60.0), blue);
+        let frame = rect(2, Rect::new(10.0, 10.0, 90.0, 90.0), Color::rgb8(255, 0, 0));
+        let mut clip = Shape::new(
+            tracedraw_core::ShapeId(3),
+            ShapeKind::ClipFrame {
+                frame: Box::new(frame),
+                contents: vec![contents],
+            },
+        );
+        clip.opacity = 0.5;
+        let opts = RenderOptions {
+            width: 100,
+            height: 100,
+            view: ViewTransform {
+                zoom: 1.0,
+                origin_x: 0.0,
+                origin_y: 100.0,
+                stretch_y: 1.0,
+            },
+            ..RenderOptions::default()
+        };
+        let render = |clip: &Shape| {
+            let (doc, page) = doc_with(vec![clip.clone()]);
+            render_page(&doc, page, &opts).unwrap()
+        };
+        let pm = render(&clip);
+        let faded = pm.pixel(50, 50).unwrap().alpha();
+        assert!(faded < 255, "a frame made in the program fades all: {faded}");
+        clip.data.push((tracedraw_core::document::CLIP_CONTENTS_OPAQUE.into(), "1".into()));
+        let pm = render(&clip);
+        assert_eq!(pm.pixel(50, 50).unwrap().alpha(), 255);
+        assert_eq!(px(&pm, 50, 50), (0, 0, 255));
+        // The frame's own fill is still half see-through.
+        let edge = pm.pixel(20, 50).unwrap().alpha();
+        assert!((100..160).contains(&edge), "{edge}");
     }
 
     /// The drag preview moves an object inside a moved group by the

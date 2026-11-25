@@ -2841,6 +2841,9 @@ fn inline_outline(outline: &Json) -> Option<Option<tracedraw_core::Stroke>> {
     let flag = |key: &str| get(key).and_then(Json::num).is_some_and(|n| n != 0.0);
     st.behind_fill = flag("behindFill");
     st.scale_with_object = flag("scaleWithObject");
+    // Where the outline lies on the letters (#4356): 0 centred, 1 inside,
+    // 2 outside; any other value, or none, centred.
+    st.position = outline_position(get("justification").and_then(Json::num));
     st.join = match get("joinType").and_then(Json::num) {
         Some(1.0) => LineJoin::Round,
         Some(2.0) => LineJoin::Bevel,
@@ -2861,6 +2864,28 @@ fn inline_outline(outline: &Json) -> Option<Option<tracedraw_core::Stroke>> {
         );
     }
     Some(Some(st))
+}
+
+/// The place of a character outline from its style string's
+/// `justification` (#4356): 0 centred on the letters' edges, 1 inside,
+/// 2 outside; others centred.
+pub(crate) fn outline_position(code: Option<f64>) -> tracedraw_core::OutlinePosition {
+    use tracedraw_core::OutlinePosition;
+    match code {
+        Some(1.0) => OutlinePosition::Inside,
+        Some(2.0) => OutlinePosition::Outside,
+        _ => OutlinePosition::Center,
+    }
+}
+
+/// The `justification` code [`outline_position`] reads for `position`.
+pub(crate) fn outline_position_code(position: tracedraw_core::OutlinePosition) -> u8 {
+    use tracedraw_core::OutlinePosition;
+    match position {
+        OutlinePosition::Center => 0,
+        OutlinePosition::Inside => 1,
+        OutlinePosition::Outside => 2,
+    }
 }
 
 /// A colour written `MODEL,PALETTE,v1,v2,...` in version 16+ style strings.

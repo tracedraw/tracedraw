@@ -1146,6 +1146,22 @@ fn general_page(app: &mut App, ui: &mut Ui) {
         if DesktopOnly::Splash.shown() {
             ui.checkbox(&mut app.settings.show_splash, tr("options.show_splash"))
                 .rich_tip(crate::ui::tips::keyed("options.show_splash"));
+            // How long the splash stays up at least, so its name and
+            // version can be read (#4340); 0 by default, as before.
+            ui.add_enabled_ui(app.settings.show_splash, |ui| {
+                ui.horizontal(|ui| {
+                    ui.add_space(24.0);
+                    ui.label(tr("options.splash_seconds"));
+                    ui.add(
+                        egui::DragValue::new(&mut app.settings.splash_seconds)
+                            .range(0.0..=crate::settings::SPLASH_MAX_SECONDS)
+                            .speed(0.1)
+                            .max_decimals(1)
+                            .suffix(" s"),
+                    )
+                    .rich_tip(crate::ui::tips::keyed("options.splash_seconds"));
+                });
+            });
         }
         ui.checkbox(&mut app.settings.tracecut.show, tr("options.show_tracecut"))
             .rich_tip(crate::ui::tips::keyed("options.show_tracecut"));
@@ -4935,6 +4951,16 @@ fn zoom_pan_page(app: &mut App, ui: &mut Ui) {
     .rich_tip(crate::ui::tips::pair(
         "options.wheel_center_mouse",
         "options.wheel_center_mouse_tip",
+    ));
+    // The same part of every page at the same zoom when going from page
+    // to page; off, each page as it was left.
+    ui.checkbox(
+        &mut app.settings.same_view_on_every_page,
+        tr("options.same_view_on_every_page"),
+    )
+    .rich_tip(crate::ui::tips::pair(
+        "options.same_view_on_every_page",
+        "options.same_view_on_every_page_tip",
     ));
     // The wheel's glide and its step (#1648, #895).
     ui.checkbox(&mut app.settings.smooth_zoom, tr("options.smooth_zoom"))

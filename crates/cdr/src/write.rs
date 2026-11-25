@@ -3721,6 +3721,8 @@ fn character_outline_json(v: Ver, outline: Option<&Stroke>) -> String {
     };
     let own = outline.filter(|s| s.width.is_finite() && s.width > 0.0);
     let flag = |on: bool| if on { "1" } else { "0" };
+    // Where the outline lies on the letters (#4356).
+    let place = own.map_or(0, |s| crate::text::outline_position_code(s.position));
     let (color, width, behind, scale, caps, join, mitre) = match own {
         Some(s) => (
             colour_spec(s.color),
@@ -3742,7 +3744,7 @@ fn character_outline_json(v: Ver, outline: Option<&Stroke>) -> String {
         None => (BLACK_SPEC.to_string(), 0, "0", "0", 0, 0, "5".to_string()),
     };
     format!(
-        r#"{{"overprint":"0","angle":"0","aspect":"100","dashDotSpec":"0","behindFill":"{behind}","miterLimit":"{mitre}","justification":"0","dashAdjust":"0","rightArrow":"|0","screenSpec":"{screen}","overlapArrow":"0","shareArrow":"0","dotLength":"0","scaleWithObject":"{scale}","matrix":"1,0,0,0,1,0","color":"{color}","leftArrow":"|0","projectMatrix":"1,0,0,0,1,0","leftArrowAttributes":"0|0|0|0|0|0|0","endCaps":"{caps}","rightArrowAttributes":"0|0|0|0|0|0|0","joinType":"{join}",{variable}"width":"{width}"}}"#
+        r#"{{"overprint":"0","angle":"0","aspect":"100","dashDotSpec":"0","behindFill":"{behind}","miterLimit":"{mitre}","justification":"{place}","dashAdjust":"0","rightArrow":"|0","screenSpec":"{screen}","overlapArrow":"0","shareArrow":"0","dotLength":"0","scaleWithObject":"{scale}","matrix":"1,0,0,0,1,0","color":"{color}","leftArrow":"|0","projectMatrix":"1,0,0,0,1,0","leftArrowAttributes":"0|0|0|0|0|0|0","endCaps":"{caps}","rightArrowAttributes":"0|0|0|0|0|0|0","joinType":"{join}",{variable}"width":"{width}"}}"#
     )
 }
 

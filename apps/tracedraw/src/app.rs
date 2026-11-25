@@ -12562,11 +12562,22 @@ impl App {
         if new != self.page {
             self.page_views.insert(self.page, self.view);
         }
+        let left = self.page_rect();
         self.page = new;
         self.selection.clear();
         self.selected_layers.clear();
         if restricted {
             self.sync_layer_ranges(None);
+        }
+        if self.settings.same_view_on_every_page {
+            // The same part of the page at the same zoom: the page's top
+            // left corner where the last page's was, so a page of another
+            // size shows the same corner.
+            let r = self.page_rect();
+            let z = self.view.zoom;
+            self.view.origin.x += (left.x0 - r.x0) as f32 * z;
+            self.view.origin.y -= (left.y1 - r.y1) as f32 * z;
+            return;
         }
         match self.page_views.get(&new).copied() {
             Some(v) if v.zoom == self.view.zoom => self.view = v,

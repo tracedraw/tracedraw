@@ -574,6 +574,7 @@ pub fn run() -> eframe::Result<()> {
         log::info!("opening the window through X11 for the desktop's title bar");
     }
     let splash = settings.show_splash && !plain;
+    let splash_seconds = f64::from(settings.splash_seconds);
     let viewport = if splash {
         // The splash has no frame, so it cannot be dragged larger; it is
         // still created resizable: some window managers (Xfwm4) keep a
@@ -668,7 +669,7 @@ pub fn run() -> eframe::Result<()> {
                     let _ = w.set(cc.egui_ctx.clone());
                 }
                 let mut shell = if splash {
-                    Shell::with_splash(cc, open_path)
+                    Shell::with_splash(cc, open_path, splash_seconds)
                 } else {
                     Shell::new(cc, open_path)
                 };
@@ -855,10 +856,16 @@ impl Shell {
 
     /// The splash screen first; the editor is built when it is done.
     #[cfg(not(target_arch = "wasm32"))]
-    fn with_splash(cc: &eframe::CreationContext<'_>, open: Option<std::path::PathBuf>) -> Self {
+    fn with_splash(
+        cc: &eframe::CreationContext<'_>,
+        open: Option<std::path::PathBuf>,
+        least_seconds: f64,
+    ) -> Self {
         Shell {
             app: None,
-            splash: Some(splash::Splash::start(&cc.egui_ctx, open.as_deref())),
+            splash: Some(
+                splash::Splash::start(&cc.egui_ctx, open.as_deref()).at_least(least_seconds),
+            ),
             open,
             handed_over: None,
             pacer: gpu::Pacer::new(cc),

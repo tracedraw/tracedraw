@@ -5737,6 +5737,39 @@ fn character_outlines_round_trip() {
     }
 }
 
+/// A character outline centred, inside or outside the letters keeps its
+/// place through a version 16+ save (#4356: every place was written as
+/// centred, and read as centred); the style string's `justification`
+/// is 0, 1 or 2, and a code not known reads centred.
+#[test]
+fn character_outline_places_round_trip() {
+    use tracedraw_core::{OutlinePosition, Stroke};
+    for place in OutlinePosition::ALL {
+        let mut doc = doc_with(Vec::new());
+        let mut ids = doc.ids().clone();
+        let mut rim = Stroke::new(Color::rgb8(255, 0, 0), 1.2);
+        rim.position = place;
+        let mut span = TextSpan::new("Outlined", "Arial", 40.0);
+        span.outline = Some(rim.clone());
+        doc.pages[0].layers[0].shapes = vec![text_shape(&mut ids, vec![span], TextAlign::Left)];
+        doc.set_ids(ids);
+        let code = crate::text::outline_position_code(place);
+        let json = character_outline_json(Ver(24), Some(&rim));
+        assert!(json.contains(&format!(r#""justification":"{code}""#)), "{json}");
+        for v in versions().into_iter().filter(|v| *v >= 16) {
+            let (back, _) =
+                crate::open_bytes(&document_to_cdr_version(&doc, v), "back").expect("reads back");
+            let ShapeKind::Text { spans, .. } = &back.pages[0].layers[0].shapes[0].kind else {
+                panic!("{v}: a text");
+            };
+            let got = spans[0].outline.as_ref().expect("the outline");
+            assert_eq!(got.position, place, "{v}");
+        }
+    }
+    assert_eq!(crate::text::outline_position(Some(7.0)), OutlinePosition::Center);
+    assert_eq!(crate::text::outline_position(None), OutlinePosition::Center);
+}
+
 /// A text of two colours in one line (two runs, each with a colour of
 /// its own) names its font in each run's style the way the paragraph's
 /// default style does, every member included (character set, technology,

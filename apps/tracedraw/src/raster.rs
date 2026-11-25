@@ -22,7 +22,7 @@ use tracedraw_core::{geometry::Affine, Document, PageId, ShapeId};
 use tracedraw_render::{render_page, Preview, RenderOptions, ViewTransform};
 #[cfg(not(target_arch = "wasm32"))]
 use tracedraw_render::{
-    render_page_cancellable, render_page_on_one_thread, render_page_progressive,
+    render_page_cancellable, render_page_on_one_thread_cancellable, render_page_progressive,
 };
 
 /// How long the view must rest, seconds, before a moved view is
@@ -101,6 +101,27 @@ struct BackJob {
     key: BackKey,
     page_rect: tracedraw_core::geometry::Rect,
     rx: std::sync::mpsc::Receiver<Option<ColorImage>>,
+    /// Set to make the backdrop give up when it is no longer wanted
+    /// (#4361).
+    cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+/// A render no longer waited for gives up (#4361): its picture could
+/// never be taken, and on a large drawing it went on for seconds with
+/// the drawing's copy, and the main render the render turn, so a drawing
+/// closed in another tab kept the one left open slow.
+#[cfg(not(target_arch = "wasm32"))]
+impl Drop for BackJob {
+    fn drop(&mut self) {
+        self.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl Drop for Job {
+    fn drop(&mut self) {
+        self.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
 }
 
 /// A render running on its own thread: what it is for, and where its
@@ -1206,7 +1227,7 @@ impl Raster {
                         };
                         self.backdrop = Some(Backdrop {
                             texture,
-                            key: job.key,
+                            key: job.key.clone(),
                             page_rect: job.page_rect,
                         });
                     }
@@ -1295,8 +1316,10 @@ impl Raster {
                     };
                     let (tx, rx) = std::sync::mpsc::channel();
                     let wake = ctx.clone();
+                    let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+                    let gives_up = cancel.clone();
                     std::thread::spawn(move || {
-                        let image = render_page_on_one_thread(&doc, page, &opts)
+                        let image = render_page_on_one_thread_cancellable(&doc, page, &opts, &gives_up)
                             .map(|pm| to_image(&pm, lut.as_deref()));
                         let _ = tx.send(image);
                         drop(doc);
@@ -1304,7 +1327,12 @@ impl Raster {
                         wake.request_repaint();
                     });
                     self.backdrops += 1;
-                    self.backdrop_job = Some(BackJob { key, page_rect, rx });
+                    self.backdrop_job = Some(BackJob {
+                        key,
+                        page_rect,
+                        rx,
+                        cancel,
+                    });
                     return None;
                 }
                 Some(since) => {
@@ -1534,7 +1562,7 @@ impl Raster {
                 let job = self.job.take().expect("job");
                 if let Some((image, seconds)) = result {
                     self.last_seconds = seconds;
-                    self.take_picture(ctx, image, job.filter, job.key, job.page_rect);
+                    self.take_picture(ctx, image, job.filter, job.key.clone(), job.page_rect);
                 }
                 false
             }
@@ -3083,6 +3111,50 @@ mod tests {
         raster.defer = false;
         at_revision(&mut raster, 2).expect("rendered");
         assert_eq!(raster.render_count(), 2);
+    }
+
+    /// #4361: a render or a backdrop no longer waited for (its drawing's
+    /// tab closed, the picture asked for changed) is told to give up, so
+    /// it does not keep the drawing's copy and the render turn for
+    /// nothing.
+    #[test]
+    fn renders_nobody_waits_for_give_up() {
+        let ctx = Context::default();
+        let doc = Document::new("t", Size::new(100.0, 50.0));
+        let view = View::default();
+        let mut raster = Raster::default();
+        let at = Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(320.0, 200.0));
+        pass(&ctx, &mut raster, &doc, &view, at, 0.0);
+        let render = raster.job.as_ref().map(|j| j.cancel.clone());
+        let (_tx, rx) = std::sync::mpsc::channel();
+        let back = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        raster.backdrop_job = Some(BackJob {
+            key: BackKey {
+                revision: 0,
+                page: doc.pages[0].id,
+                area: [0; 4],
+                size: (1, 1),
+                wireframe: false,
+                simulate_overprints: false,
+                complex_effects: false,
+                proof: false,
+            },
+            page_rect: tracedraw_core::geometry::Rect::new(0.0, 0.0, 1.0, 1.0),
+            rx,
+            cancel: back.clone(),
+        });
+        raster.invalidate();
+        assert!(back.load(std::sync::atomic::Ordering::Relaxed), "the backdrop");
+        if let Some(c) = render {
+            assert!(c.load(std::sync::atomic::Ordering::Relaxed), "the render");
+        }
+        // A render under way when the tab closes.
+        pass(&ctx, &mut raster, &doc, &view, at, 1.0);
+        let render = raster.job.as_ref().map(|j| j.cancel.clone());
+        drop(raster);
+        if let Some(c) = render {
+            assert!(c.load(std::sync::atomic::Ordering::Relaxed), "the render of a closed tab");
+        }
     }
 
     #[test]

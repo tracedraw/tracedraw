@@ -5374,15 +5374,15 @@ impl<'a> Ctx<'a> {
     /// numbered `clip` drawn inside it (the container's fill under them,
     /// its outline over them). A number naming no group leaves the shape.
     ///
-    /// A transparency read on the container is the whole container's
-    /// (#2515): the clip frame takes its amount and its mask, so the
-    /// contents fade with the frame and the property bar shows it. Left
-    /// on the frame inside, the amount was not drawn at all (a clip frame
-    /// is drawn at its own opacity) and a mask faded the frame's fill
-    /// alone: a picture in a see-through container opened opaque.
+    /// A transparency read on the container is the frame's alone
+    /// (#4360): the clip frame takes its amount, so the property bar
+    /// shows it, and is marked so that the objects inside keep their own
+    /// opacity, as the program that saves the files draws them; a graded
+    /// transparency stays on the frame inside and fades its fill. (Taken
+    /// at first, without a file, as the whole container's, #2515.)
     fn with_clip_contents(
         &mut self,
-        mut shape: Shape,
+        shape: Shape,
         clip: u32,
         ids: &mut tracedraw_core::id::IdSource,
         page_size: Size,
@@ -5423,11 +5423,15 @@ impl<'a> Ctx<'a> {
         // The frame keeps the amount as well, as a frame made in the
         // application does, so Extract Contents gives it back.
         outer.opacity = shape.opacity;
-        let (faded, kept) = std::mem::take(&mut shape.effects)
-            .into_iter()
-            .partition(|e| matches!(e, tracedraw_core::live::Effect::Transparency { .. }));
-        outer.effects = faded;
-        shape.effects = kept;
+        // The amount fades the frame's own fill and outline, not the
+        // objects inside, which keep their own (#4360); a graded
+        // transparency stays on the frame for the same reason.
+        if outer.opacity < 1.0 {
+            outer.data.push((
+                tracedraw_core::document::CLIP_CONTENTS_OPAQUE.into(),
+                "1".into(),
+            ));
+        }
         outer.kind = ShapeKind::ClipFrame {
             frame: Box::new(shape),
             contents,
@@ -16424,10 +16428,10 @@ pub(crate) mod tests {
         );
     }
 
-    /// #2515: a transparency set on a clip container is the whole
-    /// container's. The clip frame read from it takes the amount and the
-    /// mask; they stayed on the frame inside, where the amount is not
-    /// drawn, so a picture in a see-through container opened opaque.
+    /// #2515, #4360: a transparency set on a clip container is shown on
+    /// the clip frame, and fades the frame's fill and outline while the
+    /// objects inside keep their own opacity; a graded one stays on the
+    /// frame inside.
     #[test]
     fn a_clip_containers_transparency_is_the_clip_frames() {
         use tracedraw_core::live::Effect;
@@ -16481,6 +16485,8 @@ pub(crate) mod tests {
         assert!((frame.opacity - 0.1).abs() < 1e-9, "{}", frame.opacity);
         assert_eq!(contents.len(), 1);
         assert_eq!(contents[0].opacity, 1.0);
+        // The objects inside are not faded with it (#4360).
+        assert!(clip.clip_contents_opaque());
 
         // The amount held in the record of argument 8000 (#1706).
         let bare = style_of(r#"{"transparency":{"fill":{"type":"1"}}}"#);
@@ -16499,8 +16505,8 @@ pub(crate) mod tests {
         let ShapeKind::ClipFrame { frame, .. } = &clip.kind else {
             panic!("not a clip frame: {:?}", clip.kind);
         };
-        assert_eq!(masks(&clip), 1, "{:?}", clip.effects);
-        assert_eq!(masks(frame), 0, "{:?}", frame.effects);
+        assert_eq!(masks(&clip), 0, "{:?}", clip.effects);
+        assert_eq!(masks(frame), 1, "{:?}", frame.effects);
 
         // A container with no transparency stays opaque.
         let plain = style_of(r#"{"fill":{"type":"0"}}"#);

@@ -22,6 +22,11 @@ full, row-by-row status.
 - Effects panel: the highlighted layer effect is always the one whose settings show; it follows the selected object and the effect just added, and Edit in the effect list highlights its entry (#4350).
 - Window > Panels: floating panels are ticked like docked ones, and choosing one that is open brings its window to the front (#4352).
 - Trace Bitmap: a Geometric shapes box (off at first) for logos and drawn shapes: the thin bands of other colours a compressed picture leaves along edges go, sides become exact straight lines and arcs with sharp corners, round dots true circles and ellipses, badges true rectangles with rounded corners, and shapes that nearly mirror themselves are made symmetric, while colours side by side still share one edge with no gap (#611).
+- Options > General: the splash screen can stay on screen for a set time (up to 10 seconds) so its name and version can be read; 0, the default, closes it as soon as TraceDraw is ready (#4340).
+- Options > Zoom, Pan: "Same view on every page" shows the same part of each page at the same zoom when going from page to page; off by default, each page comes back as it was left.
+- Closing a drawing stops its unfinished renders, so a large drawing closed in another tab no longer keeps the one left open slow (#4361).
+- .cdr: a character outline inside or outside the letters keeps its place on opening and saving; it always read and wrote as centred (#4356).
+- .cdr: the objects inside a see-through clip container keep their own opacity; only the container's fill and outline fade (#4360).
 - Paste: cells copied in a spreadsheet paste as a table even when the spreadsheet also offers a picture of them; the picture had always won (#4336).
 - B-Spline tool: a right click on the first point closes the curve there with a sharp corner (#4313).
 - Export to PNG: a colour mode, as JPEG and TIFF have: RGB, grayscale, indexed (8-bit, a palette of at most 256 colours) or black and white (1-bit) (#4314).

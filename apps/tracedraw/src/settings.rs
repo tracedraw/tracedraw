@@ -312,6 +312,10 @@ impl ContextMenuPreferences {
     }
 }
 
+/// The most seconds Options > General can keep the splash screen up
+/// (#4340).
+pub const SPLASH_MAX_SECONDS: f32 = 10.0;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -489,6 +493,11 @@ pub struct Settings {
     /// Options > General: show the splash screen while TraceDraw starts.
     #[serde(default = "default_true")]
     pub show_splash: bool,
+    /// Options > General: the least time, in seconds, the splash screen
+    /// stays up so its name and version can be read (#4340); 0, the
+    /// default, lets it go as soon as the program is ready.
+    #[serde(default)]
+    pub splash_seconds: f32,
     /// Options > General: draw the window with the graphics card (off:
     /// its software adapter), from the next start (#445).
     #[serde(default = "default_true")]
@@ -776,6 +785,12 @@ pub struct Settings {
     /// off, each notch zooms at once (#1648, #895).
     #[serde(default = "default_true")]
     pub smooth_zoom: bool,
+    /// Options > Zoom, Pan: going to another page shows the same part of
+    /// it, at the same zoom, as the page left (the top right corner of
+    /// page 1 gives the top right corner of page 2); off (the default),
+    /// each page comes back where it was left, else centred.
+    #[serde(default)]
+    pub same_view_on_every_page: bool,
     /// Options > Tools > Zoom/Pan > Light zoom: for slow computers. A
     /// wheel notch zooms at once (no glide) and the drawing is drawn
     /// anew once, after the zoom stops, instead of at every step; the
@@ -2759,6 +2774,7 @@ impl Default for Settings {
             wheel_zoom_centers: false,
             ctrl_wheel_zooms: false,
             smooth_zoom: true,
+            same_view_on_every_page: false,
             light_zoom: false,
             benchmarks: Vec::new(),
             benchmark_resume: None,
@@ -2790,6 +2806,7 @@ impl Default for Settings {
             toolbox_captions: Captions::ImageOnly,
             ui_size: 0.0,
             show_splash: true,
+            splash_seconds: 0.0,
             hardware_acceleration: true,
             gpu_adapter: String::new(),
             gpu_effects: false,
