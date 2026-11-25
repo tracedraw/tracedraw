@@ -8904,7 +8904,7 @@ impl App {
             // Only the colour changes: each object (and each object in a
             // group) keeps its own width, dash and the rest.
             let shapes = self.selection.clone();
-            let cmds = vec![match color {
+            let cmd = match color {
                 Some(c) => Command::PatchStroke {
                     shapes,
                     stroke: Stroke {
@@ -8917,10 +8917,15 @@ impl App {
                     shapes,
                     stroke: None,
                 },
-            }];
-            if let Err(e) = self.engine.run_batch("Outline Color", &cmds) {
-                self.status = e.to_string();
-            } else if let Some(c) = color {
+            };
+            // Run as a command of its own, so Edit > Repeat repeats it on
+            // the next objects selected (#4293).
+            let step = self.engine.last_step_id();
+            self.run(cmd);
+            if self.engine.last_step_id() == step {
+                return;
+            }
+            if let Some(c) = color {
                 self.add_ink_for(c);
                 self.remember_color(c);
             }

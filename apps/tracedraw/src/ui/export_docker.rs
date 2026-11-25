@@ -38,13 +38,16 @@ fn color_mode_combo(
     let shown = EXPORT_COLOR_MODES
         .get(*mode)
         .copied()
+        .filter(|m| m.offered_for(ext))
         .unwrap_or(ExportColorMode::Rgb);
     crate::ui::keynav::ComboBox::from_id_salt(salt)
         .selected_text(shown.label())
         .width(64.0)
         .show_ui(ui, |ui| {
             for (i, m) in EXPORT_COLOR_MODES.iter().enumerate() {
-                ui.selectable_value(mode, i, m.label());
+                if m.offered_for(ext) {
+                    ui.selectable_value(mode, i, m.label());
+                }
             }
         })
         .response

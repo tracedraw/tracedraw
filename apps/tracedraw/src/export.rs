@@ -419,7 +419,7 @@ fn page_file(
                     };
                     return bytes.ok_or_else(|| "CMYK encoding failed".to_string());
                 }
-                ExportColorMode::Gray => {
+                ExportColorMode::Gray if ext != "png" => {
                     let pm = tracedraw_render::render_page_export_image_aa(
                         doc,
                         pid,
@@ -431,7 +431,9 @@ fn page_file(
                         encode_gray(&on_white(&pm).ok_or("render failed")?, ext, st.quality)?;
                     return Ok(record_dpi(bytes, ext, st.dpi));
                 }
-                ExportColorMode::Rgb => {}
+                // A PNG in grey, indexed or black and white is drawn as in
+                // RGB and written in its mode below (#4314).
+                _ => {}
             }
             let p = doc.page(pid).map_err(|e| e.to_string())?;
             let fit = tracedraw_render::ViewTransform::whole_page(
@@ -491,12 +493,38 @@ fn page_file(
                 )
                 .ok_or("render failed")?;
             }
-            let bytes = encode_raster_with(&pm, ext, st.quality, st.webp_lossless)?;
+            let bytes = match st.color_mode_for(ext) {
+                mode @ (ExportColorMode::Gray
+                | ExportColorMode::Paletted
+                | ExportColorMode::BlackWhite)
+                    if ext == "png" =>
+                {
+                    encode_png_in_mode(&pm, mode).ok_or("PNG encoding failed")?
+                }
+                _ => encode_raster_with(&pm, ext, st.quality, st.webp_lossless)?,
+            };
             // The file says its resolution, so it opens at the size
             // chosen in the dialog (#617).
             record_dpi(bytes, ext, st.dpi)
         }
     })
+}
+
+/// A PNG of `pm` in a colour mode of its own (#4314): one channel of
+/// grey, a palette of at most 256 colours, or 1-bit black and white. A
+/// see-through background stays see-through.
+fn encode_png_in_mode(pm: &tiny_skia::Pixmap, mode: ExportColorMode) -> Option<Vec<u8>> {
+    let mut img = image::RgbaImage::new(pm.width(), pm.height());
+    for (out, p) in img.pixels_mut().zip(pm.pixels()) {
+        let c = p.demultiply();
+        *out = image::Rgba([c.red(), c.green(), c.blue(), c.alpha()]);
+    }
+    match mode {
+        ExportColorMode::Gray => crate::bitmap_fx::encode_gray(&img),
+        ExportColorMode::Paletted => crate::bitmap_fx::encode_indexed_fitted(&img),
+        ExportColorMode::BlackWhite => crate::bitmap_fx::encode_bw(&img),
+        _ => None,
+    }
 }
 
 /// Pages of more pixels than this are exported as PNG or TIFF a strip at
@@ -969,6 +997,15 @@ pub fn preview(app: &App, st: &ExportState, max_px: u32) -> Option<tiny_skia::Pi
                 *p = tiny_skia::PremultipliedColorU8::from_rgba(v, v, v, 255)?;
             }
         }
+        // Black and white shows each pixel black or white (#4314).
+        ExportColorMode::BlackWhite => {
+            let grey = gray_pixels(&pm);
+            for (p, v) in pm.pixels_mut().iter_mut().zip(grey) {
+                let v = if v >= 128 { 255 } else { 0 };
+                *p = tiny_skia::PremultipliedColorU8::from_rgba(v, v, v, 255)?;
+            }
+        }
+        ExportColorMode::Paletted => {}
     }
     Some(pm)
 }
@@ -995,7 +1032,17 @@ pub fn estimated_size(app: &App, st: &ExportState, preview: &tiny_skia::Pixmap) 
                 ExportColorMode::Rgb => {
                     encode_raster_with(preview, enc, st.quality, st.webp_lossless).ok()?
                 }
+                mode @ (ExportColorMode::Gray
+                | ExportColorMode::Paletted
+                | ExportColorMode::BlackWhite)
+                    if ext == "png" =>
+                {
+                    encode_png_in_mode(preview, mode)?
+                }
                 ExportColorMode::Gray => encode_gray(preview, ext, st.quality).ok()?,
+                ExportColorMode::Paletted | ExportColorMode::BlackWhite => {
+                    encode_raster_with(preview, enc, st.quality, st.webp_lossless).ok()?
+                }
                 ExportColorMode::Cmyk if ext == "jpg" => tracedraw_io::cmyk_bitmap::cmyk_jpeg(
                     w,
                     h,
@@ -5659,6 +5706,24 @@ mod tests {
             image::open(&png).unwrap().color(),
             image::ColorType::Rgb8 | image::ColorType::Rgba8
         ));
+        // PNG in grey, indexed or black and white (#4314).
+        let gray = dir.join("g.png");
+        export(&mut app, &gray, &st(2, 2)).expect("grey png");
+        assert!(matches!(
+            image::open(&gray).unwrap().color(),
+            image::ColorType::L8 | image::ColorType::La8
+        ));
+        let indexed = dir.join("i.png");
+        export(&mut app, &indexed, &st(2, 3)).expect("indexed png");
+        let bytes = std::fs::read(&indexed).unwrap();
+        assert!(bytes.windows(4).any(|w| w == b"PLTE"), "a palette");
+        let red = image::open(&indexed).unwrap().to_rgba8();
+        let p = red.get_pixel(red_at.0, red_at.1).0;
+        assert!(p[0] > 200 && p[1] < 60, "{p:?}");
+        let bw = dir.join("b.png");
+        export(&mut app, &bw, &st(2, 4)).expect("black and white png");
+        let img = image::open(&bw).unwrap().to_luma8();
+        assert!(img.pixels().all(|p| p.0[0] == 0 || p.0[0] == 255));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

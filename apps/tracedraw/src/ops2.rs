@@ -3132,6 +3132,7 @@ impl App {
         let Some(area) = self.convert_to_bitmap_area() else {
             return;
         };
+        let dpi = convert_dpi(area, dpi, o.mode);
         let Some(tmp) = self.selection_alone(area) else {
             return;
         };
@@ -5837,6 +5838,35 @@ fn ink_planes(
         }
     }
     Some(planes)
+}
+
+/// The most pixels Convert to Bitmap makes: a larger picture takes a
+/// lower resolution. A CMYK one is worked out from four more renders, one
+/// per ink, and takes fewer; a large sign at the resolution asked for ran
+/// out of memory and closed the program (#4308).
+const CONVERT_MAX_PIXELS: f64 = 120_000_000.0;
+const CONVERT_MAX_PIXELS_CMYK: f64 = 40_000_000.0;
+
+/// The resolution Convert to Bitmap renders `area` (mm) at for `dpi`
+/// asked in `mode`: `dpi`, or lower when the picture would pass the
+/// pixels the mode allows ([`CONVERT_MAX_PIXELS`]).
+fn convert_dpi(area: Rect, dpi: f64, mode: crate::bitmap_modes::ConvertMode) -> f64 {
+    let budget = if mode == crate::bitmap_modes::ConvertMode::Cmyk {
+        CONVERT_MAX_PIXELS_CMYK
+    } else {
+        CONVERT_MAX_PIXELS
+    };
+    let px = |mm: f64, d: f64| (mm * d / 25.4).ceil().max(1.0);
+    let pixels = px(area.width(), dpi) * px(area.height(), dpi);
+    if !pixels.is_finite() || pixels <= budget {
+        return dpi;
+    }
+    // A little under, so the rounding up of each side stays in.
+    let mut d = dpi * (budget / pixels).sqrt() * 0.999;
+    while d > 1e-3 && px(area.width(), d) * px(area.height(), d) > budget {
+        d *= 0.99;
+    }
+    d
 }
 
 /// Most different inks a CMYK bitmap's pixels are worked out from one by
@@ -9060,6 +9090,25 @@ mod tests {
         let n = steps(&app);
         app.change_case(CaseMode::Upper);
         assert_eq!(steps(&app), n);
+    }
+
+    /// #4308: a large sign converted to a CMYK bitmap at 300 dpi takes a
+    /// lower resolution that stays within what the mode can make, and a
+    /// small object keeps the resolution asked.
+    #[test]
+    fn convert_to_bitmap_keeps_a_large_picture_within_memory() {
+        use crate::bitmap_modes::ConvertMode;
+        let px = |r: Rect, d: f64| (r.width() * d / 25.4).ceil() * (r.height() * d / 25.4).ceil();
+        let small = Rect::new(0.0, 0.0, 100.0, 100.0);
+        assert_eq!(convert_dpi(small, 300.0, ConvertMode::Cmyk), 300.0);
+        assert_eq!(convert_dpi(small, 300.0, ConvertMode::Rgb), 300.0);
+        let sign = Rect::new(0.0, 0.0, 4000.0, 2500.0);
+        let cmyk = convert_dpi(sign, 300.0, ConvertMode::Cmyk);
+        assert!(cmyk < 300.0 && cmyk > 30.0, "{cmyk}");
+        assert!(px(sign, cmyk) <= CONVERT_MAX_PIXELS_CMYK);
+        assert!(px(sign, cmyk) > CONVERT_MAX_PIXELS_CMYK * 0.95);
+        let rgb = convert_dpi(sign, 300.0, ConvertMode::Rgb);
+        assert!(rgb > cmyk && px(sign, rgb) <= CONVERT_MAX_PIXELS);
     }
 
     /// #2220: a ring with a shadow converted to a bitmap went to the top

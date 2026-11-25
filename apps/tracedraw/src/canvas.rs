@@ -3971,6 +3971,9 @@ fn draw_nodes(app: &App, painter: &Painter) {
             painter.add(egui::Shape::line(pts, EStroke::new(1.0, outline)));
         }
         let all = nodes::nodes(path);
+        // The nodes whose handles show (#4337): one chosen node and its
+        // neighbours, none while several are chosen.
+        let shown = app.handle_nodes();
         // The direction (#3038, #2578): the first node of every subpath is
         // a triangle pointing the way the curve leaves it, and the last
         // node of an open subpath one pointing the way it arrives, so
@@ -3999,7 +4002,7 @@ fn draw_nodes(app: &App, painter: &Painter) {
             let selected = app.node_selection.contains(&(s.id, n.index))
                 && chosen_segment != Some((s.id, n.index));
             let p = view.to_screen(s.transform * n.pos);
-            if selected {
+            if shown.contains(&(s.id, n.index)) && chosen_segment != Some((s.id, n.index)) {
                 for c in [n.ctrl_in, n.ctrl_out].into_iter().flatten() {
                     let cp = view.to_screen(s.transform * c);
                     draw_control_handle(painter, p, cp, main, prefs.control_head());

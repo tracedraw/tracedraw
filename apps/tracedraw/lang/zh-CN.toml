@@ -5805,6 +5805,7 @@ aipreset.lm_studio = "LM Studio (本机)" # mt
 aipreset.llama_cpp = "llama.cpp 服务器 (本机)" # mt
 aipreset.vllm = "vLLM (本机)" # mt
 aipreset.opencode = "OpenCode" # mt
+aipreset.openrouter = "OpenRouter"
 hint.topic_ai = "AI" # mt
 hinttopic.ai = "TraceDraw 本身没有 AI：**AI 绘图**、**AI 生成** (创建、重绘、矢量图) 和 **删除背景** 使用您在 **工具 > 选项 > AI** 中连接的服务和您自己的密钥，在您要求之前不发送任何内容。服务未设置时，其命令会变灰。" # mt
 hintai.cloud = "**在线服务**：选择一个预设 (Anthropic、OpenAI、Google Gemini) 并粘贴您的 API 密钥。Gemini 密钥来自 Google AI Studio，OpenAI 密钥来自 OpenAI 平台。" # mt

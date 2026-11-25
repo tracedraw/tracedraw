@@ -2134,6 +2134,22 @@ impl App {
         // there, where the curve turns a sharp corner, and the curve goes
         // on (#4076); no context menu then.
         if response.secondary_clicked() && self.curve.as_ref().is_some_and(|c| c.bspline) {
+            // On the first point it closes the curve there with a sharp
+            // corner, as a click with C held does (#4313).
+            let reach = self.curve_end_reach_px() / self.view.zoom as f64;
+            let on_first = self.curve.as_ref().is_some_and(|c| {
+                c.closes_at_first() && c.nodes.first().is_some_and(|n| (n.0 - p).hypot() <= reach)
+            });
+            if on_first {
+                self.curve_step();
+                if let Some(mut c) = self.curve.take() {
+                    c.closing = None;
+                    c.spline_fixed.resize(c.nodes.len(), false);
+                    c.spline_fixed[0] = true;
+                    self.close_curve(c);
+                }
+                return;
+            }
             self.bspline_point_at(p, true);
             return;
         }
@@ -5250,6 +5266,14 @@ impl App {
             }
             if ctx.input(|i| i.key_pressed(Key::Escape)) {
                 self.dialog = crate::ui::dialogs::Dialog::None;
+                // A dialog opened from another one (Edit Line Style from
+                // the Outline Pen dialog) goes back to it, as its Close
+                // does. The key is taken, or the dialog come back closed
+                // on the same Esc (#4289).
+                if let Some(back) = self.dialog_return.take() {
+                    ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape));
+                    self.dialog = *back;
+                }
                 // Esc is Cancel for the options dialogs.
                 if let Some(s) = self.options_snapshot.take() {
                     s.restore(self);

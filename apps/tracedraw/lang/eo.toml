@@ -5873,6 +5873,7 @@ aipreset.lm_studio = "LM Studio (ĉi tiu komputilo)" # mt
 aipreset.llama_cpp = "llama.cpp-servilo (ĉi tiu komputilo)" # mt
 aipreset.vllm = "vLLM (ĉi tiu komputilo)" # mt
 aipreset.opencode = "OpenCode" # mt
+aipreset.openrouter = "OpenRouter"
 hint.topic_ai = "AI" # mt
 hinttopic.ai = "TraceDraw ne havas propran AI: **Desegnado per AI**, **Generi per AI** (krei, remiksi, vektoroj) kaj **Forigi fonon** uzas la solan AI-servon kiun vi konektas en **Iloj > Opcioj > AI > Servo**, per via propra ŝlosilo, kaj nenio estas sendata ĝis via peto. Dum la servo ne povas plenumi komandon, ĝi restas grizigita." # mt
 hintai.cloud = "**Retaj servoj**: elektu antaŭagordon (Anthropic, OpenAI, Google Gemini) kaj algluu vian API-ŝlosilon. Gemini-ŝlosiloj venas de Google AI Studio; tiuj de OpenAI, de la platformo OpenAI." # mt

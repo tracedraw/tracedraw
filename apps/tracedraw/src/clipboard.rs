@@ -1280,10 +1280,19 @@ impl App {
         if dxf.is_some_and(|t| self.paste_vector(t.as_bytes())) {
             return;
         }
+        // Cells copied in a spreadsheet come with a picture of them too:
+        // the cells make a table, which the picture had always won over
+        // (#4336).
+        let cells = content
+            .text
+            .as_deref()
+            .is_some_and(crate::table_clipboard::looks_tabular);
         if content.is_svg() {
             if let Some(t) = content.text {
                 self.paste_as_svg(&t);
             }
+        } else if let (true, Some(t)) = (cells, content.text.as_deref()) {
+            self.paste_as_text_or_table(t);
         } else if let Some(img) = content.image {
             self.paste_as_bitmap(img);
         } else if let Some(t) = content.text {

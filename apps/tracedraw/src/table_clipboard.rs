@@ -370,6 +370,34 @@ mod tests {
         assert_eq!(html.matches("<td").count(), 4);
     }
 
+    /// #4336: cells copied in a spreadsheet come with a picture of them
+    /// too; they paste as a table, not as the picture.
+    #[test]
+    fn spreadsheet_cells_with_their_picture_paste_as_a_table() {
+        let mut app = App::headless();
+        app.paste_from(crate::clipboard::ClipboardContent {
+            text: Some("Item\tQty\r\nPen\t3\r\n".into()),
+            image: Some(image::RgbaImage::new(40, 20)),
+            ..Default::default()
+        });
+        assert!(app.lone_selected_table().is_some(), "a table");
+        let pictures = app
+            .doc()
+            .all_layers()
+            .flat_map(|l| l.shapes.iter())
+            .filter(|s| matches!(s.kind, ShapeKind::Bitmap { .. }))
+            .count();
+        assert_eq!(pictures, 0);
+        // A picture with plain text still pastes as the picture.
+        let mut app = App::headless();
+        app.paste_from(crate::clipboard::ClipboardContent {
+            text: Some("just words".into()),
+            image: Some(image::RgbaImage::new(40, 20)),
+            ..Default::default()
+        });
+        assert!(app.lone_selected_table().is_none());
+    }
+
     #[test]
     fn spreadsheet_cells_paste_as_a_table_and_into_cells() {
         let mut app = App::headless();

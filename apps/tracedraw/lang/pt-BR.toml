@@ -5805,6 +5805,7 @@ aipreset.lm_studio = "LM Studio (este computador)"
 aipreset.llama_cpp = "Servidor llama.cpp (este computador)"
 aipreset.vllm = "vLLM (este computador)"
 aipreset.opencode = "OpenCode"
+aipreset.openrouter = "OpenRouter"
 hint.topic_ai = "IA" # mt
 hinttopic.ai = "O TraceDraw não tem IA própria: **Desenho com IA**, **Gerar com IA** (criar, remixar, vetores) e **Remover fundo** usam o único serviço de IA que você conecta em **Ferramentas > Opções > IA > Serviço**, com a sua própria chave, e nada é enviado até você pedir. Enquanto o serviço não pode executar um comando, ele fica acinzentado."
 hintai.cloud = "**Serviços online**: escolha uma predefinição (Anthropic, OpenAI, Google Gemini) e cole a sua chave de API. Chaves do Gemini vêm do Google AI Studio; as da OpenAI, da plataforma OpenAI."

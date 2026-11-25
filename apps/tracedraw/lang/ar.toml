@@ -5805,6 +5805,7 @@ aipreset.lm_studio = "LM Studio (this computer)"
 aipreset.llama_cpp = "llama.cpp server (this computer)"
 aipreset.vllm = "vLLM (this computer)"
 aipreset.opencode = "OpenCode"
+aipreset.openrouter = "OpenRouter"
 hint.topic_ai = "الذكاء الاصطناعي" # mt
 hinttopic.ai = "TraceDraw has no AI of its own: **AI Drawing**, **AI Generate** (create, remix, vectors) and **Remove Background** use services you connect in **Tools > Options > AI**, with your own keys, and send nothing until you ask. While a service is not set up its commands are greyed out."
 hintai.cloud = "**Online services**: pick a preset (Anthropic, OpenAI, Google Gemini) and paste your API key. Gemini keys come from Google AI Studio, OpenAI keys from the OpenAI platform."

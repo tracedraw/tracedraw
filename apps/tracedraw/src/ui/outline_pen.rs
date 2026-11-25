@@ -60,7 +60,7 @@ pub(crate) fn width_choices(u: crate::app::Units) -> Vec<(f64, String)> {
 }
 
 /// The dash styles the style list offers before the custom ones.
-fn preset_dashes() -> [Vec<f64>; 5] {
+pub(crate) fn preset_dashes() -> [Vec<f64>; 5] {
     [
         vec![],
         vec![4.0, 2.0],

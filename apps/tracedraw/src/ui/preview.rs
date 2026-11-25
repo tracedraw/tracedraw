@@ -22,7 +22,7 @@ pub struct PreviewSession {
     texture: Option<(PreviewKey, egui::TextureHandle)>,
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct PreviewKey {
     width: u32,
     height: u32,
@@ -383,7 +383,21 @@ pub fn fullscreen(app: &mut App, ui: &mut Ui) {
                     (FULL_SCREEN_WAIT - waited).max(0.0),
                 ));
             }
-            if !cached && ready {
+            // While a screenshot tool or another window has the focus, or
+            // the window is minimised, the picture already made stays: the
+            // window's size and scale change as the system takes the
+            // screen, and drawing the whole page again for each change
+            // hung the program (#4198). It is drawn again once the window
+            // is back.
+            let away = ctx.input(|i| {
+                i.viewport().minimized == Some(true) || i.viewport().focused == Some(false)
+            });
+            let has_picture = app
+                .preview_session
+                .as_ref()
+                .is_some_and(|s| s.texture.is_some());
+            let tiny = rect.width() < 16.0 || rect.height() < 16.0;
+            if !cached && ready && !tiny && !(away && has_picture) {
                 if let Some(pm) = tracedraw_render::render_page(app.doc(), app.page, &opts) {
                     let image = egui::ColorImage::from_rgba_premultiplied(
                         [pm.width() as usize, pm.height() as usize],
@@ -721,5 +735,57 @@ mod tests {
         assert!(!app.fullscreen_preview, "F9 again closes it");
         window(&ctx, &mut app, Vec::new());
         assert!(!app.fullscreen_preview);
+    }
+
+    /// #4198: while a screenshot tool has the focus (the window losing
+    /// it, its size changing as the system takes the screen), the
+    /// preview keeps the picture it made instead of drawing the page again
+    /// at every change, and stays open; back in focus, it draws again.
+    #[test]
+    fn a_screenshot_tool_taking_the_focus_keeps_the_preview_picture() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        app.show_welcome = false;
+        let run = |app: &mut App, t: f64, size: (f32, f32), focused: bool, events| {
+            let mut input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(size.0, size.1),
+                )),
+                time: Some(t),
+                events,
+                ..Default::default()
+            };
+            input.viewports.insert(
+                egui::ViewportId::ROOT,
+                egui::ViewportInfo {
+                    focused: Some(focused),
+                    fullscreen: Some(true),
+                    ..Default::default()
+                },
+            );
+            let mut out = ctx.run_ui(input, |ui| crate::ui::root(app, ui));
+            out.textures_delta.clear();
+        };
+        let key = |app: &App| {
+            app.preview_session
+                .as_ref()
+                .and_then(|s| s.texture.as_ref().map(|(k, _)| k.clone()))
+        };
+        run(&mut app, 0.0, (1400.0, 900.0), true, Vec::new());
+        run(&mut app, 0.1, (1400.0, 900.0), true, vec![f9()]);
+        for k in 0..3 {
+            run(&mut app, 1.0 + f64::from(k), (1400.0, 900.0), true, Vec::new());
+        }
+        assert!(app.fullscreen_preview);
+        let made = key(&app).expect("the preview picture");
+        for (k, size) in [(1200.0, 800.0), (1000.0, 700.0), (8.0, 8.0)].into_iter().enumerate() {
+            run(&mut app, 5.0 + k as f64, size, false, Vec::new());
+            assert_eq!(key(&app).as_ref(), Some(&made), "kept while away");
+            assert!(app.fullscreen_preview, "still open");
+        }
+        run(&mut app, 10.0, (1200.0, 800.0), true, Vec::new());
+        let again = key(&app).expect("drawn again");
+        assert_ne!(again, made, "drawn again at the new size");
     }
 }

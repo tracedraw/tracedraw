@@ -398,6 +398,18 @@ impl DimensionStyle {
         }
     }
 
+    /// How much larger than their usual size the arrowheads are drawn:
+    /// 1 up to a line [`ARROW_LINE`] wide, then in step with the line, so
+    /// a thick line does not cover them (#4319).
+    fn arrow_scale(&self) -> f64 {
+        let w = self.line_width.min(50.0);
+        if w.is_finite() && w > ARROW_LINE {
+            w / ARROW_LINE
+        } else {
+            1.0
+        }
+    }
+
     /// The extension gap and overshoot, kept finite and in range.
     fn lengths(&self) -> (f64, f64) {
         let ok = |v: f64, d: f64| {
@@ -527,9 +539,14 @@ fn find_value(text: &str, value: &str) -> Option<usize> {
     })
 }
 
-/// Arrowheads: length and half width, mm.
+/// Arrowheads: length and half width, mm, for lines up to
+/// [`ARROW_LINE`] wide.
 const ARROW_LEN: f64 = 3.0;
 const ARROW_HALF: f64 = 1.0;
+/// The widest line, mm, the arrowheads keep their size for; a wider line
+/// makes them larger in step, each half width twice the line's width
+/// (#4319).
+const ARROW_LINE: f64 = ARROW_HALF / 2.0;
 /// Gap between the label and its line, and how far extension lines run
 /// past the dimension line, mm.
 const GAP: f64 = 1.0;
@@ -876,27 +893,31 @@ impl Dimension {
         // The open and tick marks are strokes, drawn with the lines.
         let mut marks = BezPath::new();
         let style = self.style.arrows;
+        // Arrowheads grow with a thick line, or the line covers them
+        // (#4319).
+        let k = self.style.arrow_scale();
+        let (arrow_len, arrow_half) = (ARROW_LEN * k, ARROW_HALF * k);
         let mut arrow = |tip: Point, back_dir: Vec2| {
             let n = Vec2::new(-back_dir.y, back_dir.x);
-            let back = tip + back_dir * ARROW_LEN;
+            let back = tip + back_dir * arrow_len;
             match style {
                 ArrowStyle::Filled => {
                     arrows.move_to(tip);
-                    arrows.line_to(back + n * ARROW_HALF);
-                    arrows.line_to(back - n * ARROW_HALF);
+                    arrows.line_to(back + n * arrow_half);
+                    arrows.line_to(back - n * arrow_half);
                     arrows.close_path();
                 }
                 ArrowStyle::Open => {
-                    marks.move_to(back + n * ARROW_HALF);
+                    marks.move_to(back + n * arrow_half);
                     marks.line_to(tip);
-                    marks.line_to(back - n * ARROW_HALF);
+                    marks.line_to(back - n * arrow_half);
                 }
                 ArrowStyle::Dot => {
-                    arrows.extend(kurbo::Circle::new(tip, ARROW_HALF).path_elements(0.01));
+                    arrows.extend(kurbo::Circle::new(tip, arrow_half).path_elements(0.01));
                 }
                 ArrowStyle::Tick => {
                     // At 45 degrees across the line.
-                    let d = (n + back_dir) * (ARROW_LEN * 0.5 / 2f64.sqrt());
+                    let d = (n + back_dir) * (arrow_len * 0.5 / 2f64.sqrt());
                     marks.move_to(tip - d);
                     marks.line_to(tip + d);
                 }
@@ -947,7 +968,7 @@ impl Dimension {
                 let arrow_len = if self.style.arrows == ArrowStyle::None {
                     0.0
                 } else {
-                    ARROW_LEN
+                    arrow_len
                 };
                 let mid = a2.midpoint(b2) + dir * along.offset(len, half, arrow_len);
                 // The dimension line, with a gap for a centred label.
@@ -3425,6 +3446,38 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(odd.lengths(), (0.0, OVERSHOOT));
+    }
+
+    /// #4319: a thick line makes the arrowheads larger, so it does not
+    /// cover them; a thin one keeps their usual size.
+    #[test]
+    fn arrowheads_grow_with_a_thick_line() {
+        let measure = Measure::Linear {
+            a: Point::new(0.0, 0.0),
+            b: Point::new(100.0, 0.0),
+            at: Point::new(0.0, 20.0),
+        };
+        let ids = [ShapeId(1), ShapeId(2), ShapeId(3)];
+        let heads = |line_width: f64| {
+            let d = Dimension::new(
+                measure,
+                DimensionStyle {
+                    line_width,
+                    ..Default::default()
+                },
+            );
+            let [_, h, _] = d.shapes(ids, "Arial", Units::Millimeters);
+            match &h.kind {
+                ShapeKind::Path { path, .. } => path.bounding_box().height(),
+                _ => panic!("path"),
+            }
+        };
+        assert!((heads(0.0) - 2.0 * ARROW_HALF).abs() < 1e-6);
+        assert!((heads(0.3) - 2.0 * ARROW_HALF).abs() < 1e-6);
+        // 0.1 inch: the heads are four times as wide as the line.
+        let w = 2.54;
+        assert!((heads(w) - 4.0 * w).abs() < 1e-6, "{}", heads(w));
+        assert!(heads(5.0) > 4.0 * 2.54);
     }
 
     /// Convert to Curves makes a dimension a group of plain curves: its

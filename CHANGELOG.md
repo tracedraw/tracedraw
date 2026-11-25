@@ -7,6 +7,16 @@ full, row-by-row status.
 ## Unreleased
 
 - Trace Bitmap: a Geometric shapes box (off at first) for logos and drawn shapes: the thin bands of other colours a compressed picture leaves along edges go, sides become exact straight lines and arcs with sharp corners, round dots true circles and ellipses, badges true rectangles with rounded corners, and shapes that nearly mirror themselves are made symmetric, while colours side by side still share one edge with no gap (#611).
+- Paste: cells copied in a spreadsheet paste as a table even when the spreadsheet also offers a picture of them; the picture had always won (#4336).
+- B-Spline tool: a right click on the first point closes the curve there with a sharp corner (#4313).
+- Export to PNG: a colour mode, as JPEG and TIFF have: RGB, grayscale, indexed (8-bit, a palette of at most 256 colours) or black and white (1-bit) (#4314).
+- Options > AI: an OpenRouter preset, its chat address filled in; it writes text (#4296).
+- Shape tool: with several nodes chosen, only their markers show, no control handles; with one node chosen, its handles and those of the nodes joined to it show, so the curves on both sides of it can be shaped (#4337).
+- Dimensions: the arrowheads grow with a thick line, so a line wider than half a millimetre no longer covers them (#4319).
+- Edit > Repeat: an outline colour set with a right click on the palette is repeated on the next objects selected (#4293).
+- Edit Line Style: opens on the style picked in the Outline Pen dialog or used by the selection, and lists the built-in styles too; Esc takes back to the Outline Pen dialog as Close does (#4288, #4289).
+- Image > Convert to Bitmap: a very large drawing (a sign, a facade) takes a lower resolution instead of running out of memory and closing the program, CMYK sooner than the other modes (#4308).
+- Full-screen preview: while a screenshot tool or another window has the focus, the preview keeps its picture instead of drawing the page again at each change of the window (#4198).
 - Effects > Mockup: lays the selected design on a product photo (white, black or grey T-shirt, white or black mug, steel bottle, tote bag, cushion, framed poster, shop sign, van side, business cards, flyer, flag, phone case, product box; sixteen photos drawn by the program itself) or on a photo of your own, bent onto the print area in perspective or round a cylinder with a mesh, with the photo's folds, shadows and highlights and Multiply on light products; size, place, shading, texture and ink; one undo step, and a selected mockup takes another product the same way; Export JPG saves it for the client's approval with an optional caption.
 - QR code objects: a Pix payment kind (Brazilian instant payments) takes the Pix key, the receiver's name and city, and an optional amount, reference and message, and makes the payment code bank apps read, with its checksum.
 - Contour on pictures: a picture with see-through pixels takes a contour round what shows of it instead of its box, and TraceCut's CutContour puts the cut line round its opaque pixels too (#3245).

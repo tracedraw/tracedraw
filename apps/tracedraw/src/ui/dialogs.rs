@@ -195,10 +195,12 @@ impl Default for ExportState {
 
 /// The colour modes of a JPEG or TIFF export (#1763): RGB as drawn on
 /// screen, CMYK inks for print, or one channel of grey.
-pub const EXPORT_COLOR_MODES: [ExportColorMode; 3] = [
+pub const EXPORT_COLOR_MODES: [ExportColorMode; 5] = [
     ExportColorMode::Rgb,
     ExportColorMode::Cmyk,
     ExportColorMode::Gray,
+    ExportColorMode::Paletted,
+    ExportColorMode::BlackWhite,
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -206,6 +208,10 @@ pub enum ExportColorMode {
     Rgb,
     Cmyk,
     Gray,
+    /// Indexed: a PNG with a palette of at most 256 colours (#4314).
+    Paletted,
+    /// Black and white: a 1-bit PNG (#4314).
+    BlackWhite,
 }
 
 impl ExportColorMode {
@@ -215,12 +221,28 @@ impl ExportColorMode {
             ExportColorMode::Rgb => "RGB".into(),
             ExportColorMode::Cmyk => "CMYK".into(),
             ExportColorMode::Gray => tr("palette.model_gray"),
+            ExportColorMode::Paletted => tr("dialog.convert_mode_paletted"),
+            ExportColorMode::BlackWhite => tr("dialog.black_and_white"),
+        }
+    }
+
+    /// Whether the format `ext` can be written in this mode: JPEG and
+    /// TIFF in RGB, CMYK or grey; PNG in RGB, grey, indexed or black and
+    /// white (#4314).
+    pub fn offered_for(self, ext: &str) -> bool {
+        match ext {
+            "jpg" | "tif" => matches!(
+                self,
+                ExportColorMode::Rgb | ExportColorMode::Cmyk | ExportColorMode::Gray
+            ),
+            "png" => self != ExportColorMode::Cmyk,
+            _ => self == ExportColorMode::Rgb,
         }
     }
 
     /// The bitmap formats (by extension) that take a colour mode.
     pub fn applies_to(ext: &str) -> bool {
-        matches!(ext, "jpg" | "tif")
+        matches!(ext, "jpg" | "tif" | "png")
     }
 }
 
@@ -232,6 +254,7 @@ impl ExportState {
             EXPORT_COLOR_MODES
                 .get(self.color_mode)
                 .copied()
+                .filter(|m| m.offered_for(ext))
                 .unwrap_or(ExportColorMode::Rgb)
         } else {
             ExportColorMode::Rgb
@@ -2246,12 +2269,25 @@ pub fn show(app: &mut App, ctx: &Context) {
     }
     crate::ui::line_style::apply_units_request(app, ctx);
     let line_style = crate::ui::line_style::take_request(ctx);
-    if line_style && matches!(app.dialog, Dialog::OutlinePen(_)) {
+    if let (true, Dialog::OutlinePen(pen)) = (line_style, &app.dialog) {
         // Edit Line Style from the Outline Pen dialog: back to it after.
-        let back = std::mem::replace(&mut app.dialog, Dialog::LineStyle(Default::default()));
+        // It opens on the style picked there (#4288).
+        let st = crate::ui::line_style::State::for_dash(&pen.stroke.dash, &app.settings.custom_dashes);
+        let back = std::mem::replace(&mut app.dialog, Dialog::LineStyle(st));
         app.dialog_return = Some(Box::new(back));
     } else if line_style && matches!(app.dialog, Dialog::None) {
-        app.dialog = Dialog::LineStyle(Default::default());
+        // From a panel or a bar: on the selection's style (#4288).
+        let dash = app
+            .selection
+            .first()
+            .and_then(|id| app.doc().find_shape(*id))
+            .and_then(|s| s.stroke.as_ref())
+            .map(|st| st.dash.clone())
+            .unwrap_or_default();
+        app.dialog = Dialog::LineStyle(crate::ui::line_style::State::for_dash(
+            &dash,
+            &app.settings.custom_dashes,
+        ));
     } else if matches!(app.dialog, Dialog::None) {
         if let Some(back) = app.dialog_return.take() {
             app.dialog = *back;
@@ -5858,7 +5894,9 @@ fn export_dialog(app: &mut App, ctx: &Context, st: &mut ExportState, close: &mut
                                 .selected_text(st.color_mode_for(ext).label())
                                 .show_ui(ui, |ui| {
                                     for (i, m) in EXPORT_COLOR_MODES.iter().enumerate() {
-                                        ui.selectable_value(&mut st.color_mode, i, m.label());
+                                        if m.offered_for(ext) {
+                                            ui.selectable_value(&mut st.color_mode, i, m.label());
+                                        }
                                     }
                                 })
                                 .response

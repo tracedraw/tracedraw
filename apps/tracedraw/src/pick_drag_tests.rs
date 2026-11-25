@@ -246,6 +246,33 @@ fn a_right_click_while_dragging_leaves_the_original() {
     assert!(app.dialog_is_none_or_menu_closed());
 }
 
+/// #4293: an outline colour set from the palette (a right click on a
+/// swatch) is repeated by Edit > Repeat on the next object selected.
+#[test]
+fn repeat_repeats_an_outline_colour_from_the_palette() {
+    let (_ctx, mut app, a) = setup();
+    let b = app
+        .new_shape(ShapeKind::Rect {
+            rect: Rect::new(100.0, 100.0, 120.0, 120.0),
+            radius: 0.0,
+            corners: None,
+        })
+        .expect("rect");
+    let red = tracedraw_core::Color::rgb8(255, 0, 0);
+    let outline_of = |app: &App, id: ShapeId| {
+        app.doc()
+            .find_shape(id)
+            .and_then(|s| s.stroke.as_ref().map(|st| st.color))
+    };
+    app.select(vec![a]);
+    app.apply_outline_color(Some(red));
+    assert_eq!(outline_of(&app, a), Some(red));
+    app.select(vec![b]);
+    assert_ne!(outline_of(&app, b), Some(red));
+    app.repeat_last();
+    assert_eq!(outline_of(&app, b), Some(red));
+}
+
 /// Repeat replays the last group of actions done to one selection, a
 /// move and a fill change together, not only the newest of them; a
 /// change of selection between two actions starts a new group (#1566,
@@ -5554,6 +5581,35 @@ fn bspline_closed_with_c_held_fixes_the_first_point() {
     assert!(app.curve.is_none(), "closed");
     let id = app.selection[0];
     let s = app.doc().find_shape(id).expect("the curve");
+    assert_eq!(s.spline_fixed, vec![true, false, false, false]);
+}
+
+/// #4313: a right click on the first point of a B-spline being drawn
+/// closes it there with a sharp corner, the first point fixed.
+#[test]
+fn bspline_closed_with_a_right_click_fixes_the_first_point() {
+    let (ctx, mut app, _) = setup();
+    app.select(Vec::new());
+    app.set_tool(Tool::BSpline);
+    let n = Modifiers::NONE;
+    let pts = [
+        Point::new(100.0, 150.0),
+        Point::new(160.0, 150.0),
+        Point::new(160.0, 210.0),
+        Point::new(100.0, 210.0),
+    ];
+    for p in pts {
+        let at = app.view.to_screen(p);
+        click_at(&ctx, &mut app, at, n);
+    }
+    let at = app.view.to_screen(pts[0]);
+    frame(&ctx, &mut app, vec![egui::Event::PointerMoved(at)], n);
+    frame(&ctx, &mut app, vec![button(at, true, PointerButton::Secondary, n)], n);
+    frame(&ctx, &mut app, vec![button(at, false, PointerButton::Secondary, n)], n);
+    assert!(app.curve.is_none(), "closed");
+    let id = app.selection[0];
+    let s = app.doc().find_shape(id).expect("the curve");
+    assert!(matches!(s.kind, ShapeKind::Path { closed: true, .. }));
     assert_eq!(s.spline_fixed, vec![true, false, false, false]);
 }
 
@@ -12912,7 +12968,8 @@ fn overlays_are_drawn_on_a_white_line() {
     let _ = id;
     app.select(vec![curve]);
     app.set_tool(Tool::Shape);
-    app.select_all_nodes();
+    // One node chosen: its handle and its neighbour's show (#4337).
+    app.node_selection = vec![(curve, 0)];
     let shapes = frame_shapes(&ctx, &mut app, Vec::new());
     let heads = shapes
         .iter()
@@ -26715,6 +26772,47 @@ fn control_handle_heads_follow_the_node_size() {
     assert_eq!(app.ctrl_handle_at(on_head), None);
     app.settings.nodes.size = NodeSize::Large;
     assert_eq!(app.ctrl_handle_at(on_head), Some((id, 0, Which::Out)));
+}
+
+/// #4337: with several nodes chosen no control handle shows or takes a
+/// press; with one, its handles and its neighbours' do, so the curves on
+/// both sides of it can be shaped.
+#[test]
+fn handles_show_for_one_chosen_node_and_its_neighbours() {
+    use tracedraw_core::nodes::Which;
+    let (ctx, mut app, _) = setup();
+    let mut path = tracedraw_core::BezPath::new();
+    path.move_to((100.0, 100.0));
+    path.curve_to((110.0, 130.0), (140.0, 130.0), (150.0, 100.0));
+    path.curve_to((160.0, 70.0), (190.0, 70.0), (200.0, 100.0));
+    path.curve_to((210.0, 130.0), (240.0, 130.0), (250.0, 100.0));
+    let id = app
+        .new_shape(ShapeKind::Path {
+            path,
+            closed: false,
+        })
+        .expect("curve");
+    app.select(vec![id]);
+    app.set_tool(Tool::Shape);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    // Node 2 alone: its neighbour node 1 shows its outgoing handle, node
+    // 0, two nodes away, none.
+    app.node_selection = vec![(id, 2)];
+    assert_eq!(
+        app.ctrl_handle_at(Point::new(160.0, 70.0)),
+        Some((id, 1, Which::Out))
+    );
+    assert_eq!(
+        app.ctrl_handle_at(Point::new(210.0, 130.0)),
+        Some((id, 2, Which::Out))
+    );
+    assert_eq!(app.ctrl_handle_at(Point::new(110.0, 130.0)), None);
+    // Nodes 1 and 2: no handles at all.
+    app.node_selection = vec![(id, 1), (id, 2)];
+    assert!(app.handle_nodes().is_empty());
+    assert_eq!(app.ctrl_handle_at(Point::new(160.0, 70.0)), None);
+    assert_eq!(app.ctrl_handle_at(Point::new(210.0, 130.0)), None);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
 }
 
 /// Options > Nodes and Handles, Object click distance: how far from a
