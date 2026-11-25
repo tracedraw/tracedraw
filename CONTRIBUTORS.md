@@ -19,6 +19,7 @@ contributor's own GitHub identity.
 | [@notmarinho](https://github.com/notmarinho) | `.cdr`: a group's vector pattern transparency is read as its mask (PR #2490) |
 | Bone NI | The interface in Lao (#2062) |
 | [@viethuongdesign-ship-it](https://github.com/viethuongdesign-ship-it) | The interface in Vietnamese (#3692) |
+| [@muchenkezhan](https://github.com/muchenkezhan) | F9 preview keeps the canvas scale in borderless full screen (PR #3197); smooth mesh fill guides at every zoom (PR #3201); layers shown on a range of pages (PR #2950) |
 | [@LaMka21](https://github.com/LaMka21) | Moving goes on after a right click during a drag (#174); files dropped on the window are opened or imported (#177); Paste takes what was copied last, files and pictures included (#183) |
 
 ## Other pull requests
