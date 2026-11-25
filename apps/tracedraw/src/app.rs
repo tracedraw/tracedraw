@@ -1451,6 +1451,8 @@ pub struct App {
     pub last_transform_each: crate::ui::transform_each::TransformEach,
     /// The Light Flare settings used last.
     pub last_flare: crate::ui::flare::Flare,
+    /// The settings of the chart inserted last.
+    pub last_chart: Option<crate::chart::ChartSpec>,
     pub blend_steps: u32,
     /// The Blend docker's options for the next blend (and the shown one).
     pub blend_options: tracedraw_core::live::BlendOptions,
@@ -3486,6 +3488,7 @@ impl App {
             last_formula: None,
             last_transform_each: Default::default(),
             last_flare: Default::default(),
+            last_chart: None,
             blend_steps: 20,
             blend_options: Default::default(),
             blend_spacing_mm: 5.0,

@@ -113,7 +113,11 @@ mod pattern_fill_tool;
 mod fit_live;
 mod fit_path;
 mod focus;
+mod chart;
 mod formula;
+mod pins;
+mod symbol_copies;
+mod weave;
 #[cfg(any(target_arch = "wasm32", test))]
 mod font_folder;
 #[cfg(not(target_arch = "wasm32"))]

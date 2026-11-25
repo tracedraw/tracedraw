@@ -1600,6 +1600,10 @@ pub enum Dialog {
     TransformEach(crate::ui::transform_each::TransformEach),
     /// Object > Insert > Light Flare.
     Flare(crate::ui::flare::Flare),
+    /// Object > Insert > Chart from Data.
+    Chart(crate::ui::chart_dialog::ChartState),
+    /// Effects > Bend with Pins.
+    Pins(crate::ui::pins_dialog::PinsState),
     ConvertToBitmap(crate::bitmap_modes::ConvertOptions),
     StraightenImage(crate::ui::straighten_dialog::StraightenState),
     Resample(crate::resample::ResampleState),
@@ -3780,6 +3784,8 @@ pub fn show(app: &mut App, ctx: &Context) {
         Dialog::Formula(st) => crate::ui::formula_dialog::dialog(app, ctx, st, &mut close),
         Dialog::TransformEach(st) => crate::ui::transform_each::dialog(app, ctx, st, &mut close),
         Dialog::Flare(st) => crate::ui::flare::dialog(app, ctx, st, &mut close),
+        Dialog::Chart(st) => crate::ui::chart_dialog::dialog(app, ctx, st, &mut close),
+        Dialog::Pins(st) => crate::ui::pins_dialog::dialog(app, ctx, st, &mut close),
         Dialog::CopyProperties(c) => {
             window(ctx, tr("dialog.copy_properties")).show(ctx, |ui| {
                 ui.checkbox(&mut c.outline_pen, tr("dialog.copy_outline_pen"));
@@ -10054,6 +10060,8 @@ pub(crate) mod tests {
             Dialog::Formula(Default::default()),
             Dialog::TransformEach(Default::default()),
             Dialog::Flare(Default::default()),
+            Dialog::Chart(Default::default()),
+            Dialog::Pins(Default::default()),
             Dialog::ConvertToBitmap(crate::bitmap_modes::ConvertOptions {
                 dpi: 150.0,
                 mode: crate::bitmap_modes::ConvertMode::BlackWhite,

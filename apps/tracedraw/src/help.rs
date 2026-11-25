@@ -110,6 +110,8 @@ pub fn dialog_topic(d: &Dialog, options: OptionsPage) -> &'static str {
         Dialog::Formula(_) => "objects/formulas",
         Dialog::TransformEach(_) => "objects/transforming#transform-each",
         Dialog::Flare(_) => "objects/light-flare",
+        Dialog::Chart(_) => "objects/charts",
+        Dialog::Pins(_) => "effects/bend-with-pins",
         Dialog::ConvertToBitmap(_) => "bitmaps/convert-to-bitmap",
         Dialog::PictureCaptions(_) => "bitmaps/picture-captions",
         Dialog::AiTurn(_) | Dialog::AiSketch(_) | Dialog::AiRemove(_) => "bitmaps/ai-photo",
