@@ -1244,7 +1244,8 @@ fn docker_part(app: &mut App, ui: &mut Ui, front: DockerTab, place: DockerPlace)
     ui.advance_cursor_after_rect(content);
     // Another program's window covers the whole page (external_panel.rs).
     if front == DockerTab::External {
-        crate::external_panel::page(ui, content.intersect(ui.clip_rect()));
+        let clipped = content.intersect(ui.clip_rect());
+        crate::external_panel::page(ui, clipped);
         return;
     }
     // The Welcome Screen is no drawing: the dockers that work on one say

@@ -11,19 +11,36 @@ fn page_id() -> egui::Id {
 }
 
 /// The panel's page, drawn by the docker: where the window goes. In a
-/// panel window of its own the page stays empty.
+/// panel window of its own the page stays empty. Before a window has
+/// docked (just asked for, `opening`) it shows the same "Opening..." a
+/// file being read shows, instead of sitting blank.
 // shortcut: only the main window holds the panel; a window of its own
 // would need that viewport's handle as the parent.
-pub fn page(ui: &egui::Ui, rect: egui::Rect) {
+pub fn page(ui: &mut egui::Ui, rect: egui::Rect) {
     let nr = ui.ctx().cumulative_frame_nr();
     let vp = ui.ctx().viewport_id();
     ui.ctx()
         .data_mut(|d| d.insert_temp(page_id(), (nr, vp, rect)));
+    if !imp::docked() {
+        ui.centered_and_justified(|ui| {
+            ui.label(crate::i18n::trf("status.opening", &[("p", &title())]));
+        });
+    }
 }
 
-/// The name the docker shows: the one the program gave.
+/// The name the docker shows: the one the program gave, or (before it
+/// has docked) the one `opening` was asked to open.
 pub fn title() -> String {
     imp::title()
+}
+
+/// Open the docker now, showing `title` (the one "Opening..." names)
+/// until a real window docks: like Corel's own docker, which shows
+/// empty until its program's window arrives, instead of nothing at all
+/// while the program starts (`native_plugins.rs`, launching).
+pub fn opening(app: &mut App, title: &str) {
+    imp::set_pending(title);
+    app.open_docker(DockerTab::External);
 }
 
 /// Dock the top-level window `hwnd` of another program as the panel
@@ -101,6 +118,9 @@ mod imp {
     }
 
     static PANEL: Mutex<Option<Panel>> = Mutex::new(None);
+    /// Set by `opening` (the docker is open, asked for, no window yet):
+    /// what `title` shows meanwhile, and what `docked` is `false` for.
+    static PENDING: Mutex<Option<String>> = Mutex::new(None);
 
     fn panel() -> std::sync::MutexGuard<'static, Option<Panel>> {
         PANEL.lock().unwrap_or_else(|e| e.into_inner())
@@ -110,7 +130,18 @@ mod imp {
         panel()
             .as_ref()
             .map(|p| p.title.clone())
+            .or_else(|| PENDING.lock().unwrap_or_else(|e| e.into_inner()).clone())
             .unwrap_or_default()
+    }
+
+    pub fn set_pending(title: &str) {
+        *PENDING.lock().unwrap_or_else(|e| e.into_inner()) = Some(title.to_string());
+    }
+
+    /// Whether a real window is docked (as opposed to the docker only
+    /// open and waiting for one, `set_pending`).
+    pub fn docked() -> bool {
+        panel().is_some()
     }
 
     pub fn dock(hwnd: i64, title: &str) -> Result<(), String> {
@@ -148,13 +179,22 @@ mod imp {
             parent: None,
             shown: None,
         });
+        *PENDING.lock().unwrap_or_else(|e| e.into_inner()) = None;
         Ok(())
     }
 
     pub fn sync(open: bool, page: Option<egui::Rect>, frame: &eframe::Frame) -> State {
         let mut guard = panel();
         let Some(p) = guard.as_mut() else {
-            return State::None;
+            if !open {
+                // Closed before a window ever docked: nothing waiting
+                // for next time either.
+                *PENDING.lock().unwrap_or_else(|e| e.into_inner()) = None;
+                return State::None;
+            }
+            // Open, asked for (`opening`), no window yet: stays open,
+            // showing "Opening..." (`page`), not a stale leftover.
+            return State::Docked;
         };
         // SAFETY: as above.
         if unsafe { IsWindow(p.hwnd) } == 0 {
@@ -265,6 +305,12 @@ mod imp {
 
     pub fn title() -> String {
         String::new()
+    }
+
+    pub fn set_pending(_title: &str) {}
+
+    pub fn docked() -> bool {
+        false
     }
 
     pub fn dock(_hwnd: i64, _title: &str) -> Result<(), String> {

@@ -16,6 +16,14 @@ window, a child window, a window of TraceDraw itself. A second
 window it replaces the first, which is handed back as below.
 `undock_window` closes the panel.
 
+Something asking for the panel before the program's window exists yet
+(`native-plugins.md`'s own opening, say, which has to launch the program
+first) can open the docker right away with `external_panel::opening`: it
+shows empty, "Opening <name>...", like Corel's own docker shows empty
+until its program's window arrives, instead of nothing at all while the
+program starts. `dock_window` replaces that with the real window as soon
+as it comes.
+
 ## While docked
 
 - The panel joins the right column and comes to the front like a panel
