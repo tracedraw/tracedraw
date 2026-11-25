@@ -3415,6 +3415,10 @@ pub struct Shape {
     /// Local-to-page transform.
     pub transform: Affine,
     pub fill: Fill,
+    /// Paint a bitmap with its fill, using the original pixels as an alpha
+    /// mask. Used by detached shadows to retain their feathered silhouette.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub bitmap_alpha_fill: bool,
     pub stroke: Option<Stroke>,
     pub visible: bool,
     pub locked: bool,
@@ -4067,6 +4071,7 @@ impl Shape {
             kind,
             transform: Affine::IDENTITY,
             fill: Fill::None,
+            bitmap_alpha_fill: false,
             stroke: Some(Stroke::default()),
             visible: true,
             locked: false,

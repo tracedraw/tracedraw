@@ -95,6 +95,8 @@ pub struct Previews {
     /// at [`SHADOW_DPI`] ([`crate::shadow_image`]), so a drawing written
     /// without previews keeps its shadows too.
     pub shadows: Vec<ShadowPicture>,
+    /// The final pixels of bitmaps painted with an editable fill.
+    pub painted_bitmaps: HashMap<tracedraw_core::ShapeId, SharedBytes>,
     /// Write paragraph text as paragraph text, its frame and the text
     /// flowing in it (#1226), where the files can hold it as TraceDraw
     /// draws it. Off by default: the other program's 27.2 release hangs
@@ -148,6 +150,7 @@ pub fn document_to_cdr_version_with(doc: &Document, version: u16, previews: &Pre
     let doc = on_pages.as_ref().unwrap_or(doc);
     let mut w = Writer::new(v, &doc.symbols, &doc.title);
     w.shadow_pictures = previews.shadows.iter().map(|p| (p.shape, p)).collect();
+    w.painted_bitmaps = Some(&previews.painted_bitmaps);
     w.faces = &previews.fonts;
     w.tech = fonts::face_tech(&previews.fonts);
     w.embed_fonts = previews.embed_fonts;
@@ -4149,6 +4152,7 @@ struct Writer<'a> {
     native_envelope: Option<NativeEnvelope>,
     envelopes: u32,
     shadow_pictures: HashMap<tracedraw_core::ShapeId, &'a ShadowPicture>,
+    painted_bitmaps: Option<&'a HashMap<tracedraw_core::ShapeId, SharedBytes>>,
     /// Clip containers (#1222): the groups of the document's `LIST clpt`
     /// holding the contents of the clip frames written; the number the
     /// container being written names (taken by [`Self::place`]); how
@@ -4332,6 +4336,7 @@ impl<'a> Writer<'a> {
             static_ids: HashMap::new(),
             effects: Vec::new(),
             shadow_pictures: HashMap::new(),
+            painted_bitmaps: None,
             blends: Vec::new(),
             clip_groups: Vec::new(),
             clip_container: None,
@@ -5653,6 +5658,8 @@ impl<'a> Writer<'a> {
                 bounds: None,
             };
         };
+        let painted = self.painted_bitmaps.filter(|_| s.bitmap_alpha_fill);
+        let png = painted.and_then(|fills| fills.get(&s.id)).unwrap_or(png);
         // The image's resolution gives it the size of the object's box,
         // which the object's transform places and scales, as every bitmap
         // of the files seen holds it; the picture's pixel size is the

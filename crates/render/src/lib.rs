@@ -1999,7 +1999,9 @@ impl Renderer<'_> {
             fx: _,
         } = &shape.kind
         {
-            if !self.flags.wireframe {
+            if shape.bitmap_alpha_fill {
+                self.draw_bitmap_alpha_fill(shape, parent);
+            } else if !self.flags.wireframe {
                 // Image pixel space (y down) to local rect (y up) to screen.
                 let (w0, h0) = ((*width_px).max(1) as f64, (*height_px).max(1) as f64);
                 let full = self.screen
@@ -2271,6 +2273,65 @@ impl Renderer<'_> {
             self.pixmap
                 .stroke_path(&sk, &paint, &s, Transform::identity(), None);
         }
+    }
+
+    /// Paint the fill through the bitmap's original coverage on a layer
+    /// bounded by the bitmap. Transparency effects can then fade this
+    /// result independently of the bitmap's feathering.
+    fn draw_bitmap_alpha_fill(&mut self, shape: &Shape, parent: Affine) {
+        if matches!(shape.fill, Fill::None) {
+            return;
+        }
+        let (x, y, w, h) = self.layer_area(shape, parent);
+        let Some(mut layer) = Pixmap::new(w, h) else {
+            return;
+        };
+        let screen = Affine::translate((-(x as f64), -(y as f64))) * self.screen;
+        let origin = (self.origin.0 + x as i32, self.origin.1 + y as i32);
+        {
+            let mut coverage = shape.clone();
+            coverage.bitmap_alpha_fill = false;
+            coverage.fill = Fill::None;
+            coverage.stroke = None;
+            coverage.shadow = None;
+            coverage.effects.clear();
+            coverage.extra_fills.clear();
+            coverage.extra_strokes.clear();
+            coverage.opacity = 1.0;
+            coverage.overprint_fill = false;
+            let mut sub = self.sub(&mut layer);
+            sub.screen = screen;
+            sub.origin = origin;
+            sub.draw_shape(&coverage, parent);
+
+            let transform = parent * shape.transform;
+            let page_path = transform * shape.local_path();
+            let Some(sk) = to_sk_path(&(screen * page_path.clone())) else {
+                return;
+            };
+            // The bitmap already accounts for antialiasing of its boundary.
+            sub.flags.anti_alias = false;
+            sub.draw_fill_of(
+                &shape.fill,
+                &page_path,
+                &sk,
+                FillRule::Winding,
+                tiny_skia::BlendMode::SourceIn,
+                transform,
+            );
+        }
+        let paint = tiny_skia::PixmapPaint {
+            blend_mode: self.blend_for(shape.overprint_fill),
+            ..Default::default()
+        };
+        self.pixmap.draw_pixmap(
+            x as i32,
+            y as i32,
+            layer.as_ref(),
+            &paint,
+            Transform::identity(),
+            None,
+        );
     }
 
     /// The drop shadow `sh` of `shape` drawn inside `parent`, whose
@@ -6606,6 +6667,53 @@ fn knock_out(layer: &mut Pixmap, paint: &Pixmap, cover: &Pixmap) {
     }
 }
 
+/// Bake a bitmap's fill through its alpha at its original pixel size.
+/// The fill is evaluated in page space, including when the bitmap is
+/// transformed. Effects and uniform opacity are left to the exporter.
+pub fn render_bitmap_alpha_fill(shape: &Shape, parent: Affine) -> Option<Pixmap> {
+    if !shape.bitmap_alpha_fill {
+        return None;
+    }
+    let ShapeKind::Bitmap {
+        rect,
+        width_px,
+        height_px,
+        ..
+    } = &shape.kind
+    else {
+        return None;
+    };
+    if u64::from(*width_px) * u64::from(*height_px) > 40_000_000
+        || rect.width() <= 0.0
+        || rect.height() <= 0.0
+    {
+        return None;
+    }
+    let (sx, sy) = (
+        f64::from(*width_px) / rect.width(),
+        f64::from(*height_px) / rect.height(),
+    );
+    let local_to_pixels = Affine::new([sx, 0.0, 0.0, -sy, -rect.x0 * sx, rect.y1 * sy]);
+    let screen = local_to_pixels * (parent * shape.transform).inverse();
+    if !screen.as_coeffs().iter().all(|v| v.is_finite()) {
+        return None;
+    }
+    let mut pixmap = Pixmap::new(*width_px, *height_px)?;
+    let mut renderer = Renderer {
+        pixmap: &mut pixmap,
+        screen,
+        zoom: screen.determinant().abs().sqrt(),
+        flags: Flags::default(),
+        symbols: &[],
+        preview: None,
+        bounds: None,
+        origin: (0, 0),
+        cancel: None,
+    };
+    renderer.draw_bitmap_alpha_fill(shape, parent);
+    Some(pixmap)
+}
+
 pub fn render_fill_image(fill: &Fill, bounds: Rect, dpi: f64) -> Option<Pixmap> {
     let zoom = dpi / 25.4;
     let w = (bounds.width() * zoom).ceil().max(1.0) as u32;
@@ -9304,6 +9412,74 @@ mod tests {
         assert_eq!(r(10.0), 4.0);
         assert!((r(5.0) - 2.0).abs() < 1e-9);
         assert!(r(2.0) < r(5.0) && r(5.0) < r(8.0));
+    }
+
+    #[test]
+    fn bitmap_alpha_fill_keeps_the_shadows_coverage() {
+        let mut source = Pixmap::new(20, 10).expect("source");
+        for (i, pixel) in source.pixels_mut().iter_mut().enumerate() {
+            let alpha = if i < 20 { 0 } else { 128 };
+            *pixel = tiny_skia::ColorU8::from_rgba(0, 0, 0, alpha).premultiply();
+        }
+        let mut shadow = Shape::new(
+            ShapeId(1),
+            ShapeKind::Bitmap {
+                rect: Rect::new(0.0, 0.0, 20.0, 10.0),
+                width_px: 20,
+                height_px: 10,
+                png: source.encode_png().expect("png").into(),
+                fx: None,
+            },
+        );
+        shadow.stroke = None;
+        shadow.bitmap_alpha_fill = true;
+        shadow.fill = Fill::Fountain(tracedraw_core::Fountain::two(
+            tracedraw_core::FountainKind::Linear,
+            Color::rgb8(255, 0, 0),
+            Color::rgb8(0, 0, 255),
+            0.0,
+        ));
+        let painted = render_bitmap_alpha_fill(&shadow, Affine::IDENTITY).expect("shadow");
+        let left = painted.pixel(2, 5).expect("left");
+        let right = painted.pixel(17, 5).expect("right");
+        assert!(left.red() > left.blue() && right.blue() > right.red());
+        assert_eq!((left.alpha(), right.alpha()), (128, 128));
+        assert_eq!(painted.pixel(2, 0).expect("clear edge").alpha(), 0);
+
+        shadow.effects = vec![tracedraw_core::live::Effect::Transparency {
+            mask: Fill::Fountain(tracedraw_core::Fountain::two(
+                tracedraw_core::FountainKind::Linear,
+                Color::WHITE,
+                Color::BLACK,
+                0.0,
+            )),
+            merge: tracedraw_core::live::MergeMode::Normal,
+            target: 2,
+        }];
+        let (mut doc, page) = doc_with(vec![shadow]);
+        doc.pages[0].background = None;
+        let faded = render_page(
+            &doc,
+            page,
+            &RenderOptions {
+                width: 20,
+                height: 10,
+                view: ViewTransform {
+                    zoom: 1.0,
+                    origin_x: 0.0,
+                    origin_y: 10.0,
+                    stretch_y: 1.0,
+                },
+                ..Default::default()
+            },
+        )
+        .expect("render");
+        let left = faded.pixel(2, 5).expect("left");
+        let right = faded.pixel(17, 5).expect("right");
+        assert!(left.red() > left.blue() && right.blue() > right.red());
+        assert!((100..128).contains(&left.alpha()));
+        assert!((0..30).contains(&right.alpha()));
+        assert_eq!(faded.pixel(2, 0).expect("clear edge").alpha(), 0);
     }
 
     #[test]

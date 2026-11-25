@@ -952,6 +952,7 @@ fn main() -> ExitCode {
                         tracedraw_cdr::write::Previews {
                             thumbnail: pages.first().cloned(),
                             pages,
+                            painted_bitmaps: tracedraw_io::bitmap_fill_pictures(&doc),
                             fonts: doc
                                 .font_faces_used()
                                 .into_iter()

@@ -303,6 +303,13 @@ for the drop shadow. An object inside a group keeps what comes off it
 in its group, beside it. The object keeps its fill (a mesh too) and its
 other effects.
 
+Select a detached drop or inner shadow to change its colours with the
+Interactive Fill tool or fade it with the Transparency tool. The
+original feathering and perspective fade stay in the bitmap's alpha.
+The fill and transparency gradient can be edited independently and stay
+editable when TraceDraw reopens a `.tdraw` or a `.cdr` of version 14 or
+later. A detached block shadow uses the same tools on its curves.
+
 A new shadow given to one object never takes another object's shadow
 back (#2890): a drag with the Drop Shadow tool, a field of its bar typed
 in again or a handle dragged replaces only the step it made itself, on
