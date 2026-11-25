@@ -920,6 +920,19 @@ impl Effect {
         )
     }
 
+    /// A warp that costs milliseconds to work out (an Offset Path with
+    /// smoothing or merging a group, a live Combine of a group's objects):
+    /// kept by [`evaluate`] like the effects that draw objects, as a frame
+    /// asks for it to draw, measure and pick. Worked out again each time,
+    /// a merged group lagged behind an object of it being dragged (#4347).
+    fn costly_warp(&self) -> bool {
+        match self {
+            Effect::OffsetPath { smooth, merge, .. } => *merge || *smooth > 0.0,
+            Effect::Combine { .. } => true,
+            _ => false,
+        }
+    }
+
     /// Draws objects made from the outline as it is at its place in the
     /// stack (contours, blends, extrusions, shadows, symmetry...): a warp
     /// after it changes nothing of what it drew, so it stays live. (An
@@ -1165,6 +1178,21 @@ pub fn bake_outline_warps(shape: &Shape) -> Option<Shape> {
         .collect();
     let (effects, parked) = Shape::split_stack(rest);
     let mut out = shape.clone();
+    // A group the warps made one curve (Merge Shapes, live Combine) is
+    // painted as the object it took its paint from: the curves keep that
+    // fill and outline, not the group's own empty paint (#4349).
+    let was_container = matches!(
+        shape.kind,
+        ShapeKind::Group { .. } | ShapeKind::ClipFrame { .. }
+    );
+    let now_container = matches!(
+        main.kind,
+        ShapeKind::Group { .. } | ShapeKind::ClipFrame { .. }
+    );
+    if was_container && !now_container {
+        take_paint(&mut out, &main);
+        out.fill_rule = main.fill_rule;
+    }
     let tolerance = refit_tolerance(&main.page_path());
     out.kind = refit_kind(main.kind, tolerance);
     out.effects = effects;
@@ -1914,7 +1942,7 @@ static EVALUATED: std::sync::LazyLock<std::sync::Mutex<Evaluations>> =
 /// it to draw, to measure and to pick: the evaluations of the latest
 /// shapes are kept, so the same shape is worked out once (#897).
 pub fn evaluate(shape: &Shape) -> Evaluated {
-    if !shape.effects.iter().any(Effect::draws_from_outline) {
+    if !shape.effects.iter().any(|e| e.draws_from_outline() || e.costly_warp()) {
         return evaluate_now(shape);
     }
     if let Some(ev) = EVALUATED.lock().ok().and_then(|mut k| k.get(shape)) {
@@ -5636,6 +5664,19 @@ mod tests {
         assert!(matches!(min, Effect::OffsetPath { smooth, merge: false, .. } if smooth == 0.0));
         let baked = bake_outline_warps(&g).expect("bake");
         assert!(baked.effects.is_empty());
+        // The curves keep the merge's paint (#4349): the bottom object's
+        // fill, not the group's empty one.
+        assert!(matches!(baked.kind, ShapeKind::Path { .. }));
+        assert_eq!(baked.fill, Fill::Solid(Color::rgb8(0, 160, 0)));
+        let mut next = 100u64;
+        let curves = g
+            .converted_to_curves(&[], &mut || {
+                next += 1;
+                crate::ShapeId(next)
+            })
+            .expect("converted");
+        assert_eq!(curves.fill, Fill::Solid(Color::rgb8(0, 160, 0)));
+        assert_eq!(curves.fill_rule, baked.fill_rule);
     }
 
     /// Round Corners and Slice rebuild the outline live: the object keeps

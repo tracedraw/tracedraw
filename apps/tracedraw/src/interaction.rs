@@ -2882,6 +2882,19 @@ impl App {
                     return;
                 }
             }
+            // Focus mode: a double click on an empty place outside the
+            // object in focus leaves focus mode (#4322). A double click
+            // on a group (a Combine Live result is one) went into focus
+            // mode, and clicks outside it did nothing to bring it back.
+            if self.hit_test(p).is_none() {
+                if let Some(f) = self.focus_shape_on_page() {
+                    if !self.shape_hit(&f, p, self.object_pick_tol()) {
+                        self.exit_focus();
+                        self.select(Vec::new());
+                        return;
+                    }
+                }
+            }
             if let Some(id) = self.hit_test(p) {
                 // An object with a symmetry (or inside one): editing the
                 // symmetry, as in the reference program.

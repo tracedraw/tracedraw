@@ -721,6 +721,21 @@ impl App {
     /// Effects panel, which opens.
     pub fn merge_shapes(&mut self) {
         let sel = self.selected_shapes();
+        // A merged group with other objects: they join its merge, rather
+        // than a new merge holding the old one (#4348).
+        if sel.len() >= 2 {
+            if let Some(group) = sel.iter().find(|s| is_merge_group(s)).map(|s| s.id) {
+                let shapes: Vec<ShapeId> = sel
+                    .iter()
+                    .map(|s| s.id)
+                    .filter(|id| *id != group)
+                    .collect();
+                self.run(Command::PlaceInGroup { shapes, group });
+                self.select(vec![group]);
+                self.open_docker(crate::app::DockerTab::Effects);
+                return;
+            }
+        }
         let one_group = sel.len() == 1 && matches!(sel[0].kind, ShapeKind::Group { .. });
         if sel.len() >= 2 {
             self.group_selection();
@@ -754,6 +769,15 @@ impl App {
             true,
         );
         self.open_docker(crate::app::DockerTab::Effects);
+    }
+
+    /// The innermost merged group (Merge Shapes) holding `id`, if any.
+    pub fn merge_group_of(&self, id: ShapeId) -> Option<ShapeId> {
+        let doc = self.doc();
+        doc.ancestors(id)
+            .into_iter()
+            .rev()
+            .find(|g| doc.find_shape(*g).is_some_and(is_merge_group))
     }
 
     /// Add or replace a live effect on the selected objects.
@@ -7019,6 +7043,15 @@ fn scale_base(s: &tracedraw_core::document::Shape) -> Option<(f64, f64)> {
     let mut it = v.split_whitespace().map(|n| n.parse::<f64>().ok());
     let (bx, by) = (it.next()??, it.next()??);
     (bx.is_finite() && by.is_finite() && bx > 1e-8 && by > 1e-8).then_some((bx, by))
+}
+
+/// A group made by Merge Shapes: a group whose live Grow Outline merges
+/// its objects into one outline.
+pub fn is_merge_group(s: &Shape) -> bool {
+    matches!(s.kind, ShapeKind::Group { .. })
+        && s.effects
+            .iter()
+            .any(|e| matches!(e, Effect::OffsetPath { merge: true, .. }))
 }
 
 #[cfg(test)]

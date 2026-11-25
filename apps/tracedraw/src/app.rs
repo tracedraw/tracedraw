@@ -1859,6 +1859,9 @@ pub struct App {
     pub(crate) open_noticed: Option<PathBuf>,
     /// What that read gave, for the open it finishes.
     pub opened_read: Option<(PathBuf, crate::opening::OpenRead)>,
+    /// The next `.cdr` file opened is read even where it is damaged: the
+    /// user asked to open it anyway (#4332).
+    pub open_damaged_anyway: bool,
     /// Manual two-sided printing: the settings of a print whose fronts
     /// went out, while the prompt to turn the stack over shows.
     pub duplex_backs: Option<crate::ui::dialogs::PrintState>,
@@ -2366,6 +2369,9 @@ pub struct App {
     pub left_inner_dockers: DockerColumn,
     /// Dockers floating over the window, each in a window of its own.
     pub floating_dockers: Vec<FloatingDocker>,
+    /// A floating docker chosen again in Window > Panels, brought in
+    /// front of the others on the next frame (#4352).
+    pub raise_docker: Option<DockerTab>,
     /// Panels whose window of their own was closed: opened again, each
     /// comes back in that window, where it was (#3950).
     pub closed_own_windows: Vec<FloatingDocker>,
@@ -3675,6 +3681,7 @@ impl App {
             open_notice_next: Vec::new(),
             open_noticed: None,
             opened_read: None,
+            open_damaged_anyway: false,
             duplex_backs: None,
             printers_seen: Vec::new(),
             printer_last: None,
@@ -3901,6 +3908,7 @@ impl App {
             inner_dockers: DockerColumn::default(),
             left_inner_dockers: DockerColumn::default(),
             floating_dockers: Vec::new(),
+            raise_docker: None,
             closed_own_windows: Vec::new(),
             docked_before: Vec::new(),
             docker_stacks: Default::default(),
@@ -4025,10 +4033,28 @@ impl App {
                 }
             }
         }
+        app.after_update_start();
         if crate::files::WEB {
             app.show_web_notice();
         }
         app
+    }
+
+    /// Help > Mark New Features is kept across starts and updates
+    /// (#4325): with it on, the first start of a new version marks the
+    /// new menu rows and opens What's New, with the release's changes and
+    /// a link to all of them. The version is noted at every start.
+    fn after_update_start(&mut self) {
+        let version = env!("CARGO_PKG_VERSION");
+        self.highlight_whats_new = self.settings.mark_new_features;
+        let updated = whats_new_after(&self.settings.last_run_version, version);
+        if updated && self.settings.mark_new_features {
+            crate::ui::menus::open_whats_new(self);
+        }
+        if self.settings.last_run_version != version {
+            self.settings.last_run_version = version.to_string();
+            self.settings.save();
+        }
     }
 
     /// Tell the user, once per kind and session, that the browser did not
@@ -5430,7 +5456,8 @@ impl App {
             Some(p @ (DockerPlace::RightInner | DockerPlace::LeftInner)) => {
                 self.set_docker_column(p, true, Some(tab));
             }
-            Some(DockerPlace::Floating) => {}
+            // Already floating: its window comes to the front (#4352).
+            Some(DockerPlace::Floating) => self.raise_docker = Some(tab),
             None if self.closed_own_windows.iter().any(|f| f.tab == tab) => {
                 // Its window was closed: it opens there again.
                 if let Some(i) = self.closed_own_windows.iter().position(|f| f.tab == tab) {
@@ -8099,6 +8126,20 @@ impl App {
         for shape in copies {
             cmds.push(Command::AddShape { layer, shape });
         }
+        // Pasted with an object of a merged group selected: into that
+        // group, over the object, so the copies merge too (#4348).
+        if let Some(reference) = self
+            .selection
+            .last()
+            .copied()
+            .filter(|id| self.merge_group_of(*id).is_some())
+        {
+            cmds.push(Command::PlaceBeside {
+                shapes: ids.clone(),
+                reference,
+                in_front: true,
+            });
+        }
         if let Err(e) = self.engine.run_batch("Paste", &cmds) {
             self.status = e.to_string();
         }
@@ -8282,13 +8323,24 @@ impl App {
         // A copy of a connected object comes with its connector (#476).
         let originals: Vec<ShapeId> = shapes.iter().map(|s| s.id).collect();
         let connectors = self.connector_copies(&originals, &copies);
-        let cmds: Vec<Command> = copies
+        let mut cmds: Vec<Command> = copies
             .into_iter()
             .chain(connectors)
             .map(|shape| Command::AddShape { layer, shape })
             .collect();
         if cmds.is_empty() {
             return;
+        }
+        // A copy of an object of a merged group stays in that group, just
+        // over its original, and merges with the others (#4348).
+        for (orig, copy) in &pairs {
+            if self.merge_group_of(*orig).is_some() {
+                cmds.push(Command::PlaceBeside {
+                    shapes: vec![*copy],
+                    reference: *orig,
+                    in_front: true,
+                });
+            }
         }
         if let Err(e) = self.engine.run_batch("Duplicate", &cmds) {
             self.status = e.to_string();
@@ -9573,6 +9625,7 @@ impl App {
         }
         // Objects of a `.cdr` file left out because they could not be read.
         let mut unread = 0usize;
+        let mut damaged: Option<String> = None;
         let mut shrunk = Vec::new();
         // A PDF opened as pictures, at this resolution (#2570).
         let mut pictures: Option<f64> = None;
@@ -9960,7 +10013,12 @@ impl App {
                 })
                 .map_err(|e| e.to_string())
         } else if ext == "cdr" {
-            Self::open_cdr(&path)
+            let anyway = std::mem::take(&mut self.open_damaged_anyway);
+            Self::open_cdr_with(&path, anyway)
+                .map_err(|(e, why)| {
+                    damaged = why;
+                    e
+                })
                 .map(|(doc, report)| {
                     let ver = report.version.map(|v| v.name()).unwrap_or_default();
                     for w in &report.warnings {
@@ -9978,6 +10036,11 @@ impl App {
                             ("skipped", &report.skipped_objects.to_string()),
                         ],
                     );
+                    // Opened anyway though damaged: said (#4332).
+                    if anyway {
+                        msg.push(' ');
+                        msg.push_str(&crate::i18n::tr("status.opened_damaged"));
+                    }
                     // An older version than TraceDraw saves: say which
                     // version Save will write.
                     if let (Some(v), Some(w)) = (report.version, cdr_version) {
@@ -10092,7 +10155,12 @@ impl App {
                 self.status = crate::i18n::trf(
                     "status.could_not_open",
                     &[("p", &path.display().to_string()), ("e", &e.to_string())],
-                )
+                );
+                // A damaged file: said in a window, which offers to open
+                // it anyway, not only in a line of the status bar (#4332).
+                if let Some(reason) = damaged {
+                    self.dialog = crate::ui::dialogs::Dialog::DamagedFile { path, reason };
+                }
             }
         }
     }
@@ -11635,14 +11703,37 @@ impl App {
     pub(crate) fn open_cdr(
         path: &std::path::Path,
     ) -> std::result::Result<(tracedraw_core::Document, tracedraw_cdr::ParseReport), String> {
-        let bytes = crate::files::read(path).map_err(|e| e.to_string())?;
+        Self::open_cdr_with(path, false).map_err(|(e, _)| e)
+    }
+
+    /// [`App::open_cdr`], reading damaged streams as far as they go when
+    /// `anyway` (#4332). An error comes with why the file is damaged when
+    /// that is why it was refused.
+    pub(crate) fn open_cdr_with(
+        path: &std::path::Path,
+        anyway: bool,
+    ) -> std::result::Result<
+        (tracedraw_core::Document, tracedraw_cdr::ParseReport),
+        (String, Option<String>),
+    > {
+        let bytes = crate::files::read(path).map_err(|e| (e.to_string(), None))?;
         let title = path
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("Untitled")
             .to_string();
-        let (mut doc, report) =
-            tracedraw_cdr::open_bytes(&bytes, &title).map_err(|e| e.to_string())?;
+        let read = if anyway {
+            tracedraw_cdr::open_bytes_damaged(&bytes, &title)
+        } else {
+            tracedraw_cdr::open_bytes(&bytes, &title)
+        };
+        let (mut doc, report) = read.map_err(|e| {
+            let why = match &e {
+                tracedraw_cdr::Error::Damaged(why) => Some(why.clone()),
+                _ => None,
+            };
+            (e.to_string(), why)
+        })?;
         // Clones saved by TraceDraw follow their masters again (#2879).
         crate::object_clone::rebase_clone_links(&mut doc);
         // Text that continues in other frames flows on into them (#4104).
@@ -15620,5 +15711,24 @@ mod closed_format_tests {
             assert_eq!(shapes, count(&app));
         }
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+/// Whether a start of `version` follows an update from `last` (the
+/// version of the start before): never on the first start of all.
+pub(crate) fn whats_new_after(last: &str, version: &str) -> bool {
+    !last.is_empty() && crate::updates::is_newer(version, last)
+}
+
+#[cfg(test)]
+mod whats_new_tests {
+    /// What's New opens on the first start of a newer version only: not
+    /// on the very first start, nor again on the same version (#4325).
+    #[test]
+    fn whats_new_follows_an_update_only() {
+        assert!(super::whats_new_after("0.52.0", "0.52.1"));
+        assert!(!super::whats_new_after("0.52.1", "0.52.1"));
+        assert!(!super::whats_new_after("", "0.52.1"));
+        assert!(!super::whats_new_after("0.53.0", "0.52.1"));
     }
 }

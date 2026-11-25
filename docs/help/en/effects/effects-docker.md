@@ -110,6 +110,14 @@ deeper, rounder edge.
   an object of the group and the shapes flow together or apart. Set
   **Smooth** in the layer effects at the top of the panel; on any object,
   **Offset** grows the outline (or shrinks it, below zero) live.
+  To add objects to a merge, select the merged group and the objects and
+  choose Merge Shapes again: they join the same merge. A copy of an object
+  of the merge, made with **Duplicate** (Ctrl+D) or copied and pasted
+  while that object is selected, stays in the merge too. To take an
+  object out of the merge, drag its row in the **Objects** panel out of
+  the group; to remove it, Ctrl+click it and press Delete.
+  **Convert to Curves** (Ctrl+Q) bakes the merge into one curve in the
+  same paint.
 - [[menu.effects.picker]] shows a list of effects to apply to the selection.
 - [[menu.object > menu.object.clear_effect]] removes the effect of the
   selection.

@@ -386,16 +386,31 @@ pub(crate) fn open_whats_new(app: &mut App) {
 /// submenus that lead to them, by their keys. Each version replaces the
 /// list with its own.
 pub const NEW_IN_THIS_VERSION: &[&str] = &[
-    // View > Navigator, with the key N, a command like any other.
-    "menu.view",
-    "menu.view.navigator",
-    // Keys for commands that had none (#2201): Ctrl+Shift+I, Ctrl+;
-    // and Ctrl+'.
-    "menu.edit",
-    "menu.edit.invert_selection",
-    "menu.view.guidelines",
-    "menu.view.grid",
-    "menu.view.document_grid",
+    // Object: Edit Fill and Outline Pen, Convert to Guidelines, the clip
+    // frame's None and Center to Page across or down.
+    "menu.object",
+    "menu.object.edit_fill",
+    "menu.object.outline_pen",
+    "menu.object.convert_to_guidelines",
+    "menu.object.clip_frame",
+    "menu.object.clip_frame_none",
+    "menu.object.align_distribute",
+    "menu.object.center_to_page_h",
+    "menu.object.center_to_page_v",
+    // Text: Text Height and Sort Lines.
+    "menu.text",
+    "menu.text.text_height",
+    "menu.text.sort_lines",
+    "menu.text.sort_a_z",
+    "menu.text.sort_z_a",
+    "menu.text.sort_numbers_up",
+    "menu.text.sort_numbers_down",
+    // Table: Edit in a spreadsheet program.
+    "menu.table",
+    "menu.table.edit_in_spreadsheet",
+    // Bitmaps: Edit Bitmap With another program.
+    "menu.bitmaps",
+    "menu.bitmaps.edit_bitmap_with",
 ];
 
 thread_local! {
@@ -2113,9 +2128,9 @@ mod tests {
                 "{key} is not in the menus"
             );
         }
-        assert!(!marked_new("menu.view.navigator"));
+        assert!(!marked_new("menu.text.text_height"));
         set_highlight_new(true);
-        assert!(marked_new("menu.view.navigator"));
+        assert!(marked_new("menu.text.text_height"));
         assert!(!marked_new("menu.file.export"));
         set_highlight_new(false);
         assert!(
@@ -2179,6 +2194,46 @@ mod tests {
         assert!(effect_docker_open(&app, DockerTab::Objects));
         app.show_dockers = false;
         assert!(!effect_docker_open(&app, DockerTab::Objects));
+    }
+
+    /// Window > Panels ticks a floating panel too, and choosing it
+    /// brings its window in front of the others (#4352).
+    #[test]
+    fn the_panels_menu_ticks_and_raises_a_floating_panel() {
+        let ctx = crate::theme::ui_context();
+        let mut app = mixed_app();
+        for tab in [DockerTab::ShapeGenerator, DockerTab::Objects] {
+            app.open_docker(tab);
+            app.move_docker(tab, crate::app::DockerPlace::Floating, None);
+        }
+        let mut on = None;
+        run_frame(&ctx, |ui| on = command_on(&mut app, ui.ctx(), "docker.shape_generator"));
+        assert_eq!(on, Some(true));
+        assert!(effect_docker_open(&app, DockerTab::Objects));
+        let layer = |tab: DockerTab| {
+            egui::LayerId::new(
+                egui::Order::Middle,
+                egui::Id::new(("floating_docker", tab.key())),
+            )
+        };
+        let top = |ctx: &egui::Context| ctx.memory(|m| m.layer_ids().last());
+        run_frame(&ctx, |ui| crate::ui::dockers::floating_dockers(&mut app, ui.ctx()));
+        run_frame(&ctx, |ui| crate::ui::dockers::floating_dockers(&mut app, ui.ctx()));
+        app.open_docker(DockerTab::Objects);
+        assert_eq!(app.raise_docker, Some(DockerTab::Objects));
+        run_frame(&ctx, |ui| crate::ui::dockers::floating_dockers(&mut app, ui.ctx()));
+        run_frame(&ctx, |ui| crate::ui::dockers::floating_dockers(&mut app, ui.ctx()));
+        assert_eq!(app.raise_docker, None);
+        assert_eq!(top(&ctx), Some(layer(DockerTab::Objects)));
+        app.open_docker(DockerTab::ShapeGenerator);
+        run_frame(&ctx, |ui| crate::ui::dockers::floating_dockers(&mut app, ui.ctx()));
+        run_frame(&ctx, |ui| crate::ui::dockers::floating_dockers(&mut app, ui.ctx()));
+        assert_eq!(top(&ctx), Some(layer(DockerTab::ShapeGenerator)));
+        // Still open: the panel stays where it floats.
+        assert_eq!(
+            app.docker_place(DockerTab::ShapeGenerator),
+            Some(crate::app::DockerPlace::Floating)
+        );
     }
 
     /// The Effects menu: Flatten Effects, the bitmap groups, then the
@@ -5897,6 +5952,9 @@ fn help_menu(app: &mut App, ui: &mut Ui) {
         app.highlight_whats_new,
     ) {
         app.highlight_whats_new = !app.highlight_whats_new;
+        // Kept for the next starts and across updates (#4325).
+        app.settings.mark_new_features = app.highlight_whats_new;
+        app.settings.save();
     }
     sep(ui);
     if item(ui, "menu.help.updates", "", true) {

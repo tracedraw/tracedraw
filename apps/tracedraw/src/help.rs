@@ -75,6 +75,7 @@ pub fn dialog_topic(d: &Dialog, options: OptionsPage) -> &'static str {
         Dialog::EditFill(_) => "color/fills#edit-fill",
         Dialog::TableCount(_) => "objects/tables",
         Dialog::OldCdrVersion { .. } => "get-started/open-and-save#save-as",
+        Dialog::DamagedFile { .. } => "get-started/open-and-save",
         Dialog::NewRangeLayer(_) => "objects/objects-and-layers#range-pages",
         Dialog::LayerProperties(st) if st.use_page_range => "objects/objects-and-layers#range-pages",
         Dialog::RenameLayer { .. }
@@ -489,6 +490,10 @@ mod tests {
             Dialog::Options,
             Dialog::PageNumberSettings,
             Dialog::ConfirmClose,
+            Dialog::DamagedFile {
+                path: "/nowhere/art.cdr".into(),
+                reason: "content/riffData.cdr: Invalid checksum".into(),
+            },
             Dialog::ConfirmResetSettings,
             Dialog::Updates,
             Dialog::Benchmark,

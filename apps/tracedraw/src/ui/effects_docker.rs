@@ -361,6 +361,13 @@ pub fn stack_rows(app: &mut App, ui: &mut Ui, shape: &Shape) {
                     .clicked()
                 {
                     edit = Some(edit_docker(effect));
+                    // Set in Layer Effects: its entry lights up there (#4350).
+                    if let Some(kind) = crate::ui::layer_effects::Kind::ALL
+                        .into_iter()
+                        .find(|k| k.matches(effect))
+                    {
+                        crate::ui::layer_effects::highlight(ui.ctx(), kind);
+                    }
                 }
             });
         });

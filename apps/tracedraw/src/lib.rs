@@ -270,6 +270,8 @@ mod spell;
 #[cfg(windows)]
 mod spell_windows;
 #[cfg(not(target_arch = "wasm32"))]
+mod native_splash;
+#[cfg(not(target_arch = "wasm32"))]
 mod splash;
 #[cfg(not(target_arch = "wasm32"))]
 mod startup_log;
@@ -601,6 +603,17 @@ pub fn run() -> eframe::Result<()> {
         .is_none()
         .then_some(last_failed)
         .flatten();
+    // The splash drawn by the system, at once and without the graphics
+    // card, while the renderer is set up (#4321): the other splash is
+    // drawn by that renderer, so nothing showed while it was tried.
+    let retrying = native_splash::retrying(failed.is_some());
+    if native_splash::wanted(plain, settings.show_splash, retrying) {
+        native_splash::show(if retrying {
+            native_splash::Status::TryingAnother
+        } else {
+            native_splash::Status::SettingUp
+        });
+    }
     let mode = gpu::Mode::for_start(&args, &settings, failed);
     let first = gpu::Mode::first(&settings);
     let next = mode.next(first);
@@ -688,7 +701,7 @@ pub fn run() -> eframe::Result<()> {
             log::warn!(
                 "the window opened with {mode:?} but its frames came back nearly black; trying {next:?}"
             );
-            if !gpu::restart_with(next, &args) {
+            if !gpu::restart_with(next, &args, true) {
                 let what = format!(
                     "the window opened with {mode:?} but what it drew came back nearly black, and TraceDraw could not start again with {next:?}"
                 );
@@ -698,7 +711,7 @@ pub fn run() -> eframe::Result<()> {
         } else if let Some(next) = gpu::take_restart_after_exit() {
             // Help > Benchmark: with or without the graphics card.
             log::info!("starting again with {next:?} for the benchmark");
-            if !gpu::restart_with(next, &args) {
+            if !gpu::restart_with(next, &args, false) {
                 log::error!("TraceDraw could not start again with {next:?}");
             }
         }
@@ -708,7 +721,7 @@ pub fn run() -> eframe::Result<()> {
     // new start (a window system cannot be set up twice in one).
     if let Some(next) = next {
         log::warn!("the window did not open with {mode:?} ({e}); trying {next:?}");
-        if gpu::restart_with(next, &args) {
+        if gpu::restart_with(next, &args, true) {
             return Ok(());
         }
     }

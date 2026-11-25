@@ -1133,6 +1133,10 @@ fn outline(img: &RgbaImage, s: &Settings, cancel: Option<&Cancel>) -> Option<Vec
     // The curves of a labelling: made once, and again for each round of
     // the check below.
     let build = |labels: &[usize], mut background: Option<usize>| -> Option<Vec<Traced>> {
+        // The background colour where it is left inside the picture (the
+        // insides of letters, an O's counter), when it was found along the
+        // edge: a hole it fills goes with the background (#4328).
+        let mut paper = background.filter(|_| s.remove == Remove::Background);
         let hard = crate::trace_fine::hard_edges(labels, &edges, w, h);
         // The labels on a finer grid, where the edges run inside the pixels
         // blending two colours (`trace_fine`); everything from here on is in
@@ -1169,6 +1173,9 @@ fn outline(img: &RgbaImage, s: &Settings, cancel: Option<&Cancel>) -> Option<Vec
         if let (Remove::Background, Some(bg)) = (s.remove, background) {
             clear_border_region(&mut labels, w, h, bg);
             background = None;
+            if !labels.contains(&usize::MAX) {
+                paper = None;
+            }
         }
         // The small thin letters of an enlarged picture are drawn again
         // by their strokes (`trace_strokes`).
@@ -1351,6 +1358,36 @@ fn outline(img: &RgbaImage, s: &Settings, cancel: Option<&Cancel>) -> Option<Vec
         let geometric = s.geometric.then_some(fine as f64 * enlarged);
         let shared = SharedBorders::new(&regions, w, h, &fit, source.as_ref(), geometric, cancel)?;
         report(cancel, Step::Curves, 0.5);
+        // A hole that the background colour fills (more than a few specks
+        // of it, and most of the hole) is a counter, the inside of an O:
+        // it stays a hole in the shape around, and the background colour
+        // in it goes with the rest of the background, so a letter comes
+        // out as one shape with a real hole, ready to cut, with nothing
+        // stacked on it (#4328). Specks of the background colour (the
+        // noise of a compressed picture inside a stroke) are no counter.
+        let blots_max = BLOTS_AREA * fine * fine;
+        let counter = |colours: &[(usize, usize)], len: usize| {
+            colours
+                .iter()
+                .any(|(l, n)| Some(*l) == paper && *n > blots_max && 2 * *n >= len)
+        };
+        let mut counters = vec![false; if paper.is_some() { w * h } else { 0 }];
+        if let Some(p) = paper {
+            for ci in 0..palette.len() {
+                let (x0, y0, x1, _) = boxes[ci];
+                let cw = x1.wrapping_sub(x0).wrapping_add(1);
+                for (pixels, colours) in &holes[ci] {
+                    if counter(colours, pixels.len()) {
+                        for &i in pixels {
+                            let g = (y0 + i as usize / cw) * w + x0 + i as usize % cw;
+                            if labels[g] == p {
+                                counters[g] = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
         let mut out = Vec::new();
         let colours = order.len().max(1);
         for (k, ci) in order.into_iter().enumerate() {
@@ -1371,16 +1408,34 @@ fn outline(img: &RgbaImage, s: &Settings, cancel: Option<&Cancel>) -> Option<Vec
             // leave no page showing between them and it. Remove overlap keeps
             // every region to its own pixels (no holes were looked for).
             let mut mask = own;
+            // The background colour in counters is taken out with the
+            // background.
+            if Some(ci) == paper {
+                for (i, m) in mask.iter_mut().enumerate() {
+                    if counters[(y0 + i / cw) * w + x0 + i % cw] {
+                        *m = false;
+                    }
+                }
+                if !mask.contains(&true) {
+                    continue;
+                }
+            }
             for (pixels, colours) in &holes[ci] {
+                // A counter stays a hole (#4328).
+                if counter(colours, pixels.len()) {
+                    continue;
+                }
                 // Filled when what is drawn below the region in it is no
                 // more than a few blots: they go under it, hidden, and the
-                // regions drawn over it meet it with no page between.
+                // regions drawn over it meet it with no page between. Thin
+                // lines in a large hole are no blots, however small their
+                // share of it: filled over, they were lost (#4327).
                 let below: usize = colours
                     .iter()
                     .filter(|(l, _)| rank[*l] <= rank[ci])
                     .map(|(_, n)| *n)
                     .sum();
-                if below * BLOTS_SHARE <= pixels.len() {
+                if below * BLOTS_SHARE <= pixels.len() && below <= blots_max {
                     for &i in pixels {
                         mask[i as usize] = true;
                     }
@@ -1478,6 +1533,10 @@ const MUTUAL_RATIO: usize = 4;
 /// A hole of a region is filled when the colours drawn below the region
 /// cover at most this share of it (one part in this many).
 const BLOTS_SHARE: usize = 20;
+/// And when they hold no more than this many pixels of the picture: more
+/// is a drawing of its own (the fine lines of a quill in a logo), which a
+/// filled hole hid (#4327).
+const BLOTS_AREA: usize = 40;
 
 /// How many times at most a trace is drawn, compared with its picture
 /// and made again where it differs.
@@ -5519,8 +5578,9 @@ mod tests {
     }
 
     /// A disc on white with white patches inside it (the whites of eyes):
-    /// Remove Background takes out the white reaching the edge and traces
-    /// the patches inside as white curves, Entire color takes every
+    /// Remove Background takes out the white reaching the edge, and the
+    /// white patches inside the disc are holes in it, taken out with the
+    /// background (#4328), Entire color takes every
     /// white out, None traces the white too; a colour given is removed
     /// instead of the one found; a colour given that is not the picture's
     /// takes the palette colour nearest it.
@@ -5540,14 +5600,14 @@ mod tests {
         s.remove = Remove::Background;
         let t = trace(&img, &s);
         let colours: Vec<[u8; 3]> = t.iter().map(|t| t.color.to_rgb8()).collect();
-        assert_eq!(colours, vec![[0, 0, 0], [255, 255, 255]], "the eyes stay");
-        let white_rings = t[1]
+        assert_eq!(colours, vec![[0, 0, 0]], "the eyes are holes");
+        let rings = t[0]
             .path
             .elements()
             .iter()
             .filter(|e| matches!(e, tracedraw_core::geometry::PathEl::MoveTo(_)))
             .count();
-        assert_eq!(white_rings, 2, "two eyes, no outer white");
+        assert_eq!(rings, 3, "the disc and its two eyes");
         s.remove = Remove::EntireColor;
         let t = trace(&img, &s);
         assert_eq!(t.len(), 1);
@@ -6946,6 +7006,68 @@ mod tests {
                 .expect("the square");
             let b = blue_shape.path.bounding_box();
             assert!(b.x0 > 90.0, "detail {detail}: blue reaches {b:?}");
+        }
+    }
+
+    /// An O on a light background with the Logo preset (#4328): the
+    /// letter is one curve with a real hole, ready to cut, not a disc
+    /// under a patch of the background colour.
+    #[test]
+    fn the_inside_of_a_letter_is_a_hole() {
+        use tracedraw_core::geometry::PathEl;
+        let cream = [246, 238, 220];
+        let img = antialiased(120, |x, y| {
+            let r = (Point::new(x, y) - Point::new(60.0, 60.0)).hypot();
+            if (22.0..40.0).contains(&r) {
+                BLACK
+            } else {
+                cream
+            }
+        });
+        let t = trace(&img, &Preset::Logo.settings());
+        let o = t
+            .iter()
+            .find(|t| t.color.to_rgb8() == [0, 0, 0])
+            .expect("the letter");
+        let rings = o
+            .path
+            .elements()
+            .iter()
+            .filter(|e| matches!(e, PathEl::MoveTo(_)))
+            .count();
+        assert_eq!(rings, 2, "the O has its hole");
+        assert_eq!(o.path.winding(Point::new(60.0, 60.0)), 0);
+    }
+
+    /// Thin dark lines inside a light area that a dark frame holds, with
+    /// the Logo preset (#4327): the lines show, as they do with Remove
+    /// object overlap, not hidden under the light area filled over them.
+    #[test]
+    fn thin_lines_in_a_framed_area_stay_with_the_logo_preset() {
+        let cream = [235, 205, 150];
+        let img = antialiased(200, |x, y| {
+            let r = (Point::new(x, y) - Point::new(100.0, 100.0)).hypot();
+            // Fine lines across the middle, a pixel and a half wide.
+            let line = r < 55.0 && ((x - y).abs() < 1.1 || (x + y - 200.0).abs() < 1.1);
+            if (80.0..92.0).contains(&r) || line {
+                BLACK
+            } else if (60.0..80.0).contains(&r) {
+                cream
+            } else {
+                WHITE
+            }
+        });
+        for overlap in [false, true] {
+            let mut s = Preset::Logo.settings();
+            s.remove_overlap = overlap;
+            let t = trace(&img, &s);
+            for p in [Point::new(80.0, 80.0), Point::new(120.0, 80.0), Point::new(90.0, 110.0)] {
+                assert_eq!(
+                    top_colour_at(&t, p),
+                    Some([0, 0, 0]),
+                    "overlap {overlap}: the line at {p:?}"
+                );
+            }
         }
     }
 

@@ -1532,6 +1532,12 @@ pub enum Dialog {
         version: u16,
     },
     ConfirmClose,
+    /// A `.cdr` file refused as damaged (#4332): said plainly, with an
+    /// offer to open it anyway, reading what can be read.
+    DamagedFile {
+        path: std::path::PathBuf,
+        reason: String,
+    },
     /// A font or size picked with no text selected: make it the default
     /// of new text? (as the reference program asks)
     /// Edit > Copy Properties From (Ctrl+Shift+A): what to copy.
@@ -3145,6 +3151,34 @@ pub fn show(app: &mut App, ctx: &Context) {
         }
         Dialog::DocumentProperties(st) => {
             crate::ui::doc_properties::dialog(app, ctx, st, &mut close)
+        }
+        Dialog::DamagedFile { path, reason } => {
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let text = trf(
+                "dialog.damaged_file_text",
+                &[("name", &name), ("reason", reason.as_str())],
+            );
+            let (anyway, cancel) = (tr("dialog.damaged_open_anyway"), tr("dialog.cancel"));
+            match crate::ui::chrome::message_box(
+                ctx,
+                crate::ui::chrome::MessageIcon::Info,
+                &text,
+                &[&anyway, &cancel],
+            ) {
+                Some(0) => {
+                    let path = path.clone();
+                    app.dialog = Dialog::None;
+                    app.open_damaged_anyway = true;
+                    app.open_path(path);
+                    app.open_damaged_anyway = false;
+                    return;
+                }
+                Some(_) => close = true,
+                None => {}
+            }
         }
         Dialog::ConfirmClose => {
             let text = trf("dialog.save_changes_to", &[("name", &app.document_name())]);
@@ -10085,6 +10119,10 @@ pub(crate) mod tests {
             Dialog::DocumentProperties(Box::default()),
             Dialog::OldCdrVersion { version: 9 },
             Dialog::ConfirmClose,
+            Dialog::DamagedFile {
+                path: "/nowhere/art.cdr".into(),
+                reason: "content/riffData.cdr: Invalid checksum".into(),
+            },
             Dialog::ConfirmResetSettings,
             Dialog::Updates,
             Dialog::Benchmark,

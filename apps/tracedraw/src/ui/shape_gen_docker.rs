@@ -297,7 +297,9 @@ impl PreviewMap {
 }
 
 fn draw_preview(ui: &mut Ui, data: &PreviewData, sense: Sense) -> (egui::Response, PreviewMap) {
-    let w = ui.available_width().clamp(120.0, 320.0);
+    // Never wider than the panel: a box wider than a narrow panel ran
+    // past its edge (#4323).
+    let w = ui.available_width().clamp(60.0, 320.0);
     let (r, resp) = ui.allocate_exact_size(Vec2::new(w, w), sense);
     let painter = ui.painter_at(r);
     painter.rect_filled(r, 0.0, Color32::WHITE);
@@ -454,7 +456,7 @@ fn edit_pins(app: &mut App, data: &PreviewData, resp: &egui::Response, pm: Previ
     }
     // The end first: a pin with no pull yet is moved by its end.
     let hit = |p: Pos2| -> Option<(bool, usize)> {
-        let near = |q: Pos2| q.distance(p) <= 8.0;
+        let near = |q: Pos2| q.distance(p) <= GRAB_PX;
         screen
             .iter()
             .position(|(_, b)| near(*b))
@@ -468,7 +470,7 @@ fn edit_pins(app: &mut App, data: &PreviewData, resp: &egui::Response, pm: Previ
     };
     let id = resp.id.with("dragged_pin");
     if resp.drag_started() {
-        let target = resp.interact_pointer_pos().and_then(|p| {
+        let target = press_pos(resp).and_then(|p| {
             hit(p).or_else(|| {
                 (s.warp_pins.len() < MAX_PINS).then(|| {
                     let (x, y) = pm.to_drawing(data, p);
@@ -522,6 +524,7 @@ fn deform_split(app: &mut App, ui: &mut Ui, units: crate::app::Units, precision:
 }
 
 fn deform_split_body(app: &mut App, ui: &mut Ui, units: crate::app::Units, precision: usize) {
+    let split_before = app.shape_gen.split_mode;
     {
         let s = &mut app.shape_gen;
         ui.add(
@@ -582,14 +585,21 @@ fn deform_split_body(app: &mut App, ui: &mut Ui, units: crate::app::Units, preci
     if app.shape_gen.split_mode == SplitMode::Off {
         return;
     }
-    let picked = app.shape_gen.split_shape.is_some();
-    let text = if picked {
-        tr("shapegen.split_picked")
-    } else {
-        tr("shapegen.split_none")
-    };
-    ui.add(egui::Label::new(egui::RichText::new(text).color(Tokens::text_dim())).wrap());
     let can = !app.selection.is_empty() && app.shape_gen_selected().is_none();
+    // A way of splitting chosen with no shape picked yet takes the
+    // selection, when there is one: the inside and outside choices
+    // seemed to do nothing, as they wait for a shape (#4324).
+    if split_before == SplitMode::Off && app.shape_gen.split_shape.is_none() && can {
+        app.shape_gen_pick_split();
+    }
+    let picked = app.shape_gen.split_shape.is_some();
+    let (text, color) = if picked {
+        (tr("shapegen.split_picked"), Tokens::text_dim())
+    } else {
+        // Said plainly: nothing changes until a shape is picked.
+        (tr("shapegen.split_none"), ui.visuals().warn_fg_color)
+    };
+    ui.add(egui::Label::new(egui::RichText::new(text).color(color)).wrap());
     ui.horizontal(|ui| {
         if ui
             .add_enabled(can, crate::ui::btn_icons::Ib::new("shapegen.split_pick"))
@@ -609,6 +619,20 @@ fn deform_split_body(app: &mut App, ui: &mut Ui, units: crate::app::Units, preci
     });
 }
 
+/// How far, in screen points, a press in the preview still grabs a
+/// control point (a Voronoi site, a pin): a press a little beside one
+/// added a new point instead (#4323).
+const GRAB_PX: f32 = 12.0;
+
+/// Where the press that started a drag went down: egui starts a drag only
+/// once the pointer has moved a few points, and judging the point to grab
+/// from there missed points pressed right on (#4323).
+fn press_pos(resp: &egui::Response) -> Option<Pos2> {
+    resp.ctx
+        .input(|i| i.pointer.press_origin())
+        .or_else(|| resp.interact_pointer_pos())
+}
+
 /// Voronoi sites edited in the preview: drag one to move it, double
 /// click to add one, right click one to delete it. The first edit takes
 /// the generated sites as the panel's own points.
@@ -624,7 +648,7 @@ fn edit_sites(app: &mut App, data: &PreviewData, resp: &egui::Response, pm: Prev
             .iter()
             .enumerate()
             .map(|(k, (x, y))| (k, pm.to_screen(data, *x, *y).distance(p)))
-            .filter(|(_, d)| *d <= 8.0)
+            .filter(|(_, d)| *d <= GRAB_PX)
             .min_by(|a, b| a.1.total_cmp(&b.1))
             .map(|(k, _)| k)
     };
@@ -653,7 +677,7 @@ fn edit_sites(app: &mut App, data: &PreviewData, resp: &egui::Response, pm: Prev
         }
     }
     if resp.drag_started() {
-        let k = resp.interact_pointer_pos().and_then(hit);
+        let k = press_pos(resp).and_then(hit);
         resp.ctx.data_mut(|d| d.insert_temp(id, k));
         if k.is_some() {
             take(s);
@@ -672,7 +696,8 @@ fn edit_sites(app: &mut App, data: &PreviewData, resp: &egui::Response, pm: Prev
             .data_mut(|d| d.insert_temp::<Option<usize>>(id, None));
     }
     if resp.double_clicked() {
-        if let Some(p) = resp.interact_pointer_pos() {
+        // A double click on a point is not a new point beside it.
+        if let Some(p) = resp.interact_pointer_pos().filter(|p| hit(*p).is_none()) {
             take(s);
             if s.vor_points.len() < crate::shape_gen_cells::MAX_SITES {
                 s.vor_points.push(norm(p));
@@ -749,7 +774,7 @@ fn combo<T: Copy + PartialEq>(
 ) {
     crate::ui::keynav::ComboBox::from_id_salt(id)
         .selected_text(tr(key_of(*v)))
-        .width(ui.available_width().clamp(120.0, 190.0))
+        .width(ui.available_width().clamp(60.0, 190.0))
         .show_ui(ui, |ui| {
             for k in all {
                 ui.selectable_value(v, *k, tr(key_of(*k)));
@@ -846,7 +871,12 @@ fn source_row(app: &mut App, ui: &mut Ui) {
 }
 
 pub fn shape_generator(app: &mut App, ui: &mut Ui) {
-    ui.spacing_mut().slider_width = 110.0;
+    // The fields fit the panel at any width: fixed widths ran past the
+    // edge of a narrow panel, hiding the end of the rows and the names of
+    // the buttons below (#4323).
+    ui.set_max_width(ui.available_width());
+    let room = ui.available_width() - crate::ui::docker_form::LABEL_W - 80.0;
+    ui.spacing_mut().slider_width = room.clamp(40.0, 110.0);
     let units = app.units;
     let precision = app.settings.precision.min(10) as usize;
     {
