@@ -3398,7 +3398,10 @@ impl FillLook {
             });
         }
         if self.blur > 1e-9 {
-            out.push(Effect::GaussianBlur { radius: self.blur });
+            out.push(Effect::GaussianBlur {
+                radius: self.blur,
+                pins: Vec::new(),
+            });
         }
         out
     }

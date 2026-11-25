@@ -6924,7 +6924,8 @@ fn effects_reach(s: &Shape) -> f64 {
         .iter()
         .map(|e| match e {
             Effect::OuterShadow { offset, blur, .. } => blur.abs() + offset.hypot(),
-            Effect::Glow { blur, .. } | Effect::GaussianBlur { radius: blur } => blur.abs(),
+            Effect::Glow { blur, .. } => blur.abs(),
+            Effect::GaussianBlur { radius, pins } => tracedraw_core::live::blur_reach(*radius, pins),
             // Whole dots reach half a cell past the edge.
             Effect::Halftone { size, .. } => size.abs(),
             _ => 0.0,
