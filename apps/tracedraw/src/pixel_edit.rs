@@ -1284,18 +1284,47 @@ impl PixelImage {
     }
 }
 
-/// A picture pasted as a new layer above the one in use, its top left at
-/// the selection's (or the picture's) top left; what passes the picture's
-/// edge is cut off.
-pub fn paste_as_layer(pi: &mut PixelImage, name: String, img: &RgbaImage) -> Option<Dirty> {
+/// The selected pixels of the layer in use (all of it with nothing
+/// selected), cut to the selection's box, and the box's top left; `None`
+/// when nothing that shows is selected.
+pub fn copy_selection(pi: &PixelImage) -> Option<(RgbaImage, (u32, u32))> {
+    let b = pi.sel_bounds()?;
+    let (w, h) = (b[2].saturating_sub(b[0]), b[3].saturating_sub(b[1]));
+    if w == 0 || h == 0 {
+        return None;
+    }
+    let mut out = RgbaImage::new(w, h);
+    let mut any = false;
+    for (x, y, q) in out.enumerate_pixels_mut() {
+        let (px, py) = (b[0] + x, b[1] + y);
+        let s = pi.sel_at(px, py);
+        if s > 0.0 {
+            let p = *pi.img.get_pixel(px, py);
+            let a = (p[3] as f32 * s).round() as u8;
+            *q = Rgba([p[0], p[1], p[2], a]);
+            any |= a > 0;
+        }
+    }
+    any.then_some((out, (b[0], b[1])))
+}
+
+/// A picture pasted as a new layer above the one in use with its top
+/// left at `at`, nothing selected after (so the Move tool takes the
+/// pasted pixels); what passes the picture's edge is cut off.
+pub fn paste_layer_at(
+    pi: &mut PixelImage,
+    name: String,
+    img: &RgbaImage,
+    at: (u32, u32),
+) -> Option<Dirty> {
     let (w, h) = pi.img.dimensions();
     if w == 0 || h == 0 || img.width() == 0 || img.height() == 0 {
         return None;
     }
-    let at = pi.sel_bounds().map(|b| (b[0], b[1])).unwrap_or((0, 0));
     let mut layer = RgbaImage::new(w, h);
     image::imageops::replace(&mut layer, img, at.0 as i64, at.1 as i64);
     pi.insert_layer(name, layer);
+    pi.sel = None;
     Some([0, 0, w, h])
 }
 
@@ -2881,9 +2910,23 @@ mod tests {
         assert_eq!(pi.img.get_pixel(6, 1)[3], 255);
         let img = RgbaImage::from_pixel(2, 2, Rgba([1, 2, 3, 255]));
         pi.sel = rect_mask(10, 10, (4.0, 4.0), (8.0, 8.0));
-        paste_as_layer(&mut pi, "p".into(), &img).unwrap();
+        paste_layer_at(&mut pi, "p".into(), &img, (4, 4)).unwrap();
         assert_eq!(*pi.img.get_pixel(4, 4), Rgba([1, 2, 3, 255]));
         assert_eq!(pi.img.get_pixel(7, 7)[3], 0);
+        assert!(pi.sel.is_none(), "the pasted pixels are the Move tool's");
+    }
+
+    #[test]
+    fn copy_takes_the_selected_pixels_cut_to_their_box() {
+        let mut pi = solid(10, 10, [9, 9, 9, 255]);
+        pi.sel = rect_mask(10, 10, (2.0, 3.0), (6.0, 5.0));
+        let (img, at) = copy_selection(&pi).unwrap();
+        assert_eq!(at, (2, 3));
+        assert_eq!(img.dimensions(), (4, 2));
+        assert_eq!(*img.get_pixel(0, 0), Rgba([9, 9, 9, 255]));
+        // Nothing that shows: nothing to copy.
+        let clear = PixelImage::new(RgbaImage::new(4, 4));
+        assert!(copy_selection(&clear).is_none());
     }
 
     #[test]

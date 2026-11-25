@@ -12,6 +12,9 @@ pub enum PixelCmd {
     Cancel,
     Undo,
     Redo,
+    Copy,
+    Cut,
+    Paste,
     CopyToLayer,
     CutToLayer,
     PasteAsLayer,
@@ -59,11 +62,14 @@ pub enum PixelCmd {
 
 impl PixelCmd {
     /// Every command (the image bar's customize menu lists them).
-    pub const ALL: [PixelCmd; 47] = [
+    pub const ALL: [PixelCmd; 50] = [
         PixelCmd::Finish,
         PixelCmd::Cancel,
         PixelCmd::Undo,
         PixelCmd::Redo,
+        PixelCmd::Copy,
+        PixelCmd::Cut,
+        PixelCmd::Paste,
         PixelCmd::CopyToLayer,
         PixelCmd::CutToLayer,
         PixelCmd::PasteAsLayer,
@@ -141,6 +147,9 @@ impl PixelCmd {
             PixelCmd::Cancel => "pixel.cancel",
             PixelCmd::Undo => "pixel.undo",
             PixelCmd::Redo => "pixel.redo",
+            PixelCmd::Copy => "menu.edit.copy",
+            PixelCmd::Cut => "menu.edit.cut",
+            PixelCmd::Paste => "menu.edit.paste",
             PixelCmd::CopyToLayer => "pixel.layer.copy_to",
             PixelCmd::CutToLayer => "pixel.layer.cut_to",
             PixelCmd::PasteAsLayer => "pixel.layer.paste",
@@ -212,6 +221,9 @@ impl PixelCmd {
             PixelCmd::Finish => "Enter",
             PixelCmd::Undo => "Ctrl+Z",
             PixelCmd::Redo => "Ctrl+Y",
+            PixelCmd::Copy => "Ctrl+C",
+            PixelCmd::Cut => "Ctrl+X",
+            PixelCmd::Paste => "Ctrl+V",
             PixelCmd::Delete => "Del",
             PixelCmd::SelectAll => "Ctrl+A",
             PixelCmd::SelectNone => "Ctrl+D",
@@ -282,6 +294,14 @@ impl PixelCmd {
                 app.cancel_pixel_edit();
                 return;
             }
+            PixelCmd::Copy | PixelCmd::Cut => {
+                app.pixel_copy(self == PixelCmd::Cut);
+                return;
+            }
+            PixelCmd::Paste | PixelCmd::PasteAsLayer => {
+                app.pixel_paste();
+                return;
+            }
             PixelCmd::CanvasSize | PixelCmd::SmartResize => {
                 app.open_docker(crate::app::DockerTab::PixelImage);
                 return;
@@ -319,11 +339,7 @@ impl PixelCmd {
                         .then(|| [0, 0, pi.img.width(), pi.img.height()])
                 });
             }
-            PixelCmd::PasteAsLayer => {
-                if let Some(img) = crate::clipboard::read_system().image {
-                    pe.apply_all(true, |pi| pixel_edit::paste_as_layer(pi, name.clone(), &img));
-                }
-            }
+            PixelCmd::Copy | PixelCmd::Cut | PixelCmd::Paste | PixelCmd::PasteAsLayer => {}
             PixelCmd::Delete => {
                 pe.apply(false, pixel_edit::clear_selection);
             }

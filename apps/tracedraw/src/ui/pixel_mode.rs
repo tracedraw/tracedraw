@@ -220,6 +220,8 @@ pub fn choose_tool(pe: &mut crate::pixel_edit_app::PixelEdit, t: PixelTool) {
         pe.apply_warp();
     }
     pe.tool = t;
+    pe.move_drag = None;
+    pe.sync_place_preview();
     pe.drag_from = None;
     pe.drag_to = None;
     pe.lasso.clear();
@@ -273,6 +275,10 @@ pub fn menu_bar(app: &mut App, ui: &mut Ui) {
             menu(ui, "menu.edit", &mut |ui| {
                 cmd(app, ui, PixelCmd::Undo);
                 cmd(app, ui, PixelCmd::Redo);
+                sep(ui);
+                cmd(app, ui, PixelCmd::Cut);
+                cmd(app, ui, PixelCmd::Copy);
+                cmd(app, ui, PixelCmd::Paste);
                 sep(ui);
                 cmd(app, ui, PixelCmd::CopyToLayer);
                 cmd(app, ui, PixelCmd::CutToLayer);

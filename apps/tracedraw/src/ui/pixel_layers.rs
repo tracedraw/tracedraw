@@ -870,9 +870,8 @@ fn layer_buttons(ui: &mut Ui, pe: &mut PixelEdit) {
         )
         .clicked()
         {
-            if let Some(img) = crate::clipboard::read_system().image {
-                pe.apply_all(true, |pi| pixel_edit::paste_as_layer(pi, name.clone(), &img));
-            }
+            // What Ctrl+C took goes back where it was (#4263).
+            pe.paste_pixels(name.clone());
         }
         // The layer laid onto the photo beneath it, with the depth and
         // light of the brush's surface options.

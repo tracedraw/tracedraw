@@ -163,7 +163,7 @@ pub fn skew_transform(
 
 /// Whether `events` hold a copy, a cut and a paste request (the forms the
 /// windowing layer gives Ctrl+C, Ctrl+X and Ctrl+V), with the pasted text.
-fn clipboard_events(events: &[egui::Event]) -> (bool, bool, Option<String>) {
+pub(crate) fn clipboard_events(events: &[egui::Event]) -> (bool, bool, Option<String>) {
     let mut out = (false, false, None);
     for e in events {
         match e {
@@ -187,7 +187,7 @@ fn is_paste_key(key: egui::Key, mods: Modifiers) -> bool {
 /// otherwise (a picture or files copied in another application), so its
 /// release is all that is left of it. `seen` keeps a paste event or press
 /// across frames until the key goes up.
-fn paste_without_text(events: &[egui::Event], seen: &mut bool) -> bool {
+pub(crate) fn paste_without_text(events: &[egui::Event], seen: &mut bool) -> bool {
     let mut out = false;
     for e in events {
         match e {

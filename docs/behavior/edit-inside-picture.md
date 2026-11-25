@@ -12,8 +12,8 @@ While a picture is edited (`app.pixel_edit` is set) the main window keeps
 its bars, palettes and panels, docked, floating and moved as ever, with
 the picture's content in them (`ui/pixel_mode.rs`):
 
-- Menus: File (Finish, Cancel), Edit (Undo, Redo, Copy or Cut the
-  selection to a layer, Paste as layer, Delete, Fill, Content Fill),
+- Menus: File (Finish, Cancel), Edit (Undo, Redo, Cut Ctrl+X, Copy
+  Ctrl+C, Paste Ctrl+V, Copy or Cut the selection to a layer, Paste as layer, Delete, Fill, Content Fill),
   View (Zoom In, Zoom Out, Fit in Window, Actual Pixels), Image (Crop to
   Selection, Auto Crop; Convert to Greyscale, Convert to Black and White;
   Mirror (across, up and down); Rotate (90 degrees clockwise Ctrl+R,
@@ -131,7 +131,7 @@ pixel y runs down, page y runs up.
 
 | Tool | Key | What it does |
 | --- | --- | --- |
-| Pick | V | drags the pixels of the layer in use (what leaves the picture is lost); its numbers move, scale, turn and flip them (see Property bar) |
+| Pick | V | a box with handles round the selected pixels (the layer's pixels that are not clear with nothing selected): a drag inside it, or away from its handles, moves them by whole pixels; the square handles at the corners and the middles of the sides scale with the opposite side staying (a corner keeps the width to the height while Keep ratio is on, Shift the other way); the round handle above, or a drag just outside a corner, turns about the middle (Shift in steps of 15 degrees). The pixels follow the drag and go into the layer on release, one undo step; the selection goes with them. Its numbers move, scale, turn and flip them, shown before Apply or Enter; Esc resets them (see Property bar) |
 | Rectangle mask | R | drag a box; Shift adds, Ctrl subtracts, Shift+Ctrl exclusive or |
 | Ellipse mask | J | drag a box |
 | Freehand mask | K | a click sets a corner, a drag draws freehand; a double click, Enter or a click within 8 points of the first corner closes it; Esc drops it |
@@ -450,6 +450,24 @@ settings with nothing painted.
 - Given a picture with a half-opaque layer, when finished, then the
   picture holds the layers put together, and a locked layer was not
   changed (`finish_puts_the_layers_together_and_a_locked_layer_keeps_its_pixels`).
+- Copy, cut and paste: Ctrl+C takes the selected pixels of the layer in
+  use (the whole layer with nothing selected), cut to the selection's
+  box, and puts them on the system clipboard as a picture too; Ctrl+X
+  also clears them; Ctrl+V pastes what was taken as a new layer at the
+  place it was taken from (a picture copied in another program at the
+  selection's top left) with nothing selected after, so the Pick tool's
+  box is round the pasted pixels
+  (`copy_paste_puts_the_pixels_back_where_they_were_and_move_takes_them`,
+  `a_cut_clears_the_selected_pixels`,
+  `copy_takes_the_selected_pixels_cut_to_their_box`).
+- Pick tool: `the_move_box_handles_move_scale_and_turn`,
+  `a_whole_pixel_move_keeps_the_pixels_sharp`,
+  `the_move_tool_moves_only_the_selected_pixels_and_the_selection`.
+- Given an effect open in the Effects panel, when a stroke is painted,
+  then the preview shows again on the painted pixels once the button is
+  up (`the_effect_preview_comes_back_after_painting_with_it_open`). A
+  painting tool on an adjustment layer says the layer has no pixels to
+  paint.
 - Layers: `a_new_layer_is_clear_and_painting_changes_only_it`,
   `layer_opacity_visibility_and_merge_mode_change_what_is_seen`,
   `merge_down_flatten_delete_and_order`,

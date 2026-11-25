@@ -52,6 +52,24 @@ pub struct PixelTextures {
     pub thumbs: crate::ui::pixel_layers::LayerThumbs,
 }
 
+/// A drag of the Move tool's box.
+#[derive(Debug, Clone, Copy)]
+pub struct MoveDrag {
+    pub handle: crate::pixel_ops::BoxHandle,
+    pub from: (f32, f32),
+    pub start: crate::pixel_ops::Placement,
+    pub b: Dirty,
+}
+
+/// What the Move tool's box was found for: the change, the layer in use,
+/// whether there was a selection and the picture's size.
+pub type PickKey = (u64, usize, bool, (u32, u32));
+
+/// How near a handle of the Move tool's box a press must be, and how far
+/// the turning handle stands over the box, in screen points.
+pub const BOX_GRAB: f32 = 7.0;
+pub const BOX_KNOB: f32 = 22.0;
+
 /// A picture being edited in place.
 pub struct PixelEdit {
     pub shape: ShapeId,
@@ -73,10 +91,20 @@ pub struct PixelEdit {
     /// pulling the handles of its last point.
     pub pen: Vec<pixel_edit::PenNode>,
     pub pen_drag: bool,
-    /// Move: the layer's pixels when the drag started, and how far the
-    /// drag has moved them.
-    pub move_base: Option<image::RgbaImage>,
-    pub move_by: (i64, i64),
+    /// Move: the handle of the box being dragged, where the drag began
+    /// and the placement and box it began on (#4261).
+    pub move_drag: Option<MoveDrag>,
+    /// The placement the Move tool's preview shows, when it shows one.
+    pub placed_for: Option<crate::pixel_ops::Placement>,
+    /// Counts the changes seen on the screen, for what is kept from them
+    /// (the Move tool's box, the effect preview).
+    pub rev: std::cell::Cell<u64>,
+    /// The Move tool's box as last found, and what it was found for.
+    pub pick_cache: std::cell::Cell<Option<(PickKey, Dirty)>>,
+    /// The change the effect preview was made for.
+    pub preview_rev: u64,
+    /// What Ctrl+C or Ctrl+X took, and where its top left lay (#4263).
+    pub clip: Option<(image::RgbaImage, (u32, u32))>,
     /// The opacity slider of the layer in use is being dragged (its
     /// undo step is already remembered).
     pub layer_drag: bool,
@@ -168,6 +196,7 @@ impl PixelEdit {
         if let Some(b) = b {
             let mut v = self.view.borrow_mut();
             v.dirty = Some(pixel_edit::union(v.dirty, b));
+            self.bump();
         }
     }
 
@@ -175,6 +204,96 @@ impl PixelEdit {
         let mut v = self.view.borrow_mut();
         v.full = true;
         v.sel_changed = true;
+        self.bump();
+    }
+
+    /// A change that shows: what was kept from the pixels is found again.
+    pub fn bump(&self) {
+        self.rev.set(self.rev.get().wrapping_add(1));
+    }
+
+    /// The box the Move tool works on (see `pixel_ops::pick_box`), kept
+    /// until the pixels, the layer in use or the selection change.
+    pub fn move_box(&self) -> Dirty {
+        let key = (
+            self.rev.get(),
+            self.pi.active,
+            self.pi.sel.is_some(),
+            self.pi.img.dimensions(),
+        );
+        if let Some((k, b)) = self.pick_cache.get() {
+            if k == key {
+                return b;
+            }
+        }
+        let b = crate::pixel_ops::pick_box(&self.pi);
+        self.pick_cache.set(Some((key, b)));
+        b
+    }
+
+    /// The Move tool's placement shown on the layer in use while it is
+    /// set (by a drag of the box or by the numbers on the property bar),
+    /// and taken off once it is put in or reset.
+    pub fn sync_place_preview(&mut self) {
+        let want = (self.tool == PixelTool::Move
+            && self.warp.is_none()
+            && !self.placement.is_identity())
+        .then_some(self.placement);
+        if want == self.placed_for {
+            return;
+        }
+        let had = self.placed_for.is_some();
+        self.placed_for = want;
+        match want {
+            Some(p) => {
+                let b = self.move_drag.map(|d| d.b).unwrap_or_else(|| self.move_box());
+                self.preview = crate::pixel_ops::place_image(&self.pi.img, self.pi.sel.as_ref(), b, &p)
+                    .map(|(img, _)| img);
+                self.view.borrow_mut().full = true;
+            }
+            None if had => {
+                self.preview = None;
+                self.view.borrow_mut().full = true;
+            }
+            None => {}
+        }
+    }
+
+    /// The Move tool's placement put in the layer in use, one undo step.
+    pub fn apply_placement(&mut self, b: Option<Dirty>) {
+        let p = self.placement;
+        self.placement = Default::default();
+        self.move_drag = None;
+        if p.is_identity() {
+            self.sync_place_preview();
+            return;
+        }
+        let b = b.unwrap_or_else(|| self.move_box());
+        self.preview = None;
+        self.placed_for = None;
+        self.apply(true, |pi| crate::pixel_ops::place_in(pi, b, &p));
+        self.view.borrow_mut().full = true;
+    }
+
+    /// The effect open in the Effects panel shown again on the pixels as
+    /// they are now, once a stroke or a change has ended: painting with
+    /// the effect open took its preview off, and the preview did not come
+    /// back until a setting was changed (#4264).
+    pub fn keep_preview_current(&mut self, busy: bool) {
+        if busy
+            || self.effect.is_none()
+            || !self.preview_on
+            || self.warp.is_some()
+            || self.placed_for.is_some()
+            || self.stroke.is_some()
+            || self.mask_stroke.is_some()
+            || self.liquify.is_some()
+            || self.spray.is_some()
+            || self.preview_rev == self.rev.get()
+        {
+            return;
+        }
+        self.refresh_preview();
     }
 
     /// Remember the picture before a change made outside `apply` (the
@@ -189,12 +308,15 @@ impl PixelEdit {
         self.history.push(&self.pi);
         self.changed = true;
         self.preview = None;
+        self.placed_for = None;
+        self.bump();
     }
 
     pub fn set_selection(&mut self, sel: Option<image::GrayImage>) {
         self.step();
         self.pi.sel = sel;
         self.view.borrow_mut().sel_changed = true;
+        self.bump();
     }
 
     pub fn undo(&mut self) {
@@ -205,6 +327,8 @@ impl PixelEdit {
         if self.history.undo(&mut self.pi) {
             self.mark_all();
             self.preview = None;
+            self.placed_for = None;
+            self.placement = Default::default();
         }
     }
 
@@ -213,6 +337,8 @@ impl PixelEdit {
         if self.history.redo(&mut self.pi) {
             self.mark_all();
             self.preview = None;
+            self.placed_for = None;
+            self.placement = Default::default();
         }
     }
 
@@ -241,6 +367,7 @@ impl PixelEdit {
                 self.history.push(&before);
                 self.changed = true;
                 self.preview = None;
+                self.placed_for = None;
                 if full || self.pi.img.dimensions() != dims {
                     self.mark_all();
                 } else {
@@ -408,10 +535,48 @@ impl PixelEdit {
         }
     }
 
+    /// Ctrl+C, Ctrl+X: the selected pixels of the layer in use kept to be
+    /// pasted where they were, and put on the system clipboard as a
+    /// picture; a cut clears them, one undo step. False when nothing that
+    /// shows is selected (or the layer is locked, for a cut).
+    pub fn copy_pixels(&mut self, cut: bool) -> bool {
+        let Some((img, at)) = pixel_edit::copy_selection(&self.pi) else {
+            return false;
+        };
+        if cut && !self.apply(false, pixel_edit::clear_selection) {
+            return false;
+        }
+        crate::clipboard::write_image(img.clone());
+        self.clip = Some((img, at));
+        true
+    }
+
+    /// Ctrl+V: what Ctrl+C or Ctrl+X took, pasted as a new layer where it
+    /// was taken from; a picture copied in another program goes at the
+    /// selection's top left. Nothing is selected after, so the Move tool
+    /// takes the pasted pixels (#4263).
+    pub fn paste_pixels(&mut self, name: String) -> bool {
+        let sys = crate::clipboard::read_system().image;
+        let (img, at) = match (self.clip.as_ref(), sys) {
+            (Some((c, at)), Some(s)) if s.dimensions() == c.dimensions() => (c.clone(), *at),
+            (Some((c, at)), None) => (c.clone(), *at),
+            (_, Some(s)) => {
+                let at = match self.pi.sel {
+                    Some(_) => self.pi.sel_bounds().map(|b| (b[0], b[1])).unwrap_or((0, 0)),
+                    None => (0, 0),
+                };
+                (s, at)
+            }
+            (None, None) => return false,
+        };
+        self.apply_all(true, |pi| pixel_edit::paste_layer_at(pi, name, &img, at))
+    }
+
     /// The effect being set up, run on the picture inside the selection,
     /// for the preview.
     pub fn refresh_preview(&mut self) {
         self.preview = None;
+        self.preview_rev = self.rev.get();
         if !self.preview_on {
             return;
         }
@@ -426,6 +591,35 @@ impl PixelEdit {
 }
 
 impl App {
+    /// Copy or cut the selected pixels of the picture being edited.
+    pub fn pixel_copy(&mut self, cut: bool) {
+        let Some(pe) = self.pixel_edit.as_mut() else {
+            return;
+        };
+        if pe.target == MaskTarget::Pixels || !cut {
+            if pe.copy_pixels(cut) {
+                self.status = tr("pixel.status.copied");
+                return;
+            }
+        }
+        self.status = if cut && pe.pi.active_locked() {
+            tr("pixel.status.layer_locked")
+        } else {
+            tr("pixel.status.nothing_to_copy")
+        };
+    }
+
+    /// Paste what was copied as a new layer of the picture being edited.
+    pub fn pixel_paste(&mut self) {
+        let Some(pe) = self.pixel_edit.as_mut() else {
+            return;
+        };
+        let name = crate::ui::pixel_bar::new_layer_name(pe);
+        if !pe.paste_pixels(name) {
+            self.status = tr("pixel.status.nothing_to_paste");
+        }
+    }
+
     /// Open the picture `id` for editing in place (Bitmaps > Edit Inside,
     /// a double click on it). False when it is not a picture or its
     /// pixels cannot be read.
@@ -510,8 +704,12 @@ impl App {
             lasso: Vec::new(),
             pen: Vec::new(),
             pen_drag: false,
-            move_base: None,
-            move_by: (0, 0),
+            move_drag: None,
+            placed_for: None,
+            rev: Default::default(),
+            pick_cache: Default::default(),
+            preview_rev: 0,
+            clip: None,
             layer_drag: false,
             target: MaskTarget::Pixels,
             mask_stroke: None,
@@ -711,9 +909,20 @@ impl App {
         let Some(pe) = self.pixel_edit.as_mut() else {
             return;
         };
+        // The Move tool's preview goes with the tool; the effect open in
+        // the Effects panel shows on the pixels as they are once nothing
+        // is being dragged.
+        if pe.tool != PixelTool::Move {
+            pe.sync_place_preview();
+        }
+        let busy = response.is_pointer_button_down_on();
+        pe.keep_preview_current(busy);
         let Some((x, y)) = px else {
             if response.drag_stopped() {
                 pe.lights.end_stroke();
+                if let Some(d) = pe.move_drag.take() {
+                    pe.apply_placement(Some(d.b));
+                }
                 pixel_release(pe, mods);
             }
             return;
@@ -807,7 +1016,13 @@ impl App {
             || tool.is_liquify();
         if paints && pe.pi.active_locked() {
             if started || clicked {
-                self.status = tr("pixel.status.layer_locked");
+                // An adjustment layer has no pixels to paint: say so,
+                // rather than that it is locked (#4264).
+                self.status = if pe.pi.active_lock_box() {
+                    tr("pixel.status.layer_locked")
+                } else {
+                    tr("pixel.status.adjust_layer")
+                };
             }
             return;
         }
@@ -847,25 +1062,7 @@ impl App {
             return;
         }
         if tool == PixelTool::Move {
-            if started {
-                pe.step();
-                pe.move_base = Some(pe.pi.img.clone());
-                pe.move_by = (0, 0);
-                pe.drag_from = Some((x, y));
-            } else if dragged {
-                if let (Some(base), Some(from)) = (pe.move_base.as_ref(), pe.drag_from) {
-                    let by = ((x - from.0).round() as i64, (y - from.1).round() as i64);
-                    if by != pe.move_by {
-                        pe.move_by = by;
-                        pe.pi.img = pixel_edit::offset_image(base, by.0, by.1);
-                        pe.view.borrow_mut().full = true;
-                    }
-                }
-            }
-            if stopped {
-                pe.move_base = None;
-                pe.drag_from = None;
-            }
+            move_input(pe, response, x, y, mods, screen_per_px);
             return;
         }
         if tool == PixelTool::Light {
@@ -1195,8 +1392,30 @@ impl App {
                     close_pen(pe, mode);
                 }
                 Some(pe) if pe.warp.is_some() => pe.apply_warp(),
+                Some(pe) if pe.tool == PixelTool::Move && !pe.placement.is_identity() => {
+                    pe.apply_placement(None)
+                }
                 _ => self.finish_pixel_edit(),
             }
+            return;
+        }
+        // Copy, cut and paste: the windowing layer gives Ctrl+C, Ctrl+X
+        // and Ctrl+V as copy, cut and paste events (a paste event only
+        // while the system clipboard holds text), not key presses.
+        let (copy_ev, cut_ev, paste_text) =
+            ctx.input(|i| crate::interaction::clipboard_events(&i.events));
+        let seen = &mut self.paste_seen;
+        let paste_bare = ctx.input(|i| crate::interaction::paste_without_text(&i.events, seen));
+        if pressed(Key::C, cmd) || copy_ev {
+            self.pixel_copy(false);
+            return;
+        }
+        if pressed(Key::X, cmd) || cut_ev {
+            self.pixel_copy(true);
+            return;
+        }
+        if pressed(Key::V, cmd) || paste_text.is_some() || paste_bare {
+            self.pixel_paste();
             return;
         }
         // The zoom of the image window.
@@ -1238,6 +1457,10 @@ impl App {
                 pe.lasso.clear();
                 pe.pen.clear();
                 pe.pen_drag = false;
+            } else if pe.tool == PixelTool::Move && !pe.placement.is_identity() {
+                pe.placement = Default::default();
+                pe.move_drag = None;
+                pe.sync_place_preview();
             } else if pe.warp.is_some() {
                 pe.cancel_warp();
             } else if pe.pi.sel.is_some() {
@@ -1285,6 +1508,115 @@ impl App {
             }
         }
     }
+}
+
+/// The Move tool's box round what it moves: its outline, the square
+/// handles that scale and the round one above that turns (#4261).
+fn draw_move_box(pe: &PixelEdit, painter: &egui::Painter, map: &dyn Fn(f32, f32) -> egui::Pos2) {
+    use crate::pixel_ops;
+    let b = pe.move_drag.map(|d| d.b).unwrap_or_else(|| pe.move_box());
+    let p = pe.placement;
+    let spp = map(0.0, 0.0).distance(map(1.0, 0.0)).max(1e-6);
+    let to_screen = |q: (f32, f32)| map(q.0, q.1);
+    let blue = egui::Color32::from_rgb(0x1E, 0x7C, 0xE8);
+    let corners = pixel_ops::placed_corners(b, &p).map(to_screen);
+    let mut ring = corners.to_vec();
+    ring.push(corners[0]);
+    painter.add(egui::Shape::line(ring.clone(), egui::Stroke::new(3.0, egui::Color32::from_white_alpha(160))));
+    painter.add(egui::Shape::line(ring, egui::Stroke::new(1.0, blue)));
+    let (knob, top) = pixel_ops::rotate_handle(b, &p, BOX_KNOB / spp);
+    let (knob, top) = (to_screen(knob), to_screen(top));
+    painter.line_segment([top, knob], egui::Stroke::new(1.0, blue));
+    painter.circle(knob, 4.5, egui::Color32::WHITE, egui::Stroke::new(1.2, blue));
+    for (_, q) in pixel_ops::scale_handles(b, &p) {
+        painter.rect(
+            egui::Rect::from_center_size(to_screen(q), egui::vec2(7.0, 7.0)),
+            0.0,
+            egui::Color32::WHITE,
+            egui::Stroke::new(1.2, blue),
+            egui::StrokeKind::Middle,
+        );
+    }
+}
+
+/// The Move tool: a box with handles round the selected pixels (the
+/// layer's pixels that are not clear with nothing selected). A drag inside
+/// it, or anywhere away from its handles, moves them; the corners and the
+/// middles of the sides scale (a corner keeps the width to the height
+/// while Keep ratio is on, Shift the other way); the round handle above
+/// it, or just outside a corner, turns (Shift in steps of 15 degrees).
+/// The pixels follow the drag and go into the layer on release, one undo
+/// step (#4261, #4263).
+fn move_input(
+    pe: &mut PixelEdit,
+    response: &Response,
+    x: f32,
+    y: f32,
+    mods: Modifiers,
+    screen_per_px: f32,
+) {
+    use crate::pixel_ops::{self, BoxHandle};
+    let spp = screen_per_px.max(1e-6);
+    let (grab, knob) = (BOX_GRAB / spp, BOX_KNOB / spp);
+    let pressed =
+        response.contains_pointer() && response.ctx.input(|i| i.pointer.primary_pressed());
+    let dragged = response.dragged_by(PointerButton::Primary);
+    let released = response.drag_stopped_by(PointerButton::Primary)
+        || response.clicked_by(PointerButton::Primary)
+        || (pe.move_drag.is_some() && !response.ctx.input(|i| i.pointer.primary_down()));
+    let b = pe.move_drag.map(|d| d.b).unwrap_or_else(|| pe.move_box());
+    let hover = pe
+        .move_drag
+        .map(|d| d.handle)
+        .unwrap_or_else(|| pixel_ops::box_hit(b, &pe.placement, x, y, grab, knob));
+    response.ctx.set_cursor_icon(match hover {
+        BoxHandle::Move => egui::CursorIcon::Move,
+        BoxHandle::Rotate => egui::CursorIcon::Alias,
+        BoxHandle::Scale(ix, iy) => {
+            // The handle's direction once the box is turned.
+            let a = (iy as f32).atan2(ix as f32) + pe.placement.angle.to_radians();
+            let k = ((a.to_degrees().rem_euclid(180.0) + 22.5) / 45.0) as i32 % 4;
+            match k {
+                0 => egui::CursorIcon::ResizeHorizontal,
+                1 => egui::CursorIcon::ResizeNwSe,
+                2 => egui::CursorIcon::ResizeVertical,
+                _ => egui::CursorIcon::ResizeNeSw,
+            }
+        }
+    });
+    if pressed && pe.move_drag.is_none() {
+        pe.move_drag = Some(MoveDrag {
+            handle: hover,
+            from: (x, y),
+            start: pe.placement,
+            b,
+        });
+    } else if dragged {
+        if let Some(d) = pe.move_drag {
+            let lock = response
+                .ctx
+                .data(|m| m.get_temp::<bool>(egui::Id::new("pixel_place_lock")))
+                .unwrap_or(true);
+            pe.placement = pixel_ops::drag_box(
+                d.b,
+                &d.start,
+                d.handle,
+                d.from,
+                (x, y),
+                lock != mods.shift,
+                mods.shift,
+            );
+        }
+    }
+    if released {
+        if let Some(d) = pe.move_drag.take() {
+            if pe.placement != d.start {
+                pe.apply_placement(Some(d.b));
+                return;
+            }
+        }
+    }
+    pe.sync_place_preview();
 }
 
 /// How a new selection joins the one there is: Shift adds, Ctrl takes
@@ -1542,7 +1874,9 @@ pub fn draw_mapped(
     if let Some(t) = &v.overlay {
         painter.add(quad(t.id()));
     }
-    if pe.target != MaskTarget::QuickMask && !v.edges.is_empty() {
+    // While the Move tool's pixels follow a drag, the box shows where
+    // they go in place of the selection's outline.
+    if pe.target != MaskTarget::QuickMask && !v.edges.is_empty() && pe.placed_for.is_none() {
         marching_ants(painter, &v.edges, map);
     }
     // The picture's edge.
@@ -1659,6 +1993,9 @@ pub fn draw_mapped(
                 painter.circle(c, 4.0, egui::Color32::WHITE, line);
             }
         }
+    }
+    if pe.tool == PixelTool::Move && pe.warp.is_none() {
+        draw_move_box(pe, painter, map);
     }
     if pe.lasso.len() > 1 {
         let pts: Vec<_> = pe.lasso.iter().map(|p| to_screen(*p)).collect();
@@ -2165,6 +2502,109 @@ mod tests {
         pe.apply(true, |pi| pixel_edit::apply_effect(pi, &e));
         assert_eq!(pe.pi.img.get_pixel(0, 0)[0], 0);
         assert!(pe.preview.is_none());
+    }
+
+    #[test]
+    fn the_effect_preview_comes_back_after_painting_with_it_open() {
+        // #4264: a Burn stroke with Brightness/Contrast open took the
+        // preview off until a setting changed.
+        let (mut app, id) = app_with_picture();
+        app.edit_bitmap_inside(id);
+        let pe = app.pixel_edit.as_mut().unwrap();
+        pe.effect = Some(crate::fx::new_effect("invert_colors"));
+        pe.refresh_preview();
+        pe.tool = PixelTool::Burn;
+        pe.opts.size = 4.0;
+        pe.opts.hardness = 1.0;
+        pe.step();
+        let mut s = Stroke::new(PixelTool::Burn, pe.opts, &pe.pi, (0.0, 0.0));
+        let b = s.to(&mut pe.pi, 5.0, 5.0);
+        pe.mark(b);
+        assert!(pe.preview.is_none(), "off while painting");
+        pe.keep_preview_current(true);
+        assert!(pe.preview.is_none(), "not while the button is down");
+        pe.keep_preview_current(false);
+        let burnt = pe.pi.img.get_pixel(5, 5)[0];
+        assert!(burnt < 255);
+        let shown = pe.preview.as_ref().expect("the preview is back").get_pixel(5, 5)[0];
+        assert_eq!(shown, 255 - burnt, "the effect runs on the burnt pixels");
+        // Nothing changed since: it is not made again.
+        let rev = pe.preview_rev;
+        pe.keep_preview_current(false);
+        assert_eq!(pe.preview_rev, rev);
+    }
+
+    #[test]
+    fn copy_paste_puts_the_pixels_back_where_they_were_and_move_takes_them() {
+        // #4263: Ctrl+C, Ctrl+V, then the Move tool.
+        let (mut app, id) = app_with_picture();
+        app.edit_bitmap_inside(id);
+        let pe = app.pixel_edit.as_mut().unwrap();
+        pe.apply(false, |pi| {
+            for y in 2..5 {
+                for x in 3..6 {
+                    pi.img.put_pixel(x, y, Rgba([200, 0, 0, 255]));
+                }
+            }
+            Some([0, 0, 20, 10])
+        });
+        pe.set_selection(pixel_edit::rect_mask(20, 10, (3.0, 2.0), (6.0, 5.0)));
+        assert!(pe.copy_pixels(false));
+        // Pasted from what was kept (the system clipboard may hold
+        // anything in a test run).
+        let (img, at) = pe.clip.clone().unwrap();
+        assert_eq!(at, (3, 2));
+        let name = crate::ui::pixel_bar::new_layer_name(pe);
+        assert!(pe.apply_all(true, |pi| pixel_edit::paste_layer_at(pi, name, &img, at)));
+        assert_eq!(pe.pi.layers.len(), 2);
+        assert!(pe.pi.sel.is_none());
+        assert_eq!(*pe.pi.img.get_pixel(3, 2), Rgba([200, 0, 0, 255]));
+        assert_eq!(pe.pi.img.get_pixel(0, 0)[3], 0);
+        // The Move tool's box is the pasted pixels, not the picture.
+        pe.tool = PixelTool::Move;
+        assert_eq!(pe.move_box(), [3, 2, 6, 5]);
+        pe.placement.dx = 10.0;
+        pe.sync_place_preview();
+        assert!(pe.preview.is_some(), "the pixels follow the drag");
+        pe.apply_placement(None);
+        assert!(pe.preview.is_none());
+        assert_eq!(*pe.pi.img.get_pixel(13, 2), Rgba([200, 0, 0, 255]));
+        assert_eq!(pe.pi.img.get_pixel(3, 2)[3], 0);
+        assert_eq!(pe.move_box(), [13, 2, 16, 5]);
+        pe.undo();
+        assert_eq!(*pe.pi.img.get_pixel(3, 2), Rgba([200, 0, 0, 255]));
+    }
+
+    #[test]
+    fn a_cut_clears_the_selected_pixels() {
+        let (mut app, id) = app_with_picture();
+        app.edit_bitmap_inside(id);
+        let pe = app.pixel_edit.as_mut().unwrap();
+        pe.set_selection(pixel_edit::rect_mask(20, 10, (0.0, 0.0), (4.0, 4.0)));
+        assert!(pe.copy_pixels(true));
+        assert_eq!(pe.pi.img.get_pixel(1, 1)[3], 0);
+        assert_eq!(pe.pi.img.get_pixel(8, 8)[3], 255);
+        assert_eq!(pe.clip.as_ref().unwrap().0.dimensions(), (4, 4));
+    }
+
+    #[test]
+    fn the_move_tool_moves_only_the_selected_pixels_and_the_selection() {
+        let (mut app, id) = app_with_picture();
+        app.edit_bitmap_inside(id);
+        let pe = app.pixel_edit.as_mut().unwrap();
+        pe.apply(false, |pi| {
+            pi.img.put_pixel(1, 1, Rgba([0, 0, 255, 255]));
+            Some([0, 0, 20, 10])
+        });
+        pe.set_selection(pixel_edit::rect_mask(20, 10, (0.0, 0.0), (3.0, 3.0)));
+        pe.tool = PixelTool::Move;
+        pe.placement.dx = 5.0;
+        pe.apply_placement(None);
+        assert_eq!(*pe.pi.img.get_pixel(6, 1), Rgba([0, 0, 255, 255]));
+        // What was selected left a clear place; the rest stayed.
+        assert_eq!(pe.pi.img.get_pixel(1, 1)[3], 0);
+        assert_eq!(*pe.pi.img.get_pixel(15, 8), Rgba([255, 255, 255, 255]));
+        assert_eq!(pe.pi.sel_bounds(), Some([5, 0, 8, 3]));
     }
 
     #[test]

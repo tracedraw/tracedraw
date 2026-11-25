@@ -382,7 +382,7 @@ fn mode_icon(p: &egui::Painter, r: egui::Rect, m: crate::pixel_edit::SelectMode)
 /// The Pick tool's numbers: where the pixels go (X, Y), their width and
 /// height (or scale), their turn and flips, put in the layer with Apply.
 fn placement_options(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app::PixelEdit) {
-    let b = crate::pixel_ops::pick_box(&pe.pi);
+    let b = pe.move_drag.map(|d| d.b).unwrap_or_else(|| pe.move_box());
     let (bw, bh) = ((b[2] - b[0]) as f32, (b[3] - b[1]) as f32);
     let p = &mut pe.placement;
     let mut x = b[0] as f32 + p.dx + bw * (1.0 - p.sx) / 2.0;
@@ -458,14 +458,12 @@ fn placement_options(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app::PixelEdi
     }
     ui.separator();
     let ready = !p.is_identity();
-    let place = *p;
     if ui
         .add_enabled(ready, crate::ui::btn_icons::Ib::new("pixel.apply"))
         .rich_tip(tr("pixel.opt.place_tip"))
         .clicked()
     {
-        pe.apply(true, |pi| crate::pixel_ops::place(pi, &place));
-        pe.placement = Default::default();
+        pe.apply_placement(None);
     }
     if ui
         .add_enabled(ready, crate::ui::btn_icons::Ib::new("pixel.opt.reset"))
@@ -473,8 +471,12 @@ fn placement_options(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app::PixelEdi
     {
         pe.placement = Default::default();
     }
+    // The pixels show where the numbers put them before Apply.
+    if pe.move_drag.is_none() {
+        pe.sync_place_preview();
+    }
     ui.label(
-        RichText::new(tr("pixel.tool.move_hint"))
+        RichText::new(tr("pixel.tool.move_box_hint"))
             .color(Tokens::text_dim())
             .small(),
     );
