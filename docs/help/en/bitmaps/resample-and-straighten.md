@@ -75,3 +75,8 @@ Some effects, such as blurs, spread past the edges of a bitmap.
 - [[menu.bitmaps.break_link]] and [[menu.bitmaps.update_from_link]] work on
   bitmaps linked to a file.
 - [[menu.bitmaps.save_bitmap_as]] saves a bitmap as a PNG file.
+- Bitmaps > Scale to Known Size sets a photo to real size: draw a line
+  (or a rectangle) over something whose size you know, such as the width
+  of a door, select it with the photo and type the real size. The photo
+  grows or shrinks about the line until the line measures that size; the
+  line goes afterwards unless Keep the measuring object is ticked.

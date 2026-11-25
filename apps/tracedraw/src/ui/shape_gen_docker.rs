@@ -1242,7 +1242,20 @@ pub fn shape_generator(app: &mut App, ui: &mut Ui) {
                 }
             }
             GenKind::ConeTemplate => {
-                row(ui, &tr("shapegen.cone_top"), |ui| {
+                // How the object was measured (#4232): round with a tape,
+                // and up its side.
+                indented(ui, |ui| {
+                    ui.checkbox(&mut s.cone_round, tr("shapegen.cone_round"))
+                        .rich_tip(crate::ui::tips::keyed("shapegen.cone_round"));
+                    ui.checkbox(&mut s.cone_along_side, tr("shapegen.cone_along_side"))
+                        .rich_tip(crate::ui::tips::keyed("shapegen.cone_along_side"));
+                });
+                let (top_key, bottom_key) = if s.cone_round {
+                    ("shapegen.cone_top_round", "shapegen.cone_bottom_round")
+                } else {
+                    ("shapegen.cone_top", "shapegen.cone_bottom")
+                };
+                row(ui, &tr(top_key), |ui| {
                     length(
                         ui,
                         units,
@@ -1250,10 +1263,10 @@ pub fn shape_generator(app: &mut App, ui: &mut Ui) {
                         &mut s.cone_top,
                         0.0,
                         5000.0,
-                        "shapegen.cone_top",
+                        top_key,
                     )
                 });
-                row(ui, &tr("shapegen.cone_bottom"), |ui| {
+                row(ui, &tr(bottom_key), |ui| {
                     length(
                         ui,
                         units,
@@ -1261,7 +1274,7 @@ pub fn shape_generator(app: &mut App, ui: &mut Ui) {
                         &mut s.cone_bottom,
                         0.0,
                         5000.0,
-                        "shapegen.cone_bottom",
+                        bottom_key,
                     )
                 });
                 row(ui, &tr("shapegen.cone_height"), |ui| {
@@ -1284,6 +1297,17 @@ pub fn shape_generator(app: &mut App, ui: &mut Ui) {
                         0.0,
                         500.0,
                         "shapegen.cone_tab",
+                    )
+                });
+                row(ui, &tr("shapegen.cone_overlap"), |ui| {
+                    length(
+                        ui,
+                        units,
+                        precision,
+                        &mut s.cone_overlap,
+                        0.0,
+                        500.0,
+                        "shapegen.cone_overlap",
                     )
                 });
                 row(ui, &tr("shapegen.cone_bleed"), |ui| {

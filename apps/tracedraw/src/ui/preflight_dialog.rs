@@ -209,6 +209,25 @@ pub fn dialog(app: &mut App, ctx: &egui::Context, st: &mut PreflightState, close
             if ui.ibutton("preflight.refresh").clicked() {
                 st.refresh(app);
             }
+            // Locate object (#4267): to the picked issue's object, zoomed
+            // to fit it in the window, to fix it at once.
+            let picked = match st.selected {
+                Some(Row::Issue(i)) => st.issues.get(i).cloned(),
+                _ => None,
+            };
+            let can = picked
+                .as_ref()
+                .and_then(|i| i.shape)
+                .is_some_and(|id| app.doc().find_shape(id).is_some());
+            if ui
+                .add_enabled(can, crate::ui::btn_icons::Ib::new("preflight.locate"))
+                .rich_tip(crate::ui::tips::keyed("preflight.locate"))
+                .clicked()
+            {
+                if let Some(issue) = picked {
+                    locate_issue(app, &issue);
+                }
+            }
             let label = if st.settings_open {
                 tr("preflight.hide_settings")
             } else {
@@ -286,6 +305,7 @@ fn issue_table(app: &mut App, ui: &mut Ui, st: &mut PreflightState) {
     let rows = st.rows();
     let list_h = ROW_H * 10.0;
     let mut clicked = None;
+    let mut located = None;
     egui::Frame::new()
         .fill(crate::theme::Tokens::field())
         .stroke(Stroke::new(1.0, crate::theme::Tokens::control_border()))
@@ -384,9 +404,18 @@ fn issue_table(app: &mut App, ui: &mut Ui, st: &mut PreflightState) {
                         if resp.clicked() {
                             clicked = Some(*row);
                         }
+                        if resp.double_clicked() {
+                            located = Some(*row);
+                        }
                     }
                 });
         });
+    // A double click locates the object, as the Locate object button.
+    if let Some(Row::Issue(i)) = located {
+        if let Some(issue) = st.issues.get(i).cloned() {
+            locate_issue(app, &issue);
+        }
+    }
     if let Some(row) = clicked {
         st.selected = Some(row);
         match row {
@@ -412,6 +441,21 @@ pub fn show_issue(app: &mut App, issue: &Issue) {
             app.select(vec![id]);
         }
     }
+}
+
+/// Locate object (#4267): go to the issue's page, select its object and
+/// zoom to fit it in the window. False when the issue has no object
+/// left in the drawing.
+pub fn locate_issue(app: &mut App, issue: &Issue) -> bool {
+    show_issue(app, issue);
+    let Some(id) = issue.shape else {
+        return false;
+    };
+    if !app.selection.contains(&id) {
+        return false;
+    }
+    app.zoom_to_selection();
+    true
 }
 
 /// The checks to run, in two columns, and the thresholds.
@@ -521,6 +565,13 @@ mod tests {
         let issue = st.issues[0].clone();
         show_issue(&mut app, &issue);
         assert_eq!(app.selection, vec![id]);
+        // Locate object zooms to the object, off the page here (#4267).
+        app.select(Vec::new());
+        app.canvas_rect = Rect::from_min_size(Pos2::ZERO, vec2(800.0, 600.0));
+        assert!(locate_issue(&mut app, &issue));
+        assert_eq!(app.selection, vec![id]);
+        let centre = app.view.to_screen(tracedraw_core::geometry::Point::new(205.0, 15.0));
+        assert!(app.canvas_rect.contains(centre), "{centre:?} {:?}", app.canvas_rect);
         let ctx = crate::theme::ui_context();
         let input = egui::RawInput {
             screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1600.0, 1000.0))),

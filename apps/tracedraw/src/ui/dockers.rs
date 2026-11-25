@@ -2634,6 +2634,34 @@ fn qr_section(
         None => (qr.kind, qr.fields.clone()),
     };
     let mut content: Option<(QrKind, Vec<String>)> = None;
+    // The kind of code drawn (#4228): QR, Data Matrix or rectangular.
+    {
+        use tracedraw_core::QrSymbol;
+        let key = |s: QrSymbol| match s {
+            QrSymbol::Qr => "qr.symbol_qr",
+            QrSymbol::DataMatrix => "qr.symbol_datamatrix",
+            QrSymbol::Rmqr => "qr.symbol_rmqr",
+        };
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new(tr("qr.symbol")).size(11.0));
+            crate::ui::keynav::ComboBox::from_id_salt(("qr_symbol", id.raw()))
+                .width(ui.available_width() - 8.0)
+                .selected_text(tr(key(next.symbol)))
+                .show_ui(ui, |ui| {
+                    for s in QrSymbol::ALL {
+                        if ui
+                            .selectable_label(next.symbol == s, tr(key(s)))
+                            .on_hover_text(tr(&format!("{}_tip", key(s))))
+                            .clicked()
+                            && s != next.symbol
+                        {
+                            next.symbol = s;
+                            changed = true;
+                        }
+                    }
+                });
+        });
+    }
     crate::ui::keynav::ComboBox::from_id_salt(("qr_kind", id.raw()))
         .width(ui.available_width() - 8.0)
         .selected_text(tr(qr_kind_key(kind)))

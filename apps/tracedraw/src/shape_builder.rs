@@ -290,9 +290,30 @@ fn usable(s: &Shape) -> bool {
 }
 
 impl App {
+    /// The selected objects, a selected group standing for the objects in
+    /// it (and in the groups inside it): the tool cuts and merges them
+    /// where they are, in their group (#4223).
+    fn builder_selected(&self) -> Vec<Shape> {
+        fn walk(s: Shape, out: &mut Vec<Shape>) {
+            match s.kind {
+                ShapeKind::Group { children } if !s.locked => {
+                    for c in children {
+                        walk(c, out);
+                    }
+                }
+                _ => out.push(s),
+            }
+        }
+        let mut out = Vec::new();
+        for s in self.selected_shapes() {
+            walk(s, &mut out);
+        }
+        out
+    }
+
     /// The selected objects the Shape Builder works on, bottom first.
     pub fn builder_pieces(&self) -> Vec<Piece> {
-        let mut shapes: Vec<Shape> = self.selected_shapes().into_iter().filter(usable).collect();
+        let mut shapes: Vec<Shape> = self.builder_selected().into_iter().filter(usable).collect();
         shapes.sort_by_key(|s| self.z_key(s.id));
         shapes
             .iter()
@@ -314,7 +335,7 @@ impl App {
     /// parts, and the rooms they close in are parts too (#3814: a grid
     /// of lines made no parts).
     pub fn builder_open_lines(&self) -> Vec<(ShapeId, BezPath)> {
-        self.selected_shapes()
+        self.builder_selected()
             .into_iter()
             .filter(open_curve)
             .map(|s| {
@@ -690,8 +711,25 @@ impl App {
         // The objects stay selected, with the new one, to go on building;
         // the lines too (what is left of them).
         kept.extend(lines_left);
-        kept.extend(made);
-        self.select(kept);
+        // An object of a selected group stays selected as that group.
+        let sel = self.selection.clone();
+        let mut chosen: Vec<ShapeId> = Vec::new();
+        for id in kept {
+            let id = if sel.contains(&id) {
+                id
+            } else {
+                self.doc()
+                    .ancestors(id)
+                    .into_iter()
+                    .find(|a| sel.contains(a))
+                    .unwrap_or(id)
+            };
+            if !chosen.contains(&id) && self.doc().find_shape(id).is_some() {
+                chosen.push(id);
+            }
+        }
+        chosen.extend(made);
+        self.select(chosen);
     }
 }
 
@@ -892,7 +930,18 @@ pub fn draw(app: &App, painter: &Painter) {
     if app.tool != Tool::ShapeBuilder {
         return;
     }
-    let color = crate::theme::Tokens::SELECTION;
+    // Taking parts away (Alt, or the Delete mode) shows them in red, a
+    // merge in the selection colour (#4223).
+    let removing = if matches!(app.drag, Drag::Freehand { .. }) && !app.builder.parts.is_empty() {
+        app.builder.remove
+    } else {
+        painter.ctx().input(|i| i.modifiers.alt) != app.builder.delete_mode
+    };
+    let color = if removing {
+        REMOVE_RED
+    } else {
+        crate::theme::Tokens::SELECTION
+    };
     // The objects the tool works on are edged in grey, apart from the
     // usual selection colour, so the ones taking part show (#3220).
     for q in app.builder_pieces() {
@@ -921,6 +970,9 @@ pub fn draw(app: &App, painter: &Painter) {
         hatch(app, painter, part, color);
     }
 }
+
+/// The colour of parts about to be taken away.
+pub const REMOVE_RED: Color32 = Color32::from_rgb(0xE0, 0x24, 0x24);
 
 /// `part` filled with thin diagonal lines in `color`, edged with it.
 fn hatch(app: &App, painter: &Painter, part: &BezPath, color: Color32) {
@@ -1096,6 +1148,28 @@ mod tests {
         app.engine.undo().unwrap();
         assert!(app.doc().find_shape(a).is_some());
         assert!(app.doc().find_shape(made).is_none());
+    }
+
+    /// #4223: a group selected works as the objects in it; the part left
+    /// of a grouped square stays in the group, which stays selected.
+    #[test]
+    fn a_selected_group_is_cut_and_merged_as_its_objects() {
+        let mut app = App::headless();
+        let a = square(&mut app, 0.0, 0.0, 20.0, 20.0);
+        let b = square(&mut app, 10.0, 0.0, 30.0, 20.0);
+        app.select(vec![a, b]);
+        app.group_selection();
+        let g = app.selection[0];
+        assert!(matches!(app.doc().find_shape(g).map(|s| &s.kind), Some(ShapeKind::Group { .. })));
+        app.tool = Tool::ShapeBuilder;
+        assert_eq!(app.builder_pieces().len(), 2);
+        app.builder_take(Point::new(15.0, 10.0));
+        app.builder_finish(false);
+        assert!(app.selection.contains(&g), "{:?}", app.selection);
+        assert!((page_area(&app, a) - 200.0).abs() < 1e-6);
+        assert!((page_area(&app, b) - 200.0).abs() < 1e-6);
+        let made = *app.selection.iter().find(|id| **id != g).unwrap();
+        assert!((page_area(&app, made) - 200.0).abs() < 1e-6);
     }
 
     /// #3814: a grid of 6 straight lines each way (open curves) makes

@@ -1156,6 +1156,9 @@ pub struct App {
     pub drop_frame: Option<ShapeId>,
     /// W and K held during that move.
     pub drop_keys: (bool, bool),
+    /// The W key itself held during that move: a closed object under the
+    /// pointer becomes a new clip frame holding the selection (#4227).
+    pub drop_new_frame: bool,
     /// Alt (the fill) or Alt+Shift (the outline) held while the selection
     /// is moved with the left button: a release over another object
     /// copies that onto it, as the right-button drop menu does, and the
@@ -2030,6 +2033,13 @@ pub struct App {
     pub pending_copy_effect: Option<crate::copy_effect::CopyKind>,
     /// Copy Envelope Properties waits for the object to copy from.
     pub pending_copy_envelope: bool,
+    /// Replace with Object (false) or with Clones (true) waits for the
+    /// object to replace the selection with (#4220).
+    pub pending_replace: Option<bool>,
+    /// Copy Contents From waits for the clip frame to copy from (D#4221).
+    pub pending_copy_clip: bool,
+    /// Scale to Known Size's last choices (#4215).
+    pub scale_known: crate::scale_known::ScaleKnown,
     /// Copy Fill on the Interactive Fill bar: the next click picks the
     /// object whose fill the selection takes (#2471).
     pub pending_copy_fill: bool,
@@ -3356,6 +3366,7 @@ impl App {
             ctrl_copy: false,
             glyph_scale: false,
             drop_frame: None,
+            drop_new_frame: false,
             drop_keys: (false, false),
             drop_colour: None,
             drop_colour_target: None,
@@ -3729,6 +3740,9 @@ impl App {
             export_by_format: Vec::new(),
             pending_copy_effect: None,
             pending_copy_envelope: false,
+            pending_replace: None,
+            pending_copy_clip: false,
+            scale_known: Default::default(),
             pending_copy_fill: false,
             fill_swatch_drag: None,
             pending_clone_effect: None,
@@ -10884,7 +10898,10 @@ impl App {
                 .reduce(|a, b| a.union(b))
         };
         let mut cmds = Vec::new();
-        if let (Some(c), Some(f)) = (bounds(self, &contents), bounds(self, &[frame])) {
+        // A clip frame inside another is measured where it shows (#4227).
+        let frame_box = bounds(self, &[frame])
+            .or_else(|| self.doc().shape_on_page(frame).map(|s| s.bounds()));
+        if let (Some(c), Some(f)) = (bounds(self, &contents), frame_box) {
             let center = match self.settings.clip_frame.auto_center {
                 AutoCenter::Always => true,
                 AutoCenter::Never => false,

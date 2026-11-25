@@ -1059,6 +1059,7 @@ fn draw_page(app: &App, painter: &Painter, rect: ERect, preview: Option<Affine>)
     }
     draw_pixel_grid(app, painter, rect);
     draw_empty_clip_frames(app, painter);
+    draw_edited_clip_frame(app, painter);
     crate::cut_tools::paint_grid_preview(app, painter);
     crate::dialog_preview::paint(app, painter);
 }
@@ -1478,7 +1479,12 @@ fn draw_drop_frame(app: &App, painter: &Painter) {
         return;
     };
     let at = app.view.to_screen(p) + egui::vec2(18.0, 24.0);
-    let lines = drop_frame_hints(app.drop_keys, app.clip_frame_is_empty(frame));
+    let lines = if matches!(s.kind, ShapeKind::ClipFrame { .. }) {
+        drop_frame_hints(app.drop_keys, app.clip_frame_is_empty(frame))
+    } else {
+        // A closed object W was held over: a new clip frame (#4227).
+        vec![("hint.drop_frame_new", true)]
+    };
     let font = egui::FontId::proportional(12.0);
     let galleys: Vec<_> = lines
         .iter()
@@ -3079,6 +3085,35 @@ fn draw_text_frames(app: &App, painter: &Painter, preview: Option<Affine>) {
                 tab_links(painter, tab, color);
             }
         }
+    }
+}
+
+/// While a clip frame's contents are edited, its frame's outline shows
+/// all the time in its own colour (orange dashes over white), so the
+/// contents, mostly larger than it, can be placed where it shows them
+/// (#4227).
+fn draw_edited_clip_frame(app: &App, painter: &Painter) {
+    if !app.editing_clip_contents() {
+        return;
+    }
+    let Some(frame) = app
+        .clip_frame_edit
+        .as_ref()
+        .and_then(|(f, _)| app.doc().shape_on_page(*f))
+    else {
+        return;
+    };
+    let orange = Color32::from_rgb(0xFF, 0x7A, 0x00);
+    for (pts, closed) in flatten(&frame.page_path(), &app.view) {
+        if pts.len() < 2 {
+            continue;
+        }
+        let mut pts = pts;
+        if closed {
+            pts.push(pts[0]);
+        }
+        painter.add(egui::Shape::line(pts.clone(), EStroke::new(3.0, Color32::WHITE)));
+        painter.extend(egui::Shape::dashed_line(&pts, EStroke::new(1.5, orange), 6.0, 4.0));
     }
 }
 

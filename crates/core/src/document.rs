@@ -3627,10 +3627,28 @@ impl QrKind {
     }
 }
 
+/// The kind of 2D code a QR code object draws (#4228): a QR code, a
+/// Data Matrix (square, for small parts and labels) or a rectangular
+/// micro QR code (rMQR, for narrow spaces).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum QrSymbol {
+    #[default]
+    Qr,
+    DataMatrix,
+    Rmqr,
+}
+
+impl QrSymbol {
+    pub const ALL: [QrSymbol; 3] = [QrSymbol::Qr, QrSymbol::DataMatrix, QrSymbol::Rmqr];
+}
+
 /// A QR code object's settings (see [`Shape::qr`]).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct QrCode {
+    /// The kind of code drawn; a QR code in drawings that don't say.
+    #[serde(skip_serializing_if = "is_qr_symbol")]
+    pub symbol: QrSymbol,
     pub kind: QrKind,
     /// The kind's fields, in the order [`QrKind::fields`] names them.
     pub fields: Vec<String>,
@@ -3647,6 +3665,7 @@ pub struct QrCode {
 impl Default for QrCode {
     fn default() -> Self {
         QrCode {
+            symbol: QrSymbol::Qr,
             kind: QrKind::Url,
             fields: vec!["https://github.com/tracedraw/tracedraw".into()],
             pixel_mm: 2.5,
@@ -3655,6 +3674,10 @@ impl Default for QrCode {
             outline: None,
         }
     }
+}
+
+fn is_qr_symbol(s: &QrSymbol) -> bool {
+    *s == QrSymbol::Qr
 }
 
 impl QrCode {
@@ -5498,6 +5521,64 @@ pub struct ObjectStyle {
     /// The transparency part: opacity, 1 being opaque.
     #[serde(default = "one")]
     pub opacity: f64,
+    /// The text parts (#4235): the characters' look and the paragraphs'
+    /// layout, taken from a text object. Not in older files.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<Box<StyleText>>,
+}
+
+/// What an object style holds for text (#4235).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StyleText {
+    /// The character part: font, size, bold and italic, spacing, width,
+    /// lines, capitals and the characters' own colour; its text unused.
+    pub character: TextSpan,
+    /// The paragraph part: the alignment and the paragraph settings
+    /// (spacing, indents, tabs, bullets, columns).
+    pub align: TextAlign,
+    pub para: ParagraphStyle,
+}
+
+impl StyleText {
+    /// The text parts of a text object: its first run's character look,
+    /// its alignment and paragraph settings.
+    pub fn of(shape: &Shape) -> Option<StyleText> {
+        let ShapeKind::Text {
+            spans, align, para, ..
+        } = &shape.kind
+        else {
+            return None;
+        };
+        let mut character = spans.first()?.clone();
+        character.text.clear();
+        character.paragraph = None;
+        Some(StyleText {
+            character,
+            align: *align,
+            para: para.clone(),
+        })
+    }
+
+    /// Give every run of `spans` the character part, keeping its text.
+    fn apply_character(&self, spans: &mut [TextSpan]) {
+        let c = &self.character;
+        for s in spans {
+            s.font_family = c.font_family.clone();
+            s.size_pt = c.size_pt;
+            s.bold = c.bold;
+            s.italic = c.italic;
+            s.tracking_pct = c.tracking_pct;
+            s.width_pct = c.width_pct;
+            s.underline = c.underline;
+            s.strikethrough = c.strikethrough;
+            s.all_caps = c.all_caps;
+            s.fill = c.fill.clone();
+            s.outline = c.outline.clone();
+            s.background = c.background.clone();
+            s.features = c.features.clone();
+            s.variations = c.variations.clone();
+        }
+    }
 }
 
 /// Which properties an object style sets.
@@ -5507,6 +5588,10 @@ pub struct StyleParts {
     pub fill: bool,
     pub outline: bool,
     pub transparency: bool,
+    /// The text parts (#4235): the characters' look, and the paragraphs'
+    /// alignment and settings. Off in older files.
+    pub character: bool,
+    pub paragraph: bool,
 }
 
 impl Default for StyleParts {
@@ -5516,14 +5601,18 @@ impl Default for StyleParts {
             fill: true,
             outline: true,
             transparency: false,
+            character: false,
+            paragraph: false,
         }
     }
 }
 
 impl ObjectStyle {
-    /// A style named `name` with the fill and outline of `shape`, and its
-    /// transparency when it has some.
+    /// A style named `name` with the fill and outline of `shape`, its
+    /// transparency when it has some, and of a text object its character
+    /// and paragraph parts (#4235).
     pub fn from_shape(name: impl Into<String>, shape: &Shape) -> ObjectStyle {
+        let text = StyleText::of(shape);
         ObjectStyle {
             name: name.into(),
             fill: shape.fill.clone(),
@@ -5533,8 +5622,22 @@ impl ObjectStyle {
                 fill: true,
                 outline: true,
                 transparency: shape.opacity < 1.0,
+                character: text.is_some(),
+                paragraph: text.is_some(),
             },
             opacity: shape.opacity,
+            text: text.map(Box::new),
+        }
+    }
+
+    /// Take the parts' values from `shape` (Update from selection): its
+    /// fill, outline and opacity, and of a text object its text parts.
+    pub fn update_from(&mut self, shape: &Shape) {
+        self.fill = shape.fill.clone();
+        self.stroke = shape.stroke.clone();
+        self.opacity = shape.opacity;
+        if let Some(t) = StyleText::of(shape) {
+            self.text = Some(Box::new(t));
         }
     }
 
@@ -5548,6 +5651,18 @@ impl ObjectStyle {
         }
         if self.parts.transparency {
             shape.opacity = self.opacity.clamp(0.0, 1.0);
+        }
+        // The text parts reach text objects only.
+        if let (Some(t), ShapeKind::Text { spans, align, para, .. }) =
+            (self.text.as_deref(), &mut shape.kind)
+        {
+            if self.parts.character {
+                t.apply_character(spans);
+            }
+            if self.parts.paragraph {
+                *align = t.align;
+                *para = t.para.clone();
+            }
         }
     }
 }
@@ -6514,6 +6629,56 @@ pub struct Guide {
     /// instead of where the guideline is (#3574).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    /// A margin or bleed guideline of a preset: the page edge it keeps
+    /// its distance from, so it follows that edge when the page is
+    /// resized (#4268).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anchor: Option<GuideAnchor>,
+}
+
+/// The page edge a preset guideline keeps its distance from (#4268).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum GuideEdge {
+    Left,
+    Right,
+    Top,
+    Bottom,
+}
+
+/// A guideline's distance from a page edge, mm, inward (negative:
+/// outside the page, as bleed guidelines are).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct GuideAnchor {
+    pub edge: GuideEdge,
+    pub distance: f64,
+}
+
+impl GuideAnchor {
+    /// The line at this distance from the edge of a page of `size`.
+    pub fn line(&self, size: crate::geometry::Size) -> GuideLine {
+        match self.edge {
+            GuideEdge::Left => GuideLine::Vertical { x: self.distance },
+            GuideEdge::Right => GuideLine::Vertical {
+                x: size.width - self.distance,
+            },
+            GuideEdge::Bottom => GuideLine::Horizontal { y: self.distance },
+            GuideEdge::Top => GuideLine::Horizontal {
+                y: size.height - self.distance,
+            },
+        }
+    }
+
+    /// The same distance from the opposite side edge: the left and right
+    /// margins of a page facing the other way.
+    pub fn mirrored(&self) -> GuideAnchor {
+        let edge = match self.edge {
+            GuideEdge::Left => GuideEdge::Right,
+            GuideEdge::Right => GuideEdge::Left,
+            e => e,
+        };
+        GuideAnchor { edge, ..*self }
+    }
 }
 
 impl From<GuideLine> for Guide {
@@ -6525,6 +6690,7 @@ impl From<GuideLine> for Guide {
             locked: false,
             hidden: false,
             name: None,
+            anchor: None,
         }
     }
 }
@@ -6561,6 +6727,14 @@ impl Guide {
         Guide {
             line,
             ..self.clone()
+        }
+    }
+
+    /// An anchored guideline put back at its distance from its edge on a
+    /// page of `size` (#4268); others stay.
+    pub fn refit(&mut self, size: crate::geometry::Size) {
+        if let Some(a) = self.anchor {
+            self.line = a.line(size);
         }
     }
 }
@@ -10472,6 +10646,7 @@ mod tests {
             locked: true,
             hidden: true,
             name: Some("Fold".into()),
+            anchor: None,
         };
         let json = serde_json::to_string(&g).unwrap();
         assert!(json.contains("\"dir\":\"vertical\""));

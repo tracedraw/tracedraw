@@ -706,6 +706,11 @@ fn object_menu_for(app: &mut App, ui: &mut Ui, close: &mut bool, source: Option<
                 app.set_tool(Tool::Crop);
             }
         }
+        "menu.bitmaps.scale_known" => {
+            if is_bitmap && app.can_scale_known() && ci(ui, close, "menu.bitmaps.scale_known", "", true) {
+                app.open_scale_known();
+            }
+        }
         "context.ai_remix" => {
             if is_bitmap {
                 if ci_tip(ui, close, "context.ai_remix", ai, tip.as_deref()) {
@@ -739,6 +744,23 @@ fn object_menu_for(app: &mut App, ui: &mut Ui, close: &mut bool, source: Option<
                 }
                 sep(ui);
             }
+        }
+        "context.replace" => {
+            // Replace the selected objects with another one (#4220).
+            sub(ui, "context.replace", |ui| {
+                crate::ui::context_menu_filter::ordered_menu! { ui;
+                    "context.replace_with_object" => {
+                        if ci(ui, close, "context.replace_with_object", "", true) {
+                            app.start_replace_objects(false);
+                        }
+                    }
+                    "context.replace_with_clones" => {
+                        if ci(ui, close, "context.replace_with_clones", "", true) {
+                            app.start_replace_objects(true);
+                        }
+                    }
+                }
+            });
         }
         "context.bring_into_focus" => {
             // One object (a group most of all): edit it on its own.

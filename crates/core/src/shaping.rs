@@ -1193,6 +1193,66 @@ fn enclosed_area_within(paths: &[BezPath], sources: &[BezPath], p: Point) -> Enc
     Enclosed::OnOutline
 }
 
+/// Every area the visible outlines of `parts` (as for
+/// [`enclosed_visible_area`]) close off, each with its sides fitted back
+/// onto the outlines' curves: the faces the outlines cut a box around
+/// them into, but those reaching the box's edge (#4200). At most `max`.
+pub fn all_enclosed_visible_areas(parts: &[(BezPath, bool)], max: usize) -> Vec<BezPath> {
+    use i_overlay::float::slice::FloatSlice as _;
+    let walls = visible_walls(parts);
+    let sources: Vec<BezPath> = parts.iter().map(|(path, _)| path.clone()).collect();
+    let mut lines: Vec<Vec<[f64; 2]>> = Vec::new();
+    let mut open_ends: Vec<bool> = Vec::new();
+    for (pts, closed) in walls.iter().flat_map(|path| polylines(path, TOL)) {
+        let l: Vec<[f64; 2]> = pts.iter().map(|q| [q.x, q.y]).collect();
+        if l.iter().all(|q| q[0].is_finite() && q[1].is_finite()) {
+            lines.push(l);
+            open_ends.push(!closed);
+        }
+    }
+    let bridges = gap_bridges(&lines, &open_ends);
+    lines.extend(bridges);
+    let Some(bounds) = lines
+        .iter()
+        .flatten()
+        .map(|q| kurbo::Rect::from_points((q[0], q[1]), (q[0], q[1])))
+        .reduce(|a, b| a.union(b))
+    else {
+        return Vec::new();
+    };
+    let margin = 2.0;
+    let domain = bounds.inflate(margin, margin);
+    let frame = vec![
+        [domain.x0, domain.y0],
+        [domain.x1, domain.y0],
+        [domain.x1, domain.y1],
+        [domain.x0, domain.y1],
+    ];
+    let sources: Vec<&BezPath> = sources.iter().collect();
+    let mut out = Vec::new();
+    for face in frame.slice_by(&lines, IFill::NonZero) {
+        let open = face.iter().flatten().any(|q| {
+            (q[0] - domain.x0).abs() < margin / 2.0
+                || (q[0] - domain.x1).abs() < margin / 2.0
+                || (q[1] - domain.y0).abs() < margin / 2.0
+                || (q[1] - domain.y1).abs() < margin / 2.0
+        });
+        if open {
+            continue;
+        }
+        let area = from_shapes(vec![face]);
+        // Slivers left where lines run side by side are no areas.
+        if filled_area(&area, FillRule::NonZero) < TOL * TOL * 4.0 {
+            continue;
+        }
+        out.push(recover_curves(&area, &sources));
+        if out.len() >= max {
+            break;
+        }
+    }
+    out
+}
+
 /// How a live Combine joins the objects of a group (see
 /// [`combine_areas`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]

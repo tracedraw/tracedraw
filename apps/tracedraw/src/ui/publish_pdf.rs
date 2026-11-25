@@ -18,7 +18,7 @@ use egui::{Color32, Context, RichText, Ui};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tracedraw_core::Document;
-use tracedraw_io::pdf::{PdfOptions, PdfStandard};
+use tracedraw_io::pdf::{PdfImages, PdfOptions, PdfStandard};
 use tracedraw_io::pdf_crypt::{Permissions, Security};
 
 /// Width of the dialog's pages.
@@ -82,6 +82,11 @@ pub struct BitmapPrefs {
     pub jpeg_quality: u8,
     /// Compress the pages' text and line art.
     pub compress_content: bool,
+    /// Target file size (#4265): the pictures are compressed harder, and
+    /// downsampled if need be, until the file fits in [`Self::target_mb`].
+    pub target_size: bool,
+    /// The largest file wanted, in megabytes.
+    pub target_mb: f64,
 }
 
 impl Default for BitmapPrefs {
@@ -96,6 +101,8 @@ impl Default for BitmapPrefs {
             jpeg: false,
             jpeg_quality: 85,
             compress_content: true,
+            target_size: false,
+            target_mb: 5.0,
         }
     }
 }
@@ -113,6 +120,92 @@ impl BitmapPrefs {
             compress_content: self.compress_content,
         }
     }
+
+    /// The target file size in bytes, when one is asked for.
+    pub fn target_bytes(&self) -> Option<usize> {
+        (self.target_size && self.target_mb.is_finite() && self.target_mb > 0.0)
+            .then(|| (self.target_mb.clamp(0.01, 10_000.0) * 1024.0 * 1024.0) as usize)
+    }
+}
+
+/// The steps toward a smaller file (#4265), gentlest first: the pictures
+/// as asked, then JPEG at falling quality, then each resolution lower
+/// with JPEG again from good to rough. Resolutions already lower than a
+/// step's stay as they are.
+fn smaller_steps(asked: PdfImages) -> Vec<PdfImages> {
+    let mut out = vec![asked];
+    let start = if asked.jpeg {
+        asked.jpeg_quality.clamp(1, 100)
+    } else {
+        90
+    };
+    let qualities: Vec<u8> = [90u8, 80, 70, 60, 50, 40, 30, 20, 10]
+        .into_iter()
+        .filter(|q| *q <= start)
+        .collect();
+    let cap = |v: Option<f64>, dpi: f64| Some(v.map_or(dpi, |d| d.min(dpi)));
+    for dpi in [None, Some(300.0), Some(200.0), Some(150.0), Some(100.0), Some(72.0)] {
+        for &q in &qualities {
+            let mut s = asked;
+            s.jpeg = true;
+            s.jpeg_quality = q;
+            s.compress_content = true;
+            if let Some(d) = dpi {
+                s.color_dpi = cap(asked.color_dpi, d);
+                s.gray_dpi = cap(asked.gray_dpi, d);
+                s.mono_dpi = cap(asked.mono_dpi, d * 2.0);
+            }
+            if !out.contains(&s) {
+                out.push(s);
+            }
+        }
+    }
+    out
+}
+
+/// The PDF of `doc` no larger than `target` bytes when the pictures can
+/// be made small enough (#4265): the gentlest of [`smaller_steps`] that
+/// fits, found by halving the steps, else the smallest file. The steps
+/// only touch pictures, so a drawing of line art alone keeps its size.
+pub fn pdf_within(
+    doc: &Document,
+    opts: &PdfOptions,
+    target: usize,
+) -> (Vec<u8>, tracedraw_io::pdf::PdfReport) {
+    let steps = smaller_steps(opts.images);
+    let write = |i: usize| {
+        let mut o = opts.clone();
+        o.images = steps[i];
+        tracedraw_io::pdf::document_to_pdf_report(doc, &o)
+    };
+    let first = write(0);
+    if first.0.len() <= target || steps.len() < 2 {
+        return first;
+    }
+    // The smallest file: when even it is too large, it is the answer.
+    let last = steps.len() - 1;
+    let smallest = write(last);
+    if smallest.0.len() > target || smallest.0.len() >= first.0.len() {
+        return if smallest.0.len() < first.0.len() {
+            smallest
+        } else {
+            first
+        };
+    }
+    // Sizes fall along the steps: the first that fits, by halving.
+    let (mut lo, mut hi) = (0, last);
+    let mut best = smallest;
+    while hi - lo > 1 {
+        let mid = (lo + hi) / 2;
+        let r = write(mid);
+        if r.0.len() <= target {
+            hi = mid;
+            best = r;
+        } else {
+            lo = mid;
+        }
+    }
+    best
 }
 
 /// The printers' marks around every page (Prepress tab, #789): drawn by
@@ -229,6 +322,7 @@ pub fn builtin_presets() -> Vec<(&'static str, PdfPreset)> {
                     jpeg: true,
                     jpeg_quality: 75,
                     compress_content: true,
+                    ..BitmapPrefs::default()
                 },
                 ..base.clone()
             },
@@ -968,7 +1062,10 @@ pub fn publish(app: &App, st: &PublishState, path: &Path) -> Result<String, Stri
         crate::export::pdfx_profile(app, st.prefs.standard()),
     );
     opts.output_condition = crate::export::output_condition(app, &opts.output_condition);
-    let (pdf, report) = tracedraw_io::pdf::document_to_pdf_report(&doc, &opts);
+    let (pdf, report) = match st.prefs.bitmaps.target_bytes() {
+        Some(target) => pdf_within(&doc, &opts, target),
+        None => tracedraw_io::pdf::document_to_pdf_report(&doc, &opts),
+    };
     crate::files::write(path, pdf).map_err(|e| e.to_string())?;
     let mut msg = trf("status.exported", &[("path", &path.display().to_string())]);
     // Fonts whose licence forbids embedding: their text went as curves.
@@ -1368,6 +1465,21 @@ fn bitmaps(ui: &mut Ui, b: &mut BitmapPrefs) {
             });
         });
         ui.checkbox(&mut b.compress_content, tr("publish.compress_content"));
+        // Target file size (#4265).
+        ui.horizontal(|ui| {
+            ui.checkbox(&mut b.target_size, tr("publish.target_size"))
+                .rich_tip(crate::ui::tips::keyed("publish.target_size"));
+            ui.add_enabled_ui(b.target_size, |ui| {
+                ui.add(
+                    crate::ui::field::NumField::new(&mut b.target_mb)
+                        .range(0.01..=10_000.0)
+                        .speed(0.1)
+                        .max_decimals(2)
+                        .suffix(" MB"),
+                )
+                .rich_tip(crate::ui::tips::keyed("publish.target_size"));
+            });
+        });
         note(ui, "publish.bitmaps_note");
     });
 }
@@ -1587,6 +1699,68 @@ mod tests {
     use super::*;
     use egui::{vec2, Pos2, Rect};
     use tracedraw_core::{geometry::Size, Document};
+
+    /// A drawing with one noisy colour picture of 800 x 800 pixels.
+    fn picture_doc() -> Document {
+        let img = image::RgbImage::from_fn(800, 800, |x, y| {
+            let v = ((x * 31 + y * 17 + (x * y) % 97) % 256) as u8;
+            image::Rgb([v, 255 - v, ((x ^ y) % 256) as u8])
+        });
+        let mut png = std::io::Cursor::new(Vec::new());
+        img.write_to(&mut png, image::ImageFormat::Png).expect("png");
+        let mut doc = Document::new("p", Size::new(100.0, 100.0));
+        let id = doc.ids_mut().shape();
+        let s = tracedraw_core::Shape::new(
+            id,
+            tracedraw_core::document::ShapeKind::Bitmap {
+                rect: tracedraw_core::Rect::new(0.0, 0.0, 100.0, 100.0),
+                width_px: 800,
+                height_px: 800,
+                png: png.into_inner().into(),
+                fx: Default::default(),
+            },
+        );
+        doc.pages[0].layers[0].shapes.push(s);
+        doc
+    }
+
+    /// A target file size makes the file fit, as gently as it can, and a
+    /// target it already meets leaves it as asked (#4265).
+    #[test]
+    fn a_target_size_shrinks_the_pictures_until_the_file_fits() {
+        let doc = picture_doc();
+        let opts = PdfOptions::default();
+        let plain = tracedraw_io::pdf::document_to_pdf_with(&doc, &opts).len();
+        let target = plain / 8;
+        let (pdf, _) = pdf_within(&doc, &opts, target);
+        assert!(pdf.len() <= target, "{} > {target} (plain {plain})", pdf.len());
+        assert!(pdf.starts_with(b"%PDF"));
+        // Gentlest that fits: the next gentler step does not.
+        let steps = smaller_steps(opts.images);
+        let used = steps
+            .iter()
+            .position(|s| {
+                let mut o = opts.clone();
+                o.images = *s;
+                tracedraw_io::pdf::document_to_pdf_with(&doc, &o).len() == pdf.len()
+            })
+            .expect("a step");
+        assert!(used > 0);
+        let mut o = opts.clone();
+        o.images = steps[used - 1];
+        assert!(tracedraw_io::pdf::document_to_pdf_with(&doc, &o).len() > target);
+        // Already small enough: the file as asked.
+        let (same, _) = pdf_within(&doc, &opts, plain * 2);
+        assert_eq!(same.len(), plain);
+        // Prefs: off or nonsense means no target.
+        let mut b = BitmapPrefs::default();
+        assert_eq!(b.target_bytes(), None);
+        b.target_size = true;
+        b.target_mb = 2.0;
+        assert_eq!(b.target_bytes(), Some(2 * 1024 * 1024));
+        b.target_mb = f64::NAN;
+        assert_eq!(b.target_bytes(), None);
+    }
 
     fn app_with_two_pages() -> App {
         let mut app = App::headless();

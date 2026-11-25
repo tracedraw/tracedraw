@@ -112,6 +112,8 @@ pub fn dialog_topic(d: &Dialog, options: OptionsPage) -> &'static str {
         Dialog::Flare(_) => "objects/light-flare",
         Dialog::ConvertToBitmap(_) => "bitmaps/convert-to-bitmap",
         Dialog::PictureCaptions(_) => "bitmaps/picture-captions",
+        Dialog::ScaleKnown(_) => "bitmaps/resample-and-straighten#other",
+        Dialog::TableShapes(_) => "lines-shapes/rectangles-and-ellipses#drawing",
         Dialog::AiTurn(_) | Dialog::AiSketch(_) | Dialog::AiRemove(_) => "bitmaps/ai-photo",
         Dialog::StraightenImage(_) => "bitmaps/resample-and-straighten#straighten",
         Dialog::Resample(_) => "bitmaps/resample-and-straighten#resample",

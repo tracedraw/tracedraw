@@ -626,6 +626,20 @@ fn styles_list(app: &mut App, ui: &mut Ui) {
                 .rich_tip(crate::ui::tips::keyed("docker.style_transparency"))
                 .changed();
         });
+        // The text parts (#4235), for a style that holds text.
+        if os.text.is_some() {
+            ui.horizontal(|ui| {
+                ui.add_space(38.0);
+                changed |= ui
+                    .checkbox(&mut os.parts.character, tr("docker.style_character"))
+                    .rich_tip(crate::ui::tips::keyed("docker.style_character"))
+                    .changed();
+                changed |= ui
+                    .checkbox(&mut os.parts.paragraph, tr("docker.style_paragraph"))
+                    .rich_tip(crate::ui::tips::keyed("docker.style_paragraph"))
+                    .changed();
+            });
+        }
         ui.horizontal(|ui| {
             ui.add_space(38.0);
             if ui
@@ -647,9 +661,13 @@ fn styles_list(app: &mut App, ui: &mut Ui) {
                 .clicked()
             {
                 if let Some(s) = &first {
-                    os.fill = s.fill.clone();
-                    os.stroke = s.stroke.clone();
-                    os.opacity = s.opacity;
+                    let had_text = os.text.is_some();
+                    os.update_from(s);
+                    // A style that takes text for the first time sets it.
+                    if !had_text && os.text.is_some() {
+                        os.parts.character = true;
+                        os.parts.paragraph = true;
+                    }
                     changed = true;
                 }
             }

@@ -3937,6 +3937,13 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
             app.show_dockers = true;
             app.docker_tab = DockerTab::Properties;
         }
+        // Rectangles and circles from a CSV or Excel list of sizes (#4270).
+        if item(ui, "menu.object.insert_table_shapes", "", true) {
+            app.dialog = Dialog::TableShapes(Box::new(crate::table_shapes::TableShapes {
+                gap_mm: 5.0,
+                ..Default::default()
+            }));
+        }
         if item(ui, "menu.object.insert_page_number", "", true) {
             app.insert_page_number(crate::ops2::PageNumberWhere::Active);
         }
@@ -4008,6 +4015,11 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
         }
         if item(ui, "menu.object.clip_frame_extract", "", is_clip) {
             app.extract_clip_contents();
+        }
+        // The contents of another clip frame copied into the selected
+        // objects (D#4221).
+        if item(ui, "menu.object.clip_frame_copy_from", "", has) {
+            app.start_copy_clip_contents();
         }
         // The right-click menu's Frame Type > No Frame, here so it can
         // take a shortcut (#4132): empty clip frames become their objects.
@@ -4797,6 +4809,11 @@ fn bitmaps_menu(app: &mut App, ui: &mut Ui) {
     }
     if item(ui, "menu.bitmaps.crop_bitmap", "", has_bitmap) {
         app.set_tool(crate::tools::Tool::Crop);
+    }
+    // A line drawn over something of known size sets the photo's scale
+    // (#4215).
+    if item(ui, "menu.bitmaps.scale_known", "", app.can_scale_known()) {
+        app.open_scale_known();
     }
     let framed = !app.framed_pictures().is_empty();
     if item(ui, "menu.bitmaps.crop_to_frame", "", framed) {

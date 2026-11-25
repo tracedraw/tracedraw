@@ -847,7 +847,21 @@ impl Command {
                 doc.pages.remove(i);
                 doc.comments.retain(|c| c.page != *page);
             }
-            Command::ResizePage { page, size } => doc.page_mut(*page)?.size = *size,
+            Command::ResizePage { page, size } => {
+                let first = doc.pages.first().map(|p| p.id) == Some(*page);
+                let p = doc.page_mut(*page)?;
+                p.size = *size;
+                // Margin and bleed guidelines follow the page edges (#4268).
+                for g in &mut p.guides {
+                    g.refit(*size);
+                }
+                // Those every page shows follow the first page.
+                if first {
+                    for g in &mut doc.master_guides {
+                        g.refit(*size);
+                    }
+                }
+            }
 
             Command::AddLayer { page, name } => {
                 let id = doc.ids_mut().layer();
@@ -1865,6 +1879,46 @@ impl Command {
             }
             Command::PlaceInside { contents, frame } => {
                 if contents.contains(frame) {
+                    return Ok(());
+                }
+                // A clip frame inside another one (#4227): the objects
+                // join its contents where it lies, brought into its space.
+                if doc.shape(*frame).is_err() {
+                    let nested = doc
+                        .find_shape(*frame)
+                        .filter(|f| matches!(f.kind, ShapeKind::ClipFrame { .. }))
+                        .map(|f| f.transform)
+                        .ok_or(Error::ShapeNotFound(*frame))?;
+                    let top = doc.top_level_of(*frame).ok_or(Error::ShapeNotFound(*frame))?;
+                    if contents.contains(&top) {
+                        return Ok(());
+                    }
+                    let space = doc.parent_transform(*frame).unwrap_or(Affine::IDENTITY) * nested;
+                    if space.determinant().abs() < 1e-12 {
+                        return Ok(());
+                    }
+                    let back = space.inverse();
+                    let mut ordered = Vec::with_capacity(contents.len());
+                    for id in contents {
+                        if !ordered.iter().any(|(_, o)| o == id) {
+                            let (lid, i) = doc.locate(*id)?;
+                            let li = doc.all_layers().position(|l| l.id == lid).unwrap_or(0);
+                            ordered.push(((li, i), *id));
+                        }
+                    }
+                    ordered.sort_by_key(|(at, _)| *at);
+                    let mut inner = Vec::new();
+                    for (_, id) in &ordered {
+                        let (lid, i) = doc.locate(*id)?;
+                        let mut s = doc.layer_mut(lid)?.shapes.remove(i);
+                        s.transform_by(back);
+                        inner.push(s);
+                    }
+                    if let Some(ShapeKind::ClipFrame { contents, .. }) =
+                        doc.find_shape_mut(*frame).map(|f| &mut f.kind)
+                    {
+                        contents.extend(inner);
+                    }
                     return Ok(());
                 }
                 doc.shape(*frame)?;
@@ -5209,6 +5263,7 @@ mod tests {
             fill: true,
             outline: false,
             transparency: true,
+            ..StyleParts::default()
         };
         style.opacity = 0.5;
         // A style without an id gets one.
@@ -5279,6 +5334,87 @@ mod tests {
         let old: ObjectStyle = serde_json::from_value(json).unwrap();
         assert_eq!(old.parts, StyleParts::default());
         assert_eq!((old.id, old.opacity), (0, 1.0));
+    }
+
+    /// An object style made from text keeps the character and paragraph
+    /// parts and gives them to linked text, keeping each one's words; a
+    /// rectangle linked to it takes only fill and outline (#4235).
+    #[test]
+    fn object_styles_carry_text_parts() {
+        use crate::document::{ObjectStyle, TextAlign, TextSpan};
+        let mut doc = Document::default();
+        let layer = doc.pages[0].layers[0].id;
+        let text = |doc: &mut Document, words: &str, font: &str, size: f64| {
+            let id = doc.ids_mut().shape();
+            Shape::new(
+                id,
+                ShapeKind::Text {
+                    spans: vec![TextSpan::new(words, font, size)],
+                    origin: crate::geometry::Point::new(0.0, 0.0),
+                    frame: None,
+                    align: TextAlign::Left,
+                    para: Default::default(),
+                    on_path: None,
+                },
+            )
+        };
+        let mut model = text(&mut doc, "Title", "Serif", 24.0);
+        if let ShapeKind::Text { spans, align, para, .. } = &mut model.kind {
+            spans[0].bold = true;
+            spans[0].tracking_pct = 12.0;
+            *align = TextAlign::Center;
+            para.space_before = 4.0;
+        }
+        let other = text(&mut doc, "Body words", "Sans", 10.0);
+        let square = rect(&mut doc, 0.0);
+        let (io, is) = (other.id, square.id);
+        let mut style = ObjectStyle::from_shape("Heading", &model);
+        assert!(style.parts.character && style.parts.paragraph);
+        assert!(style.text.is_some());
+        style.id = 7;
+        for shape in [other, square] {
+            Command::AddShape { layer, shape }.apply(&mut doc).unwrap();
+        }
+        Command::SetObjectStyles {
+            styles: vec![style.clone()],
+        }
+        .apply(&mut doc)
+        .unwrap();
+        Command::LinkObjectStyle {
+            shapes: vec![io, is],
+            style: Some(7),
+        }
+        .apply(&mut doc)
+        .unwrap();
+        let ShapeKind::Text { spans, align, para, .. } = &doc.shape(io).unwrap().1.kind else {
+            panic!("text");
+        };
+        assert_eq!(spans[0].text, "Body words");
+        assert_eq!(spans[0].font_family, "Serif");
+        assert_eq!(spans[0].size_pt, 24.0);
+        assert!(spans[0].bold);
+        assert_eq!(spans[0].tracking_pct, 12.0);
+        assert_eq!(*align, TextAlign::Center);
+        assert_eq!(para.space_before, 4.0);
+        assert!(matches!(doc.shape(is).unwrap().1.kind, ShapeKind::Rect { .. }));
+        // The paragraph part off: a change of alignment no longer reaches
+        // the text, the character part still does.
+        let mut s = style.clone();
+        s.parts.paragraph = false;
+        if let Some(t) = s.text.as_deref_mut() {
+            t.align = TextAlign::Right;
+            t.character.size_pt = 30.0;
+        }
+        Command::SetObjectStyles { styles: vec![s] }.apply(&mut doc).unwrap();
+        let ShapeKind::Text { spans, align, .. } = &doc.shape(io).unwrap().1.kind else {
+            panic!("text");
+        };
+        assert_eq!(*align, TextAlign::Center);
+        assert_eq!(spans[0].size_pt, 30.0);
+        // Saved and read back.
+        let json = serde_json::to_string(&style).unwrap();
+        let back: ObjectStyle = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, style);
     }
 
     /// New graphics get their black outline in the drawing's primary

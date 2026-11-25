@@ -262,6 +262,40 @@ pub struct PresetForm {
     pub grid: bool,
     pub grid_rows: u32,
     pub grid_columns: u32,
+    /// The pages Apply Presets adds the guidelines to (#4118).
+    pub scope: PresetScope,
+}
+
+/// The pages Apply Presets adds its guidelines to (#4118).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PresetScope {
+    /// The guidelines being edited: the active page's, or every page's
+    /// while those are chosen.
+    #[default]
+    Current,
+    /// Every page's own, the left-hand pages mirrored (inside and outside
+    /// margins swapped), as for a book.
+    AllMirrored,
+    OddPages,
+    EvenPages,
+}
+
+impl PresetScope {
+    pub const ALL: [PresetScope; 4] = [
+        PresetScope::Current,
+        PresetScope::AllMirrored,
+        PresetScope::OddPages,
+        PresetScope::EvenPages,
+    ];
+
+    pub fn key(self) -> &'static str {
+        match self {
+            PresetScope::Current => "guides.scope_current",
+            PresetScope::AllMirrored => "guides.scope_mirrored",
+            PresetScope::OddPages => "guides.scope_odd",
+            PresetScope::EvenPages => "guides.scope_even",
+        }
+    }
 }
 
 impl Default for PresetForm {
@@ -287,6 +321,7 @@ impl Default for PresetForm {
             grid: false,
             grid_rows: 4,
             grid_columns: 4,
+            scope: PresetScope::Current,
         }
     }
 }
@@ -1121,6 +1156,19 @@ pub fn guidelines_page(app: &mut App, ui: &mut Ui) {
             }
         }
     }
+    // The pages the guidelines go to (#4118).
+    ui.horizontal(|ui| {
+        ui.label(tr("guides.scope"));
+        crate::ui::keynav::ComboBox::from_id_salt("preset_scope")
+            .selected_text(tr(form.scope.key()))
+            .show_ui(ui, |ui| {
+                for s in PresetScope::ALL {
+                    ui.selectable_value(&mut form.scope, s, tr(s.key()));
+                }
+            })
+            .response
+            .rich_tip(crate::ui::tips::pair("guides.scope", "guides.scope_tip"));
+    });
     if ui
         .ibutton("guides.apply_presets")
         .rich_tip(crate::ui::tips::pair(
@@ -1137,12 +1185,32 @@ pub fn guidelines_page(app: &mut App, ui: &mut Ui) {
     guide_list(app, ui, None, 220.0);
 }
 
-/// Add the guidelines a preset form describes, in the preset colour.
-pub fn apply_presets(app: &mut App, form: &PresetForm) {
-    let size = app.page_size();
-    let bleed = app.doc().metadata.bleed.max(0.0);
-    let color = app.doc().metadata.guides.preset_color;
-    let mut lines: Vec<GuideLine> = Vec::new();
+/// The guidelines a preset form describes for a page of `size` with
+/// `bleed` round it, in `color`; margin and bleed guidelines keep the page
+/// edge they are measured from, so they follow it when the page is
+/// resized (#4268).
+pub fn preset_guides(
+    form: &PresetForm,
+    size: tracedraw_core::geometry::Size,
+    bleed: f64,
+    color: tracedraw_core::Color,
+) -> Vec<Guide> {
+    let mut out: Vec<Guide> = Vec::new();
+    let mut push = |line: GuideLine, anchor: Option<tracedraw_core::document::GuideAnchor>| {
+        if !out.iter().any(|g| g.line == line) {
+            let mut g = Guide::from(line);
+            g.color = Some(color);
+            g.anchor = anchor;
+            out.push(g);
+        }
+    };
+    type Anchor = Option<tracedraw_core::document::GuideAnchor>;
+    let margins = |preset: GuidePreset, push: &mut dyn FnMut(GuideLine, Anchor)| {
+        let anchors = preset.anchors();
+        for (i, line) in preset.lines(size).into_iter().enumerate() {
+            push(line, anchors.map(|a| a[i]));
+        }
+    };
     if form.user_defined {
         if form.margins {
             let [top, bottom, left, right] = form.margin_mirror.apply([
@@ -1151,14 +1219,14 @@ pub fn apply_presets(app: &mut App, form: &PresetForm) {
                 form.margin_left,
                 form.margin_right,
             ]);
-            lines.extend(
+            margins(
                 GuidePreset::Margins {
                     top,
                     bottom,
                     left,
                     right,
-                }
-                .lines(size),
+                },
+                &mut push,
             );
         }
         if form.bleed {
@@ -1169,14 +1237,14 @@ pub fn apply_presets(app: &mut App, form: &PresetForm) {
                 form.bleed_left,
                 form.bleed_right,
             ]);
-            lines.extend(
+            margins(
                 GuidePreset::Margins {
                     top: -top.max(0.0),
                     bottom: -bottom.max(0.0),
                     left: -left.max(0.0),
                     right: -right.max(0.0),
-                }
-                .lines(size),
+                },
+                &mut push,
             );
         }
         if form.columns {
@@ -1195,33 +1263,117 @@ pub fn apply_presets(app: &mut App, form: &PresetForm) {
             .lines(inner)
             {
                 if let GuideLine::Vertical { x } = line {
-                    lines.push(GuideLine::Vertical { x: x + l });
+                    push(GuideLine::Vertical { x: x + l }, None);
                 }
             }
         }
         if form.grid {
-            lines.extend(
-                GuidePreset::Grid {
-                    rows: form.grid_rows,
-                    columns: form.grid_columns,
-                }
-                .lines(size),
-            );
+            for line in (GuidePreset::Grid {
+                rows: form.grid_rows,
+                columns: form.grid_columns,
+            })
+            .lines(size)
+            {
+                push(line, None);
+            }
         }
     } else {
         for p in &form.named {
-            lines.extend(preset_lines(*p, size, bleed));
+            // The margin presets keep their edges; the others are laid
+            // out as they are.
+            let all_margins = p
+                .presets(size, bleed)
+                .iter()
+                .all(|q| matches!(q, GuidePreset::Margins { .. }));
+            if all_margins {
+                for q in p.presets(size, bleed) {
+                    margins(q, &mut push);
+                }
+            } else {
+                for line in preset_lines(*p, size, bleed) {
+                    push(line, None);
+                }
+            }
         }
     }
-    let mut guides = app.page_guides();
-    for line in lines {
-        if !guides.iter().any(|g| g.line == line) {
-            let mut g = Guide::from(line);
-            g.color = Some(color);
-            guides.push(g);
+    out
+}
+
+/// A guideline as it lies on a page facing the other way: the left and
+/// right sides swapped (#4118).
+fn mirrored_guide(g: &Guide, size: tracedraw_core::geometry::Size) -> Guide {
+    let mut g = g.clone();
+    match g.anchor {
+        Some(a) => {
+            let a = a.mirrored();
+            g.anchor = Some(a);
+            g.line = a.line(size);
+        }
+        None => {
+            if let GuideLine::Vertical { x } = g.line {
+                g.line = GuideLine::Vertical { x: size.width - x };
+            }
         }
     }
-    app.set_guides(guides, "Add Guideline");
+    g
+}
+
+/// Add the guidelines a preset form describes, in the preset colour, to
+/// the pages its scope names (#4118): the guidelines being edited (the
+/// active page's or every page's), or the own guidelines of every page
+/// (the left-hand pages of facing pages mirrored, inside and outside
+/// swapped), of the odd pages or of the even pages, each laid out on its
+/// page's size. One undo step.
+pub fn apply_presets(app: &mut App, form: &PresetForm) {
+    let bleed = app.doc().metadata.bleed.max(0.0);
+    let color = app.doc().metadata.guides.preset_color;
+    if form.scope == PresetScope::Current {
+        let size = app.page_size();
+        let mut guides = app.page_guides();
+        for g in preset_guides(form, size, bleed, color) {
+            if !guides.iter().any(|o| o.line == g.line) {
+                guides.push(g);
+            }
+        }
+        app.set_guides(guides, "Add Guideline");
+        return;
+    }
+    let start = app.doc().metadata.facing_start;
+    let mut cmds = Vec::new();
+    for (k, page) in app.doc().pages.iter().enumerate() {
+        let take = match form.scope {
+            PresetScope::OddPages => k % 2 == 0,
+            PresetScope::EvenPages => k % 2 == 1,
+            _ => true,
+        };
+        if !take {
+            continue;
+        }
+        let left = tracedraw_core::spreads::side_of(k, start) == tracedraw_core::spreads::PageSide::Left;
+        let mut guides = page.guides.clone();
+        for g in preset_guides(form, page.size, bleed, color) {
+            let g = if form.scope == PresetScope::AllMirrored && left {
+                mirrored_guide(&g, page.size)
+            } else {
+                g
+            };
+            if !guides.iter().any(|o| o.line == g.line) {
+                guides.push(g);
+            }
+        }
+        if guides != page.guides {
+            cmds.push(Command::SetGuides {
+                page: page.id,
+                guides,
+            });
+        }
+    }
+    if cmds.is_empty() {
+        return;
+    }
+    if let Err(e) = app.engine.run_batch("Add Guideline", &cmds) {
+        app.status = format!("Add Guideline: {e}");
+    }
 }
 
 /// Text for a guideline in the lists: its position from the ruler origin
@@ -1711,5 +1863,71 @@ mod tests {
             EdgeMirror::LeftRight.apply([1.0, 2.0, 3.0, 4.0]),
             [1.0, 2.0, 3.0, 3.0]
         );
+    }
+
+    /// Margins applied to every page mirrored (#4118): the right-hand
+    /// pages as typed (left the inside), the left-hand ones swapped;
+    /// Odd Pages only reaches pages 1 and 3. Resizing a page moves its
+    /// margin and bleed guidelines with its edges (#4268).
+    #[test]
+    fn presets_go_to_mirrored_or_odd_pages_and_follow_a_resize() {
+        let mut app = App::headless();
+        app.add_page();
+        app.add_page();
+        let pages: Vec<_> = app.doc().pages.iter().map(|p| p.id).collect();
+        let size = app.page_size();
+        let form = PresetForm {
+            user_defined: true,
+            margins: true,
+            margin_top: 10.0,
+            margin_bottom: 10.0,
+            margin_left: 15.0,
+            margin_right: 25.0,
+            scope: PresetScope::AllMirrored,
+            ..PresetForm::default()
+        };
+        apply_presets(&mut app, &form);
+        let xs = |app: &App, k: usize| -> Vec<f64> {
+            let mut v: Vec<f64> = app
+                .doc()
+                .page(pages[k])
+                .unwrap()
+                .guides
+                .iter()
+                .filter_map(|g| match g.line {
+                    GuideLine::Vertical { x } => Some(x),
+                    _ => None,
+                })
+                .collect();
+            v.sort_by(f64::total_cmp);
+            v
+        };
+        // Page 1 alone on the right, as typed; page 2 on the left, swapped.
+        assert_eq!(xs(&app, 0), vec![15.0, size.width - 25.0]);
+        assert_eq!(xs(&app, 1), vec![25.0, size.width - 15.0]);
+        assert_eq!(xs(&app, 2), vec![15.0, size.width - 25.0]);
+        app.undo();
+        assert!(app.doc().pages.iter().all(|p| p.guides.is_empty()));
+        apply_presets(
+            &mut app,
+            &PresetForm {
+                scope: PresetScope::OddPages,
+                ..form.clone()
+            },
+        );
+        assert_eq!(xs(&app, 1), Vec::<f64>::new());
+        assert_eq!(xs(&app, 2).len(), 2);
+        // Page 3 made wider: its right margin moves with the edge.
+        let wide = tracedraw_core::geometry::Size::new(size.width + 50.0, size.height);
+        app.run(Command::ResizePage {
+            page: pages[2],
+            size: wide,
+        });
+        assert_eq!(xs(&app, 2), vec![15.0, wide.width - 25.0]);
+        let ys: Vec<f64> = app.doc().page(pages[2]).unwrap().guides.iter().filter_map(|g| match g.line {
+            GuideLine::Horizontal { y } => Some(y),
+            _ => None,
+        }).collect();
+        assert!(ys.contains(&(size.height - 10.0)) && ys.contains(&10.0), "{ys:?}");
     }
 }

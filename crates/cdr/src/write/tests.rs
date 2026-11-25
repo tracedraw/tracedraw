@@ -10563,6 +10563,7 @@ fn palette_inks_and_styles_open_again() {
         id: 3,
         parts: StyleParts::default(),
         opacity: 1.0,
+        text: None,
     }];
     doc.pages[0].layers[0].shapes[0].style = Some(3);
     for v in [14u16, 16, 27] {

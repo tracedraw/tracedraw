@@ -3757,10 +3757,19 @@ fn frees_clip_contents(app: &App, ids: &[ShapeId], drop: RowDrop) -> bool {
 /// objects carried lie on layers and are not locked.
 fn can_clip_into(app: &App, ids: &[ShapeId], target: ShapeId) -> bool {
     let doc = app.doc();
-    let Ok((_, t)) = doc.shape(target) else {
-        return false;
+    // A clip frame inside another one takes objects too (#4227); other
+    // objects must lie on a layer to become a frame.
+    let t = match doc.shape(target) {
+        Ok((_, t)) => t,
+        Err(_) => match doc.find_shape(target) {
+            Some(t) if matches!(t.kind, ShapeKind::ClipFrame { .. }) => t,
+            _ => return false,
+        },
     };
     if t.locked || matches!(t.kind, ShapeKind::Group { .. }) || ids.contains(&target) {
+        return false;
+    }
+    if doc.top_level_of(target).is_some_and(|top| ids.contains(&top)) {
         return false;
     }
     if layer_holding(app, target)

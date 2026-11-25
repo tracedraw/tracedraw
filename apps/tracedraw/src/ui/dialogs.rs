@@ -74,6 +74,14 @@ pub struct ExportState {
     /// file, 1 the classic version 8 file (#1728).
     pub ai_version: usize,
     pub bleed_mm: f64,
+    /// PDF: colour and gray pictures JPEG compressed at `pdf_quality`
+    /// (1 to 100), for smaller files to share (#4265).
+    pub pdf_compress: bool,
+    pub pdf_quality: u8,
+    /// PDF: the pictures compressed harder, and downsampled if need be,
+    /// until the file fits in `pdf_target_mb` megabytes (#4265).
+    pub pdf_target: bool,
+    pub pdf_target_mb: f64,
     pub output_condition: String,
     /// An installed script filter chosen instead of `format`, by name.
     pub script: Option<String>,
@@ -149,6 +157,10 @@ impl Default for ExportState {
             pdf_standard: 0,
             ai_version: 0,
             bleed_mm: 0.0,
+            pdf_compress: false,
+            pdf_quality: 75,
+            pdf_target: false,
+            pdf_target_mb: 5.0,
             // Empty: the drawing's CMYK profile (#3829).
             output_condition: String::new(),
             script: None,
@@ -636,10 +648,11 @@ pub struct PrintState {
     pub booklet_binding: usize,
     /// Sheets in each signature of a perfect-bound booklet.
     pub signature_sheets: u32,
-    /// Booklet pages on each side of a sheet: 0 two, 1 four, 2 eight
-    /// (#3380).
+    /// Booklet pages on each side of a sheet: 0 two, 1 four, 2 eight,
+    /// 3 sixteen (#3380, #4279).
     pub booklet_up: usize,
-    /// Saddle-stitch creep compensation at the innermost sheet, mm.
+    /// Creep compensation at the innermost leaf, mm (saddle stitch, or
+    /// any folded signature).
     pub creep: f64,
     /// Space between the two pages of a booklet spread, mm (#947).
     pub booklet_gap: f64,
@@ -841,6 +854,7 @@ impl PrintState {
             up: match self.booklet_up {
                 1 => 4,
                 2 => 8,
+                3 => 16,
                 _ => 2,
             },
         }
@@ -1409,6 +1423,10 @@ pub enum Dialog {
     TextHeight { height: f64 },
     /// Object > Outline Offset (#2622): the distance, in the drawing's
     /// units, and whether the new outline goes outside or inside.
+    /// Bitmaps > Scale to Known Size (#4215).
+    ScaleKnown(crate::scale_known::ScaleKnown),
+    /// Object > Insert > Shapes from Spreadsheet (#4270).
+    TableShapes(Box<crate::table_shapes::TableShapes>),
     OutlineOffset {
         distance: f64,
         outside: bool,
@@ -4117,6 +4135,8 @@ pub fn show(app: &mut App, ctx: &Context) {
         }
         Dialog::Encode(st) => encode_dialog(app, ctx, st, &mut close),
         Dialog::PictureCaptions(st) => crate::captions::dialog(app, ctx, st, &mut close),
+        Dialog::ScaleKnown(st) => crate::scale_known::dialog(app, ctx, st, &mut close),
+        Dialog::TableShapes(st) => crate::table_shapes::dialog(app, ctx, st, &mut close),
         Dialog::AiTurn(st) => crate::ai_photo::turn_dialog(app, ctx, st, &mut close),
         Dialog::AiSketch(st) => crate::ai_photo::sketch_dialog(app, ctx, st, &mut close),
         Dialog::AiRemove(st) => crate::ai_photo::remove_dialog(app, ctx, st, &mut close),
@@ -5159,6 +5179,10 @@ fn export_preview_key(app: &App, st: &ExportState) -> u64 {
     st.pages.hash(&mut h);
     st.spreads.hash(&mut h);
     st.text_as_curves.hash(&mut h);
+    st.pdf_compress.hash(&mut h);
+    st.pdf_quality.hash(&mut h);
+    st.pdf_target.hash(&mut h);
+    st.pdf_target_mb.to_bits().hash(&mut h);
     st.svg_text.hash(&mut h);
     st.ai_version.hash(&mut h);
     st.quality.hash(&mut h);
@@ -5965,6 +5989,7 @@ fn export_dialog(app: &mut App, ctx: &Context, st: &mut ExportState, close: &mut
                         )
                         .rich_tip(crate::ui::tips::keyed("dialog.bleed"));
                     });
+                    pdf_compression_rows(ui, st);
                     if st.pdf_standard > 0 {
                         ui.horizontal(|ui| {
                             ui.label(tr("dialog.output_condition"));
@@ -6208,6 +6233,33 @@ fn plt_export_fields(ui: &mut Ui, st: &mut ExportState) {
         .rich_tip(crate::ui::tips::keyed("dialog.plt_one_pen"));
 }
 
+/// The Export dialog's PDF compression (#4265): Compress pictures with
+/// its quality slider, and a target file size.
+fn pdf_compression_rows(ui: &mut Ui, st: &mut ExportState) {
+    ui.horizontal(|ui| {
+        ui.checkbox(&mut st.pdf_compress, tr("dialog.pdf_compress"))
+            .rich_tip(crate::ui::tips::keyed("dialog.pdf_compress"));
+        ui.add_enabled_ui(st.pdf_compress, |ui| {
+            ui.add(crate::ui::Slider::new(&mut st.pdf_quality, 1..=100))
+                .rich_tip(crate::ui::tips::keyed("dialog.pdf_compress"));
+        });
+    });
+    ui.horizontal(|ui| {
+        ui.checkbox(&mut st.pdf_target, tr("publish.target_size"))
+            .rich_tip(crate::ui::tips::keyed("publish.target_size"));
+        ui.add_enabled_ui(st.pdf_target, |ui| {
+            ui.add(
+                crate::ui::field::NumField::new(&mut st.pdf_target_mb)
+                    .range(0.01..=10_000.0)
+                    .speed(0.1)
+                    .max_decimals(2)
+                    .suffix(" MB"),
+            )
+            .rich_tip(crate::ui::tips::keyed("publish.target_size"));
+        });
+    });
+}
+
 /// The Export dialog's PDF Settings button (#2197): the PDF Settings
 /// dialog in its place, writing to the file the Export dialog chose and
 /// keeping its text as curves, standard and bleed.
@@ -6219,6 +6271,12 @@ pub fn open_pdf_settings(app: &mut App, st: &ExportState) {
         }
         p.prefs.text_as_curves = st.text_as_curves;
         p.bleed_mm = st.bleed_mm.max(0.0);
+        if st.pdf_compress {
+            p.prefs.bitmaps.jpeg = true;
+            p.prefs.bitmaps.jpeg_quality = st.pdf_quality.clamp(1, 100);
+        }
+        p.prefs.bitmaps.target_size = st.pdf_target;
+        p.prefs.bitmaps.target_mb = st.pdf_target_mb;
         if st.pdf_standard < PDF_STANDARDS.len() {
             p.prefs.standard = st.pdf_standard;
         }
@@ -7028,12 +7086,17 @@ fn booklet_fields(ui: &mut Ui, st: &mut PrintState) {
 
 fn booklet_rows(ui: &mut Ui, st: &mut PrintState) {
     // Pages on each side of the sheet: one fold, or a large sheet folded
-    // into a signature of 8 or 16 pages (#3380).
-    let ups = ["print.booklet_up_2", "print.booklet_up_4", "print.booklet_up_8"];
+    // into a signature of 8, 16 or 32 pages (#3380, #4279).
+    let ups = [
+        "print.booklet_up_2",
+        "print.booklet_up_4",
+        "print.booklet_up_8",
+        "print.booklet_up_16",
+    ];
     ui.label(tr("print.booklet_up"))
         .rich_tip(crate::ui::tips::keyed("print.booklet_up"));
     egui::ComboBox::from_id_salt("print_booklet_up")
-        .selected_text(tr(ups[st.booklet_up.min(2)]))
+        .selected_text(tr(ups[st.booklet_up.min(ups.len() - 1)]))
         .show_ui(ui, |ui| {
             for (i, key) in ups.iter().enumerate() {
                 ui.selectable_value(&mut st.booklet_up, i, tr(key));
@@ -7048,7 +7111,8 @@ fn booklet_rows(ui: &mut Ui, st: &mut PrintState) {
         ui.add(crate::ui::field::NumField::new(&mut st.signature_sheets).range(1..=32))
             .rich_tip(crate::ui::tips::keyed("print.signature_sheets"));
         ui.end_row();
-    } else if st.booklet_up == 0 {
+    } else {
+        // Creep: saddle stitch, or any folded signature (#4280).
         ui.label(tr("print.creep"))
             .rich_tip(crate::ui::tips::keyed("print.creep"));
         ui.add(
@@ -10093,6 +10157,8 @@ pub(crate) mod tests {
             Dialog::CustomHyphens(Default::default()),
             Dialog::Encode(EncodeState::default()),
             Dialog::PictureCaptions(Default::default()),
+            Dialog::ScaleKnown(Default::default()),
+            Dialog::TableShapes(Default::default()),
             Dialog::AiTurn(Default::default()),
             Dialog::AiSketch(Default::default()),
             Dialog::AiRemove(Default::default()),
@@ -11137,17 +11203,23 @@ mod booklet_fields_tests {
         assert_eq!(o.booklet.binding, crate::imposition::Binding::PerfectBound);
         assert_eq!(o.layout, crate::imposition::Layout::Booklet);
         // Pages per side (#3380): 4 a side folds a sheet into a signature
-        // of 8 pages, so 6 pages take one sheet; sheets per signature and
-        // creep do not apply.
+        // of 8 pages, so 6 pages take one sheet; sheets per signature do
+        // not apply, creep does (#4280).
         assert!(has(&texts, &tr("print.booklet_up")));
         assert!(has(&texts, &tr("print.booklet_up_2")));
         st.booklet_up = 1;
         let texts = run(&mut st, Vec::new());
         assert!(has(&texts, &tr("print.booklet_up_4")));
         assert!(!has(&texts, &tr("print.signature_sheets")));
-        assert!(!has(&texts, &tr("print.creep")));
+        assert!(has(&texts, &tr("print.creep")));
         let o = crate::export::print_layout(&app, &st, app.doc());
         assert_eq!(o.booklet.up, 4);
+        // 16 a side (#4279).
+        st.booklet_up = 3;
+        let texts = run(&mut st, Vec::new());
+        assert!(has(&texts, &tr("print.booklet_up_16")));
+        let o = crate::export::print_layout(&app, &st, app.doc());
+        assert_eq!(o.booklet.up, 16);
         assert_eq!(crate::imposition::booklet_info(6, &o.booklet).sheets, 1);
     }
 

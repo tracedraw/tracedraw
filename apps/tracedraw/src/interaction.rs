@@ -2961,6 +2961,9 @@ impl App {
             // Alt adds to the frame as W does (#1337).
             self.drop_keys =
                 ctx.input(|i| (i.key_down(Key::W) || i.modifiers.alt, i.key_down(Key::K)));
+            // W itself (not Alt, which copies the fill onto an object):
+            // any closed object takes the selection as a new clip frame.
+            self.drop_new_frame = ctx.input(|i| i.key_down(Key::W));
             // Alt copies the fill onto the object the selection is let go
             // over, Alt+Shift its outline (discussion #2066).
             let m = ctx.input(|i| i.modifiers);
@@ -4531,6 +4534,7 @@ impl App {
                 // shown as the target and offered K, yet a plain release
                 // left the objects over it, #2703).
                 let (w, k) = self.drop_keys;
+                self.drop_new_frame = false;
                 if let Some(frame) = self.drop_frame.take() {
                     let moved = self.selection.clone();
                     let w = w || self.clip_frame_is_empty(frame);

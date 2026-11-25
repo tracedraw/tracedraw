@@ -65,7 +65,7 @@ pub use document::{
     DefaultKind, DefaultProperties, Document, DocumentFont, DocumentProfile, EllipseArc,
     FollowBlack, FontVariation, Layer, LeadingUnit, LineStyle, MasterScope, Metadata, Numbering,
     ObjectDefaults, ObjectStyle, Page, ParagraphStyle, PathTextOrientation, PathTextVertical,
-    QrCode, QrKind, Shadow, Shape, ShapeKind, StyleParts, Symbol, TabKind, TabStop, Table,
+    QrCode, QrKind, QrSymbol, Shadow, Shape, ShapeKind, StyleParts, StyleText, Symbol, TabKind, TabStop, Table,
     TableCell, TextAlign, TextDirection, Kashida, TextOnPath, CurvePreset, TextPosition, TextSpan, TimeTracker,
     TrackedTask, VerticalAlign, VerticalColumns, DEFAULT_TAB_STEP,
 };

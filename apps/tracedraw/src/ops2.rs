@@ -2027,7 +2027,7 @@ impl App {
             .iter()
             .flat_map(|l| &l.shapes)
             .any(|s| matches!(s.kind, ShapeKind::ClipFrame { .. }));
-        if !frames {
+        if !frames && !self.drop_new_frame {
             return None;
         }
         let doc = self.doc();
@@ -2039,11 +2039,13 @@ impl App {
         };
         let hit = self.hit_test_where(p, moved)?;
         let top = doc.top_level_of(hit)?;
-        matches!(
-            doc.find_shape(top).map(|s| &s.kind),
-            Some(ShapeKind::ClipFrame { .. })
-        )
-        .then_some(top)
+        let s = doc.find_shape(top)?;
+        // With W held, any closed object on the page: it becomes a clip
+        // frame holding the selection, as a drop on its row in the
+        // Objects panel makes it (#4227).
+        let new_frame =
+            self.drop_new_frame && !s.locked && crate::draw_inside::is_closed_shape(s);
+        (matches!(s.kind, ShapeKind::ClipFrame { .. }) || new_frame).then_some(top)
     }
 
     /// `id` is a clip frame that holds nothing.

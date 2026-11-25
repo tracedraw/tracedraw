@@ -282,6 +282,27 @@ fn document_file(
     )
 }
 
+/// The Export dialog's PDF picture compression (#4265): JPEG at the
+/// chosen quality when Compress is ticked.
+fn pdf_images(ext: &str, st: &ExportState) -> tracedraw_io::pdf::PdfImages {
+    let mut images = tracedraw_io::pdf::PdfImages::default();
+    if ext == "pdf" && st.pdf_compress {
+        images.jpeg = true;
+        images.jpeg_quality = st.pdf_quality.clamp(1, 100);
+    }
+    images
+}
+
+/// The Export dialog's PDF target file size in bytes (#4265).
+fn pdf_target(ext: &str, st: &ExportState) -> Option<usize> {
+    let b = crate::ui::publish_pdf::BitmapPrefs {
+        target_size: ext == "pdf" && st.pdf_target,
+        target_mb: st.pdf_target_mb,
+        ..Default::default()
+    };
+    b.target_bytes()
+}
+
 /// [`document_file`] with what it takes from the program given: the
 /// title, and the output profile and condition of a PDF/X file.
 fn document_file_with(
@@ -309,9 +330,13 @@ fn document_file_with(
                     as_curves: ext == "pdf" && st.text_as_curves,
                     ..Default::default()
                 },
+                images: pdf_images(ext, st),
                 ..Default::default()
             };
-            tracedraw_io::pdf::document_to_pdf_with(doc, &opts)
+            match pdf_target(ext, st) {
+                Some(target) => crate::ui::publish_pdf::pdf_within(doc, &opts, target).0,
+                None => tracedraw_io::pdf::document_to_pdf_with(doc, &opts),
+            }
         }
         // Every exported page; a print file is the same PostScript.
         "ps" | "prn" => tracedraw_io::eps::document_to_ps(doc).into_bytes(),

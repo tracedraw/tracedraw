@@ -28,7 +28,9 @@ impl App {
             || self.pending_blend_path
             || self.pending_text_path
             || self.pending_rotate_lines.is_some()
-            || self.pending_palette_sample;
+            || self.pending_palette_sample
+            || self.pending_replace.is_some()
+            || self.pending_copy_clip;
         if !waiting {
             return false;
         }
@@ -45,6 +47,8 @@ impl App {
             self.pending_text_path = false;
             self.pending_rotate_lines = None;
             self.pending_palette_sample = false;
+            self.pending_replace = None;
+            self.pending_copy_clip = false;
             self.status = tr("status.cancelled");
             return true;
         }
@@ -84,6 +88,27 @@ impl App {
             // The target is found under the selected objects too.
             let target = self.hit_test_where(p, |id| self.selection.contains(&id));
             self.shaping_onto(target);
+            return true;
+        }
+        if let Some(clones) = self.pending_replace.take() {
+            // Replace with Object / Clones (#4220): Shift fits each
+            // replacement to the object's size.
+            let fit = response.ctx.input(|i| i.modifiers.shift);
+            match self.hit_test(p) {
+                Some(t) => self.replace_selection_with(t, clones, fit),
+                None => self.status = tr("status.cancelled"),
+            }
+            return true;
+        }
+        if self.pending_copy_clip {
+            // Copy Contents From (D#4221): the clip frame clicked.
+            self.pending_copy_clip = false;
+            match self.hit_test(p) {
+                Some(t) => {
+                    self.copy_clip_contents_from(t);
+                }
+                None => self.status = tr("status.cancelled"),
+            }
             return true;
         }
         let target = self.hit_test(p);
@@ -469,6 +494,111 @@ impl App {
         }
     }
 
+    /// The Area Fill bar's fill and outline on a new area: the default
+    /// fill (a colour when the default is none, so the area shows), its
+    /// own colour, or none; the default outline, its own, or none.
+    fn area_fill_style(&self, s: &mut Shape) {
+        s.fill = match self.area_fill_mode {
+            1 => Fill::Solid(self.area_fill_color),
+            2 => Fill::None,
+            _ => match self.default_fill() {
+                Fill::None => Fill::Solid(self.area_fill_color),
+                other => other,
+            },
+        };
+        s.stroke = match self.area_outline_mode {
+            1 => Some(Stroke::new(
+                self.area_outline_color,
+                self.area_outline_width.max(0.0),
+            )),
+            2 => None,
+            _ => self.default_stroke(),
+        };
+    }
+
+    /// Area Fill > Fill All Areas (#4200): every area the outlines of the
+    /// selected objects (all that show on the page when nothing is
+    /// selected) close off becomes a filled object, on a new layer of
+    /// their own over the others, in one undo step. The number made.
+    pub fn area_fill_all(&mut self) -> usize {
+        let shapes: Vec<Shape> = if self.selection.is_empty() {
+            self.doc()
+                .layers_for_page(self.page)
+                .unwrap_or_default()
+                .iter()
+                .filter(|l| l.visible)
+                .flat_map(|l| l.shapes.clone())
+                .collect()
+        } else {
+            self.selection
+                .iter()
+                .filter_map(|id| self.doc().shape_on_page(*id))
+                .collect()
+        };
+        let edges = self.area_fill_outline_edges;
+        let (mut parts, mut bands) = (Vec::new(), Vec::new());
+        for s in &shapes {
+            area_fill_collect(s, Affine::IDENTITY, edges, &mut parts, &mut bands);
+        }
+        use tracedraw_core::shaping::{self, FillRule, Op};
+        let mut areas = shaping::all_enclosed_visible_areas(&parts, 5000);
+        // With outline edges, the inside of an outline's band is no area.
+        if !bands.is_empty() {
+            areas.retain(|a| {
+                let whole = shaping::filled_area(a, FillRule::NonZero);
+                let covered: f64 = bands
+                    .iter()
+                    .map(|b| {
+                        shaping::filled_area(&shaping::overlay(a, b, Op::Intersect), FillRule::NonZero)
+                    })
+                    .sum();
+                covered < whole * 0.5
+            });
+        }
+        if areas.is_empty() {
+            self.status = tr("status.area_fill_none");
+            return 0;
+        }
+        let page = self.page;
+        let mark = self.engine.begin_group();
+        let made = (|| {
+            self.engine
+                .run(&Command::AddLayer {
+                    page,
+                    name: tr("area_fill.layer_name"),
+                })
+                .ok()?;
+            let layer = self.doc().page(page).ok()?.layers.last()?.id;
+            let mut cmds = Vec::with_capacity(areas.len());
+            let mut ids = Vec::with_capacity(areas.len());
+            for path in &areas {
+                let id = self.engine.new_shape_id();
+                let mut s = Shape::new(
+                    id,
+                    ShapeKind::Path {
+                        path: path.clone(),
+                        closed: true,
+                    },
+                );
+                self.area_fill_style(&mut s);
+                s.name = Some("Area Fill".into());
+                cmds.push(Command::AddShape { layer, shape: s });
+                ids.push(id);
+            }
+            self.engine.run_batch("Fill All Areas", &cmds).ok()?;
+            Some(ids)
+        })();
+        self.engine.end_group(mark, "Fill All Areas");
+        match made {
+            Some(ids) => {
+                let n = ids.len();
+                self.select(ids);
+                n
+            }
+            None => 0,
+        }
+    }
+
     /// Area Fill: find the enclosed area under the click (the outlines
     /// that show count as walls: a line hidden under an object's opaque
     /// fill does not cut the area, #1281) and create a filled object from
@@ -486,62 +616,10 @@ impl App {
             .filter(|l| l.visible)
             .flat_map(|l| l.shapes.clone())
             .collect();
-        // Bottom to top: each outline and whether its fill hides what
-        // lies beneath it.
-        fn collect(
-            s: &Shape,
-            parent: Affine,
-            edges: bool,
-            out: &mut Vec<(BezPath, bool)>,
-            bands: &mut Vec<BezPath>,
-        ) {
-            let t = parent * s.transform;
-            if !s.effects.is_empty() {
-                // What the object draws, in drawing order: the objects its
-                // effects add below it, its warped outline, those above.
-                let mut on_page = s.clone();
-                on_page.transform_by(parent);
-                let ev = tracedraw_core::live::evaluate(&on_page);
-                let see_through = s
-                    .effects
-                    .iter()
-                    .any(|e| matches!(e, Effect::Transparency { .. } | Effect::Lens(_)));
-                for part in ev.below {
-                    let covers = hides_below(&part);
-                    out.push((part.page_path(), covers));
-                }
-                let covers = !see_through && hides_below(&ev.main);
-                out.push((ev.main.page_path(), covers));
-                for part in ev.above {
-                    let covers = hides_below(&part);
-                    out.push((part.page_path(), covers));
-                }
-                return;
-            }
-            match &s.kind {
-                ShapeKind::Group { children } => children
-                    .iter()
-                    .for_each(|c| collect(c, t, edges, out, bands)),
-                _ => {
-                    out.push((t * s.local_path(), hides_below(s)));
-                    // The band the outline draws, as an opaque object: its
-                    // edges are the walls and the middle line under it is
-                    // cut away.
-                    if edges && s.stroke.as_ref().is_some_and(|st| st.width > 0.0) {
-                        let mut on_page = s.clone();
-                        on_page.transform_by(parent);
-                        if let Some(band) = crate::tools2::outline_object_path(&on_page) {
-                            bands.push(band.clone());
-                            out.push((band, true));
-                        }
-                    }
-                }
-            }
-        }
         let edges = self.area_fill_outline_edges;
         let (mut parts, mut bands) = (Vec::new(), Vec::new());
         for s in &shapes {
-            collect(s, Affine::IDENTITY, edges, &mut parts, &mut bands);
+            area_fill_collect(s, Affine::IDENTITY, edges, &mut parts, &mut bands);
         }
         // A click on a drawn outline fills nothing, as on a thin one.
         if edges && bands.iter().any(|b| kurbo::Shape::winding(b, p) != 0) {
@@ -593,25 +671,7 @@ impl App {
         };
         let id = self.engine.new_shape_id();
         let mut s = Shape::new(id, ShapeKind::Path { path, closed: true });
-        // The bar's choices: the default fill (a colour when the default
-        // is none, so the area shows), its own colour, or none; the
-        // default outline, its own, or none.
-        s.fill = match self.area_fill_mode {
-            1 => Fill::Solid(self.area_fill_color),
-            2 => Fill::None,
-            _ => match self.default_fill() {
-                Fill::None => Fill::Solid(self.area_fill_color),
-                other => other,
-            },
-        };
-        s.stroke = match self.area_outline_mode {
-            1 => Some(Stroke::new(
-                self.area_outline_color,
-                self.area_outline_width.max(0.0),
-            )),
-            2 => None,
-            _ => self.default_stroke(),
-        };
+        self.area_fill_style(&mut s);
         s.name = Some("Area Fill".into());
         self.run(Command::AddShape { layer, shape: s });
         self.select(vec![id]);
@@ -1314,6 +1374,61 @@ pub fn free_transform_step(
         }
     }
 }
+
+/// Area Fill's walls, bottom to top: each outline of `s` (under
+/// `parent`) and whether its fill hides what lies beneath it; with
+/// `edges`, each outline's band too, kept in `bands`.
+pub(crate) fn area_fill_collect(
+    s: &Shape,
+    parent: Affine,
+    edges: bool,
+    out: &mut Vec<(BezPath, bool)>,
+    bands: &mut Vec<BezPath>,
+) {
+    let t = parent * s.transform;
+    if !s.effects.is_empty() {
+        // What the object draws, in drawing order: the objects its
+        // effects add below it, its warped outline, those above.
+        let mut on_page = s.clone();
+        on_page.transform_by(parent);
+        let ev = tracedraw_core::live::evaluate(&on_page);
+        let see_through = s
+            .effects
+            .iter()
+            .any(|e| matches!(e, Effect::Transparency { .. } | Effect::Lens(_)));
+        for part in ev.below {
+            let covers = hides_below(&part);
+            out.push((part.page_path(), covers));
+        }
+        let covers = !see_through && hides_below(&ev.main);
+        out.push((ev.main.page_path(), covers));
+        for part in ev.above {
+            let covers = hides_below(&part);
+            out.push((part.page_path(), covers));
+        }
+        return;
+    }
+    match &s.kind {
+        ShapeKind::Group { children } => children
+            .iter()
+            .for_each(|c| area_fill_collect(c, t, edges, out, bands)),
+        _ => {
+            out.push((t * s.local_path(), hides_below(s)));
+            // The band the outline draws, as an opaque object: its
+            // edges are the walls and the middle line under it is
+            // cut away.
+            if edges && s.stroke.as_ref().is_some_and(|st| st.width > 0.0) {
+                let mut on_page = s.clone();
+                on_page.transform_by(parent);
+                if let Some(band) = crate::tools2::outline_object_path(&on_page) {
+                    bands.push(band.clone());
+                    out.push((band, true));
+                }
+            }
+        }
+    }
+}
+
 
 /// The object's fill hides what lies beneath it: an opaque fill at full
 /// opacity, with no transparency mask (Area Fill, #1281).

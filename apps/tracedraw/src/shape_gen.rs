@@ -377,6 +377,15 @@ pub struct ShapeGenSettings {
     pub cone_pieces: u32,
     /// How many times the wrapped strip goes round, 1 to 24.
     pub cone_repeat: u32,
+    /// The top and bottom are circumferences (a tape round the object),
+    /// not diameters (#4232).
+    pub cone_round: bool,
+    /// The height is measured along the side (the slant), not straight
+    /// up (#4232).
+    pub cone_along_side: bool,
+    /// Overlap of a wrapped decal, mm along the wider edge: each piece
+    /// runs on this far past its end, at its full height (#4232).
+    pub cone_overlap: f64,
 
     // Picked selection (Voronoi, stippling, halftone).
     /// Where Create puts the result: the middle of the selection picked,
@@ -655,6 +664,9 @@ impl Default for ShapeGenSettings {
             cone_bleed: 0.0,
             cone_pieces: 1,
             cone_repeat: 1,
+            cone_round: false,
+            cone_along_side: false,
+            cone_overlap: 0.0,
             source_center: None,
             boundary: None,
             tone: None,
@@ -912,6 +924,7 @@ impl ShapeGenSettings {
         s.cone_bleed = clampf(s.cone_bleed, 0.0, 100.0, 0.0);
         s.cone_pieces = s.cone_pieces.clamp(1, 8);
         s.cone_repeat = s.cone_repeat.clamp(1, 24);
+        s.cone_overlap = clampf(s.cone_overlap, 0.0, 500.0, 0.0);
         s.source_center = s
             .source_center
             .filter(|c| c[0].is_finite() && c[1].is_finite());
@@ -1962,10 +1975,22 @@ pub struct ConeRadii {
 
 pub fn cone_layout(s: &ShapeGenSettings) -> ConeLayout {
     let s = s.sanitized();
-    let (dt, db, hgt) = (s.cone_top, s.cone_bottom, s.cone_height);
-    let dr = (db - dt).abs() / 2.0;
-    let slant = (hgt * hgt + dr * dr).sqrt();
     let pi = std::f64::consts::PI;
+    // Measured round the object with a tape: the diameters from them.
+    let (dt, db) = if s.cone_round {
+        (s.cone_top / pi, s.cone_bottom / pi)
+    } else {
+        (s.cone_top, s.cone_bottom)
+    };
+    let hgt = s.cone_height;
+    let dr = (db - dt).abs() / 2.0;
+    // Measured along the side, the height is the slant itself (never
+    // shorter than the radii's difference, which would lie flat).
+    let slant = if s.cone_along_side {
+        hgt.max(dr + 1e-6)
+    } else {
+        (hgt * hgt + dr * dr).sqrt()
+    };
     let (ct, cb) = (pi * dt, pi * db);
     if (db - dt).abs() < 1e-6 {
         return ConeLayout {
@@ -2036,11 +2061,11 @@ fn cone_template(s: &ShapeGenSettings, out: &mut Generated) {
     let l = cone_layout(s);
     let pieces = l.pieces.max(1);
     for k in 0..pieces {
-        let outline = cone_piece_outline(&l, k, s.cone_tab, 0.0);
+        let outline = cone_piece_outline(&l, k, s.cone_tab, 0.0, s.cone_overlap);
         out.push(outline, true, Paint::Line);
         if s.cone_bleed > 0.0 {
             out.push(
-                cone_piece_outline(&l, k, 0.0, s.cone_bleed),
+                cone_piece_outline(&l, k, 0.0, s.cone_bleed, s.cone_overlap),
                 true,
                 Paint::Line,
             );
@@ -2061,13 +2086,19 @@ pub fn cone_origin_shift(s: &ShapeGenSettings) -> Vec2 {
     let mut g = Generated::default();
     for k in 0..l.pieces.max(1) {
         g.push(
-            cone_piece_outline(&l, k, s.sanitized().cone_tab, 0.0),
+            cone_piece_outline(&l, k, s.sanitized().cone_tab, 0.0, s.sanitized().cone_overlap),
             true,
             Paint::Line,
         );
         if s.sanitized().cone_bleed > 0.0 {
             g.push(
-                cone_piece_outline(&l, k, 0.0, s.sanitized().cone_bleed),
+                cone_piece_outline(
+                    &l,
+                    k,
+                    0.0,
+                    s.sanitized().cone_bleed,
+                    s.sanitized().cone_overlap,
+                ),
                 true,
                 Paint::Line,
             );
@@ -2077,8 +2108,10 @@ pub fn cone_origin_shift(s: &ShapeGenSettings) -> Vec2 {
 }
 
 /// One piece's outline: top edge, the right side with the glue tab, the
-/// bottom edge back and the left side; `bleed` grows it all round.
-fn cone_piece_outline(l: &ConeLayout, piece: u32, tab: f64, bleed: f64) -> BezPath {
+/// bottom edge back and the left side; `bleed` grows it all round and
+/// `overlap` runs the piece on past its right side, at full height, that
+/// far along its wider edge (#4232).
+fn cone_piece_outline(l: &ConeLayout, piece: u32, tab: f64, bleed: f64, overlap: f64) -> BezPath {
     let mut p = BezPath::new();
     let pieces = l.pieces.max(1) as f64;
     match l.radii {
@@ -2088,7 +2121,7 @@ fn cone_piece_outline(l: &ConeLayout, piece: u32, tab: f64, bleed: f64) -> BezPa
             let r = Rect::new(
                 a.x - bleed,
                 a.y - bleed,
-                a.x + w + bleed,
+                a.x + w + overlap + bleed,
                 a.y + l.slant + bleed,
             );
             p.move_to(Point::new(r.x0, r.y1));
@@ -2108,8 +2141,9 @@ fn cone_piece_outline(l: &ConeLayout, piece: u32, tab: f64, bleed: f64) -> BezPa
             let (r_in, r_out) = (rad.top.min(rad.bottom), rad.top.max(rad.bottom));
             let (r_in, r_out) = ((r_in - bleed).max(0.0), r_out + bleed);
             let grow = if r_out > 0.0 { bleed / r_out } else { 0.0 };
+            let more = if r_out > bleed { overlap / (r_out - bleed) } else { 0.0 };
             let a0 = -std::f64::consts::FRAC_PI_2 - sweep / 2.0 - grow;
-            let a1 = -std::f64::consts::FRAC_PI_2 + sweep / 2.0 + grow;
+            let a1 = -std::f64::consts::FRAC_PI_2 + sweep / 2.0 + grow + more;
             // Outer arc left to right.
             arc_into(&mut p, apex, r_out, a0, a1, true);
             // The right side, outer to inner, with the tab beside it.
@@ -2910,6 +2944,52 @@ mod tests {
             ..s.clone()
         });
         assert_eq!(g.items.len(), 1);
+    }
+
+    /// A tumbler decal (#4232): rims measured round with a tape, the
+    /// height along the side, and an overlap that runs the decal on past
+    /// its end at full height.
+    #[test]
+    fn cone_decal_from_tape_measures_with_an_overlap() {
+        let pi = std::f64::consts::PI;
+        let s = ShapeGenSettings {
+            cone_top: 80.0 * pi,
+            cone_bottom: 60.0 * pi,
+            cone_height: 101.0,
+            cone_round: true,
+            cone_along_side: true,
+            cone_tab: 0.0,
+            ..with(GenKind::ConeTemplate)
+        };
+        let l = cone_layout(&s);
+        assert!((l.slant - 101.0).abs() < 1e-9);
+        assert!((l.circumference_top - 80.0 * pi).abs() < 1e-6);
+        let plain = generate(&s).bounds().expect("bounds");
+        let wider = generate(&ShapeGenSettings {
+            cone_overlap: 10.0,
+            ..s.clone()
+        })
+        .bounds()
+        .expect("bounds");
+        assert!(wider.width() > plain.width() + 1.0, "{plain:?} {wider:?}");
+        // A cylinder's overlap adds its width exactly.
+        let c = ShapeGenSettings {
+            cone_top: 50.0,
+            cone_bottom: 50.0,
+            cone_height: 30.0,
+            cone_round: false,
+            cone_along_side: false,
+            ..s.clone()
+        };
+        let w0 = generate(&c).bounds().expect("b").width();
+        let w1 = generate(&ShapeGenSettings {
+            cone_overlap: 12.0,
+            ..c
+        })
+        .bounds()
+        .expect("b")
+        .width();
+        assert!((w1 - w0 - 12.0).abs() < 1e-6, "{w0} {w1}");
     }
 
     #[test]

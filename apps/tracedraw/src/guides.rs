@@ -89,6 +89,31 @@ impl GuidePreset {
     }
 }
 
+impl GuidePreset {
+    /// The lines of a Margins preset with the page edge each keeps its
+    /// distance from (#4268), in the order [`GuidePreset::lines`] gives
+    /// them; `None` for the other presets.
+    pub fn anchors(self) -> Option<[tracedraw_core::document::GuideAnchor; 4]> {
+        use tracedraw_core::document::{GuideAnchor, GuideEdge};
+        let GuidePreset::Margins {
+            top,
+            bottom,
+            left,
+            right,
+        } = self
+        else {
+            return None;
+        };
+        let a = |edge, distance| GuideAnchor { edge, distance };
+        Some([
+            a(GuideEdge::Top, top),
+            a(GuideEdge::Bottom, bottom),
+            a(GuideEdge::Left, left),
+            a(GuideEdge::Right, right),
+        ])
+    }
+}
+
 /// Where a Guides row's Move To sends its guidelines (#3578): to the
 /// guidelines every page shows, or to the own guidelines of the odd or
 /// the even pages (counted from 1).

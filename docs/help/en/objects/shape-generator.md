@@ -189,6 +189,12 @@ diameter is 0, a rectangle when both are the same) at real size, with a
 outline. [[shapegen.cone_pieces]] cuts it into several pieces, each with its
 own tab. The panel shows the slant height, the radii and the angle.
 
+For a decal measured on the object itself, tick Measured round to type the
+lengths round its top and bottom (a tape round a tumbler or a traffic cone)
+instead of the diameters, and Height along the side to type the height up
+its sloping side. Overlap runs the decal on past its end, at full height, so
+the two ends lap over each other when it is wrapped.
+
 To put a design on the object, draw it flat as a strip and select it, then
 click [[shapegen.wrap]]: the template is drawn and the strip is bent onto
 it, its width going round the object [[shapegen.cone_repeat]] times and its
