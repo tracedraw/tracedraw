@@ -1405,7 +1405,8 @@ impl App {
         let (copy_ev, cut_ev, paste_text) =
             ctx.input(|i| crate::interaction::clipboard_events(&i.events));
         let seen = &mut self.paste_seen;
-        let paste_bare = ctx.input(|i| crate::interaction::paste_without_text(&i.events, seen).is_some());
+        let paste_bare =
+            ctx.input(|i| crate::interaction::paste_without_text(&i.events, seen).is_some());
         if pressed(Key::C, cmd) || copy_ev {
             self.pixel_copy(false);
             return;

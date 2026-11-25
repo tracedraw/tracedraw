@@ -77,7 +77,7 @@ pub enum DropAction {
 }
 
 impl DropAction {
-    pub const ALL: [DropAction; 8] = [
+    pub const ALL: [DropAction; 9] = [
         DropAction::Move,
         DropAction::Copy,
         DropAction::CopyFill,
@@ -713,6 +713,7 @@ mod tests {
             screen: egui::Pos2::ZERO,
             offset: Vec2::new(55.0, 5.0),
             target: Some(b),
+            fit_text_at: None,
         };
         app.drop_action(menu, DropAction::CopyEffects);
         let stack = |app: &App, id| app.doc().find_shape(id).expect("shape").effect_stack();
@@ -901,6 +902,7 @@ mod context_menu_settings_tests {
             screen: egui::pos2(32.0, 32.0),
             offset: Vec2::new(20.0, 5.0),
             target: None,
+            fit_text_at: None,
         };
         app.drop_menu = Some(menu);
         crate::ui::menus::ROWS.with(|rows| rows.borrow_mut().clear());
@@ -973,6 +975,7 @@ mod hidden_root_popup_tests {
             screen: position,
             offset: Vec2::new(1.0, 2.0),
             target: None,
+            fit_text_at: None,
         });
         let definition = crate::ui::context_menus::CATALOG
             .iter()

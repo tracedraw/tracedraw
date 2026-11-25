@@ -2789,7 +2789,7 @@ impl DockerTab {
         DockerTab::PixelHistogram,
     ];
 
-    pub const ALL: [DockerTab; 49] = [
+    pub const ALL: [DockerTab; 50] = [
         DockerTab::Properties,
         DockerTab::Objects,
         DockerTab::Hints,
