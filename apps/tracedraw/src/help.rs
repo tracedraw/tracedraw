@@ -75,6 +75,8 @@ pub fn dialog_topic(d: &Dialog, options: OptionsPage) -> &'static str {
         Dialog::EditFill(_) => "color/fills#edit-fill",
         Dialog::TableCount(_) => "objects/tables",
         Dialog::OldCdrVersion { .. } => "get-started/open-and-save#save-as",
+        Dialog::NewRangeLayer(_) => "objects/objects-and-layers#range-pages",
+        Dialog::LayerProperties(st) if st.use_page_range => "objects/objects-and-layers#range-pages",
         Dialog::RenameLayer { .. }
         | Dialog::LayerProperties(_)
         | Dialog::RenameObject { .. }

@@ -2077,6 +2077,7 @@ pub struct App {
     /// Objects docker: the pages and the Master Page nodes shown closed.
     pub objects_closed_pages: std::collections::HashSet<tracedraw_core::PageId>,
     pub objects_master_closed: bool,
+    pub objects_ranges_closed: bool,
     /// Objects docker: the cached thumbnails of the objects.
     pub object_thumbs: crate::object_thumbs::ObjectThumbs,
     /// Symbols docker: the cached pictures of the symbols (#3249).
@@ -3752,6 +3753,7 @@ impl App {
             symbol_replace_source: None,
             symbol_rename: None,
             objects_master_closed: false,
+            objects_ranges_closed: false,
             picked_layer: None,
             selected_layers: Vec::new(),
             navigator_tex: None,
@@ -6615,6 +6617,28 @@ impl App {
     }
 
     pub fn run(&mut self, cmd: Command) {
+        let range_layer = match &cmd {
+            Command::SetLayerScope { layer, .. } => Some(*layer),
+            Command::SetLayerPageRange { layer, page_range }
+                if page_range.as_ref().is_none_or(|range| !range.is_empty()) =>
+            {
+                Some(*layer)
+            }
+            _ => None,
+        };
+        if let Some(layer) = range_layer {
+            if self
+                .doc()
+                .master
+                .iter()
+                .any(|master| master.id == layer && !master.desktop)
+            {
+                self.prepare_layer_range_change(layer);
+            }
+        }
+        if crate::page_names::changes_page_order(&cmd) {
+            self.prepare_shared_layer_editing();
+        }
         // The box a move, turn or resize starts from, for its Repeat.
         let before = match &cmd {
             Command::TransformShapes { shapes, .. } if *shapes == self.selection => {
@@ -6662,9 +6686,15 @@ impl App {
         // Default page names follow the pages' order (#2374).
         if crate::page_names::changes_page_order(&cmd) {
             self.renumber_default_pages();
+            self.sync_layer_ranges(None);
         }
         self.sync_effect_clones_for(&cmd);
         self.sync_object_clones();
+        if let Command::SetLayerScope { layer, .. } | Command::SetLayerPageRange { layer, .. } =
+            &cmd
+        {
+            self.sync_layer_range(*layer);
+        }
         if let (Command::TransformShapes { transform, .. }, Some(before)) = (&cmd, before) {
             self.note_repeatable(Repeatable::Transform {
                 transform: *transform,
@@ -6685,6 +6715,214 @@ impl App {
         self.repeat_refs.clear();
         if let Some(rec) = &mut self.recording {
             rec.push(cmd);
+        }
+    }
+
+    /// Clear editing state for a shared layer excluded from the current page.
+    pub(crate) fn sync_layer_range(&mut self, id: LayerId) {
+        self.sync_layer_ranges(Some(id));
+    }
+
+    /// Finish editor modes before moving their objects into a restricted layer.
+    pub(crate) fn prepare_shapes_for_range_move(&mut self, ids: &[ShapeId]) -> bool {
+        let moving = |id: ShapeId| {
+            ids.contains(&id) || self.doc().ancestors(id).iter().any(|id| ids.contains(id))
+        };
+        let clip = self
+            .clip_frame_edit
+            .as_ref()
+            .is_some_and(|(frame, _)| moving(*frame));
+        let text = self
+            .text_edit
+            .as_ref()
+            .is_some_and(|edit| moving(edit.shape));
+        let table = self
+            .table_edit
+            .as_ref()
+            .is_some_and(|edit| clip || moving(edit.shape));
+        let symmetry = self.symmetry_edit.is_some_and(|id| clip || moving(id));
+        let crop = self.crop_area.is_some() && (clip || self.selection.iter().copied().any(moving));
+        let curve = self.curve.is_some() && (clip || self.selection.iter().copied().any(moving));
+        let focused = (clip && !self.focus.is_empty()) || self.focus.iter().copied().any(moving);
+        if curve {
+            self.finish_curve();
+        }
+        if text || clip {
+            self.finish_text();
+        }
+        if clip {
+            self.finish_clip_frame_edit();
+        }
+        if table {
+            self.table_edit = None;
+            self.ime_preedit.clear();
+        }
+        if symmetry {
+            self.finish_symmetry_edit();
+        }
+        if focused {
+            self.exit_focus();
+        }
+        if crop {
+            self.crop_area = None;
+            self.crop_drag = None;
+        }
+        text || clip || curve || table || symmetry || crop || focused
+    }
+
+    pub(crate) fn prepare_layer_range_change(&mut self, id: LayerId) {
+        if self.curve.is_some() && self.active_layer() == Some(id) {
+            self.finish_curve();
+        }
+        if self.text_edit.is_none()
+            && self.clip_frame_edit.is_none()
+            && self.curve.is_none()
+            && self.table_edit.is_none()
+            && self.symmetry_edit.is_none()
+            && self.crop_area.is_none()
+        {
+            return;
+        }
+        let Ok(layer) = self.doc().layer(id) else {
+            return;
+        };
+        let ids: Vec<_> = layer.shapes.iter().map(|shape| shape.id).collect();
+        self.prepare_shapes_for_range_move(&ids);
+    }
+
+    /// Commit editor modes on range layers before leaving their applicable pages.
+    pub(crate) fn prepare_range_page_change(&mut self, index: usize) -> bool {
+        let layers: Vec<_> = self
+            .doc()
+            .master
+            .iter()
+            .filter(|layer| layer.page_range.is_some() && !layer.applies_to(index))
+            .map(|layer| layer.id)
+            .collect();
+        let restricted = !layers.is_empty();
+        for layer in layers {
+            self.prepare_layer_range_change(layer);
+        }
+        restricted
+    }
+
+    fn prepare_shared_layer_editing(&mut self) {
+        if self.curve.is_some()
+            && self
+                .active_layer()
+                .is_some_and(|id| self.doc().master.iter().any(|layer| layer.id == id))
+        {
+            self.finish_curve();
+        }
+        let text = self.text_edit.as_ref().map(|edit| edit.shape);
+        let clip = self.clip_frame_edit.as_ref().map(|(frame, _)| *frame);
+        let table = self.table_edit.as_ref().map(|edit| edit.shape);
+        let mut layers: Vec<_> = text
+            .into_iter()
+            .chain(clip)
+            .chain(table)
+            .chain(self.symmetry_edit)
+            .chain(
+                self.selection
+                    .iter()
+                    .copied()
+                    .filter(|_| self.curve.is_some() || self.crop_area.is_some()),
+            )
+            .filter_map(|id| self.doc().top_level_of(id))
+            .filter_map(|id| self.doc().locate(id).ok().map(|(layer, _)| layer))
+            .filter(|id| self.doc().master.iter().any(|layer| layer.id == *id))
+            .collect();
+        layers.dedup();
+        for id in layers {
+            self.prepare_layer_range_change(id);
+        }
+    }
+
+    pub(crate) fn sync_layer_ranges(&mut self, only: Option<LayerId>) {
+        fn collect(shape: &Shape, out: &mut std::collections::HashSet<ShapeId>) {
+            out.insert(shape.id);
+            match &shape.kind {
+                ShapeKind::Group { children } => {
+                    for child in children {
+                        collect(child, out);
+                    }
+                }
+                ShapeKind::ClipFrame { frame, contents } => {
+                    collect(frame, out);
+                    for child in contents {
+                        collect(child, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+        if self.selection.is_empty()
+            && self.picked_layer.is_none()
+            && self.text_edit.is_none()
+            && self.table_edit.is_none()
+            && self.symmetry_edit.is_none()
+            && self.focus.is_empty()
+        {
+            return;
+        }
+        let mut layers = std::collections::HashSet::new();
+        let mut shapes = std::collections::HashSet::new();
+        let index = self.page_index();
+        for layer in &self.doc().master {
+            if only.is_none_or(|id| id == layer.id) && !layer.applies_to(index) {
+                layers.insert(layer.id);
+                for shape in &layer.shapes {
+                    collect(shape, &mut shapes);
+                }
+            }
+        }
+        let picked = self
+            .picked_layer
+            .is_some_and(|id| layers.contains(&id) || self.doc().layer(id).is_err());
+        let text = self
+            .text_edit
+            .as_ref()
+            .is_some_and(|edit| shapes.contains(&edit.shape));
+        let table = self
+            .table_edit
+            .as_ref()
+            .is_some_and(|edit| shapes.contains(&edit.shape));
+        let symmetry = self.symmetry_edit.is_some_and(|id| shapes.contains(&id));
+        let focused = self.focus.iter().any(|id| shapes.contains(id));
+        if symmetry {
+            self.finish_symmetry_edit();
+        }
+        let selection = self
+            .selection
+            .iter()
+            .copied()
+            .filter(|id| !shapes.contains(id))
+            .collect::<Vec<_>>();
+        let changed = selection.len() != self.selection.len();
+        if !(picked || text || table || symmetry || focused || changed) {
+            return;
+        }
+        if changed {
+            self.select(selection);
+        }
+        if picked {
+            self.picked_layer = None;
+        }
+        if text {
+            self.text_edit = None;
+            self.ime_preedit.clear();
+        }
+        if table {
+            self.table_edit = None;
+            self.ime_preedit.clear();
+        }
+        self.crop_area = None;
+        self.crop_drag = None;
+        if focused {
+            self.exit_focus();
+        }
+        if only.is_some() {
+            self.status = crate::i18n::tr("docker.range_no_current_page");
         }
     }
 
@@ -7397,11 +7635,22 @@ impl App {
     /// [`Self::pen_curve_steps`]): a curve drawn with the Pen or Bezier
     /// tool goes on being drawn with it, from where it stood then.
     fn resume_pen_step(&mut self, step: Option<u64>, undone: bool) {
+        if !self.pen_step_shown_on_current_page(step) {
+            return;
+        }
         let key = step.map(|s| (self.engine.instance(), s));
         if let Some(&ps) = key.and_then(|k| self.pen_curve_steps.get(&k)) {
             let to = if undone { ps.undo_to } else { ps.redo_to };
             self.resume_curve(ps.shape, ps.tool, to);
         }
+    }
+
+    fn pen_step_shown_on_current_page(&self, step: Option<u64>) -> bool {
+        step.and_then(|step| self.pen_curve_steps.get(&(self.engine.instance(), step)))
+            .and_then(|step| self.doc().top_level_of(step.shape))
+            .and_then(|id| self.doc().locate(id).ok())
+            .and_then(|(id, _)| self.doc().master.iter().find(|layer| layer.id == id))
+            .is_none_or(|layer| layer.applies_to(self.page_index()))
     }
 
     /// The curve `id`, just made with the outline `line` from the B-spline
@@ -8913,6 +9162,9 @@ impl App {
             return;
         }
         let step = self.engine.last_step_id();
+        // The creation step may remove the curve, so check its source layer
+        // before swapping the document rather than looking it up afterwards.
+        let resume_pen = self.pen_step_shown_on_current_page(step);
         let at = self.page_index_now();
         let undone = match self.engine.undo() {
             Ok(l) => {
@@ -8934,9 +9186,10 @@ impl App {
             if self.curve.as_ref().is_some_and(|c| c.resumed) {
                 self.curve = None;
             }
-            if self.curve.is_none() {
+            if self.curve.is_none() && resume_pen {
                 self.resume_pen_step(step, true);
             }
+            self.sync_layer_ranges(None);
         }
     }
 
@@ -8953,6 +9206,9 @@ impl App {
         self.curve_steps.clear();
         if self.redo_selection_step() {
             return;
+        }
+        if self.engine.redo_label().is_some() {
+            self.prepare_shared_layer_editing();
         }
         let at = self.page_index_now();
         let redone = match self.engine.redo() {
@@ -8975,6 +9231,7 @@ impl App {
             if self.curve.is_none() {
                 self.resume_pen_step(self.engine.last_step_id(), false);
             }
+            self.sync_layer_ranges(None);
         }
     }
 
@@ -12153,12 +12410,16 @@ impl App {
         // fitted to the window each time (#3434), and each page came
         // back at the zoom it was left at, so the zoom kept changing
         // from page to page (#4241).
+        let restricted = new != self.page && self.prepare_range_page_change(idx);
         if new != self.page {
             self.page_views.insert(self.page, self.view);
         }
         self.page = new;
         self.selection.clear();
         self.selected_layers.clear();
+        if restricted {
+            self.sync_layer_ranges(None);
+        }
         match self.page_views.get(&new).copied() {
             Some(v) if v.zoom == self.view.zoom => self.view = v,
             Some(v) => {

@@ -1026,8 +1026,13 @@ impl HostInner {
                     "svg" => tracedraw_io::svg::page_to_svg(&self.doc, idx).into_bytes(),
                     "pdf" if a.get("current_page").and_then(|v| v.as_bool()) == Some(true) => {
                         // PDFSettings.PublishRange = pdfCurrentPage.
-                        let mut one = self.doc.clone();
-                        one.pages.retain(|pg| pg.id == page);
+                        let one = if self.doc.master.iter().any(|l| l.page_range.is_some()) {
+                            self.doc.with_master_layers_on_pages(&[idx])
+                        } else {
+                            let mut one = self.doc.clone();
+                            one.pages.retain(|pg| pg.id == page);
+                            one
+                        };
                         tracedraw_io::pdf::document_to_pdf(&one)
                     }
                     "pdf" => tracedraw_io::pdf::document_to_pdf(&self.doc),

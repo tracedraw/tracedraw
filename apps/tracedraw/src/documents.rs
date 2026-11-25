@@ -762,10 +762,14 @@ impl App {
     pub fn duplicate_page_to_new_document(&mut self) {
         let page = self.page;
         let mut doc = self.doc().clone();
-        if !doc.pages.iter().any(|p| p.id == page) {
+        let Some(index) = doc.pages.iter().position(|p| p.id == page) else {
             return;
+        };
+        if doc.master.iter().any(|l| l.page_range.is_some()) {
+            doc = doc.with_master_layers_on_pages(&[index]);
+        } else {
+            doc.pages.retain(|p| p.id == page);
         }
-        doc.pages.retain(|p| p.id == page);
         doc.comments.retain(|c| c.page == page);
         doc.page_guides_hidden.retain(|p| *p == page);
         doc.selection_groups.clear();

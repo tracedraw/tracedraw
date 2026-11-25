@@ -436,7 +436,7 @@ impl App {
         let master = self
             .active_layer()
             .and_then(|l| self.doc().master.iter().find(|m| m.id == l))
-            .map(|m| (m.id, m.scope));
+            .map(|m| m.id);
         // All, odd or even pages with no master layer active: a master
         // layer of its own showing on those pages, in front, holding one
         // field that shows each page's number, as one undo step (#1709).
@@ -487,18 +487,21 @@ impl App {
             return;
         }
         let mut cmds = Vec::new();
-        if let Some((layer, scope)) = master {
+        if let Some(layer) = master {
+            let Ok(master_layer) = self.doc().layer(layer) else {
+                return;
+            };
             // The field lines up as on the page in view, or on the first
             // page the layer shows on when that is not one of them.
             let i = pages
                 .iter()
                 .position(|(_, p)| *p == active)
-                .filter(|i| scope.applies(*i) && self.page_numbers.field().numbers_in(*i, count))
+                .filter(|i| master_layer.applies_to(*i) && self.page_numbers.field().numbers_in(*i, count))
                 .or_else(|| {
                     let first = self.page_numbers.first_page.max(1) - 1;
                     (first..pages.len())
                         .chain(0..first)
-                        .find(|i| scope.applies(*i))
+                        .find(|i| master_layer.applies_to(*i))
                 })
                 .unwrap_or(0);
             let size = pages
@@ -6987,6 +6990,7 @@ fn scale_base(s: &tracedraw_core::document::Shape) -> Option<(f64, f64)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tools::Tool;
 
     /// #3622, #3621: uniform transparency on and off, and the document
     /// palette's eyedropper, run as menu commands (so a shortcut can run
@@ -7802,6 +7806,359 @@ mod tests {
         assert_eq!(
             back.master[0].shapes[0].page_number,
             Some(app.page_numbers.field())
+        );
+    }
+
+    #[test]
+    fn a_page_number_on_a_range_layer_uses_only_its_page_positions() {
+        let mut app = crate::ui::objects_docker::tests::without_desktop();
+        for _ in 0..3 {
+            app.add_page();
+        }
+        app.goto_page(1);
+        app.run(Command::AddRangeLayer {
+            name: "Chapter footer".into(),
+            page_range: tracedraw_core::PageRanges::parse("2-3").expect("range"),
+        });
+        let layer = app.doc().master.last().expect("range layer").id;
+        app.picked_layer = Some(layer);
+        app.insert_page_number(PageNumberWhere::Active);
+        assert_eq!(app.doc().layer(layer).expect("layer").shapes.len(), 1);
+        let shown: Vec<Option<String>> = app
+            .doc()
+            .pages
+            .iter()
+            .map(|page| {
+                app.doc()
+                    .layers_drawn_for_page(page.id)
+                    .expect("drawn layers")
+                    .iter()
+                    .flat_map(|layer| &layer.shapes)
+                    .find_map(|shape| match &shape.kind {
+                        ShapeKind::Text { spans, .. } => {
+                            Some(tracedraw_core::document::spans_text(spans))
+                        }
+                        _ => None,
+                    })
+            })
+            .collect();
+        assert_eq!(shown, [None, Some("2".into()), Some("3".into()), None]);
+    }
+
+    fn app_with_first_page_range() -> (App, tracedraw_core::LayerId) {
+        let mut app = crate::ui::objects_docker::tests::without_desktop();
+        app.add_page();
+        app.goto_page(0);
+        app.run(Command::AddRangeLayer {
+            name: "Chapter header".into(),
+            page_range: tracedraw_core::PageRanges::parse("1").expect("range"),
+        });
+        let layer = app.doc().master.last().expect("range layer").id;
+        app.picked_layer = Some(layer);
+        (app, layer)
+    }
+
+    #[test]
+    fn changing_a_range_command_clears_editing_state_on_an_excluded_page() {
+        let (mut app, layer) = app_with_first_page_range();
+        let shape = app
+            .new_shape(ShapeKind::Rect {
+                rect: kurbo::Rect::new(5.0, 5.0, 20.0, 10.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("range object");
+        app.select(vec![shape]);
+        app.run(Command::SetLayerPageRange {
+            layer,
+            page_range: tracedraw_core::PageRanges::parse("2"),
+        });
+        assert!(app.selection.is_empty());
+        assert_ne!(app.picked_layer, Some(layer));
+        assert!(app.doc().find_shape(shape).is_some());
+        assert!(!app.doc().layer(layer).expect("layer").applies_to(0));
+        app.undo();
+        assert!(app
+            .doc()
+            .layer(layer)
+            .expect("restored layer")
+            .applies_to(0));
+        app.picked_layer = Some(layer);
+        app.focus_on(shape);
+        app.select(vec![shape]);
+        app.redo();
+        assert!(app.selection.is_empty());
+        assert!(app.focus.is_empty());
+        assert_ne!(app.picked_layer, Some(layer));
+        app.undo();
+        app.picked_layer = Some(layer);
+        app.select(vec![shape]);
+        app.run(Command::InsertPage {
+            at: 0,
+            name: None,
+            size: app.page_size(),
+            layer: None,
+            shapes: Vec::new(),
+        });
+        assert_eq!(app.page_index(), 1);
+        assert!(app.selection.is_empty());
+        assert_ne!(app.picked_layer, Some(layer));
+        assert!(app.doc().find_shape(shape).is_some());
+    }
+
+    #[test]
+    fn a_hidden_range_header_finishes_text_editing_and_composition() {
+        let (mut app, layer) = app_with_first_page_range();
+        let shape = app.page_number_text(0, app.page_size());
+        let text = shape.id;
+        app.run(Command::AddShape { layer, shape });
+        app.begin_text_edit(text);
+        assert!(app.text_edit.is_some());
+        app.ime_preedit = "pending composition".into();
+        app.run(Command::SetLayerPageRange {
+            layer,
+            page_range: tracedraw_core::PageRanges::parse("2"),
+        });
+        assert!(app.text_edit.is_none());
+        assert!(app.ime_preedit.is_empty());
+        assert!(app.doc().find_shape(text).is_some());
+    }
+
+    #[test]
+    fn range_page_navigation_finishes_hidden_text_editing() {
+        for multipage in [false, true] {
+            let (mut app, layer) = app_with_first_page_range();
+            app.start_text(Point::new(20.0, 20.0), None);
+            app.insert_text("Header");
+            let text = app.text_edit.as_ref().expect("header editor").shape;
+            app.ime_preedit = "pending composition".into();
+            if multipage {
+                app.multipage = true;
+                app.multipage_activate(app.doc().pages[1].id);
+            } else {
+                app.goto_page(1);
+            }
+            assert_eq!(app.page_index(), 1);
+            assert!(app.text_edit.is_none(), "hidden header editor, {multipage}");
+            assert!(app.ime_preedit.is_empty());
+            assert_ne!(app.picked_layer, Some(layer));
+            let header = app.doc().find_shape(text).expect("saved header").clone();
+            app.insert_text("Hidden edit");
+            assert_eq!(app.doc().find_shape(text), Some(&header));
+            app.start_text(Point::new(30.0, 30.0), None);
+            app.insert_text("Body");
+            let body = app.text_edit.as_ref().expect("body editor").shape;
+            assert_eq!(
+                app.doc().locate(body).expect("body layer").0,
+                app.doc().pages[1].layers[0].id
+            );
+        }
+    }
+
+    #[test]
+    fn range_page_navigation_finishes_curves_and_cancels_crops() {
+        for multipage in [false, true] {
+            let (mut app, layer) = app_with_first_page_range();
+            app.tool = Tool::Bezier;
+            app.curve = Some(crate::app::CurveInProgress {
+                nodes: vec![
+                    (Point::new(5.0, 10.0), None),
+                    (Point::new(30.0, 10.0), None),
+                ],
+                smooth: true,
+                ..Default::default()
+            });
+            app.multipage = multipage;
+            app.goto_page(1);
+            assert!(app.curve.is_none(), "hidden curve, {multipage}");
+            assert_eq!(app.doc().layer(layer).expect("range").shapes.len(), 1);
+            assert!(app
+                .doc()
+                .pages
+                .iter()
+                .all(|page| { page.layers.iter().all(|layer| layer.shapes.is_empty()) }));
+            app.goto_page(0);
+            app.picked_layer = Some(layer);
+            let shape = app.doc().layer(layer).expect("range").shapes[0].clone();
+            app.select(vec![shape.id]);
+            app.crop_area = Some(Rect::new(0.0, 0.0, 10.0, 10.0));
+            app.goto_page(1);
+            assert!(app.crop_area.is_none(), "hidden crop, {multipage}");
+            assert!(app.crop_drag.is_none());
+            assert_eq!(app.doc().find_shape(shape.id), Some(&shape));
+        }
+    }
+
+    #[test]
+    fn range_page_navigation_keeps_editing_on_an_applicable_page() {
+        let (mut app, layer) = app_with_first_page_range();
+        app.run(Command::SetLayerPageRange {
+            layer,
+            page_range: tracedraw_core::PageRanges::parse("1-2"),
+        });
+        app.start_text(Point::new(20.0, 20.0), None);
+        app.insert_text("Shared header");
+        let text = app.text_edit.as_ref().expect("shared editor").shape;
+        app.goto_page(usize::MAX);
+        assert_eq!(app.page_index(), 0);
+        assert_eq!(app.text_edit.as_ref().expect("editor").shape, text);
+        app.goto_page(1);
+        assert_eq!(app.text_edit.as_ref().expect("editor").shape, text);
+    }
+
+    #[test]
+    fn a_range_change_finishes_a_pending_curve_on_its_original_layer() {
+        let (mut app, layer) = app_with_first_page_range();
+        app.tool = Tool::Bezier;
+        app.curve = Some(crate::app::CurveInProgress {
+            nodes: vec![
+                (Point::new(5.0, 10.0), None),
+                (Point::new(30.0, 10.0), None),
+            ],
+            smooth: true,
+            ..Default::default()
+        });
+        app.run(Command::SetLayerPageRange {
+            layer,
+            page_range: tracedraw_core::PageRanges::parse("2"),
+        });
+        assert!(app.curve.is_none());
+        assert_eq!(app.doc().layer(layer).expect("range layer").shapes.len(), 1);
+        assert!(app
+            .doc()
+            .pages
+            .iter()
+            .all(|page| page.layers.iter().all(|l| l.shapes.is_empty())));
+        app.undo();
+        assert!(app
+            .doc()
+            .layer(layer)
+            .expect("restored range")
+            .applies_to(0));
+        assert_eq!(app.doc().layer(layer).expect("saved curve").shapes.len(), 1);
+    }
+
+    #[test]
+    fn a_hidden_range_table_stops_receiving_cell_input() {
+        let (mut app, layer) = app_with_first_page_range();
+        let table = tracedraw_core::Table::new(Rect::new(10.0, 10.0, 100.0, 40.0), 2, 2, None);
+        let id = app
+            .new_shape(ShapeKind::Table(table))
+            .expect("header table");
+        app.select(vec![id]);
+        app.table_edit = Some(crate::table::TableEdit::new(id, vec![(0, 0)], 0));
+        app.tool = Tool::Table;
+        app.cell_insert("Kept");
+        let before = app.doc().find_shape(id).expect("table").kind.clone();
+        app.run(Command::SetLayerPageRange {
+            layer,
+            page_range: tracedraw_core::PageRanges::parse("2"),
+        });
+        assert!(app.table_edit.is_none());
+        app.cell_insert("Leak");
+        assert_eq!(app.doc().find_shape(id).expect("kept table").kind, before);
+    }
+
+    #[test]
+    fn a_range_curve_history_stays_out_of_edit_mode_on_excluded_pages() {
+        let (mut app, layer) = app_with_first_page_range();
+        app.tool = Tool::Bezier;
+        app.curve = Some(crate::app::CurveInProgress {
+            smooth: true,
+            ..Default::default()
+        });
+        // Record the anchor steps the tool would record while drawing.
+        // Three undos should traverse the curve, not remove the test page.
+        for point in [
+            Point::new(5.0, 10.0),
+            Point::new(20.0, 10.0),
+            Point::new(30.0, 20.0),
+            Point::new(40.0, 15.0),
+        ] {
+            app.curve_step();
+            app.curve.as_mut().expect("curve").nodes.push((point, None));
+        }
+        let before = app.engine.history_labels().0.len();
+        app.finish_curve();
+        assert_eq!(app.engine.history_labels().0.len(), before + 3);
+        assert_eq!(app.doc().layer(layer).expect("curve layer").shapes.len(), 1);
+        app.goto_page(1);
+        let excluded_page = app.page;
+        for _ in 0..3 {
+            app.undo();
+            assert_eq!(app.page, excluded_page);
+            assert!(app.curve.is_none());
+            assert!(app.selection.is_empty());
+        }
+        while app.engine.redo_label().is_some() {
+            app.redo();
+            assert_eq!(app.page, excluded_page);
+            assert!(app.curve.is_none());
+            assert!(app.selection.is_empty());
+        }
+        assert_eq!(
+            app.doc().layer(layer).expect("restored curve").shapes.len(),
+            1
+        );
+        assert!(app
+            .doc()
+            .pages
+            .iter()
+            .all(|page| page.layers.iter().all(|l| l.shapes.is_empty())));
+    }
+
+    #[test]
+    fn hiding_a_range_cancels_a_crop_instead_of_cropping_the_page() {
+        let (mut app, layer) = app_with_first_page_range();
+        let kind = ShapeKind::Rect {
+            rect: Rect::new(5.0, 5.0, 25.0, 20.0),
+            radius: 0.0,
+            corners: None,
+        };
+        let shared = app.new_shape(kind.clone()).expect("range object");
+        let own_layer = app.doc().pages[0].layers[0].id;
+        app.picked_layer = Some(own_layer);
+        let ordinary = app.new_shape(kind).expect("ordinary object");
+        let before = app
+            .doc()
+            .find_shape(ordinary)
+            .expect("ordinary object")
+            .clone();
+        app.picked_layer = Some(layer);
+        app.select(vec![shared]);
+        app.tool = Tool::Crop;
+        app.crop_area = Some(Rect::new(10.0, 10.0, 20.0, 20.0));
+        app.run(Command::SetLayerPageRange {
+            layer,
+            page_range: tracedraw_core::PageRanges::parse("2"),
+        });
+        assert!(app.crop_area.is_none());
+        app.apply_crop();
+        assert_eq!(app.doc().find_shape(ordinary), Some(&before));
+    }
+
+    #[test]
+    fn hiding_a_range_finishes_symmetry_editing_before_new_objects() {
+        let (mut app, layer) = app_with_first_page_range();
+        let kind = ShapeKind::Rect {
+            rect: Rect::new(5.0, 5.0, 25.0, 20.0),
+            radius: 0.0,
+            corners: None,
+        };
+        let shape = app.new_shape(kind.clone()).expect("range object");
+        app.select(vec![shape]);
+        app.create_symmetry();
+        assert!(app.symmetry_edit.is_some());
+        app.run(Command::SetLayerPageRange {
+            layer,
+            page_range: tracedraw_core::PageRanges::parse("2"),
+        });
+        assert!(app.symmetry_edit.is_none());
+        assert!(app.selection.is_empty());
+        let ordinary = app.new_shape(kind).expect("ordinary object");
+        assert_eq!(
+            app.doc().locate(ordinary).expect("page layer").0,
+            app.doc().pages[0].layers[0].id
         );
     }
 

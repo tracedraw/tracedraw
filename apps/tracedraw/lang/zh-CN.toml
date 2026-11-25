@@ -11340,3 +11340,16 @@ docker.title_floating_desc = "拖动标题以移动面板。双击可将面板�
 menu.object.copy_layer_effects_from = "图层效果自..." # mt
 drop.copy_effects_here = "将图层效果复制到此处" # mt
 effects.drag_to_object = "将名称拖到页面上的另一个对象上，即可为其添加此效果的副本。" # mt
+
+# Page-range layers
+docker.range_pages = "范围页" # mt
+docker.range_pages_desc = "在指定页面范围内共享的图层。右键新建图层。" # mt
+docker.new_range_layer = "新建范围图层..." # mt
+docker.range_layer_n = "范围图层 {n}" # mt
+docker.page_range = "页面范围" # mt
+docker.page_range_desc = "按文档顺序从 1 开始编号，例如 1-8, 12, 15-20。可以包含尚未创建的页面。" # mt
+docker.page_range_invalid = "请输入有效的页码或范围，例如 1-8, 12, 15-20。" # mt
+docker.page_range_matches = "当前匹配 {n} / {total} 页" # mt
+docker.range_no_current_page = "请选择此图层范围内的页面，添加页面或修改范围。" # mt
+docker.range_name_required = "请输入图层名称。" # mt
+docker.page_range_example = "1-8, 12, 15-20" # mt

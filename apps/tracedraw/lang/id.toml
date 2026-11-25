@@ -11340,3 +11340,16 @@ docker.title_floating_desc = "Seret judul untuk memindahkan panel. Klik dua kali
 menu.object.copy_layer_effects_from = "Efek Lapisan dari..." # mt
 drop.copy_effects_here = "Salin efek lapisan ke sini" # mt
 effects.drag_to_object = "Seret nama ke objek lain di halaman untuk memberinya salinan efek ini." # mt
+
+# Page-range layers
+docker.range_pages = "Halaman rentang" # mt
+docker.range_pages_desc = "Lapisan bersama untuk rentang halaman terpilih. Klik kanan untuk menambah lapisan." # mt
+docker.new_range_layer = "Lapisan rentang baru..." # mt
+docker.range_layer_n = "Lapisan rentang {n}" # mt
+docker.page_range = "Rentang halaman" # mt
+docker.page_range_desc = "Gunakan posisi mulai 1. Contoh 1-8, 12, 15-20. Halaman mendatang diperbolehkan." # mt
+docker.page_range_invalid = "Masukkan nomor atau rentang, misalnya 1-8, 12, 15-20." # mt
+docker.page_range_matches = "{n} dari {total} halaman saat ini" # mt
+docker.range_no_current_page = "Pilih halaman dalam rentang lapisan, tambah halaman, atau ubah rentang." # mt
+docker.range_name_required = "Masukkan nama lapisan." # mt
+docker.page_range_example = "1-8, 12, 15-20" # mt

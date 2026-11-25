@@ -11340,3 +11340,16 @@ docker.title_floating_desc = "Arraste o título para mover o painel. Clique duas
 menu.object.copy_layer_effects_from = "Efeitos de camada de..." # mt
 drop.copy_effects_here = "Copiar efeitos de camada para cá" # mt
 effects.drag_to_object = "Arraste o nome para outro objeto da página para lhe dar uma cópia deste efeito." # mt
+
+# Page-range layers
+docker.range_pages = "Páginas por intervalo" # mt
+docker.range_pages_desc = "Camadas compartilhadas nos intervalos escolhidos. Clique com o botão direito para adicionar." # mt
+docker.new_range_layer = "Nova camada de intervalo..." # mt
+docker.range_layer_n = "Camada de intervalo {n}" # mt
+docker.page_range = "Intervalo de páginas" # mt
+docker.page_range_desc = "Use posições a partir de 1. Exemplos 1-8, 12, 15-20. Páginas futuras são permitidas." # mt
+docker.page_range_invalid = "Digite números ou intervalos, como 1-8, 12, 15-20." # mt
+docker.page_range_matches = "{n} de {total} páginas atuais" # mt
+docker.range_no_current_page = "Escolha uma página do intervalo, adicione páginas ou edite o intervalo." # mt
+docker.range_name_required = "Digite um nome para a camada." # mt
+docker.page_range_example = "1-8, 12, 15-20" # mt

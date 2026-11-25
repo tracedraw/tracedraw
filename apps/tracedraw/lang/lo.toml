@@ -11340,3 +11340,16 @@ docker.title_floating_desc = "ແກ່ແຖບຫົວຂໍ້ເພື່�
 menu.object.copy_layer_effects_from = "ຜົນກະທົບຊັ້ນຈາກ..." # mt
 drop.copy_effects_here = "ສຳເນົາຜົນກະທົບຊັ້ນມາບ່ອນນີ້" # mt
 effects.drag_to_object = "ແກ່ຊື່ໄປໃສ່ວັດຖຸອື່ນໃນໜ້າເພື່ອໃຫ້ມັນມີສຳເນົາຂອງຜົນກະທົບນີ້." # mt
+
+# Page-range layers
+docker.range_pages = "ໜ້າຕາມຊ່ວງ" # mt
+docker.range_pages_desc = "ຊັ້ນທີ່ໃຊ້ຮ່ວມກັນໃນຊ່ວງໜ້າທີ່ເລືອກ. ຄລິກຂວາເພື່ອເພີ່ມຊັ້ນ." # mt
+docker.new_range_layer = "ຊັ້ນຊ່ວງໜ້າໃໝ່..." # mt
+docker.range_layer_n = "ຊັ້ນຊ່ວງໜ້າ {n}" # mt
+docker.page_range = "ຊ່ວງໜ້າ" # mt
+docker.page_range_desc = "ລຳດັບໜ້າເລີ່ມຈາກ 1. ຕົວຢ່າງ 1-8, 12, 15-20. ສາມາດກຳນົດໜ້າໃນອະນາຄົດໄດ້." # mt
+docker.page_range_invalid = "ປ້ອນເລກໜ້າ ຫຼື ຊ່ວງ ເຊັ່ນ 1-8, 12, 15-20." # mt
+docker.page_range_matches = "{n} ຈາກ {total} ໜ້າປັດຈຸບັນ" # mt
+docker.range_no_current_page = "ເລືອກໜ້າໃນຊ່ວງຂອງຊັ້ນ, ເພີ່ມໜ້າ ຫຼື ແກ້ໄຂຊ່ວງ." # mt
+docker.range_name_required = "ປ້ອນຊື່ຊັ້ນ." # mt
+docker.page_range_example = "1-8, 12, 15-20" # mt

@@ -11340,3 +11340,16 @@ docker.title_floating_desc = "اسحب العنوان لنقل اللوحة. ا�
 menu.object.copy_layer_effects_from = "تأثيرات الطبقة من..." # mt
 drop.copy_effects_here = "نسخ تأثيرات الطبقة هنا" # mt
 effects.drag_to_object = "اسحب الاسم إلى كائن آخر في الصفحة لمنحه نسخة من هذا التأثير." # mt
+
+# Page-range layers
+docker.range_pages = "صفحات النطاق" # mt
+docker.range_pages_desc = "طبقات مشتركة لنطاقات الصفحات المحددة. انقر بزر الفأرة الأيمن لإضافة طبقة." # mt
+docker.new_range_layer = "طبقة نطاق جديدة..." # mt
+docker.range_layer_n = "طبقة النطاق {n}" # mt
+docker.page_range = "نطاق الصفحات" # mt
+docker.page_range_desc = "تبدأ مواضع الصفحات من 1. أمثلة 1-8, 12, 15-20. يمكن تحديد صفحات مستقبلية." # mt
+docker.page_range_invalid = "أدخل أرقام صفحات أو نطاقات مثل 1-8, 12, 15-20." # mt
+docker.page_range_matches = "{n} من {total} صفحة حالية" # mt
+docker.range_no_current_page = "اختر صفحة ضمن نطاق الطبقة أو أضف صفحات أو عدل النطاق." # mt
+docker.range_name_required = "أدخل اسم الطبقة." # mt
+docker.page_range_example = "1-8, 12, 15-20" # mt

@@ -10,7 +10,7 @@ use crate::geometry::{Affine, BezPath, PathEl, Size};
 use crate::id::{LayerId, PageId, ShapeId};
 use crate::style::{Fill, Stroke};
 use crate::Color;
-use crate::{Document, Error, Result};
+use crate::{Document, Error, PageRanges, Result};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -64,9 +64,19 @@ pub enum Command {
         name: String,
         scope: MasterScope,
     },
+    /// A master layer constrained to document page positions.
+    AddRangeLayer {
+        name: String,
+        page_range: PageRanges,
+    },
     SetLayerScope {
         layer: LayerId,
         scope: MasterScope,
+    },
+    /// Limit a master layer to document page positions, or clear its limit.
+    SetLayerPageRange {
+        layer: LayerId,
+        page_range: Option<PageRanges>,
     },
     /// A master layer in front of the pages' own layers, or behind them
     /// (#1132).
@@ -674,6 +684,8 @@ impl Command {
             Command::ResizePage { .. } => "Resize Page",
             Command::AddLayer { .. } => "New Layer",
             Command::AddMasterLayer { .. } => "New Master Layer",
+            Command::AddRangeLayer { .. } => "New Range Layer",
+            Command::SetLayerPageRange { .. } => "Layer Page Range",
             Command::SetLayerScope { .. } => "Master Layer Scope",
             Command::SetLayerInFront { .. } => "Master Layer Order",
             Command::SetLayerPrintable { .. } => "Layer Printable",
@@ -847,8 +859,36 @@ impl Command {
                 let id = doc.ids_mut().layer();
                 doc.master.push(Layer::master(id, name.clone(), *scope));
             }
+            Command::AddRangeLayer { name, page_range } => {
+                if page_range.is_empty() {
+                    return Err(Error::InvalidPageRange);
+                }
+                let id = doc.ids_mut().layer();
+                let mut layer = Layer::master(id, name.clone(), MasterScope::All);
+                layer.page_range = Some(page_range.clone());
+                doc.master.push(layer);
+            }
             Command::SetLayerScope { layer, scope } => {
-                doc.layer_mut(*layer)?.scope = *scope;
+                let layer = doc.layer_mut(*layer)?;
+                layer.scope = *scope;
+                layer.page_range = None;
+            }
+            Command::SetLayerPageRange { layer, page_range } => {
+                if !doc
+                    .master
+                    .iter()
+                    .any(|candidate| candidate.id == *layer && !candidate.desktop)
+                {
+                    return Err(Error::LayerNotFound(*layer));
+                }
+                if page_range.as_ref().is_some_and(PageRanges::is_empty) {
+                    return Err(Error::InvalidPageRange);
+                }
+                let layer = doc.layer_mut(*layer)?;
+                layer.page_range = page_range.clone();
+                if layer.page_range.is_some() {
+                    layer.scope = MasterScope::All;
+                }
             }
             Command::SetLayerInFront { layer, in_front } => {
                 let (_, master) = layer_list_mut(doc, *layer)?;

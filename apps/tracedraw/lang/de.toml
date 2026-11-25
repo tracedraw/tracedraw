@@ -11340,3 +11340,16 @@ docker.title_floating_desc = "Ziehen Sie den Titel, um das Fenster zu verschiebe
 menu.object.copy_layer_effects_from = "Ebeneneffekte von..." # mt
 drop.copy_effects_here = "Ebeneneffekte hierher kopieren" # mt
 effects.drag_to_object = "Ziehen Sie den Namen auf ein anderes Objekt der Seite, um ihm eine Kopie dieses Effekts zu geben." # mt
+
+# Page-range layers
+docker.range_pages = "Bereichsseiten" # mt
+docker.range_pages_desc = "Gemeinsame Ebenen für ausgewählte Seitenbereiche. Rechtsklick zum Hinzufügen." # mt
+docker.new_range_layer = "Neue Bereichsebene..." # mt
+docker.range_layer_n = "Bereichsebene {n}" # mt
+docker.page_range = "Seitenbereich" # mt
+docker.page_range_desc = "Seitenpositionen ab 1 verwenden. Beispiele 1-8, 12, 15-20. Zukünftige Seiten sind erlaubt." # mt
+docker.page_range_invalid = "Seitennummern oder Bereiche eingeben, etwa 1-8, 12, 15-20." # mt
+docker.page_range_matches = "{n} von {total} vorhandenen Seiten" # mt
+docker.range_no_current_page = "Eine Seite im Ebenenbereich wählen, Seiten hinzufügen oder den Bereich ändern." # mt
+docker.range_name_required = "Einen Ebenennamen eingeben." # mt
+docker.page_range_example = "1-8, 12, 15-20" # mt

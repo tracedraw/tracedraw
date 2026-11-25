@@ -11340,3 +11340,16 @@ docker.title_floating_desc = "Przeciągnij tytuł, aby przesunąć panel. Klikni
 menu.object.copy_layer_effects_from = "Efekty warstwy z..." # mt
 drop.copy_effects_here = "Kopiuj tutaj efekty warstwy" # mt
 effects.drag_to_object = "Przeciągnij nazwę na inny obiekt na stronie, aby nadać mu kopię tego efektu." # mt
+
+# Page-range layers
+docker.range_pages = "Strony zakresu" # mt
+docker.range_pages_desc = "Wspólne warstwy wybranych zakresów stron. Kliknij prawym przyciskiem, aby dodać warstwę." # mt
+docker.new_range_layer = "Nowa warstwa zakresu..." # mt
+docker.range_layer_n = "Warstwa zakresu {n}" # mt
+docker.page_range = "Zakres stron" # mt
+docker.page_range_desc = "Użyj pozycji od 1. Przykłady 1-8, 12, 15-20. Można wskazać przyszłe strony." # mt
+docker.page_range_invalid = "Wpisz numery lub zakresy, na przykład 1-8, 12, 15-20." # mt
+docker.page_range_matches = "{n} z {total} bieżących stron" # mt
+docker.range_no_current_page = "Wybierz stronę z zakresu warstwy, dodaj strony lub zmień zakres." # mt
+docker.range_name_required = "Wpisz nazwę warstwy." # mt
+docker.page_range_example = "1-8, 12, 15-20" # mt

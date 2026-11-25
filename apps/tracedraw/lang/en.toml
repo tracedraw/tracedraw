@@ -11340,3 +11340,16 @@ docker.title_floating_desc = "Drag the title to move the panel. Double-click it 
 menu.object.copy_layer_effects_from = "Layer Effects From..."
 drop.copy_effects_here = "Copy Layer Effects Here"
 effects.drag_to_object = "Drag the name onto another object on the page to give it a copy of this effect."
+
+# Page-range layers
+docker.range_pages = "Range Pages"
+docker.range_pages_desc = "Shared layers for selected page ranges. Right-click to add a layer."
+docker.new_range_layer = "New Range Layer..."
+docker.range_layer_n = "Range layer {n}"
+docker.page_range = "Page range"
+docker.page_range_desc = "Use page positions from 1. Examples 1-8, 12, 15-20. Future pages are allowed."
+docker.page_range_invalid = "Enter page numbers or ranges, such as 1-8, 12, 15-20."
+docker.page_range_matches = "{n} of {total} current pages"
+docker.range_no_current_page = "Select a page in this layer's range, add pages, or edit the range."
+docker.range_name_required = "Enter a layer name."
+docker.page_range_example = "1-8, 12, 15-20"

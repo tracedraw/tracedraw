@@ -11340,3 +11340,16 @@ docker.title_floating_desc = "Trascinare il titolo per spostare il pannello. Dop
 menu.object.copy_layer_effects_from = "Effetti livello da..." # mt
 drop.copy_effects_here = "Copia qui gli effetti livello" # mt
 effects.drag_to_object = "Trascinare il nome su un altro oggetto della pagina per dargli una copia di questo effetto." # mt
+
+# Page-range layers
+docker.range_pages = "Pagine per intervallo" # mt
+docker.range_pages_desc = "Livelli condivisi negli intervalli scelti. Clic destro per aggiungere un livello." # mt
+docker.new_range_layer = "Nuovo livello per intervallo..." # mt
+docker.range_layer_n = "Livello per intervallo {n}" # mt
+docker.page_range = "Intervallo di pagine" # mt
+docker.page_range_desc = "Usare posizioni da 1. Esempi 1-8, 12, 15-20. Sono ammesse pagine future." # mt
+docker.page_range_invalid = "Inserire numeri o intervalli, per esempio 1-8, 12, 15-20." # mt
+docker.page_range_matches = "{n} di {total} pagine attuali" # mt
+docker.range_no_current_page = "Scegliere una pagina dell'intervallo, aggiungere pagine o modificare l'intervallo." # mt
+docker.range_name_required = "Inserire un nome per il livello." # mt
+docker.page_range_example = "1-8, 12, 15-20" # mt

@@ -11340,3 +11340,16 @@ docker.title_floating_desc = "タイトルをドラッグしてパネルを移�
 menu.object.copy_layer_effects_from = "レイヤー効果のコピー元..." # mt
 drop.copy_effects_here = "レイヤー効果をここにコピー" # mt
 effects.drag_to_object = "名前をページ上の別のオブジェクトにドラッグすると、この効果のコピーが適用されます。" # mt
+
+# Page-range layers
+docker.range_pages = "範囲ページ" # mt
+docker.range_pages_desc = "指定したページ範囲で共有するレイヤーです。右クリックで追加できます。" # mt
+docker.new_range_layer = "範囲レイヤーを追加..." # mt
+docker.range_layer_n = "範囲レイヤー {n}" # mt
+docker.page_range = "ページ範囲" # mt
+docker.page_range_desc = "文書内の順序で 1 から指定します。例 1-8, 12, 15-20。未作成のページも指定できます。" # mt
+docker.page_range_invalid = "ページ番号または範囲を入力してください。例 1-8, 12, 15-20。" # mt
+docker.page_range_matches = "現在の {total} ページ中 {n} ページ" # mt
+docker.range_no_current_page = "このレイヤーの範囲内のページを選択するか、ページを追加するか、範囲を変更してください。" # mt
+docker.range_name_required = "レイヤー名を入力してください。" # mt
+docker.page_range_example = "1-8, 12, 15-20" # mt

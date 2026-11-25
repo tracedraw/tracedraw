@@ -11340,3 +11340,16 @@ docker.title_floating_desc = "Перетащите заголовок, чтоб�
 menu.object.copy_layer_effects_from = "Эффекты слоя из..." # mt
 drop.copy_effects_here = "Копировать сюда эффекты слоя" # mt
 effects.drag_to_object = "Перетащите название на другой объект на странице, чтобы дать ему копию этого эффекта." # mt
+
+# Page-range layers
+docker.range_pages = "Страницы диапазона" # mt
+docker.range_pages_desc = "Общие слои выбранных диапазонов страниц. Добавление слоя правой кнопкой мыши." # mt
+docker.new_range_layer = "Новый слой диапазона..." # mt
+docker.range_layer_n = "Слой диапазона {n}" # mt
+docker.page_range = "Диапазон страниц" # mt
+docker.page_range_desc = "Позиции страниц начинаются с 1. Примеры 1-8, 12, 15-20. Допустимы будущие страницы." # mt
+docker.page_range_invalid = "Введите номера или диапазоны, например 1-8, 12, 15-20." # mt
+docker.page_range_matches = "{n} из {total} существующих страниц" # mt
+docker.range_no_current_page = "Выберите страницу диапазона, добавьте страницы или измените диапазон." # mt
+docker.range_name_required = "Введите имя слоя." # mt
+docker.page_range_example = "1-8, 12, 15-20" # mt

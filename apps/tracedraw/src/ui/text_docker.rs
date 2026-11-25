@@ -2305,6 +2305,12 @@ mod tests {
         use tracedraw_core::TextPosition;
         let quicksand = include_bytes!("../../../../crates/text/testdata/Quicksand-VF.ttf");
         let _ = tracedraw_text::fonts().add_fonts(vec![quicksand.to_vec()]);
+        // Register Selawik even when this test runs in a separate shard.
+        let selawik = include_bytes!("../../assets/fonts/Selawik-Regular.ttf");
+        let _ = tracedraw_text::fonts().add_document_fonts(&[tracedraw_core::DocumentFont::new(
+            "Selawik",
+            selawik.to_vec(),
+        )]);
         let mut app = App::headless();
         let id = app
             .new_shape(ShapeKind::Text {

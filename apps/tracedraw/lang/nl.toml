@@ -11340,3 +11340,16 @@ docker.title_floating_desc = "Sleep de titel om het paneel te verplaatsen. Dubbe
 menu.object.copy_layer_effects_from = "Laageffecten van..." # mt
 drop.copy_effects_here = "Laageffecten hierheen kopiëren" # mt
 effects.drag_to_object = "Sleep de naam op een ander object op de pagina om het een kopie van dit effect te geven." # mt
+
+# Page-range layers
+docker.range_pages = "Bereikpagina's" # mt
+docker.range_pages_desc = "Gedeelde lagen voor gekozen paginabereiken. Rechtsklik om een laag toe te voegen." # mt
+docker.new_range_layer = "Nieuwe bereiklaag..." # mt
+docker.range_layer_n = "Bereiklaag {n}" # mt
+docker.page_range = "Paginabereik" # mt
+docker.page_range_desc = "Gebruik posities vanaf 1. Voorbeelden 1-8, 12, 15-20. Toekomstige pagina's zijn toegestaan." # mt
+docker.page_range_invalid = "Voer paginanummers of bereiken in, zoals 1-8, 12, 15-20." # mt
+docker.page_range_matches = "{n} van {total} huidige pagina's" # mt
+docker.range_no_current_page = "Kies een pagina in dit bereik, voeg pagina's toe of wijzig het bereik." # mt
+docker.range_name_required = "Voer een laagnaam in." # mt
+docker.page_range_example = "1-8, 12, 15-20" # mt

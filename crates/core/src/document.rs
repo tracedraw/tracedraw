@@ -4,7 +4,7 @@
 use crate::geometry::{self, Affine, BezPath, Point, Rect, Shape as _, Vec2};
 use crate::id::{IdSource, LayerId, PageId, ShapeId};
 use crate::style::{Fill, Stroke};
-use crate::{Error, Result};
+use crate::{Error, PageRanges, Result};
 use serde::{Deserialize, Serialize};
 
 /// Hook for the text engine. The core cannot depend on fonts, so the app
@@ -5444,6 +5444,9 @@ pub struct Layer {
     /// For master layers: which pages show this layer.
     #[serde(default)]
     pub scope: MasterScope,
+    /// For master layers: the document positions where the layer appears.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page_range: Option<PageRanges>,
     /// For master layers: drawn in front of the page's own layers
     /// instead of behind them (#1132).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -6343,6 +6346,15 @@ impl Shape {
 }
 
 impl Layer {
+    /// Whether this master layer appears at the 0-based page position.
+    pub fn applies_to(&self, index: usize) -> bool {
+        self.scope.applies(index)
+            && self
+                .page_range
+                .as_ref()
+                .is_none_or(|range| range.contains(index))
+    }
+
     pub fn master(id: LayerId, name: impl Into<String>, scope: MasterScope) -> Self {
         let mut l = Layer::new(id, name);
         l.scope = scope;
@@ -6358,6 +6370,7 @@ impl Layer {
             locked: false,
             shapes: Vec::new(),
             scope: MasterScope::All,
+            page_range: None,
             in_front: false,
             desktop: false,
         }
@@ -7398,7 +7411,7 @@ impl Document {
         let masters = |front: bool| {
             self.master
                 .iter()
-                .filter(move |l| l.scope.applies(idx) && l.in_front == front)
+                .filter(move |l| l.applies_to(idx) && l.in_front == front)
         };
         let mut out: Vec<&Layer> = masters(false).collect();
         out.extend(self.pages[idx].layers.iter());

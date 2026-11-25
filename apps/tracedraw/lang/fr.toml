@@ -11340,3 +11340,16 @@ docker.title_floating_desc = "Faites glisser le titre pour déplacer le panneau.
 menu.object.copy_layer_effects_from = "Effets de calque de..." # mt
 drop.copy_effects_here = "Copier les effets de calque ici" # mt
 effects.drag_to_object = "Faites glisser le nom sur un autre objet de la page pour lui donner une copie de cet effet." # mt
+
+# Page-range layers
+docker.range_pages = "Pages de plage" # mt
+docker.range_pages_desc = "Calques partagés sur les plages de pages choisies. Clic droit pour ajouter un calque." # mt
+docker.new_range_layer = "Nouveau calque de plage..." # mt
+docker.range_layer_n = "Calque de plage {n}" # mt
+docker.page_range = "Plage de pages" # mt
+docker.page_range_desc = "Utilisez les positions à partir de 1. Exemples  1-8, 12, 15-20. Les pages futures sont admises." # mt
+docker.page_range_invalid = "Saisissez des numéros ou des plages, par exemple 1-8, 12, 15-20." # mt
+docker.page_range_matches = "{n} pages actuelles sur {total}" # mt
+docker.range_no_current_page = "Choisissez une page de cette plage, ajoutez des pages ou modifiez la plage." # mt
+docker.range_name_required = "Saisissez un nom de calque." # mt
+docker.page_range_example = "1-8, 12, 15-20" # mt

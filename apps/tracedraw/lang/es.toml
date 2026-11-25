@@ -11340,3 +11340,16 @@ docker.title_floating_desc = "Arrastre el título para mover el panel. Haga dobl
 menu.object.copy_layer_effects_from = "Efectos de capa de..." # mt
 drop.copy_effects_here = "Copiar efectos de capa aquí" # mt
 effects.drag_to_object = "Arrastre el nombre sobre otro objeto de la página para darle una copia de este efecto." # mt
+
+# Page-range layers
+docker.range_pages = "Páginas de intervalo" # mt
+docker.range_pages_desc = "Capas compartidas en los intervalos elegidos. Clic derecho para añadir una capa." # mt
+docker.new_range_layer = "Nueva capa de intervalo..." # mt
+docker.range_layer_n = "Capa de intervalo {n}" # mt
+docker.page_range = "Intervalo de páginas" # mt
+docker.page_range_desc = "Use posiciones desde 1. Ejemplos 1-8, 12, 15-20. Se permiten páginas futuras." # mt
+docker.page_range_invalid = "Introduzca números o intervalos, como 1-8, 12, 15-20." # mt
+docker.page_range_matches = "{n} de {total} páginas actuales" # mt
+docker.range_no_current_page = "Seleccione una página de este intervalo, añada páginas o edite el intervalo." # mt
+docker.range_name_required = "Introduzca un nombre de capa." # mt
+docker.page_range_example = "1-8, 12, 15-20" # mt

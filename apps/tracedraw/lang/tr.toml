@@ -11340,3 +11340,16 @@ docker.title_floating_desc = "Paneli taşımak için başlığı sürükleyin. P
 menu.object.copy_layer_effects_from = "Katman Efektlerini Şuradan..." # mt
 drop.copy_effects_here = "Katman efektlerini buraya kopyala" # mt
 effects.drag_to_object = "Bu efektin bir kopyasını vermek için adı sayfadaki başka bir nesnenin üzerine sürükleyin." # mt
+
+# Page-range layers
+docker.range_pages = "Aralık sayfaları" # mt
+docker.range_pages_desc = "Seçili sayfa aralıklarının ortak katmanları. Katman eklemek için sağ tıklayın." # mt
+docker.new_range_layer = "Yeni aralık katmanı..." # mt
+docker.range_layer_n = "Aralık katmanı {n}" # mt
+docker.page_range = "Sayfa aralığı" # mt
+docker.page_range_desc = "1'den başlayan sayfa konumlarını kullanın. Örnekler 1-8, 12, 15-20. Gelecekteki sayfalar seçilebilir." # mt
+docker.page_range_invalid = "1-8, 12, 15-20 gibi sayfa numaraları veya aralıklar girin." # mt
+docker.page_range_matches = "Mevcut {total} sayfanın {n} tanesi" # mt
+docker.range_no_current_page = "Katmanın aralığında bir sayfa seçin, sayfa ekleyin veya aralığı düzenleyin." # mt
+docker.range_name_required = "Bir katman adı girin." # mt
+docker.page_range_example = "1-8, 12, 15-20" # mt

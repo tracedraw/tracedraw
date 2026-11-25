@@ -11340,3 +11340,16 @@ docker.title_floating_desc = "पैनल हिलाने के लिए �
 menu.object.copy_layer_effects_from = "लेयर इफ़ेक्ट यहाँ से..." # mt
 drop.copy_effects_here = "लेयर इफ़ेक्ट यहाँ कॉपी करें" # mt
 effects.drag_to_object = "इस इफ़ेक्ट की एक कॉपी देने के लिए नाम को पेज पर किसी दूसरे ऑब्जेक्ट पर खींचें।" # mt
+
+# Page-range layers
+docker.range_pages = "सीमा पृष्ठ" # mt
+docker.range_pages_desc = "चुनी गई पृष्ठ सीमाओं की साझा परतें। परत जोड़ने के लिए दायाँ क्लिक करें।" # mt
+docker.new_range_layer = "नई सीमा परत..." # mt
+docker.range_layer_n = "सीमा परत {n}" # mt
+docker.page_range = "पृष्ठ सीमा" # mt
+docker.page_range_desc = "पृष्ठ क्रम 1 से शुरू होता है। उदाहरण 1-8, 12, 15-20। भविष्य के पृष्ठ भी चुन सकते हैं।" # mt
+docker.page_range_invalid = "पृष्ठ संख्या या सीमा लिखें, जैसे 1-8, 12, 15-20।" # mt
+docker.page_range_matches = "मौजूदा {total} पृष्ठों में से {n}" # mt
+docker.range_no_current_page = "परत की सीमा का पृष्ठ चुनें, पृष्ठ जोड़ें या सीमा बदलें।" # mt
+docker.range_name_required = "परत का नाम लिखें।" # mt
+docker.page_range_example = "1-8, 12, 15-20" # mt

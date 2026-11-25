@@ -11340,3 +11340,16 @@ docker.title_floating_desc = "প্যানেল সরাতে শিরো
 menu.object.copy_layer_effects_from = "লেয়ার ইফেক্ট থেকে..." # mt
 drop.copy_effects_here = "লেয়ার ইফেক্ট এখানে কপি করুন" # mt
 effects.drag_to_object = "এই ইফেক্টের একটি কপি দিতে নামটি পৃষ্ঠার অন্য কোনো অবজেক্টের উপর টেনে আনুন।" # mt
+
+# Page-range layers
+docker.range_pages = "পরিসরের পৃষ্ঠা" # mt
+docker.range_pages_desc = "নির্বাচিত পৃষ্ঠা পরিসরে ভাগ করা স্তর। স্তর যোগ করতে ডান ক্লিক করুন।" # mt
+docker.new_range_layer = "নতুন পরিসরের স্তর..." # mt
+docker.range_layer_n = "পরিসরের স্তর {n}" # mt
+docker.page_range = "পৃষ্ঠা পরিসর" # mt
+docker.page_range_desc = "পৃষ্ঠার অবস্থান 1 থেকে শুরু। উদাহরণ 1-8, 12, 15-20। ভবিষ্যতের পৃষ্ঠাও বেছে নেওয়া যায়।" # mt
+docker.page_range_invalid = "পৃষ্ঠা নম্বর বা পরিসর লিখুন, যেমন 1-8, 12, 15-20।" # mt
+docker.page_range_matches = "বর্তমান {total} পৃষ্ঠার মধ্যে {n}" # mt
+docker.range_no_current_page = "স্তরের পরিসরের একটি পৃষ্ঠা বাছুন, পৃষ্ঠা যোগ করুন বা পরিসর বদলান।" # mt
+docker.range_name_required = "স্তরের নাম লিখুন।" # mt
+docker.page_range_example = "1-8, 12, 15-20" # mt
