@@ -290,7 +290,9 @@ white halo.
 Pressing the right button on an object (it is selected first if it was
 not) and dragging shows the selection's outline in blue where it would
 go, while the objects stay put; Ctrl keeps the drag horizontal or
-vertical, Esc cancels it. On release a menu opens there:
+vertical, Esc cancels it. When a single text reaches an eligible outline,
+that outline highlights and the pointer shows the Fit Text to Path hint.
+On release a menu opens there:
 
 | Item | Effect |
 |---|---|
@@ -300,6 +302,7 @@ vertical, Esc cancels it. On release a menu opens there:
 | Copy Outline Here | ... its outline |
 | Copy All Properties | ... its fill, outline and transparency |
 | Place Inside | the object under the pointer becomes the clip frame of the selection |
+| Fit Text to Path | a single text fits to the vector outline under the pointer. On a closed shape, the release point locates the centre of the text along the outline. The text sits on the outline with zero distance and follows later edits to it. The link is kept in native drawings. Deleting the outline leaves the text on its last guide. |
 | Cancel | nothing |
 
 The fill, outline and transparency are read from the object that shows

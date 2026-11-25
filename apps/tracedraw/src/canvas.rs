@@ -1583,13 +1583,11 @@ fn draw_drop_colour(app: &App, painter: &Painter) {
     if action == DropAction::CopyFill && app.drop_frame.is_some() {
         return;
     }
-    draw_drop_style(app, painter, action, target);
+    draw_drop_target(app, painter, action, target);
 }
 
-/// Object `target` outlined in the selection colour and, under the
-/// pointer, what a drop there copies onto it (a left-button move with
-/// Alt, a right-button drag with Shift, Alt or Ctrl; discussion #2066).
-pub(crate) fn draw_drop_style(
+/// Outline the drop target and show the available action by the pointer.
+pub(crate) fn draw_drop_target(
     app: &App,
     painter: &Painter,
     action: crate::drop_menu::DropAction,
@@ -1598,10 +1596,24 @@ pub(crate) fn draw_drop_style(
     let Some(s) = app.doc().find_shape(target) else {
         return;
     };
-    let accent = Tokens::ACCENT;
-    for (pts, _) in flatten(&s.page_path(), &app.view) {
+    let mut path = s.page_path();
+    let fit_text = action == crate::drop_menu::DropAction::FitTextToPath;
+    let width = if fit_text {
+        // An outline being edited inside a container is drawn in page space.
+        if let Some(parent) = app.doc().parent_transform(target) {
+            path.apply_affine(parent);
+        }
+        2.0
+    } else {
+        1.5
+    };
+    let stroke = EStroke::new(width, Tokens::ACCENT);
+    for (mut pts, closed) in flatten(&path, &app.view) {
         if pts.len() >= 2 {
-            painter.add(egui::Shape::line(pts, EStroke::new(1.5, accent)));
+            if let Some(first) = pts.first().copied().filter(|_| fit_text && closed) {
+                pts.push(first);
+            }
+            painter.add(egui::Shape::line(pts, stroke));
         }
     }
     let Some(p) = app.pointer_page else {

@@ -1425,7 +1425,8 @@ pub(crate) fn drawing_window(app: &mut App, ui: &mut Ui, full: egui::Rect) {
     canvas::draw_live_guides(app, &painter, canvas_rect);
     canvas::draw_snap_mark(app, &painter);
     crate::brushes::draw_resize(app, &painter);
-    app.draw_right_drag(&painter);
+    let text_drop_target = app.right_drag_text_target(mods);
+    app.draw_right_drag(&painter, mods, text_drop_target);
     crate::touch_modifiers::keys_on_drawing(app, ui, canvas_rect);
     crate::touch_bars::bars_on_drawing(app, ui, canvas_rect);
     context::context_menu(app, ui, &response);
@@ -1452,7 +1453,11 @@ pub(crate) fn drawing_window(app: &mut App, ui: &mut Ui, full: egui::Rect) {
                 i.pointer.hover_pos().or(i.pointer.latest_pos()),
             )
         });
-        let cursor = cursors::for_tool_with_ctrl(app, shift, ctrl, primary, middle, pos);
+        let cursor = if text_drop_target.is_some() {
+            cursors::ToolCursor::System(egui::CursorIcon::PointingHand)
+        } else {
+            cursors::for_tool_with_ctrl(app, shift, ctrl, primary, middle, pos)
+        };
         cursors::show(ui.ctx(), cursor, pos);
         if app.settings.crosshair_to_edges {
             if let Some(p) = pos.filter(|p| canvas_rect.contains(*p)) {

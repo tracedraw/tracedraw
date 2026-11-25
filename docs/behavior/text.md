@@ -1734,7 +1734,14 @@ stand-in next to each missing family: "Arial (Liberation Sans)".
   changed it: moved, resized or reshaped, the distance, offset and
   placement kept; on a closed path the start keeps its share of the
   outline's length. Undo takes both back; a deleted path leaves the text
-  as it is (#3571, `text_follow::tests`). Mirror horizontally flips the letters left to right
+  as it is (#3571, `text_follow::tests`).
+  The three lists show the current setting as a small
+  diagram next to a separate arrow area in the bar. Open a list to see
+  the diagrams and hover over a choice to read its name. The guide line
+  shows how the letters turn, which part of the
+  letters touches the guide, or where along the guide the text sits.
+  Use Up or Down to move between choices and Enter to apply one.
+  Mirror horizontally flips the letters left to right
   (the text reads the other way along the path), Mirror vertically
   turns them upside down onto the path's other side, and both together
   turn the text round by 180 degrees. The mirrors keep the letters where they are along

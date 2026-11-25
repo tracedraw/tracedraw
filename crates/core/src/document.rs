@@ -2991,6 +2991,9 @@ pub enum PathTextVertical {
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct TextOnPath {
     pub path: BezPath,
+    /// The editable outline, if the text was attached by dropping onto it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<crate::text_path::PathSource>,
     /// Start offset along the baseline, mm (with centred or right-aligned
     /// text, added to the alignment's own start).
     #[serde(default)]
@@ -4629,6 +4632,7 @@ impl Shape {
         c.id = next();
         c.uid = None;
         match &mut c.kind {
+            ShapeKind::Text { on_path: Some(tp), .. } => tp.source = None,
             ShapeKind::Group { children } => {
                 let copies: Vec<Shape> =
                     children.iter().map(|ch| ch.with_fresh_ids(next)).collect();

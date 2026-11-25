@@ -1950,7 +1950,7 @@ impl PathPlacement {
         let local = Point::new(0.0, flip * (p.y - self.line_y + self.lift));
         Some(
             Affine::translate(at.to_vec2())
-                * letter_frame(self.orientation, dir, at, self.centre)
+                * path_letter_frame(self.orientation, dir, at, self.centre)
                 * local,
         )
     }
@@ -7074,7 +7074,7 @@ fn place_on_path(
         let Some((p, dir)) = baseline.at(mid) else {
             continue;
         };
-        let along = letter_frame(tp.orientation, dir, p, centre);
+        let along = path_letter_frame(tp.orientation, dir, p, centre);
         let place = Affine::translate(p.to_vec2())
             * along
             * flip
@@ -7125,7 +7125,7 @@ fn place_glyph(collect: bool, a: Affine, g: &Glyph, out: &mut GlyphLayout) {
 /// How a letter centred at the point `at` of the path with unit direction
 /// `dir` is turned or sheared there (before the letter's own flip);
 /// `centre` is the middle of the path's box, for radial letters.
-fn letter_frame(
+pub fn path_letter_frame(
     o: PathTextOrientation,
     dir: tracedraw_core::geometry::Vec2,
     at: Point,

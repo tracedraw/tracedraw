@@ -9,6 +9,7 @@ use tracedraw_core::{
     document::{Shape, ShapeKind},
     geometry::{Affine, BezPath, Point, Rect, Shape as _, Size},
     live::Effect,
+    text_path::path_for_text_at,
     Color, Command, Fill, ShapeId, Stroke, TextSpan,
 };
 
@@ -6014,116 +6015,6 @@ fn tiny_skia_white(w: u32, h: u32) -> tiny_skia::Pixmap {
         .unwrap_or_else(|| tiny_skia::Pixmap::new(1, 1).expect("1x1 pixmap"));
     pm.fill(tiny_skia::Color::WHITE);
     pm
-}
-
-/// The path text is fitted to, in page space: its first subpath, and for a
-/// closed one turned to run clockwise (so the letters stand on its
-/// outside) and started at the point nearest to `at` (where the path was
-/// clicked), or at its highest point without one. Returns the path and
-/// whether it is closed.
-pub fn path_for_text_at(path: &BezPath, at: Option<Point>) -> (BezPath, bool) {
-    use kurbo::{ParamCurve, ParamCurveExtrema, ParamCurveNearest, PathSeg};
-    let mut first = BezPath::new();
-    let mut closed = false;
-    for el in path.elements() {
-        match el {
-            tracedraw_core::geometry::PathEl::MoveTo(_) if !first.elements().is_empty() => break,
-            tracedraw_core::geometry::PathEl::ClosePath => {
-                closed = true;
-                break;
-            }
-            e => first.push(*e),
-        }
-    }
-    let mut segs: Vec<PathSeg> = first.segments().collect();
-    if let (Some(a), Some(b)) = (segs.first(), segs.last()) {
-        if (a.start() - b.end()).hypot() < 1e-6 && segs.len() > 1 {
-            closed = true;
-        }
-    }
-    if !closed || segs.is_empty() {
-        return (first, false);
-    }
-    if let (Some(a), Some(b)) = (segs.first(), segs.last()) {
-        if (a.start() - b.end()).hypot() >= 1e-6 {
-            segs.push(PathSeg::Line(tracedraw_core::geometry::Line::new(
-                b.end(),
-                a.start(),
-            )));
-        }
-    }
-    // Shoelace over the flattened outline: positive runs anticlockwise
-    // (y up), whose left side, where letters stand, is the inside.
-    let mut area = 0.0;
-    let mut prev: Option<Point> = None;
-    let mut start: Option<Point> = None;
-    tracedraw_core::geometry::flatten(&first, 0.1, &mut |el| match el {
-        tracedraw_core::geometry::PathEl::MoveTo(p) => {
-            start = Some(p);
-            prev = Some(p);
-        }
-        tracedraw_core::geometry::PathEl::LineTo(p) => {
-            if let Some(q) = prev {
-                area += q.x * p.y - p.x * q.y;
-            }
-            prev = Some(p);
-        }
-        _ => {}
-    });
-    if let (Some(q), Some(p)) = (prev, start) {
-        area += q.x * p.y - p.x * q.y;
-    }
-    if area > 0.0 {
-        segs = segs.iter().rev().map(|s| s.reverse()).collect();
-    }
-    // The start: the point nearest to `at`, or the highest point (the
-    // segment and parameter where y is largest).
-    let mut best = (0usize, 0.0f64, f64::NEG_INFINITY);
-    match at.filter(|p| p.x.is_finite() && p.y.is_finite()) {
-        Some(p) => {
-            for (i, seg) in segs.iter().enumerate() {
-                let n = seg.nearest(p, 1e-6);
-                if -n.distance_sq > best.2 {
-                    best = (i, n.t, -n.distance_sq);
-                }
-            }
-        }
-        None => {
-            for (i, seg) in segs.iter().enumerate() {
-                let mut ts = vec![0.0, 1.0];
-                ts.extend(seg.extrema());
-                for t in ts {
-                    let y = seg.eval(t).y;
-                    if y > best.2 + 1e-9 {
-                        best = (i, t, y);
-                    }
-                }
-            }
-        }
-    }
-    let (k, t, _) = best;
-    let mut order: Vec<PathSeg> = Vec::new();
-    if t < 1.0 - 1e-9 {
-        order.push(segs[k].subsegment(t..1.0));
-    }
-    order.extend(segs[k + 1..].iter().copied());
-    order.extend(segs[..k].iter().copied());
-    if t > 1e-9 {
-        order.push(segs[k].subsegment(0.0..t));
-    }
-    let mut out = BezPath::new();
-    if let Some(s0) = order.first() {
-        out.move_to(s0.start());
-    }
-    for seg in order {
-        match seg {
-            PathSeg::Line(l) => out.line_to(l.p1),
-            PathSeg::Quad(q) => out.quad_to(q.p1, q.p2),
-            PathSeg::Cubic(c) => out.curve_to(c.p1, c.p2, c.p3),
-        }
-    }
-    out.close_path();
-    (out, true)
 }
 
 /// Where text fitted to `path` (its local space) is placed: on a closed
