@@ -254,6 +254,7 @@ begin
       $05: Result := 'cs';
       $54: Result := 'lo';
       $2A: Result := 'vi';
+      $22: Result := 'uk';
     else
       Result := '';
     end;
@@ -307,6 +308,7 @@ begin
   AddAppLanguage('lo', 'ພາສາລາວ');
   AddAppLanguage('vi', 'Tiếng Việt');
   AddAppLanguage('eo', 'Esperanto');
+  AddAppLanguage('uk', 'Українська');
   SystemCode := AppLanguageForLangId(GetUILanguage);
   if SystemCode = '' then
     SystemCode := 'en';
