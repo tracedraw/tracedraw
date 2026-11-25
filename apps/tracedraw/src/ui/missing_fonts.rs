@@ -11,6 +11,7 @@
 //! (tests, scripts, the MCP server), which keep the plain note. See
 //! docs/behavior/missing-fonts.md.
 
+use crate::ui::btn_icons::IconUi;
 use crate::app::App;
 use crate::i18n::{tr, trf};
 use crate::ui::dialogs::window;
@@ -220,7 +221,7 @@ pub fn dialog(app: &mut App, ctx: &Context, st: &mut MissingFontsState, close: &
             });
         ui.add_space(4.0);
         if ui
-            .button(tr("missing_fonts.add_font"))
+            .ibutton("missing_fonts.add_font")
             .rich_tip(crate::ui::tips::pair(
                 "missing_fonts.add_font",
                 "missing_fonts.add_font_tip",

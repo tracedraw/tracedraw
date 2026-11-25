@@ -3,6 +3,7 @@
 //! dragged. The pattern and its options are those of the Shape Generator
 //! panel, which Options on the tool's property bar opens.
 
+use crate::ui::btn_icons::IconUi;
 use crate::app::App;
 use crate::shape_gen::{generate, GenKind, Generated, ShapeGenSettings};
 use tracedraw_core::geometry::{Affine, BezPath, Point, Rect, Shape as _};
@@ -189,14 +190,14 @@ pub fn shape_gen_bar(app: &mut App, ui: &mut egui::Ui) {
         ui.add(crate::ui::field::NumField::new(&mut app.shape_gen.seed).range(0..=999_999))
     });
     if ui
-        .button(tr("shapegen.new_seed"))
+        .ibutton("shapegen.new_seed")
         .rich_tip(keyed("shapegen.new_seed"))
         .clicked()
     {
         app.shape_gen_new_seed();
     }
     if ui
-        .button(tr("toolbar.shape_gen_options"))
+        .ibutton("toolbar.shape_gen_options")
         .rich_tip(keyed("toolbar.shape_gen_options"))
         .clicked()
     {

@@ -273,7 +273,7 @@ pub fn dialog(app: &mut App, ctx: &Context, st: &mut State, close: &mut bool) {
             if ui
                 .add_enabled(
                     !dash.is_empty() && !full,
-                    egui::Button::new(tr("line_style.add")),
+                    crate::ui::btn_icons::Ib::new("line_style.add"),
                 )
                 .clicked()
             {
@@ -283,7 +283,7 @@ pub fn dialog(app: &mut App, ctx: &Context, st: &mut State, close: &mut bool) {
             if ui
                 .add_enabled(
                     !dash.is_empty() && st.editing.is_some(),
-                    egui::Button::new(tr("line_style.replace")),
+                    crate::ui::btn_icons::Ib::new("line_style.replace"),
                 )
                 .clicked()
             {
@@ -294,7 +294,7 @@ pub fn dialog(app: &mut App, ctx: &Context, st: &mut State, close: &mut bool) {
             if ui
                 .add_enabled(
                     st.editing.is_some(),
-                    egui::Button::new(tr("line_style.delete")),
+                    crate::ui::btn_icons::Ib::new("line_style.delete"),
                 )
                 .clicked()
             {

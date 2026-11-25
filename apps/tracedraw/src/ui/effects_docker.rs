@@ -109,7 +109,7 @@ fn presets(app: &mut App, ui: &mut Ui) {
         )
         .rich_tip(tr("effects.preset_name"));
         if ui
-            .add_enabled(has, egui::Button::new(tr("effects.preset_save")))
+            .add_enabled(has, crate::ui::btn_icons::Ib::new("effects.preset_save"))
             .rich_tip(crate::ui::tips::pair(
                 "effects.preset_save",
                 "effects.preset_save_desc",
@@ -159,7 +159,7 @@ fn presets(app: &mut App, ui: &mut Ui) {
                     remove = Some(i);
                 }
                 if ui
-                    .add_enabled(has, egui::Button::new(tr("effects.preset_apply")).small())
+                    .add_enabled(has, crate::ui::btn_icons::Ib::new("effects.preset_apply").small())
                     .rich_tip(crate::ui::tips::pair(
                         "effects.preset_apply",
                         "effects.preset_apply_desc",

@@ -7,6 +7,7 @@
 //! applies what was changed, in one undo step; with nothing selected it
 //! sets the outline new objects get. See docs/behavior/outline-pen.md.
 
+use crate::ui::btn_icons::IconUi;
 use crate::app::App;
 use crate::i18n::tr;
 use crate::theme::Tokens;
@@ -388,12 +389,12 @@ fn general(ui: &mut Ui, st: &mut OutlinePenState, lib: &crate::ui::line_style::O
             .width(110.0)
             .show_ui(ui, |ui| {
                 if ui
-                    .selectable_label(!st.has, tr("outline_pen.none"))
+                    .iselectable(!st.has, "outline_pen.none")
                     .clicked()
                 {
                     st.has = false;
                 }
-                if ui.selectable_label(false, tr("docker.hairline")).clicked() {
+                if ui.iselectable(false, "docker.hairline").clicked() {
                     st.stroke.width = Stroke::HAIRLINE;
                     touch(st, StrokeField::Width);
                 }
@@ -687,7 +688,7 @@ fn calligraphy(ui: &mut Ui, st: &mut OutlinePenState) {
                     touch(st, StrokeField::NibAngle);
                 }
             });
-            if ui.button(tr("outline_pen.default")).clicked() {
+            if ui.ibutton("outline_pen.default").clicked() {
                 st.stroke.stretch = 1.0;
                 st.stroke.nib_angle = 0.0;
                 touch(st, StrokeField::Stretch);
@@ -971,7 +972,7 @@ fn variable(ui: &mut Ui, st: &mut OutlinePenState, lib: &crate::ui::line_style::
             }
         }
         if ui
-            .add_enabled(node.is_some(), egui::Button::new(tr("vo.delete_node")))
+            .add_enabled(node.is_some(), crate::ui::btn_icons::Ib::new("vo.delete_node"))
             .clicked()
         {
             if let Some(i) = node {

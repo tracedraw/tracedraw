@@ -1,6 +1,7 @@
 //! Welcome Screen: Get Started (new, open, recent documents), Workspace,
 //! What's New, Learn, Templates.
 
+use crate::ui::btn_icons::IconUi;
 use crate::app::{App, WelcomeTab};
 use crate::i18n::{tr, trf};
 use crate::theme::Tokens;
@@ -607,7 +608,7 @@ fn recent_row(app: &mut App, ui: &mut Ui, path: &std::path::Path, look: &RowLook
     }
     resp.context_menu(|ui| {
         if ui
-            .button(tr("welcome.remove_recent"))
+            .ibutton("welcome.remove_recent")
             .rich_tip(crate::ui::tips::keyed("welcome.remove_recent"))
             .clicked()
         {
@@ -761,12 +762,12 @@ fn templates(app: &mut App, ui: &mut Ui) {
                 }
             }
             ui.add_space(6.0);
-            if ui.button(tr("tpl.more")).clicked() {
+            if ui.ibutton("tpl.more").clicked() {
                 app.open_template_dialog();
             }
             ui.add_space(12.0);
             ui.strong(tr("welcome.my_templates"));
-            if ui.button(tr("welcome.open_template")).clicked() {
+            if ui.ibutton("welcome.open_template").clicked() {
                 crate::files::Dialog::new()
                     .add_filter("TraceDraw template", &["tdt", "tdraw"])
                     .pick_file(app, |app, p| app.open_as_template(p));

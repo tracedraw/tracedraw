@@ -6,6 +6,7 @@
 //! by itself (see `trace_preview.rs`): no Preview button. See
 //! docs/behavior/bitmap-tracing.md.
 
+use crate::ui::btn_icons::IconUi;
 use crate::app::App;
 use crate::i18n::{tr, trf};
 use crate::theme::Tokens;
@@ -338,7 +339,7 @@ pub fn trace_dialog(app: &mut App, ctx: &Context, st: &mut TraceState, close: &m
                     .rich_tip(crate::ui::tips::keyed("dialog.help_button"))
                     .clicked();
                 let r = ui
-                    .add_sized([100.0, 27.0], egui::Button::new(tr("dialog.trace_options")))
+                    .add_sized([100.0, 27.0], crate::ui::btn_icons::Ib::new("dialog.trace_options"))
                     .rich_tip(crate::ui::tips::keyed("dialog.trace_options"));
                 mark(ui, "options", r.rect);
                 options = r.clicked();
@@ -350,7 +351,8 @@ pub fn trace_dialog(app: &mut App, ctx: &Context, st: &mut TraceState, close: &m
                 let r = ui
                     .add_enabled(
                         can_optimize && !optimizing,
-                        egui::Button::new(label).min_size(Vec2::new(140.0, 27.0)),
+                        crate::ui::btn_icons::Ib::with_text("dialog.trace_optimize", label)
+                            .min_size(Vec2::new(140.0, 27.0)),
                     )
                     .rich_tip(crate::ui::tips::keyed("dialog.trace_optimize"));
                 mark(ui, "optimize", r.rect);
@@ -364,7 +366,7 @@ pub fn trace_dialog(app: &mut App, ctx: &Context, st: &mut TraceState, close: &m
                 let r = ui
                     .add_enabled(
                         selected_bitmap(app).is_some() && !app.ai_vectorize.busy(),
-                        egui::Button::new(tr("dialog.trace_with_ai"))
+                        crate::ui::btn_icons::Ib::new("dialog.trace_with_ai")
                             .min_size(Vec2::new(120.0, 27.0)),
                     )
                     .rich_tip(crate::ui::tips::keyed("dialog.trace_with_ai"));
@@ -670,7 +672,7 @@ fn enlarge_section(app: &mut App, ui: &mut Ui) {
         } else {
             dim(ui, tr("dialog.trace_enlarge_sharpen"));
             let r = ui
-                .button(tr("dialog.trace_enlarge_download"))
+                .ibutton("dialog.trace_enlarge_download")
                 .rich_tip(crate::ui::tips::keyed("dialog.trace_enlarge_download"));
             mark(ui, "enlarge_download", r.rect);
             if r.clicked() {
@@ -889,7 +891,7 @@ fn settings_tab(app: &mut App, ui: &mut Ui, st: &mut TraceState) {
             if ui
                 .add_enabled(
                     app.ai_photo_enabled(),
-                    egui::Button::new(tr("dialog.trace_clean_sketch_ai")),
+                    crate::ui::btn_icons::Ib::new("dialog.trace_clean_sketch_ai"),
                 )
                 .rich_tip(crate::ui::tips::keyed("dialog.trace_clean_sketch_ai"))
                 .clicked()
@@ -1023,7 +1025,7 @@ fn colors_tab(app: &mut App, ui: &mut Ui, st: &mut TraceState) {
     let r = ui
         .add_enabled(
             can_merge,
-            egui::Button::new(tr("dialog.trace_merge_colors")),
+            crate::ui::btn_icons::Ib::new("dialog.trace_merge_colors"),
         )
         .rich_tip(crate::ui::tips::keyed("dialog.trace_merge_colors"));
     mark(ui, "merge_colors", r.rect);

@@ -25,6 +25,7 @@
 //! resizes the same way; it keeps the bars' drag (see `bars.rs`) and its
 //! own places beside the drawing.
 
+use crate::ui::btn_icons::IconUi;
 use crate::app::App;
 use crate::i18n::tr;
 use crate::settings::{BarSlot, DOCUMENT_PALETTE, MAX_ROWS, ROWS_FIT, SWATCH_STEPS};
@@ -402,7 +403,7 @@ pub fn rename_window(app: &mut App, ctx: &egui::Context) {
                     done = Some(name.clone());
                 }
                 if ui
-                    .button(tr("palette.reset_name"))
+                    .ibutton("palette.reset_name")
                     .rich_tip(tr("palette.reset_name_tip"))
                     .clicked()
                 {

@@ -47,13 +47,13 @@ pub fn indented<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
 }
 
 /// The docker's full-width button (Apply) with its tip; true when clicked.
-pub fn wide_button(ui: &mut Ui, text: &str, enabled: bool, tip: &str) -> bool {
+pub fn wide_button(ui: &mut Ui, key: &str, enabled: bool, tip: &str) -> bool {
     use crate::ui::tips::RichTip;
     ui.add_space(6.0);
     let w = ui.available_width();
     ui.add_enabled(
         enabled,
-        egui::Button::new(text).min_size(Vec2::new(w, 26.0)),
+        crate::ui::btn_icons::Ib::new(key).min_size(Vec2::new(w, 26.0)),
     )
     .rich_tip(tip)
     .rich_disabled_tip(tip)

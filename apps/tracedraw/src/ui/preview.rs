@@ -1,5 +1,6 @@
 //! Full-screen preview (F9) and the Page Sorter view.
 
+use crate::ui::btn_icons::IconUi;
 use crate::app::App;
 use crate::i18n::tr;
 use crate::theme::Tokens;
@@ -480,10 +481,10 @@ mod viewport_tests;
 pub fn page_sorter(app: &mut App, ui: &mut Ui) {
     ui.horizontal(|ui| {
         ui.heading(tr("menu.view.page_sorter"));
-        if ui.button(tr("preview.back_to_page")).clicked() {
+        if ui.ibutton("preview.back_to_page").clicked() {
             app.page_sorter = false;
         }
-        if ui.button(tr("menu.layout.insert_page")).clicked() {
+        if ui.ibutton("menu.layout.insert_page").clicked() {
             app.add_page();
         }
     });

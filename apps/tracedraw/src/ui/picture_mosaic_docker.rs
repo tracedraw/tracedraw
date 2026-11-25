@@ -61,7 +61,7 @@ fn library(app: &mut App, ui: &mut Ui) {
         if ui
             .add_enabled(
                 !busy,
-                egui::Button::new(tr("docker.picture_mosaic_browse"))
+                crate::ui::btn_icons::Ib::new("docker.picture_mosaic_browse")
                     .min_size(egui::vec2(100.0, 24.0)),
             )
             .rich_tip(match crate::files::FolderUse::MosaicLibrary.tip() {
@@ -281,7 +281,7 @@ pub fn picture_mosaic(app: &mut App, ui: &mut Ui) {
         && !app.picture_mosaic.images.is_empty()
         && app.picture_mosaic_job.is_none();
     let tip = crate::ui::tips::pair("docker.apply", "docker.picture_mosaic_apply_desc");
-    if crate::ui::docker_form::wide_button(ui, &tr("docker.apply"), ready, &tip) {
+    if crate::ui::docker_form::wide_button(ui, "docker.apply", ready, &tip) {
         let s = app.picture_mosaic.clone();
         app.apply_picture_mosaic(&s);
     }

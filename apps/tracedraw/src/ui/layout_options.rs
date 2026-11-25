@@ -3,6 +3,7 @@
 //! through a command (SetMetadata for the settings, the guideline commands
 //! for guidelines).
 
+use crate::ui::btn_icons::IconUi;
 use crate::app::{App, Units};
 use crate::guides::GuidePreset;
 use crate::i18n::tr;
@@ -610,7 +611,7 @@ pub fn rulers_page(app: &mut App, ui: &mut Ui) {
             "options.show_rulers_tip",
         ));
     if ui
-        .button(tr("options.reset_origin"))
+        .ibutton("options.reset_origin")
         .rich_tip(crate::ui::tips::pair(
             "options.reset_origin",
             "options.reset_origin_tip",
@@ -1121,7 +1122,7 @@ pub fn guidelines_page(app: &mut App, ui: &mut Ui) {
         }
     }
     if ui
-        .button(tr("guides.apply_presets"))
+        .ibutton("guides.apply_presets")
         .rich_tip(crate::ui::tips::pair(
             "guides.apply_presets",
             "guides.apply_presets_tip",
@@ -1325,9 +1326,9 @@ fn shift_range(shown: &[usize], selected: &[usize], clicked: usize, ctrl: bool) 
 /// Add and Modify, the list, delete and lock, colour and style.
 pub fn guidelines_docker(app: &mut App, ui: &mut Ui) {
     ui.horizontal(|ui| {
-        ui.toggle_value(&mut app.show_guides, tr("guides.show"))
+        ui.itoggle(&mut app.show_guides, "guides.show")
             .rich_tip(tr("guides.show_tip"));
-        ui.toggle_value(&mut app.snap.guides, tr("guides.snap"))
+        ui.itoggle(&mut app.snap.guides, "guides.snap")
             .rich_tip(tr("guides.snap_tip"));
     });
     ui.add_space(4.0);
@@ -1428,7 +1429,7 @@ pub fn guidelines_docker(app: &mut App, ui: &mut Ui) {
     }
     ui.horizontal(|ui| {
         if ui
-            .button(tr("guides.add"))
+            .ibutton("guides.add")
             .rich_tip(crate::ui::tips::pair("guides.add", "guides.add_desc"))
             .clicked()
         {
@@ -1443,7 +1444,7 @@ pub fn guidelines_docker(app: &mut App, ui: &mut Ui) {
             _ => None,
         };
         if ui
-            .add_enabled(single.is_some(), egui::Button::new(tr("guides.modify")))
+            .add_enabled(single.is_some(), crate::ui::btn_icons::Ib::new("guides.modify"))
             .rich_tip(crate::ui::tips::pair("guides.modify", "guides.modify_desc"))
             .rich_disabled_tip(crate::ui::tips::pair("guides.modify", "guides.modify_desc"))
             .clicked()
@@ -1467,7 +1468,7 @@ pub fn guidelines_docker(app: &mut App, ui: &mut Ui) {
     let any = !app.selected_guides.is_empty();
     ui.horizontal(|ui| {
         if ui
-            .add_enabled(any, egui::Button::new(tr("guides.delete")))
+            .add_enabled(any, crate::ui::btn_icons::Ib::new("guides.delete"))
             .rich_tip(crate::ui::tips::pair("guides.delete", "guides.delete_desc"))
             .rich_disabled_tip(crate::ui::tips::pair("guides.delete", "guides.delete_desc"))
             .clicked()
@@ -1477,7 +1478,7 @@ pub fn guidelines_docker(app: &mut App, ui: &mut Ui) {
         }
         // Copies of the selected guidelines, moved by the duplicate offset.
         if ui
-            .add_enabled(any, egui::Button::new(tr("guides.duplicate")))
+            .add_enabled(any, crate::ui::btn_icons::Ib::new("guides.duplicate"))
             .rich_tip(tr("guides.duplicate_tip"))
             .clicked()
         {
@@ -1489,7 +1490,7 @@ pub fn guidelines_docker(app: &mut App, ui: &mut Ui) {
             .iter()
             .any(|g| GuideKind::of(&g.line) == form.kind);
         if ui
-            .add_enabled(of_kind, egui::Button::new(tr("guides.clear")))
+            .add_enabled(of_kind, crate::ui::btn_icons::Ib::new("guides.clear"))
             .rich_tip(tr("guides.clear_tip"))
             .clicked()
         {
@@ -1502,13 +1503,13 @@ pub fn guidelines_docker(app: &mut App, ui: &mut Ui) {
                 .iter()
                 .all(|i| guides.get(*i).is_some_and(|g| g.locked));
         let label = if all_locked {
-            tr("guides.unlock")
+            "guides.unlock"
         } else {
-            tr("guides.lock")
+            "guides.lock"
         };
         let lock_tip = crate::ui::tips::pair("guides.lock_tip", "guides.lock_desc");
         if ui
-            .add_enabled(any, egui::Button::new(label))
+            .add_enabled(any, crate::ui::btn_icons::Ib::new(label))
             .rich_tip(&lock_tip)
             .rich_disabled_tip(&lock_tip)
             .clicked()

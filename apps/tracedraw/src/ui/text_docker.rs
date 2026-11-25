@@ -27,6 +27,7 @@
 //! no text selected the font, style, size, underline and alignment become
 //! those of new text.
 
+use crate::ui::btn_icons::IconUi;
 use crate::app::App;
 use crate::i18n::tr;
 use crate::theme::Tokens;
@@ -1391,7 +1392,7 @@ fn font_axes(app: &mut App, ui: &mut Ui, sp: &TextSpan) {
         if ui
             .add_enabled(
                 !sp.variations.is_empty(),
-                egui::Button::new(tr("docker.font_axes_reset")).small(),
+                crate::ui::btn_icons::Ib::new("docker.font_axes_reset").small(),
             )
             .clicked()
         {
@@ -1763,7 +1764,7 @@ pub(crate) fn paragraph_panel(
     ui.horizontal(|ui| {
         let tip = crate::ui::tips::pair("dialog.tab_stops", "docker.tabs_tip");
         ui.label(tr("dialog.tab_stops")).rich_tip(&tip);
-        if ui.button(tr("menu.text.tabs")).rich_tip(&tip).clicked() {
+        if ui.ibutton("menu.text.tabs").rich_tip(&tip).clicked() {
             app.dialog = crate::ui::dialogs::Dialog::TextTabs;
         }
         ui.add(
@@ -2020,7 +2021,7 @@ pub(crate) fn frame_panel(
             {
                 app.dialog = crate::ui::dialogs::Dialog::TextDropCap;
             }
-            if ui.button(tr("menu.text.columns")).clicked() {
+            if ui.ibutton("menu.text.columns").clicked() {
                 app.dialog = crate::ui::dialogs::Dialog::TextColumns;
             }
         });

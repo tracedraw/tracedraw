@@ -2,6 +2,7 @@
 //! output (with the test cut), CNC toolpaths, weeding, bridges, cut
 //! order, CutContour and registration marks. See docs/behavior/tracecut.md.
 
+use crate::ui::btn_icons::IconUi;
 use crate::app::Units;
 use crate::i18n::tr;
 use crate::tracecut::{ToolId, TraceCutState};
@@ -577,7 +578,7 @@ fn plotter(ui: &mut Ui, units: Units, st: &mut TraceCutState) -> Option<Action> 
             "tracecut.test_size",
         );
         if ui
-            .button(tr("tracecut.test_cut"))
+            .ibutton("tracecut.test_cut")
             .rich_tip(crate::ui::tips::keyed("tracecut.test_cut"))
             .clicked()
         {

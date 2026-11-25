@@ -18,6 +18,7 @@ pub mod benchmark;
 pub mod bitmap_dialogs;
 pub mod bitmap_preview;
 pub mod brand;
+pub mod btn_icons;
 pub mod brush_bars;
 pub mod callout_bar;
 pub mod chrome;

@@ -8,6 +8,7 @@
 //! object is selected, which stays editable); and Halftone Sphere, which
 //! makes a lit halftone ball without a selection.
 
+use crate::ui::btn_icons::IconUi;
 use crate::app::App;
 use crate::i18n::{tr, trf};
 use crate::shape3d::{position_of, Mode, Surface, POSITIONS};
@@ -42,7 +43,7 @@ pub fn shape_3d(app: &mut App, ui: &mut Ui) {
             ui.horizontal(|ui| {
                 ui.label(tr("docker.shape3d_editing"));
                 release = ui
-                    .button(tr("docker.shape3d_release"))
+                    .ibutton("docker.shape3d_release")
                     .rich_tip(crate::ui::tips::keyed("docker.shape3d_release"))
                     .clicked();
             });
@@ -206,7 +207,7 @@ pub fn shape_3d(app: &mut App, ui: &mut Ui) {
         pick = ui
             .add_enabled(
                 !app.selection.is_empty() && editing.is_none(),
-                egui::Button::new(tr("docker.scatter_use_selection")),
+                crate::ui::btn_icons::Ib::new("docker.scatter_use_selection"),
             )
             .rich_tip(crate::ui::tips::keyed("docker.shape3d_art"))
             .rich_disabled_tip(crate::ui::tips::keyed("docker.shape3d_art"))
@@ -265,7 +266,7 @@ pub fn shape_3d(app: &mut App, ui: &mut Ui) {
             indented(ui, |ui| {
                 ui.horizontal(|ui| {
                     fit = ui
-                        .button(tr("docker.shape3d_fit"))
+                        .ibutton("docker.shape3d_fit")
                         .rich_tip(crate::ui::tips::keyed("docker.shape3d_fit"))
                         .clicked();
                     ui.checkbox(&mut s.art_fit, tr("docker.shape3d_stretch"))
@@ -314,7 +315,7 @@ pub fn shape_3d(app: &mut App, ui: &mut Ui) {
             s.halftone_dots = n;
         }
         make = ui
-            .button(tr("docker.shape3d_halftone_create"))
+            .ibutton("docker.shape3d_halftone_create")
             .rich_tip(crate::ui::tips::keyed("docker.shape3d_halftone_sphere"))
             .clicked();
     });

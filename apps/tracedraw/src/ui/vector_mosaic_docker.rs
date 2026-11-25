@@ -260,7 +260,7 @@ pub fn vector_mosaic(app: &mut App, ui: &mut Ui) {
         select = ui
             .add_enabled(
                 custom && !app.selection.is_empty(),
-                egui::Button::new(tr("docker.vector_mosaic_select")),
+                crate::ui::btn_icons::Ib::new("docker.vector_mosaic_select"),
             )
             .rich_tip(tr("docker.vector_mosaic_select_tip"))
             .clicked();
@@ -313,7 +313,7 @@ pub fn vector_mosaic(app: &mut App, ui: &mut Ui) {
     let custom = app.vector_mosaic.shape == TileShape::Custom;
     let ready = !app.selection.is_empty() && (!custom || app.vector_mosaic.custom.is_some());
     let tip = crate::ui::tips::pair("docker.apply", "docker.vector_mosaic_apply_desc");
-    if crate::ui::docker_form::wide_button(ui, &tr("docker.apply"), ready, &tip) {
+    if crate::ui::docker_form::wide_button(ui, "docker.apply", ready, &tip) {
         let s = app.vector_mosaic.clone();
         app.apply_vector_mosaic(&s);
     }

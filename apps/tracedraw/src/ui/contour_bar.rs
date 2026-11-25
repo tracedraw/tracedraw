@@ -4,6 +4,7 @@
 //! colours; the object and colour accelerations. They show the selected
 //! contour and edit the selected contours live.
 
+use crate::ui::btn_icons::IconUi;
 use crate::app::App;
 use crate::contour_tool::{blend_key, join_key, ContourDirection};
 use crate::i18n::tr;
@@ -64,7 +65,7 @@ pub fn contour_controls_in(app: &mut App, ui: &mut Ui, wrap: bool) {
     group_row(ui, wrap, |ui| {
         for d in ContourDirection::ALL {
             if ui
-                .selectable_label(s.direction == d, tr(d.key()))
+                .iselectable(s.direction == d, d.key())
                 .rich_tip(crate::ui::tips::keyed(d.key()))
                 .clicked()
                 && s.direction != d
@@ -228,21 +229,21 @@ pub fn contour_actions_in(app: &mut App, ui: &mut Ui, wrap: bool) {
     group_row(ui, wrap, |ui| {
         if bare
             && ui
-                .button(tr("docker.apply"))
+                .ibutton("docker.apply")
                 .rich_tip(crate::ui::tips::pair("docker.apply", "contour.apply_desc"))
                 .clicked()
         {
             app.add_contour();
         }
         if ui
-            .add_enabled(has, egui::Button::new(tr("contour.clear")))
+            .add_enabled(has, crate::ui::btn_icons::Ib::new("contour.clear"))
             .rich_tip(crate::ui::tips::keyed("contour.clear"))
             .clicked()
         {
             app.clear_contour();
         }
         if ui
-            .add_enabled(has, egui::Button::new(tr("docker.break_apart")))
+            .add_enabled(has, crate::ui::btn_icons::Ib::new("docker.break_apart"))
             .rich_tip(crate::ui::tips::pair(
                 "docker.break_apart",
                 "toolbar.effect_break_apart_desc",
@@ -254,7 +255,7 @@ pub fn contour_actions_in(app: &mut App, ui: &mut Ui, wrap: bool) {
         if ui
             .add_enabled(
                 !app.selection.is_empty(),
-                egui::Button::new(tr("contour.copy_from")),
+                crate::ui::btn_icons::Ib::new("contour.copy_from"),
             )
             .rich_tip(crate::ui::tips::pair(
                 "contour.copy_from",

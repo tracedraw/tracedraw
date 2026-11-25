@@ -1,5 +1,6 @@
 //! Standard toolbar and the context-sensitive property bar.
 
+use crate::ui::btn_icons::IconUi;
 use crate::app::App;
 use crate::i18n::{tr, trf};
 use crate::theme::Tokens;
@@ -173,7 +174,7 @@ fn zoom_level_menu(app: &mut App, ui: &mut Ui) {
         ("toolbar.zoom_to_width", 3),
         ("toolbar.zoom_to_height", 4),
     ] {
-        if ui.button(tr(key)).clicked() {
+        if ui.ibutton(key).clicked() {
             match f {
                 0 => app.zoom_to_selection(),
                 1 => app.zoom_to_fit(),
@@ -976,15 +977,15 @@ fn launch_button(app: &mut App, ui: &mut Ui, bar: &str) {
     egui::Popup::menu(&launch)
         .id(egui::Id::new(("launch_menu", bar)))
         .show(|ui| {
-            if ui.button(tr("menu.tools.font_manager")).clicked() {
+            if ui.ibutton("menu.tools.font_manager").clicked() {
                 app.dialog = crate::ui::dialogs::Dialog::FontManager(Default::default());
                 ui.close();
             }
-            if crate::ui::tracecut::shown(app) && ui.button(tr("menu.tools.tracecut")).clicked() {
+            if crate::ui::tracecut::shown(app) && ui.ibutton("menu.tools.tracecut").clicked() {
                 app.open_tracecut();
                 ui.close();
             }
-            if ui.button(tr("menu.window.welcome_screen")).clicked() {
+            if ui.ibutton("menu.window.welcome_screen").clicked() {
                 app.show_welcome = true;
                 ui.close();
             }
@@ -1057,11 +1058,11 @@ fn ai_button(app: &mut App, ui: &mut Ui) {
     egui::Popup::menu(&arrow)
         .id(egui::Id::new("ai_menu"))
         .show(|ui| {
-            if ui.button(tr("menu.tools.ai_generate")).clicked() {
+            if ui.ibutton("menu.tools.ai_generate").clicked() {
                 app.open_ai_generate();
                 ui.close();
             }
-            if ui.button(tr("menu.object.ai_draw_words")).clicked() {
+            if ui.ibutton("menu.object.ai_draw_words").clicked() {
                 app.open_ai_drawing();
                 ui.close();
             }
@@ -1070,7 +1071,7 @@ fn ai_button(app: &mut App, ui: &mut Ui) {
             if ui
                 .add_enabled(
                     cutout,
-                    egui::Button::new(tr("menu.bitmaps.remove_background")),
+                    crate::ui::btn_icons::Ib::new("menu.bitmaps.remove_background"),
                 )
                 .rich_disabled_tip(tip)
                 .clicked()
@@ -1079,7 +1080,7 @@ fn ai_button(app: &mut App, ui: &mut Ui) {
                 ui.close();
             }
             ui.separator();
-            if ui.button(tr("menu.tools.options_ai")).clicked() {
+            if ui.ibutton("menu.tools.options_ai").clicked() {
                 crate::ui::ai_ui::open_options(app, crate::ui::dialogs::OptionsPage::AiGeneral);
                 ui.close();
             }
@@ -1149,19 +1150,19 @@ pub fn transform_toolbar(app: &mut App, ui: &mut Ui) {
         }
         vsep(ui);
         if ui
-            .add_enabled(has, egui::Button::new(tr("toolbar.mirror_h_short")))
+            .add_enabled(has, crate::ui::btn_icons::Ib::new("toolbar.mirror_h_short"))
             .clicked()
         {
             app.mirror(true);
         }
         if ui
-            .add_enabled(has, egui::Button::new(tr("toolbar.mirror_v_short")))
+            .add_enabled(has, crate::ui::btn_icons::Ib::new("toolbar.mirror_v_short"))
             .clicked()
         {
             app.mirror(false);
         }
         if ui
-            .add_enabled(has, egui::Button::new(tr("toolbar.rotate_90")))
+            .add_enabled(has, crate::ui::btn_icons::Ib::new("toolbar.rotate_90"))
             .clicked()
         {
             let c = app.selection_bounds().unwrap_or_default().center();
@@ -1187,7 +1188,7 @@ fn balloon_bar(app: &mut App, ui: &mut Ui) {
         .unwrap_or((app.balloon_style, app.balloon_width, app.balloon_bend));
     for style in BalloonStyle::ALL {
         if ui
-            .selectable_label(shown.0 == style, tr(style.key()))
+            .iselectable(shown.0 == style, style.key())
             .rich_tip(crate::ui::tips::keyed(style.key()))
             .clicked()
         {
@@ -1218,7 +1219,7 @@ fn balloon_bar(app: &mut App, ui: &mut Ui) {
     if ui
         .add_enabled(
             !app.selected_balloons().is_empty(),
-            egui::Button::new(tr("balloon.add_text")),
+            crate::ui::btn_icons::Ib::new("balloon.add_text"),
         )
         .rich_tip(crate::ui::tips::keyed("balloon.add_text"))
         .clicked()
@@ -1236,14 +1237,14 @@ fn balloon_bar(app: &mut App, ui: &mut Ui) {
 /// it was chosen undone.
 fn shape_builder_bar(app: &mut App, ui: &mut Ui) {
     if ui
-        .selectable_label(!app.builder.delete_mode, tr("toolbar.builder_add"))
+        .iselectable(!app.builder.delete_mode, "toolbar.builder_add")
         .rich_tip(crate::ui::tips::keyed("toolbar.builder_add"))
         .clicked()
     {
         app.builder.delete_mode = false;
     }
     if ui
-        .selectable_label(app.builder.delete_mode, tr("toolbar.builder_delete"))
+        .iselectable(app.builder.delete_mode, "toolbar.builder_delete")
         .rich_tip(crate::ui::tips::keyed("toolbar.builder_delete"))
         .clicked()
     {
@@ -1262,14 +1263,14 @@ fn shape_builder_bar(app: &mut App, ui: &mut Ui) {
     vsep(ui);
     let made = app.builder.session_steps > 0;
     if ui
-        .button(tr("toolbar.builder_accept"))
+        .ibutton("toolbar.builder_accept")
         .rich_tip(crate::ui::tips::keyed("toolbar.builder_accept"))
         .clicked()
     {
         app.builder_accept();
     }
     if ui
-        .add_enabled(made, egui::Button::new(tr("toolbar.builder_cancel")))
+        .add_enabled(made, crate::ui::btn_icons::Ib::new("toolbar.builder_cancel"))
         .rich_tip(crate::ui::tips::keyed("toolbar.builder_cancel"))
         .rich_disabled_tip(crate::ui::tips::keyed("toolbar.builder_cancel"))
         .clicked()
@@ -1294,14 +1295,14 @@ fn action_lines_bar(app: &mut App, ui: &mut Ui) {
         ui.add(NumField::new(&mut a.count).range(2..=500))
     });
     if ui
-        .selectable_label(!a.radial, tr("toolbar.parallel"))
+        .iselectable(!a.radial, "toolbar.parallel")
         .rich_tip(crate::ui::tips::keyed("toolbar.parallel"))
         .clicked()
     {
         a.radial = false;
     }
     if ui
-        .selectable_label(a.radial, tr("toolbar.radial"))
+        .iselectable(a.radial, "toolbar.radial")
         .rich_tip(crate::ui::tips::keyed("toolbar.radial"))
         .clicked()
     {
@@ -1376,7 +1377,7 @@ fn action_lines_bar(app: &mut App, ui: &mut Ui) {
         });
     }
     if ui
-        .button(tr("toolbar.action_reseed"))
+        .ibutton("toolbar.action_reseed")
         .rich_tip(crate::ui::tips::keyed("toolbar.action_reseed"))
         .clicked()
     {
@@ -1783,7 +1784,7 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
                     (true, "segment_delete.freehand"),
                 ] {
                     if ui
-                        .selectable_label(app.segment_freehand == freehand, tr(key))
+                        .iselectable(app.segment_freehand == freehand, key)
                         .rich_tip(crate::ui::tips::keyed(key))
                         .clicked()
                     {
@@ -1808,14 +1809,14 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
                     )
                 });
                 if ui
-                    .selectable_label(!app.spiral_logarithmic, tr("toolbar.symmetrical"))
+                    .iselectable(!app.spiral_logarithmic, "toolbar.symmetrical")
                     .rich_tip(crate::ui::tips::keyed("toolbar.symmetrical"))
                     .clicked()
                 {
                     app.spiral_logarithmic = false;
                 }
                 if ui
-                    .selectable_label(app.spiral_logarithmic, tr("toolbar.logarithmic"))
+                    .iselectable(app.spiral_logarithmic, "toolbar.logarithmic")
                     .rich_tip(crate::ui::tips::keyed("toolbar.logarithmic"))
                     .clicked()
                 {
@@ -1833,14 +1834,14 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
             }
             Tool::GraphPaper => {
                 if ui
-                    .selectable_label(!app.graph_radial, tr("toolbar.graph_cells"))
+                    .iselectable(!app.graph_radial, "toolbar.graph_cells")
                     .rich_tip(crate::ui::tips::keyed("toolbar.graph_cells"))
                     .clicked()
                 {
                     app.graph_radial = false;
                 }
                 if ui
-                    .selectable_label(app.graph_radial, tr("toolbar.graph_radial"))
+                    .iselectable(app.graph_radial, "toolbar.graph_radial")
                     .rich_tip(crate::ui::tips::keyed("toolbar.graph_radial"))
                     .clicked()
                 {
@@ -1893,14 +1894,14 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
                 if ui
                     .add_enabled(
                         app.anchor_sel.is_some(),
-                        egui::Button::new(tr("toolbar.anchor_delete")),
+                        crate::ui::btn_icons::Ib::new("toolbar.anchor_delete"),
                     )
                     .clicked()
                 {
                     app.delete_selected_anchor();
                 }
                 if ui
-                    .add_enabled(n > 0, egui::Button::new(tr("toolbar.anchor_clear")))
+                    .add_enabled(n > 0, crate::ui::btn_icons::Ib::new("toolbar.anchor_clear"))
                     .clicked()
                 {
                     if let Some(id) = id {
@@ -1927,7 +1928,7 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
             Tool::FreeTransform => {
                 for m in crate::app::FreeTransformMode::ALL {
                     if ui
-                        .selectable_label(app.free_transform_mode == m, tr(m.label_key()))
+                        .iselectable(app.free_transform_mode == m, m.label_key())
                         .rich_tip(crate::ui::tips::keyed(m.label_key()))
                         .clicked()
                     {
@@ -1954,7 +1955,7 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
             Tool::ColorEyedropper => {
                 let has = app.eyedropper_color.is_some();
                 if ui
-                    .selectable_label(!app.eyedropper_apply, tr("toolbar.select_color"))
+                    .iselectable(!app.eyedropper_apply, "toolbar.select_color")
                     .rich_tip(crate::ui::tips::keyed("toolbar.select_color"))
                     .clicked()
                 {
@@ -1963,7 +1964,7 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
                 if ui
                     .add_enabled(
                         has,
-                        egui::Button::selectable(app.eyedropper_apply, tr("toolbar.apply_color")),
+                        crate::ui::btn_icons::Ib::selectable(app.eyedropper_apply, "toolbar.apply_color"),
                     )
                     .rich_tip(crate::ui::tips::keyed("toolbar.apply_color"))
                     .rich_disabled_tip(crate::ui::tips::keyed("toolbar.apply_color"))
@@ -1984,7 +1985,7 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
                 // The next click anywhere in the window, the panels and
                 // bars too, samples the colour shown there (#3040).
                 if ui
-                    .selectable_label(app.eyedropper_screen, tr("toolbar.sample_screen"))
+                    .iselectable(app.eyedropper_screen, "toolbar.sample_screen")
                     .rich_tip(crate::ui::tips::keyed("toolbar.sample_screen"))
                     .clicked()
                 {
@@ -2034,7 +2035,7 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
             Tool::AttributesEyedropper => {
                 let has = app.eyedropper_attrs.is_some();
                 if ui
-                    .selectable_label(!app.eyedropper_apply, tr("toolbar.select_attrs"))
+                    .iselectable(!app.eyedropper_apply, "toolbar.select_attrs")
                     .rich_tip(crate::ui::tips::keyed("toolbar.select_attrs"))
                     .clicked()
                 {
@@ -2043,7 +2044,7 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
                 if ui
                     .add_enabled(
                         has,
-                        egui::Button::selectable(app.eyedropper_apply, tr("toolbar.apply_attrs")),
+                        crate::ui::btn_icons::Ib::selectable(app.eyedropper_apply, "toolbar.apply_attrs"),
                     )
                     .rich_tip(crate::ui::tips::keyed("toolbar.apply_attrs"))
                     .rich_disabled_tip(crate::ui::tips::keyed("toolbar.apply_attrs"))
@@ -2058,7 +2059,7 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
                 .rich_tip(crate::ui::tips::keyed("toolbar.sample_after_apply"));
                 vsep(ui);
                 let g = &mut app.eyedropper_groups;
-                ui.menu_button(tr("toolbar.attr_properties"), |ui| {
+                ui.imenu_button("toolbar.attr_properties", |ui| {
                     ui.checkbox(&mut g.outline, tr("toolbar.attr_outline"));
                     ui.checkbox(&mut g.fill, tr("toolbar.attr_fill"));
                     ui.checkbox(&mut g.text, tr("toolbar.attr_text"));
@@ -2066,7 +2067,7 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
                 })
                 .response
                 .rich_tip(crate::ui::tips::keyed("toolbar.attr_properties"));
-                ui.menu_button(tr("toolbar.attr_transformations"), |ui| {
+                ui.imenu_button("toolbar.attr_transformations", |ui| {
                     ui.checkbox(&mut g.size, tr("toolbar.attr_size"));
                     ui.checkbox(&mut g.rotation, tr("toolbar.attr_rotation"));
                     ui.checkbox(&mut g.position, tr("toolbar.attr_position"));
@@ -2156,7 +2157,7 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
                 if ui
                     .add_enabled(
                         current.is_some(),
-                        egui::Button::new(tr("toolbar.clear_block_shadow")),
+                        crate::ui::btn_icons::Ib::new("toolbar.clear_block_shadow"),
                     )
                     .rich_tip(crate::ui::tips::keyed("toolbar.clear_block_shadow"))
                     .clicked()
@@ -2234,10 +2235,10 @@ fn curve_tool_properties(app: &mut App, ui: &mut Ui) {
     if app.tool == Tool::TwoPointLine {
         // Arcs instead of straight lines, bowed one way or the other.
         sep(ui);
-        ui.toggle_value(&mut app.line_arc, tr("toolbar.line_arc"))
+        ui.itoggle(&mut app.line_arc, "toolbar.line_arc")
             .rich_tip(crate::ui::tips::pair("toolbar.line_arc", "toolbar.line_arc_desc"));
         ui.add_enabled_ui(app.line_arc, |ui| {
-            ui.toggle_value(&mut app.line_arc_flip, tr("toolbar.line_arc_flip"))
+            ui.itoggle(&mut app.line_arc_flip, "toolbar.line_arc_flip")
                 .rich_tip(tr("toolbar.line_arc_flip_desc"))
                 .rich_disabled_tip(tr("toolbar.line_arc_flip_desc"));
         });
@@ -2282,7 +2283,7 @@ fn curve_tool_properties(app: &mut App, ui: &mut Ui) {
         sep(ui);
         let units = app.units;
         let p = &mut app.settings.curves.parallel;
-        ui.toggle_value(&mut p.on, tr("toolbar.parallel_lines"))
+        ui.itoggle(&mut p.on, "toolbar.parallel_lines")
             .rich_tip(crate::ui::tips::pair(
                 "toolbar.parallel_lines",
                 "toolbar.parallel_lines_desc",
@@ -2304,7 +2305,7 @@ fn curve_tool_properties(app: &mut App, ui: &mut Ui) {
             {
                 p.gap = units.to_mm(gap).max(0.01);
             }
-            ui.toggle_value(&mut p.both_sides, tr("toolbar.parallel_both"))
+            ui.itoggle(&mut p.both_sides, "toolbar.parallel_both")
                 .rich_tip(tr("toolbar.parallel_both_desc"));
         });
     }
@@ -2343,7 +2344,7 @@ fn bitmap_properties(app: &mut App, ui: &mut Ui) {
     use crate::ui::dialogs::{Dialog, TraceState};
     use crate::ui::tips::keyed;
     if ui
-        .button(tr("toolbar.edit_bitmap"))
+        .ibutton("toolbar.edit_bitmap")
         .rich_tip(keyed("toolbar.edit_bitmap"))
         .clicked()
     {
@@ -2351,21 +2352,21 @@ fn bitmap_properties(app: &mut App, ui: &mut Ui) {
     }
     // Another picture in its place (#2598).
     if ui
-        .button(tr("toolbar.replace_bitmap"))
+        .ibutton("toolbar.replace_bitmap")
         .rich_tip(keyed("toolbar.replace_bitmap"))
         .clicked()
     {
         app.replace_image();
     }
     if ui
-        .button(tr("toolbar.crop_bitmap"))
+        .ibutton("toolbar.crop_bitmap")
         .rich_tip(keyed("toolbar.crop_bitmap"))
         .clicked()
     {
         app.set_tool(Tool::Crop);
     }
-    ui.menu_button(tr("toolbar.trace_bitmap"), |ui| {
-        if ui.button(tr("menu.bitmaps.quick_trace")).clicked() {
+    ui.imenu_button("toolbar.trace_bitmap", |ui| {
+        if ui.ibutton("menu.bitmaps.quick_trace").clicked() {
             app.quick_trace();
             ui.close();
         }
@@ -2399,7 +2400,7 @@ fn bitmap_properties(app: &mut App, ui: &mut Ui) {
                 crate::trace::Preset::Optimized,
             ),
         ] {
-            if ui.button(tr(key)).clicked() {
+            if ui.ibutton(key).clicked() {
                 app.dialog = Dialog::Trace(TraceState::new(preset, &app.settings.tracing));
                 ui.close();
             }
@@ -2408,21 +2409,21 @@ fn bitmap_properties(app: &mut App, ui: &mut Ui) {
     .response
     .rich_tip(keyed("toolbar.trace_bitmap"));
     if ui
-        .button(tr("menu.bitmaps.straighten_image"))
+        .ibutton("menu.bitmaps.straighten_image")
         .rich_tip(keyed("menu.bitmaps.straighten_image"))
         .clicked()
     {
         app.dialog = Dialog::StraightenImage(Default::default());
     }
     if ui
-        .button(tr("menu.bitmaps.resample"))
+        .ibutton("menu.bitmaps.resample")
         .rich_tip(keyed("menu.bitmaps.resample"))
         .clicked()
     {
         app.open_resample();
     }
     if ui
-        .button(tr("menu.bitmaps.remove_background_local"))
+        .ibutton("menu.bitmaps.remove_background_local")
         .rich_tip(tr("dialog.bg_contiguous_tip"))
         .clicked()
     {
@@ -2437,7 +2438,7 @@ fn bitmap_properties(app: &mut App, ui: &mut Ui) {
     if ui
         .add_enabled(
             ready && !busy,
-            egui::Button::new(format!("\u{2728} {}", tr("toolbar.remove_background"))),
+            crate::ui::btn_icons::Ib::new("toolbar.remove_background"),
         )
         .rich_tip(tip.clone())
         .rich_disabled_tip(tip)
@@ -2996,7 +2997,7 @@ fn transparency_controls(app: &mut App, ui: &mut Ui, stacked: bool) {
         if ui
             .add_enabled(
                 app.can_clear_transparency(),
-                egui::Button::new(tr("toolbar.clear_transparency")),
+                crate::ui::btn_icons::Ib::new("toolbar.clear_transparency"),
             )
             .rich_tip(crate::ui::tips::keyed("toolbar.clear_transparency"))
             .clicked()
@@ -3367,7 +3368,7 @@ fn shape_tool_bar(app: &mut App, ui: &mut Ui) {
         )
     });
     if ui
-        .add_enabled(has_nodes, egui::Button::new(tr("toolbar.apply_bulge")))
+        .add_enabled(has_nodes, crate::ui::btn_icons::Ib::new("toolbar.apply_bulge"))
         .rich_tip(crate::ui::tips::keyed("toolbar.apply_bulge"))
         .rich_disabled_tip(crate::ui::tips::keyed("toolbar.apply_bulge"))
         .clicked()
@@ -3633,7 +3634,7 @@ fn interactive_fill_bar(app: &mut App, ui: &mut Ui, shapes: &[tracedraw_core::do
     .enumerate()
     {
         let clicked = ui
-            .selectable_label(shown_kind == Some(i), tr(key))
+            .iselectable(shown_kind == Some(i), key)
             .rich_tip(crate::ui::tips::keyed(key))
             .clicked();
         if clicked && kind == i && mix.kind {
@@ -3721,7 +3722,7 @@ fn interactive_fill_bar(app: &mut App, ui: &mut Ui, shapes: &[tracedraw_core::do
             for k in FountainKind::ALL {
                 let key = crate::ui::dockers::fountain_kind_key(k);
                 if ui
-                    .selectable_label(kind_shown && f.kind == k, tr(key))
+                    .iselectable(kind_shown && f.kind == k, key)
                     .rich_tip(crate::ui::tips::keyed(key))
                     .clicked()
                     && (f.kind != k || !kind_shown)
@@ -3780,7 +3781,7 @@ fn interactive_fill_bar(app: &mut App, ui: &mut Ui, shapes: &[tracedraw_core::do
                         }
                         vsep(ui);
                         if ui
-                            .button(tr("toolbar.delete_color_point"))
+                            .ibutton("toolbar.delete_color_point")
                             .rich_tip(crate::ui::tips::pair(
                                 "toolbar.delete_color_point",
                                 "toolbar.delete_color_point_tip",
@@ -3907,7 +3908,7 @@ fn interactive_fill_bar(app: &mut App, ui: &mut Ui, shapes: &[tracedraw_core::do
     let copy = ui
         .add_enabled(
             !shapes.is_empty(),
-            egui::Button::new(tr("toolbar.copy_fill")).selected(app.pending_copy_fill),
+            crate::ui::btn_icons::Ib::new("toolbar.copy_fill").selected(app.pending_copy_fill),
         )
         .rich_tip(crate::ui::tips::keyed("toolbar.copy_fill"));
     if copy.clicked() {
@@ -4027,7 +4028,7 @@ fn common_shapes_bar(app: &mut App, ui: &mut Ui) {
             });
             ui.horizontal(|ui| {
                 if ui
-                    .selectable_label(shown == ShapeTab::All, tr("shapes.all"))
+                    .iselectable(shown == ShapeTab::All, "shapes.all")
                     .clicked()
                 {
                     ui.data_mut(|d| d.insert_temp(popup, ShapeTab::All));
@@ -4041,7 +4042,7 @@ fn common_shapes_bar(app: &mut App, ui: &mut Ui) {
                     }
                 }
                 if ui
-                    .selectable_label(shown == ShapeTab::Mine, tr("shapes.mine"))
+                    .iselectable(shown == ShapeTab::Mine, "shapes.mine")
                     .rich_tip(crate::ui::tips::pair("shapes.mine", "shapes.mine_desc"))
                     .clicked()
                 {
@@ -4135,7 +4136,7 @@ fn my_shapes_grid(app: &mut App, ui: &mut Ui) {
     ui.horizontal(|ui| {
         let has = !app.selection.is_empty();
         if ui
-            .add_enabled(has, egui::Button::new(tr("menu.object.add_common_shape")))
+            .add_enabled(has, crate::ui::btn_icons::Ib::new("menu.object.add_common_shape"))
             .rich_tip(crate::ui::tips::pair(
                 "menu.object.add_common_shape",
                 "shapes.mine_add_desc",
@@ -4151,7 +4152,7 @@ fn my_shapes_grid(app: &mut App, ui: &mut Ui) {
         if ui
             .add_enabled(
                 app.picked_my_shape().is_some(),
-                egui::Button::new(tr("shapes.mine_remove")),
+                crate::ui::btn_icons::Ib::new("shapes.mine_remove"),
             )
             .rich_tip(crate::ui::tips::pair(
                 "shapes.mine_remove",
@@ -4192,11 +4193,11 @@ fn my_shapes_grid(app: &mut App, ui: &mut Ui) {
                             picked = Some(s.uid);
                         }
                         r.context_menu(|ui| {
-                            if ui.button(tr("shapes.mine_rename")).clicked() {
+                            if ui.ibutton("shapes.mine_rename").clicked() {
                                 rename = Some(s.uid);
                                 ui.close();
                             }
-                            if ui.button(tr("shapes.mine_remove")).clicked() {
+                            if ui.ibutton("shapes.mine_remove").clicked() {
                                 remove = Some(s.uid);
                                 ui.close();
                             }
@@ -4424,7 +4425,7 @@ fn inner_shadow_bar(app: &mut App, ui: &mut Ui) {
     let apply = ui
         .add_enabled(
             has_selection && current.is_none(),
-            egui::Button::new(tr("docker.apply")),
+            crate::ui::btn_icons::Ib::new("docker.apply"),
         )
         .rich_tip(crate::ui::tips::pair(
             "docker.apply",
@@ -4524,7 +4525,7 @@ fn inner_shadow_bar(app: &mut App, ui: &mut Ui) {
     if ui
         .add_enabled(
             current.is_some(),
-            egui::Button::new(tr("toolbar.clear_inner_shadow")),
+            crate::ui::btn_icons::Ib::new("toolbar.clear_inner_shadow"),
         )
         .rich_tip(crate::ui::tips::keyed("toolbar.clear_inner_shadow"))
         .clicked()
@@ -4561,7 +4562,7 @@ fn shadow_bar(app: &mut App, ui: &mut Ui, shapes: &[tracedraw_core::Shape]) {
     if ui
         .add_enabled(
             !shapes.is_empty() && first.is_none(),
-            egui::Button::new(tr("docker.apply")),
+            crate::ui::btn_icons::Ib::new("docker.apply"),
         )
         .rich_tip(crate::ui::tips::pair(
             "docker.apply",
@@ -4783,7 +4784,7 @@ fn shadow_bar(app: &mut App, ui: &mut Ui, shapes: &[tracedraw_core::Shape]) {
     if ui
         .add_enabled(
             app.can_break_shadow_apart(),
-            egui::Button::new(tr("shadow.break_apart")),
+            crate::ui::btn_icons::Ib::new("shadow.break_apart"),
         )
         .rich_tip(tr("shadow.break_apart_tip"))
         .clicked()
@@ -4793,7 +4794,7 @@ fn shadow_bar(app: &mut App, ui: &mut Ui, shapes: &[tracedraw_core::Shape]) {
     if ui
         .add_enabled(
             first.is_some(),
-            egui::Button::new(tr("toolbar.clear_shadow")),
+            crate::ui::btn_icons::Ib::new("toolbar.clear_shadow"),
         )
         .rich_tip(crate::ui::tips::keyed("toolbar.clear_shadow"))
         .clicked()

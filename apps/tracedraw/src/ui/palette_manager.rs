@@ -11,6 +11,7 @@
 //! Delete, Move Up, Move Down); a row dragged onto another of its
 //! section moves there.
 
+use crate::ui::btn_icons::IconUi;
 use crate::app::App;
 use crate::i18n::{tr, trf};
 use crate::settings::{SWATCH_MAX, SWATCH_MIN, SWATCH_STEPS};
@@ -183,7 +184,7 @@ pub fn show(app: &mut App, ui: &mut Ui) {
     // New Palette: an empty palette of one's own, shown in a bar of its
     // own at once, so several palettes stand in bars side by side.
     if ui
-        .button(tr("palette.new"))
+        .ibutton("palette.new")
         .rich_tip(tr("palette.new_tip"))
         .clicked()
     {
@@ -960,7 +961,7 @@ fn document_section(app: &mut App, ui: &mut Ui) {
         if ui
             .add_enabled(
                 doc && !app.selection.is_empty(),
-                egui::Button::new(tr("palette.add_selection_colors")),
+                crate::ui::btn_icons::Ib::new("palette.add_selection_colors"),
             )
             .rich_tip(tr("palette.add_selection_colors_tip"))
             .clicked()
@@ -968,7 +969,7 @@ fn document_section(app: &mut App, ui: &mut Ui) {
             app.palette_from_selection();
         }
         if ui
-            .add_enabled(doc, egui::Button::new(tr("palette.add_from_document")))
+            .add_enabled(doc, crate::ui::btn_icons::Ib::new("palette.add_from_document"))
             .rich_tip(tr("palette.add_from_document_tip"))
             .clicked()
         {
@@ -976,7 +977,7 @@ fn document_section(app: &mut App, ui: &mut Ui) {
         }
         let any = doc && !app.doc().palette.is_empty();
         if ui
-            .add_enabled(any, egui::Button::new(tr("palette.clear")))
+            .add_enabled(any, crate::ui::btn_icons::Ib::new("palette.clear"))
             .rich_tip(tr("palette.clear_tip"))
             .clicked()
         {

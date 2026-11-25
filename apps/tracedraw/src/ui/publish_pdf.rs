@@ -8,6 +8,7 @@
 //! protection (Security), and list what the preflight found (Issues). OK writes the file. The PDF
 //! itself comes from `tracedraw_io::pdf`. See docs/behavior/publish-to-pdf.md.
 
+use crate::ui::btn_icons::IconUi;
 use crate::app::App;
 use crate::i18n::{tr, trf};
 use crate::theme::Tokens;
@@ -977,7 +978,7 @@ fn general(app: &App, ui: &mut Ui, st: &mut PublishState) {
         } else {
             ui.label(st.file.display().to_string());
         }
-        if browse && ui.button(tr("publish.browse")).clicked() {
+        if browse && ui.ibutton("publish.browse").clicked() {
             let name = st
                 .file
                 .file_name()

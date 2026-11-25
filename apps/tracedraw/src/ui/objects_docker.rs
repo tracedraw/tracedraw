@@ -18,6 +18,7 @@
 //! the page's layers, #1132), shows all pages or the current one, and
 //! deletes the selected objects or, with none, the active layer.
 
+use crate::ui::btn_icons::IconUi;
 use crate::app::App;
 use crate::i18n::{tr, trf};
 use crate::theme::Tokens;
@@ -652,11 +653,11 @@ pub fn objects(app: &mut App, ui: &mut Ui) {
                 }
             }
             resp.context_menu(|ui| {
-                if !current && ui.button(tr("docker.go_to_page")).clicked() {
+                if !current && ui.ibutton("docker.go_to_page").clicked() {
                     act.goto = Some(page.id);
                     ui.close();
                 }
-                if ui.button(tr("docker.rename")).clicked() {
+                if ui.ibutton("docker.rename").clicked() {
                     act.rename_page = Some(page.name.clone());
                     if !current {
                         act.goto = Some(page.id);
@@ -884,7 +885,7 @@ fn layer_rows(
         act.pick = Some(layer.id);
     }
     resp.context_menu(|ui| {
-        if ui.button(tr("docker.rename")).clicked() {
+        if ui.ibutton("docker.rename").clicked() {
             act.rename_layer = Some((layer.id, layer.name.clone()));
             ui.close();
         }
@@ -904,7 +905,7 @@ fn layer_rows(
         } else {
             "docker.new_layer"
         };
-        if ui.button(tr(new_key)).clicked() {
+        if ui.ibutton(new_key).clicked() {
             if at.master {
                 act.new_master = Some(layer.scope);
             } else {
@@ -914,7 +915,7 @@ fn layer_rows(
             ui.close();
         }
         if ui
-            .add_enabled(has, egui::Button::new(tr("docker.select_layer_objects")))
+            .add_enabled(has, crate::ui::btn_icons::Ib::new("docker.select_layer_objects"))
             .clicked()
         {
             act.goto = elsewhere;
@@ -930,7 +931,7 @@ fn layer_rows(
             (LayerClip::Copy, "menu.edit.copy", has),
             (LayerClip::Paste, "menu.edit.paste", can_paste),
         ] {
-            if ui.add_enabled(on, egui::Button::new(tr(key))).clicked() {
+            if ui.add_enabled(on, crate::ui::btn_icons::Ib::new(key)).clicked() {
                 act.goto = elsewhere;
                 act.layer_clip = Some((layer.id, what));
                 ui.close();
@@ -973,7 +974,7 @@ fn layer_rows(
         if ui
             .add_enabled(
                 at.index + 1 < at.count,
-                egui::Button::new(tr("docker.move_up")),
+                crate::ui::btn_icons::Ib::new("docker.move_up"),
             )
             .clicked()
         {
@@ -981,14 +982,14 @@ fn layer_rows(
             ui.close();
         }
         if ui
-            .add_enabled(at.index > 0, egui::Button::new(tr("docker.move_down")))
+            .add_enabled(at.index > 0, crate::ui::btn_icons::Ib::new("docker.move_down"))
             .clicked()
         {
             act.reorder = Some((layer.id, at.index.saturating_sub(1)));
             ui.close();
         }
         if at.master {
-            ui.menu_button(tr("docker.show_on"), |ui| {
+            ui.imenu_button("docker.show_on", |ui| {
                 for scope in [MasterScope::All, MasterScope::Odd, MasterScope::Even] {
                     if ui
                         .selectable_label(layer.scope == scope, tr(scope_key(scope)))
@@ -1019,11 +1020,11 @@ fn layer_rows(
                 }
             }
             // Its objects become a layer of the page shown (#1477).
-            if ui.button(tr("docker.master_to_page")).clicked() {
+            if ui.ibutton("docker.master_to_page").clicked() {
                 act.master_to_page = Some(layer.id);
                 ui.close();
             }
-        } else if ui.button(tr("docker.layer_to_master")).clicked() {
+        } else if ui.ibutton("docker.layer_to_master").clicked() {
             act.layer_to_master = Some(layer.id);
             ui.close();
         }
@@ -1036,7 +1037,7 @@ fn layer_rows(
             .map(|p| (p.id, p.name.clone()))
             .collect();
         if !others.is_empty() {
-            ui.menu_button(tr("docker.move_to_page"), |ui| {
+            ui.imenu_button("docker.move_to_page", |ui| {
                 for (page, name) in &others {
                     if ui.button(name).clicked() {
                         act.layer_to_page = Some((layer.id, *page));
@@ -1046,7 +1047,7 @@ fn layer_rows(
             });
         }
         ui.separator();
-        if ui.button(tr("docker.layer_properties")).clicked() {
+        if ui.ibutton("docker.layer_properties").clicked() {
             act.layer_props = Some(layer.id);
             ui.close();
         }
@@ -1054,7 +1055,7 @@ fn layer_rows(
         if ui
             .add_enabled(
                 !deletable_layers_from(app.doc(), &target_layers(app, layer.id)).is_empty(),
-                egui::Button::new(tr("docker.delete_layer")),
+                crate::ui::btn_icons::Ib::new("docker.delete_layer"),
             )
             .clicked()
         {
@@ -1310,7 +1311,7 @@ fn guides_row(
             ("menu.edit.copy", any, GuidesCmd::Copy),
                     ] {
             if ui
-                .add_enabled(enabled, egui::Button::new(tr(key)))
+                .add_enabled(enabled, crate::ui::btn_icons::Ib::new(key))
                 .clicked()
             {
                 pick = Some(cmd);
@@ -1319,7 +1320,7 @@ fn guides_row(
         }
         // Paste into this set, also when it has none yet (#3599).
         if ui
-            .add_enabled(can_paste, egui::Button::new(tr("menu.edit.paste")))
+            .add_enabled(can_paste, crate::ui::btn_icons::Ib::new("menu.edit.paste"))
             .clicked()
         {
             act.paste_guides = Some(page);
@@ -1327,7 +1328,7 @@ fn guides_row(
         }
         ui.separator();
         ui.add_enabled_ui(any, |ui| {
-            ui.menu_button(tr("guides.move_to"), |ui| {
+            ui.imenu_button("guides.move_to", |ui| {
                 for (key, target) in [
                     ("dialog.all_pages", GuidesTarget::AllPages),
                     ("options.scope_odd", GuidesTarget::OddPages),
@@ -1335,7 +1336,7 @@ fn guides_row(
                 ] {
                     let enabled = !(master && target == GuidesTarget::AllPages);
                     if ui
-                        .add_enabled(enabled, egui::Button::new(tr(key)))
+                        .add_enabled(enabled, crate::ui::btn_icons::Ib::new(key))
                         .clicked()
                     {
                         pick = Some(GuidesCmd::MoveTo(target));
@@ -1523,7 +1524,7 @@ fn guide_rows(
                 ("docker.rename", true, GuideCmd::Rename),
             ] {
                 if ui
-                    .add_enabled(enabled, egui::Button::new(tr(key)))
+                    .add_enabled(enabled, crate::ui::btn_icons::Ib::new(key))
                     .clicked()
                 {
                     done = Some(GuideRowAct::Menu(cmd));
@@ -1946,7 +1947,7 @@ fn bottom_bar(app: &mut App, ui: &mut Ui) {
             (MasterScope::Odd, "options.new_master_odd"),
             (MasterScope::Even, "options.new_master_even"),
         ] {
-            if ui.button(tr(key)).clicked() {
+            if ui.ibutton(key).clicked() {
                 scoped = Some(scope);
                 ui.close();
             }

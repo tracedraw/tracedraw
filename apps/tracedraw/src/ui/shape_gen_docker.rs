@@ -7,6 +7,7 @@
 //! preview; Voronoi, stippling and halftone can pick the selection as
 //! their outline or picture.
 
+use crate::ui::btn_icons::IconUi;
 use crate::app::App;
 use crate::i18n::{tr, trf};
 use crate::shape_gen::{
@@ -74,7 +75,7 @@ fn growth_controls(app: &mut App, ui: &mut Ui) -> Arc<PreviewData> {
             (tr("shapegen.growth_run"), "shapegen.growth_run")
         };
         if ui
-            .add_enabled(running || !settled, egui::Button::new(label))
+            .add_enabled(running || !settled, crate::ui::btn_icons::Ib::with_text(key, label))
             .rich_tip(crate::ui::tips::keyed(key))
             .clicked()
         {
@@ -83,7 +84,7 @@ fn growth_controls(app: &mut App, ui: &mut Ui) -> Arc<PreviewData> {
         if ui
             .add_enabled(
                 has_doc && points > 0,
-                egui::Button::new(tr("shapegen.growth_stop")),
+                crate::ui::btn_icons::Ib::new("shapegen.growth_stop"),
             )
             .rich_tip(crate::ui::tips::keyed("shapegen.growth_stop"))
             .clicked()
@@ -542,7 +543,7 @@ fn deform_split_body(app: &mut App, ui: &mut Ui, units: crate::app::Units, preci
         if !s.warp_pins.is_empty() {
             indented(ui, |ui| {
                 if ui
-                    .button(tr("shapegen.warp_clear"))
+                    .ibutton("shapegen.warp_clear")
                     .rich_tip(crate::ui::tips::keyed("shapegen.warp_clear"))
                     .clicked()
                 {
@@ -591,7 +592,7 @@ fn deform_split_body(app: &mut App, ui: &mut Ui, units: crate::app::Units, preci
     let can = !app.selection.is_empty() && app.shape_gen_selected().is_none();
     ui.horizontal(|ui| {
         if ui
-            .add_enabled(can, egui::Button::new(tr("shapegen.split_pick")))
+            .add_enabled(can, crate::ui::btn_icons::Ib::new("shapegen.split_pick"))
             .rich_tip(crate::ui::tips::keyed("shapegen.split_pick"))
             .clicked()
         {
@@ -599,7 +600,7 @@ fn deform_split_body(app: &mut App, ui: &mut Ui, units: crate::app::Units, preci
         }
         if picked
             && ui
-                .button(tr("shapegen.clear_source"))
+                .ibutton("shapegen.clear_source")
                 .rich_tip(crate::ui::tips::keyed("shapegen.split_clear"))
                 .clicked()
         {
@@ -798,7 +799,7 @@ fn seed_row(ui: &mut Ui, s: &mut ShapeGenSettings) {
         )
         .rich_tip(crate::ui::tips::keyed("shapegen.seed"));
         if ui
-            .button(tr("shapegen.new_seed"))
+            .ibutton("shapegen.new_seed")
             .rich_tip(crate::ui::tips::keyed("shapegen.new_seed"))
             .clicked()
         {
@@ -827,7 +828,7 @@ fn source_row(app: &mut App, ui: &mut Ui) {
     let can = !app.selection.is_empty() && app.shape_gen_selected().is_none();
     ui.horizontal(|ui| {
         if ui
-            .add_enabled(can, egui::Button::new(tr("shapegen.use_selection")))
+            .add_enabled(can, crate::ui::btn_icons::Ib::new("shapegen.use_selection"))
             .rich_tip(crate::ui::tips::keyed("shapegen.use_selection"))
             .clicked()
         {
@@ -835,7 +836,7 @@ fn source_row(app: &mut App, ui: &mut Ui) {
         }
         if picked
             && ui
-                .button(tr("shapegen.clear_source"))
+                .ibutton("shapegen.clear_source")
                 .rich_tip(crate::ui::tips::keyed("shapegen.clear_source"))
                 .clicked()
         {
@@ -1439,7 +1440,7 @@ pub fn shape_generator(app: &mut App, ui: &mut Ui) {
                 }
                 ui.horizontal(|ui| {
                     if ui
-                        .button(tr("shapegen.relax_once"))
+                        .ibutton("shapegen.relax_once")
                         .rich_tip(crate::ui::tips::keyed("shapegen.relax_once"))
                         .clicked()
                     {
@@ -1447,7 +1448,7 @@ pub fn shape_generator(app: &mut App, ui: &mut Ui) {
                     }
                     if !s.vor_points.is_empty()
                         && ui
-                            .button(tr("shapegen.reset_points"))
+                            .ibutton("shapegen.reset_points")
                             .rich_tip(crate::ui::tips::keyed("shapegen.reset_points"))
                             .clicked()
                     {
@@ -1759,7 +1760,7 @@ pub fn shape_generator(app: &mut App, ui: &mut Ui) {
                     }
                     t => {
                         if ui
-                            .button(tr("shapegen.frac_edit"))
+                            .ibutton("shapegen.frac_edit")
                             .rich_tip(crate::ui::tips::keyed("shapegen.frac_edit"))
                             .clicked()
                         {
@@ -2300,7 +2301,7 @@ pub fn shape_generator(app: &mut App, ui: &mut Ui) {
     let has_doc = app.active_layer().is_some();
     if wide_button(
         ui,
-        &tr("shapegen.create"),
+        "shapegen.create",
         has_doc && data.count > 0,
         &crate::ui::tips::keyed("shapegen.create"),
     ) {
@@ -2309,14 +2310,14 @@ pub fn shape_generator(app: &mut App, ui: &mut Ui) {
     if let Some((_, saved)) = &selected {
         ui.horizontal(|ui| {
             if ui
-                .button(tr("shapegen.update"))
+                .ibutton("shapegen.update")
                 .rich_tip(crate::ui::tips::keyed("shapegen.update"))
                 .clicked()
             {
                 app.shape_gen_update();
             }
             if ui
-                .button(tr("shapegen.load"))
+                .ibutton("shapegen.load")
                 .rich_tip(crate::ui::tips::keyed("shapegen.load"))
                 .clicked()
             {
@@ -2328,7 +2329,7 @@ pub fn shape_generator(app: &mut App, ui: &mut Ui) {
         let can = has_doc && !app.selection.is_empty() && selected.is_none();
         if wide_button(
             ui,
-            &tr("shapegen.slice_apply"),
+            "shapegen.slice_apply",
             can,
             &crate::ui::tips::keyed("shapegen.slice_apply"),
         ) {
@@ -2338,7 +2339,7 @@ pub fn shape_generator(app: &mut App, ui: &mut Ui) {
         let can = has_doc && !app.selection.is_empty() && selected.is_none();
         if wide_button(
             ui,
-            &tr("shapegen.wrap"),
+            "shapegen.wrap",
             can,
             &crate::ui::tips::keyed("shapegen.wrap"),
         ) {
@@ -2346,7 +2347,7 @@ pub fn shape_generator(app: &mut App, ui: &mut Ui) {
         }
     } else if wide_button(
         ui,
-        &tr("shapegen.make_pattern"),
+        "shapegen.make_pattern",
         has_doc && data.count > 0,
         &crate::ui::tips::keyed("shapegen.make_pattern"),
     ) && app.shape_gen_create().is_some()

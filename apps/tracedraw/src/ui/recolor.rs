@@ -8,6 +8,7 @@
 //! any of them can be swapped for another one by one (#3609).
 //! See docs/behavior/recolor.md.
 
+use crate::ui::btn_icons::IconUi;
 use crate::app::App;
 use crate::i18n::{tr, trf};
 use crate::ui::dialogs::window;
@@ -221,7 +222,7 @@ pub fn dialog(app: &mut App, ctx: &Context, st: &mut RecolorState, close: &mut b
         ui.add_space(4.0);
         ui.label(RichText::new(tr("recolor.note")).weak());
         ui.add_space(4.0);
-        reset = ui.button(tr("recolor.reset")).clicked();
+        reset = ui.ibutton("recolor.reset").clicked();
         let (o, h) = crate::ui::dialogs::help_ok_cancel(ui, close);
         ok = o;
         help = h;

@@ -28,14 +28,14 @@ pub fn shelf(app: &mut App, ui: &mut Ui) {
         .filter(|uid| app.shelf.item(*uid).is_some());
     ui.horizontal_wrapped(|ui| {
         if ui
-            .add_enabled(has_selection, egui::Button::new(tr("shelf.add_selection")))
+            .add_enabled(has_selection, crate::ui::btn_icons::Ib::new("shelf.add_selection"))
             .rich_tip(tr("shelf.add_selection_tip"))
             .clicked()
         {
             app.shelf_add_selection();
         }
         if ui
-            .add_enabled(drawing, egui::Button::new(tr("shelf.add_colors")))
+            .add_enabled(drawing, crate::ui::btn_icons::Ib::new("shelf.add_colors"))
             .rich_tip(tr("shelf.add_colors_tip"))
             .clicked()
         {
@@ -44,7 +44,7 @@ pub fn shelf(app: &mut App, ui: &mut Ui) {
         if ui
             .add_enabled(
                 chosen.is_some() && drawing,
-                egui::Button::new(tr("shelf.place")),
+                crate::ui::btn_icons::Ib::new("shelf.place"),
             )
             .clicked()
         {
@@ -53,7 +53,7 @@ pub fn shelf(app: &mut App, ui: &mut Ui) {
             }
         }
         if ui
-            .add_enabled(chosen.is_some(), egui::Button::new(tr("shelf.remove")))
+            .add_enabled(chosen.is_some(), crate::ui::btn_icons::Ib::new("shelf.remove"))
             .clicked()
         {
             if let Some(uid) = chosen {

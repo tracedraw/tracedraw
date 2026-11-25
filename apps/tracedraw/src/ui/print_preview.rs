@@ -3,6 +3,7 @@
 //! and the print options at hand beside them (see
 //! `docs/behavior/printing.md`, Print Preview).
 
+use crate::ui::btn_icons::IconUi;
 use crate::app::App;
 use crate::export::{plate_page, plates, print_sheets};
 use crate::i18n::{tr, trf};
@@ -545,14 +546,14 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                     // Print leaves the preview open, so pages can go out
                     // one at a time; Print and Close closes it (#4072).
                     if ui
-                        .button(tr("dialog.print"))
+                        .ibutton("dialog.print")
                         .rich_tip(tr("print.print_keep_tip"))
                         .clicked()
                     {
                         print = true;
                     }
                     if ui
-                        .button(tr("print.print_and_close"))
+                        .ibutton("print.print_and_close")
                         .rich_tip(tr("print.print_and_close_tip"))
                         .clicked()
                     {
@@ -560,7 +561,7 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                         print_close = true;
                     }
                     if ui
-                        .button(tr("print.print_sheet"))
+                        .ibutton("print.print_sheet")
                         .rich_tip(tr("print.print_sheet_tip"))
                         .clicked()
                     {
@@ -655,7 +656,7 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                             zoom_at(&mut pv, center, center, ZOOM_STEP);
                         }
                         if ui
-                            .button(tr("print.fit"))
+                            .ibutton("print.fit")
                             .rich_tip(tr("print.fit_tip"))
                             .clicked()
                         {
@@ -663,7 +664,7 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                             pv.pan = egui::Vec2::ZERO;
                         }
                         if ui
-                            .button(tr("print.fit_width"))
+                            .ibutton("print.fit_width")
                             .rich_tip(tr("print.fit_width_tip"))
                             .clicked()
                         {
@@ -678,7 +679,7 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                     ui.separator();
                     // What the view shows: the rulers, the strip of
                     // sheets and the options panel.
-                    ui.menu_button(tr("print.view"), |ui| {
+                    ui.imenu_button("print.view", |ui| {
                         ui.checkbox(&mut pv.rulers, tr("menu.view.rulers"));
                         ui.checkbox(&mut pv.strip, tr("print.show_strip"))
                             .rich_tip(tr("print.show_strip_tip"));
@@ -953,7 +954,7 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                     if ui
                         .add_enabled(
                             st.art_stretch != (1.0, 1.0),
-                            egui::Button::new(tr("print.art_reset")).small(),
+                            crate::ui::btn_icons::Ib::new("print.art_reset").small(),
                         )
                         .clicked()
                     {
@@ -982,7 +983,7 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                     }
                     let turned = *rotation_of(st, chosen) != 0.0;
                     if ui
-                        .add_enabled(turned, egui::Button::new(tr("print.art_reset")).small())
+                        .add_enabled(turned, crate::ui::btn_icons::Ib::new("print.art_reset").small())
                         .clicked()
                     {
                         *rotation_of(st, chosen) = 0.0;
@@ -1057,7 +1058,7 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                     if ui
                         .add_enabled(
                             st.art_offset != (0.0, 0.0),
-                            egui::Button::new(tr("print.art_reset")).small(),
+                            crate::ui::btn_icons::Ib::new("print.art_reset").small(),
                         )
                         .clicked()
                     {
@@ -2641,12 +2642,14 @@ mod tests {
             shapes.iter().for_each(|c| walk(&c.shape, &mut out));
             out
         };
+        // A window wide enough for the whole bar, with the pictures of
+        // its buttons, on one row.
         for _ in 0..200 {
             let mut out = ctx.run_ui(
                 egui::RawInput {
                     screen_rect: Some(egui::Rect::from_min_size(
                         egui::Pos2::ZERO,
-                        egui::vec2(1400.0, 900.0),
+                        egui::vec2(1600.0, 900.0),
                     )),
                     ..Default::default()
                 },
@@ -2670,7 +2673,7 @@ mod tests {
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
-                    egui::vec2(1400.0, 900.0),
+                    egui::vec2(1600.0, 900.0),
                 )),
                 ..Default::default()
             },

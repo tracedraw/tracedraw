@@ -1,5 +1,6 @@
 //! Dockers: Properties, Objects (layer manager) and Hints.
 
+use crate::ui::btn_icons::IconUi;
 use crate::app::{App, DockerDrag, DockerPlace, DockerTab};
 use crate::i18n::{tr, trf};
 use crate::theme::Tokens;
@@ -1746,7 +1747,7 @@ fn extra_fills(app: &mut App, ui: &mut Ui, first: &tracedraw_core::Shape, has_fi
     }
     if has_fill
         && ui
-            .button(tr("docker.add_fill"))
+            .ibutton("docker.add_fill")
             .rich_tip(tr("docker.add_fill_tip"))
             .clicked()
     {
@@ -1822,7 +1823,7 @@ fn extra_strokes(app: &mut App, ui: &mut Ui, first: &tracedraw_core::Shape, has_
     }
     if has_outline
         && ui
-            .button(tr("docker.add_outline"))
+            .ibutton("docker.add_outline")
             .rich_tip(tr("docker.add_outline_tip"))
             .clicked()
     {
@@ -2167,7 +2168,7 @@ fn properties(app: &mut App, ui: &mut Ui) {
                 ui.horizontal_wrapped(|ui| {
                     overprint_row(app, ui, false);
                     if ui
-                        .button(tr("docker.outline_pen_dialog"))
+                        .ibutton("docker.outline_pen_dialog")
                         .rich_tip(tr("docker.outline_pen_dialog_tip"))
                         .clicked()
                     {
@@ -2239,7 +2240,7 @@ fn properties(app: &mut App, ui: &mut Ui) {
                 ui.horizontal_wrapped(|ui| {
                     overprint_row(app, ui, true);
                     if ui
-                        .button(tr("docker.edit_fill_dialog"))
+                        .ibutton("docker.edit_fill_dialog")
                         .rich_tip(tr("docker.edit_fill_dialog_tip"))
                         .clicked()
                     {
@@ -2263,7 +2264,7 @@ fn properties(app: &mut App, ui: &mut Ui) {
                 if let Some(sh) = shadow {
                     ui.label(shadow_summary(&sh));
                     if ui
-                        .button(tr("context.edit_shadow"))
+                        .ibutton("context.edit_shadow")
                         .rich_tip(tr("docker.edit_shadow_tip"))
                         .clicked()
                     {
@@ -2309,14 +2310,14 @@ fn properties(app: &mut App, ui: &mut Ui) {
                                     "edit_text.case_tip",
                                 ));
                             if ui
-                                .button(tr("menu.text.edit_text"))
+                                .ibutton("menu.text.edit_text")
                                 .rich_tip(tr("menu.text.edit_text_desc"))
                                 .clicked()
                             {
                                 app.open_edit_text_dialog();
                             }
                             if !app.editing_text()
-                                && ui.button(tr("docker.edit_with_text_tool")).clicked()
+                                && ui.ibutton("docker.edit_with_text_tool").clicked()
                             {
                                 app.begin_text_edit(target.id);
                             }
@@ -2521,7 +2522,7 @@ fn summary_section(app: &mut App, ui: &mut Ui, shapes: &[tracedraw_core::Shape])
         .selected_text(chosen)
         .width(200.0)
         .show_ui(ui, |ui| {
-            if ui.selectable_label(!on, tr("context.wrap_none")).clicked() && on {
+            if ui.iselectable(!on, "context.wrap_none").clicked() && on {
                 let shapes = app.selection.clone();
                 app.run(Command::SetWrapText {
                     shapes,
@@ -2548,7 +2549,7 @@ fn summary_section(app: &mut App, ui: &mut Ui, shapes: &[tracedraw_core::Shape])
     });
     ui.add_space(4.0);
     if ui
-        .button(tr("menu.object.lock_object"))
+        .ibutton("menu.object.lock_object")
         .rich_tip(crate::ui::tips::pair(
             "menu.object.lock_object",
             "docker.lock_object_tip",
@@ -2681,7 +2682,7 @@ fn qr_section(
     if ui
         .add_sized(
             [ui.available_width() - 8.0, 24.0],
-            egui::Button::new(tr("qr.validate")),
+            crate::ui::btn_icons::Ib::new("qr.validate"),
         )
         .clicked()
     {
@@ -3622,7 +3623,7 @@ fn fountain_editor(ui: &mut Ui, f: &mut Fountain) -> bool {
     // and the outline each have one).
     let ggr_key = format!("fountain_ggr{:?}", ui.id());
     if ui
-        .button(tr("docker.import_gradient"))
+        .ibutton("docker.import_gradient")
         .rich_tip(tr("docker.import_gradient_tip"))
         .clicked()
     {
@@ -3919,7 +3920,7 @@ pub(crate) fn pattern_editor(
                     }
                     ui.separator();
                     if ui
-                        .selectable_label(false, tr("docker.pattern_new"))
+                        .iselectable(false, "docker.pattern_new")
                         .rich_tip(tr("docker.pattern_new_tip"))
                         .clicked()
                     {
@@ -3931,7 +3932,7 @@ pub(crate) fn pattern_editor(
                     }
                     if !vector
                         && ui
-                            .selectable_label(false, tr("docker.pattern_import"))
+                            .iselectable(false, "docker.pattern_import")
                             .rich_tip(tr("docker.pattern_import_tip"))
                             .clicked()
                     {
@@ -3961,7 +3962,7 @@ pub(crate) fn pattern_editor(
                         if ui
                             .add_enabled(
                                 can,
-                                egui::Button::selectable(false, tr("docker.pattern_folder")),
+                                crate::ui::btn_icons::Ib::selectable(false, "docker.pattern_folder"),
                             )
                             .rich_tip(tr(tip))
                             .clicked()
@@ -4794,7 +4795,9 @@ fn outline_editor_mixed(
                 }
             });
         }
-        ui.horizontal(|ui| {
+        // Wrapping: the button and its picture go under the checkbox
+        // where the two do not fit side by side.
+        ui.horizontal_wrapped(|ui| {
             if ui
                 .add_enabled(
                     !s.dash.is_empty(),
@@ -4807,7 +4810,7 @@ fn outline_editor_mixed(
                 changed = true;
             }
             if ui
-                .button(tr("docker.edit_line_style"))
+                .ibutton("docker.edit_line_style")
                 .rich_tip(crate::ui::tips::keyed("docker.edit_line_style"))
                 .clicked()
             {
@@ -5095,14 +5098,14 @@ fn undo_docker(app: &mut App, ui: &mut Ui) {
     ui.add_space(6.0);
     ui.horizontal(|ui| {
         if ui
-            .add_enabled(n > 0, egui::Button::new(tr("docker.undo")))
+            .add_enabled(n > 0, crate::ui::btn_icons::Ib::new("docker.undo"))
             .rich_tip(crate::ui::tips::keyed("docker.undo"))
             .clicked()
         {
             app.undo();
         }
         if ui
-            .add_enabled(!redo.is_empty(), egui::Button::new(tr("docker.redo")))
+            .add_enabled(!redo.is_empty(), crate::ui::btn_icons::Ib::new("docker.redo"))
             .rich_tip(crate::ui::tips::keyed("docker.redo"))
             .clicked()
         {

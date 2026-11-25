@@ -5,6 +5,7 @@
 //! the right, the help button at the bottom left, OK and Cancel at the
 //! bottom right. Cancel puts back what the dialog changed.
 
+use crate::ui::btn_icons::IconUi;
 use crate::app::{App, Units};
 use crate::i18n::{tr, trf};
 use crate::settings::{AutoCenter, HandleSize, NodeShape, NodeSize, Startup};
@@ -545,7 +546,7 @@ pub fn options_dialog(app: &mut App, ctx: &Context, close: &mut bool) {
                         && ui
                             .add_sized(
                                 [150.0, 27.0],
-                                egui::Button::new(tr("options.save_as_default")),
+                                crate::ui::btn_icons::Ib::new("options.save_as_default"),
                             )
                             .rich_tip(crate::ui::tips::keyed("options.save_as_default"))
                             .clicked()
@@ -1198,7 +1199,7 @@ fn hardware_acceleration(app: &mut App, ui: &mut Ui) {
     dim(ui, tr("options.restart_to_apply"));
     // How fast this computer is, with this setting and the other one.
     if ui
-        .button(tr("menu.help.benchmark"))
+        .ibutton("menu.help.benchmark")
         .rich_tip(crate::ui::tips::pair(
             "menu.help.benchmark",
             "menu.help.benchmark_tip",
@@ -1346,7 +1347,7 @@ fn display_page(app: &mut App, ui: &mut Ui) {
                         app.settings.preview_background_custom = true;
                     }
                     if ui
-                        .button(tr("options.reset"))
+                        .ibutton("options.reset")
                         .rich_tip(crate::ui::tips::pair("options.reset", "dialog.reset_desc"))
                         .clicked()
                     {
@@ -1441,7 +1442,7 @@ fn display_page(app: &mut App, ui: &mut Ui) {
         }
         ui.label(tr("options.points_per_inch"));
         if ui
-            .button(tr("options.reset"))
+            .ibutton("options.reset")
             .rich_tip(crate::ui::tips::pair("options.reset", "dialog.reset_desc"))
             .clicked()
         {
@@ -1572,7 +1573,8 @@ fn edit_page(app: &mut App, ui: &mut Ui) {
             .size()
             .x
             + 2.0 * ui.spacing().button_padding.x
-            + ui.spacing().item_spacing.x;
+            + ui.spacing().item_spacing.x
+            + crate::ui::btn_icons::extra_width(ui, "dialog.reset");
         if ui
             .add(
                 crate::ui::Slider::new(&mut v, 0.0..=100.0)
@@ -1589,7 +1591,7 @@ fn edit_page(app: &mut App, ui: &mut Ui) {
             app.settings.focus_visibility = v.round() as u8;
         }
         if ui
-            .button(tr("dialog.reset"))
+            .ibutton("dialog.reset")
             .rich_tip(crate::ui::tips::keyed("dialog.reset"))
             .clicked()
         {
@@ -1766,7 +1768,7 @@ fn nodes_page(app: &mut App, ui: &mut Ui) {
                 ui.horizontal(|ui| {
                     rgb_button(ui, &mut n.main_rgb);
                     if ui
-                        .button(tr("options.reset"))
+                        .ibutton("options.reset")
                         .rich_tip(crate::ui::tips::pair("options.reset", "dialog.reset_desc"))
                         .clicked()
                     {
@@ -1785,7 +1787,7 @@ fn nodes_page(app: &mut App, ui: &mut Ui) {
                 ui.horizontal(|ui| {
                     rgb_button(ui, &mut n.secondary_rgb);
                     if ui
-                        .button(tr("options.reset"))
+                        .ibutton("options.reset")
                         .rich_tip(crate::ui::tips::pair("options.reset", "dialog.reset_desc"))
                         .clicked()
                     {
@@ -1956,7 +1958,7 @@ fn snapping_page(app: &mut App, ui: &mut Ui) {
         }
         ui.horizontal(|ui| {
             if ui
-                .button(tr("options.select_all"))
+                .ibutton("options.select_all")
                 .rich_tip(crate::ui::tips::pair(
                     "options.select_all",
                     "options.select_all_tip",
@@ -1966,7 +1968,7 @@ fn snapping_page(app: &mut App, ui: &mut Ui) {
                 *modes = crate::snap_points::SnapModes::default();
             }
             if ui
-                .button(tr("options.deselect_all"))
+                .ibutton("options.deselect_all")
                 .rich_tip(crate::ui::tips::pair(
                     "options.deselect_all",
                     "options.deselect_all_tip",
@@ -2128,7 +2130,7 @@ fn alignment_guides_page(app: &mut App, ui: &mut Ui) {
         chrome::section(ui, &tr("options.guide_look"));
         guide_look(ui, "align_look", &mut a.color, &mut a.style);
         if ui
-            .button(tr("options.reset"))
+            .ibutton("options.reset")
             .rich_tip(crate::ui::tips::pair("options.reset", "dialog.reset_desc"))
             .clicked()
         {
@@ -2211,7 +2213,7 @@ fn dynamic_guides_page(app: &mut App, ui: &mut Ui) {
                 ));
                 ui.label(tr("options.degrees"));
                 if ui
-                    .button(tr("options.dynamic_add_angle"))
+                    .ibutton("options.dynamic_add_angle")
                     .rich_tip(crate::ui::tips::pair(
                         "options.dynamic_add_angle",
                         "options.dynamic_add_angle_tip",
@@ -2266,7 +2268,7 @@ fn dynamic_guides_page(app: &mut App, ui: &mut Ui) {
         chrome::section(ui, &tr("options.guide_look"));
         guide_look(ui, "dyn_look", &mut d.color, &mut d.style);
         if ui
-            .button(tr("options.reset"))
+            .ibutton("options.reset")
             .rich_tip(crate::ui::tips::pair("options.reset", "dialog.reset_desc"))
             .clicked()
         {
@@ -2309,7 +2311,7 @@ fn path_field(
         let browse = ui
             .add_enabled(
                 !matches!(action, FolderAction::Unavailable(_)),
-                egui::Button::new(tr("options.browse")),
+                crate::ui::btn_icons::Ib::new("options.browse"),
             )
             .rich_tip_always(tip);
         if browse.clicked() {
@@ -2690,7 +2692,7 @@ fn dictionary_download_row(app: &mut App, ui: &mut Ui) {
         };
         let licence = dl::entry(&code).map(|e| e.license).unwrap_or("");
         if ui
-            .add_enabled(!busy, egui::Button::new(label))
+            .add_enabled(!busy, crate::ui::btn_icons::Ib::with_text("options.download", label))
             .rich_tip(format!(
                 "{}\n{}",
                 crate::ui::tips::pair(
@@ -2708,7 +2710,7 @@ fn dictionary_download_row(app: &mut App, ui: &mut Ui) {
             }
         }
         if ui
-            .button(tr("options.add_dictionary_files"))
+            .ibutton("options.add_dictionary_files")
             .rich_tip(crate::ui::tips::pair(
                 "options.add_dictionary_files",
                 "options.add_dictionary_files_tip",
@@ -2877,7 +2879,7 @@ fn spelling_tab(app: &mut App, ui: &mut Ui) {
                     // app (#1398): the button says so instead.
                     let mut open = ui.add_enabled(
                         own.is_some() && !crate::files::WEB && !crate::files::ANDROID,
-                        egui::Button::new(tr("options.open_folder")),
+                        crate::ui::btn_icons::Ib::new("options.open_folder"),
                     );
                     if crate::files::ANDROID {
                         open = open.rich_disabled_tip(crate::ui::tips::pair(
@@ -2917,7 +2919,7 @@ fn spelling_tab(app: &mut App, ui: &mut Ui) {
                     if ui
                         .add_enabled(
                             p.dictionary_folder.is_some(),
-                            egui::Button::new(tr("options.clear_folder")),
+                            crate::ui::btn_icons::Ib::new("options.clear_folder"),
                         )
                         .clicked()
                     {
@@ -2934,7 +2936,7 @@ fn spelling_tab(app: &mut App, ui: &mut Ui) {
     }
     dictionary_download_row(app, ui);
     if ui
-        .button(tr("options.refresh_dictionaries"))
+        .ibutton("options.refresh_dictionaries")
         .rich_tip(crate::ui::tips::pair(
             "options.refresh_dictionaries",
             "options.refresh_dictionaries_tip",
@@ -3128,7 +3130,7 @@ fn autocorrect_tab(app: &mut App, ui: &mut Ui) {
         if ui
             .add_enabled(
                 usable && existing.is_none(),
-                egui::Button::new(tr("autocorrect.add")),
+                crate::ui::btn_icons::Ib::new("autocorrect.add"),
             )
             .rich_tip_always(crate::ui::tips::pair(
                 "autocorrect.add",
@@ -3143,7 +3145,7 @@ fn autocorrect_tab(app: &mut App, ui: &mut Ui) {
         if ui
             .add_enabled(
                 picked.is_some(),
-                egui::Button::new(tr("autocorrect.delete")),
+                crate::ui::btn_icons::Ib::new("autocorrect.delete"),
             )
             .rich_tip_always(crate::ui::tips::pair(
                 "autocorrect.delete",
@@ -3160,7 +3162,7 @@ fn autocorrect_tab(app: &mut App, ui: &mut Ui) {
         if ui
             .add_enabled(
                 usable && existing.is_some(),
-                egui::Button::new(tr("autocorrect.replace")),
+                crate::ui::btn_icons::Ib::new("autocorrect.replace"),
             )
             .rich_tip_always(crate::ui::tips::pair(
                 "autocorrect.replace",
@@ -3214,7 +3216,7 @@ fn autocorrect_tab(app: &mut App, ui: &mut Ui) {
     });
     ui.add_space(4.0);
     if ui
-        .button(tr("autocorrect.apply_selection"))
+        .ibutton("autocorrect.apply_selection")
         .rich_tip(crate::ui::tips::pair(
             "autocorrect.apply_selection",
             "autocorrect.apply_selection_tip",
@@ -3315,7 +3317,7 @@ fn appearance_page(app: &mut App, ui: &mut Ui) {
                     "options.ui_size_tip",
                 ));
             reset = ui
-                .button(tr("options.reset_to_default"))
+                .ibutton("options.reset_to_default")
                 .rich_tip(crate::ui::tips::pair(
                     "options.reset_to_default",
                     "options.reset_to_default_tip",
@@ -3419,7 +3421,7 @@ fn appearance_page(app: &mut App, ui: &mut Ui) {
                         app.settings.desktop_custom = true;
                     }
                     if ui
-                        .button(tr("options.reset"))
+                        .ibutton("options.reset")
                         .rich_tip(crate::ui::tips::pair("options.reset", "dialog.reset_desc"))
                         .clicked()
                     {
@@ -4271,7 +4273,7 @@ fn command_icon(app: &mut App, ui: &mut Ui, c: &CommandItem) {
         ));
         let open = app.shortcut_editor.icon_picker;
         if ui
-            .add(egui::Button::new(tr("options.command_icon_choose")).selected(open))
+            .add(crate::ui::btn_icons::Ib::new("options.command_icon_choose").selected(open))
             .rich_tip(crate::ui::tips::pair(
                 "options.command_icon_choose",
                 "options.command_icon_choose_tip",
@@ -4281,7 +4283,7 @@ fn command_icon(app: &mut App, ui: &mut Ui, c: &CommandItem) {
             app.shortcut_editor.icon_picker = !open;
         }
         if ui
-            .add_enabled(chosen, egui::Button::new(tr("options.command_icon_reset")))
+            .add_enabled(chosen, crate::ui::btn_icons::Ib::new("options.command_icon_reset"))
             .rich_tip(crate::ui::tips::pair(
                 "options.command_icon_reset",
                 "options.command_icon_reset_tip",
@@ -4405,7 +4407,7 @@ fn command_keys(app: &mut App, ui: &mut Ui, c: &CommandItem) {
     let has_keys = !current_keys(app, c).is_empty();
     ui.horizontal(|ui| {
         if ui
-            .add_enabled(has_keys, egui::Button::new(tr("options.delete")))
+            .add_enabled(has_keys, crate::ui::btn_icons::Ib::new("options.delete"))
             .rich_tip(tr("options.clear_shortcut"))
             .clicked()
         {
@@ -4414,7 +4416,7 @@ fn command_keys(app: &mut App, ui: &mut Ui, c: &CommandItem) {
         // The commands of the category shown; with every command shown,
         // the same as resetting all, so it asks first.
         if ui
-            .button(tr("options.reset_shortcuts"))
+            .ibutton("options.reset_shortcuts")
             .rich_tip(crate::ui::tips::pair(
                 "options.reset_shortcuts",
                 "options.reset_shortcuts_tip",
@@ -4428,7 +4430,7 @@ fn command_keys(app: &mut App, ui: &mut Ui, c: &CommandItem) {
         }
     });
     if ui
-        .button(tr("options.reset_all_shortcuts"))
+        .ibutton("options.reset_all_shortcuts")
         .rich_tip(crate::ui::tips::pair(
             "options.reset_all_shortcuts",
             "options.reset_all_shortcuts_tip",
@@ -4441,7 +4443,7 @@ fn command_keys(app: &mut App, ui: &mut Ui, c: &CommandItem) {
         ui.label(tr("options.reset_all_shortcuts_question"));
         ui.horizontal(|ui| {
             if ui
-                .button(tr("dialog.reset"))
+                .ibutton("dialog.reset")
                 .rich_tip(crate::ui::tips::keyed("dialog.reset"))
                 .clicked()
             {
@@ -4605,7 +4607,7 @@ fn command_bars_page(app: &mut App, ui: &mut Ui) {
                 });
             custom_bars_buttons(app, ui);
             if ui
-                .button(tr("options.reset"))
+                .ibutton("options.reset")
                 .rich_tip(crate::ui::tips::pair("options.reset", "dialog.reset_desc"))
                 .clicked()
             {
@@ -4687,7 +4689,7 @@ fn custom_bars_buttons(app: &mut App, ui: &mut Ui) {
     ui.horizontal(|ui| {
         let room = app.settings.bars.custom.len() < crate::ui::bars::MAX_CUSTOM;
         if ui
-            .add_enabled(room, egui::Button::new(tr("options.custom_bar_new")))
+            .add_enabled(room, crate::ui::btn_icons::Ib::new("options.custom_bar_new"))
             .rich_tip(crate::ui::tips::pair(
                 "options.custom_bar_new",
                 "options.custom_bar_new_tip",
@@ -4702,7 +4704,7 @@ fn custom_bars_buttons(app: &mut App, ui: &mut Ui) {
         if ui
             .add_enabled(
                 picked.is_some(),
-                egui::Button::new(tr("options.custom_bar_delete")),
+                crate::ui::btn_icons::Ib::new("options.custom_bar_delete"),
             )
             .rich_tip(crate::ui::tips::pair(
                 "options.custom_bar_delete",
@@ -4910,7 +4912,7 @@ fn zoom_pan_page(app: &mut App, ui: &mut Ui) {
     ui.separator();
     // The ruler calibration lives on the Display page; this opens it there.
     if ui
-        .button(tr("options.calibrate_zoom"))
+        .ibutton("options.calibrate_zoom")
         .rich_tip(crate::ui::tips::pair(
             "options.calibrate_zoom",
             "options.calibrate_zoom_tip",
@@ -5786,7 +5788,7 @@ fn global_general_page(app: &mut App, ui: &mut Ui) {
     ui.add_space(10.0);
     ui.label(egui::RichText::new(tr("options.reset_all_hint")).color(Tokens::text_dim()));
     if ui
-        .button(tr("options.reset_all"))
+        .ibutton("options.reset_all")
         .rich_tip(crate::ui::tips::pair(
             "options.reset_all",
             "options.reset_all_tip",
@@ -5833,7 +5835,7 @@ fn spreadsheet_editor_field(app: &mut App, ui: &mut Ui) {
             "options.spreadsheet_editor_tip",
         ));
         if ui
-            .button(tr("options.browse"))
+            .ibutton("options.browse")
             .rich_tip(crate::ui::tips::pair(
                 "options.browse",
                 "options.browse_tip",
@@ -5847,7 +5849,7 @@ fn spreadsheet_editor_field(app: &mut App, ui: &mut Ui) {
         if ui
             .add_enabled(
                 !app.settings.spreadsheet_editor.is_empty(),
-                egui::Button::new(tr("options.clear_folder")),
+                crate::ui::btn_icons::Ib::new("options.clear_folder"),
             )
             .clicked()
         {
@@ -5890,7 +5892,7 @@ fn file_locations_page(app: &mut App, ui: &mut Ui) {
                 "options.bitmap_editor_tip",
             ));
             if ui
-                .button(tr("options.browse"))
+                .ibutton("options.browse")
                 .rich_tip(crate::ui::tips::pair(
                     "options.browse",
                     "options.browse_tip",
@@ -5904,7 +5906,7 @@ fn file_locations_page(app: &mut App, ui: &mut Ui) {
             if ui
                 .add_enabled(
                     !app.settings.bitmap_editor.is_empty(),
-                    egui::Button::new(tr("options.clear_folder")),
+                    crate::ui::btn_icons::Ib::new("options.clear_folder"),
                 )
                 .clicked()
             {
@@ -5976,7 +5978,7 @@ fn workspace_page(app: &mut App, ui: &mut Ui) {
     ui.horizontal(|ui| {
         let any = parts.any();
         if ui
-            .add_enabled(any, egui::Button::new(tr("options.workspace_export")))
+            .add_enabled(any, crate::ui::btn_icons::Ib::new("options.workspace_export"))
             .rich_tip_always(crate::ui::tips::pair(
                 "options.workspace_export",
                 "options.workspace_export_tip",
@@ -5987,7 +5989,7 @@ fn workspace_page(app: &mut App, ui: &mut Ui) {
         }
         // Imported parts stay until OK; Cancel puts the old ones back.
         if ui
-            .add_enabled(any, egui::Button::new(tr("options.workspace_import")))
+            .add_enabled(any, crate::ui::btn_icons::Ib::new("options.workspace_import"))
             .rich_tip_always(crate::ui::tips::pair(
                 "options.workspace_import",
                 "options.workspace_import_tip",
@@ -6101,7 +6103,7 @@ fn layout_page(app: &mut App, ui: &mut Ui) {
     ui.checkbox(&mut app.page_sorter, tr("menu.view.page_sorter"))
         .rich_tip(crate::ui::tips::keyed("menu.view.page_sorter"));
     if ui
-        .button(tr("menu.layout.switch_orientation"))
+        .ibutton("menu.layout.switch_orientation")
         .rich_tip(crate::ui::tips::pair(
             "menu.layout.switch_orientation",
             "menu.layout.switch_orientation_tip",
@@ -6171,7 +6173,7 @@ fn layout_page(app: &mut App, ui: &mut Ui) {
             (tracedraw_core::MasterScope::Even, "options.new_master_even"),
         ] {
             if ui
-                .button(tr(k))
+                .ibutton(k)
                 .rich_tip_with(|| format!("{}\n{}", tr(k), tr(&format!("{k}_tip"))))
                 .clicked()
             {
@@ -6375,7 +6377,7 @@ fn background_page(app: &mut App, ui: &mut Ui) {
         }
         _ => {
             if ui
-                .button(tr("options.choose_bitmap"))
+                .ibutton("options.choose_bitmap")
                 .rich_tip(crate::ui::tips::pair(
                     "options.choose_bitmap",
                     "options.choose_bitmap_tip",

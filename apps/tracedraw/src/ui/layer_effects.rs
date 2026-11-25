@@ -1374,7 +1374,7 @@ fn transform_settings(app: &App, ui: &mut Ui, e: &mut Effect) -> bool {
             .rich_tip(tr("layer_fx.random_desc"))
             .changed();
         if ui
-            .add_enabled(*random, egui::Button::new(tr("layer_fx.reseed")))
+            .add_enabled(*random, crate::ui::btn_icons::Ib::new("layer_fx.reseed"))
             .rich_tip(tr("layer_fx.reseed_desc"))
             .clicked()
         {

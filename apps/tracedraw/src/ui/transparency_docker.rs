@@ -8,6 +8,7 @@
 //! buttons, and Clear Transparency. The Transparency tool's bar keeps its
 //! one-row form (`toolbar::transparency_part`).
 
+use crate::ui::btn_icons::IconUi;
 use crate::app::App;
 use crate::effects_ui::TransparencySettings;
 use crate::i18n::{tr, trf};
@@ -678,7 +679,7 @@ pub fn section(app: &mut App, ui: &mut Ui) {
     if ui
         .add_enabled(
             app.can_clear_transparency(),
-            egui::Button::new(tr("toolbar.clear_transparency")),
+            crate::ui::btn_icons::Ib::new("toolbar.clear_transparency"),
         )
         .rich_tip(crate::ui::tips::keyed("toolbar.clear_transparency"))
         .clicked()
@@ -831,7 +832,7 @@ fn picker(
             save_transparency(app, &set.mask);
         }
         if ui
-            .button(tr("transparency.edit"))
+            .ibutton("transparency.edit")
             .rich_tip(crate::ui::tips::keyed("transparency.edit"))
             .clicked()
         {
@@ -1075,7 +1076,7 @@ fn two_greys(ui: &mut Ui, set: &mut TransparencySettings, field: &mut Option<F>)
         new.1 = transparency_gray(bg_t);
     }
     if ui
-        .button(tr("transparency.swap"))
+        .ibutton("transparency.swap")
         .rich_tip(crate::ui::tips::keyed("transparency.swap"))
         .clicked()
     {

@@ -132,7 +132,7 @@ pub fn shaping(app: &mut App, ui: &mut Ui) {
     let width = ui.available_width().min(240.0);
     let clicked = ui
         .add_enabled_ui(enough, |ui| {
-            ui.add_sized([width, 26.0], egui::Button::new(tr(key)))
+            ui.add_sized([width, 26.0], crate::ui::btn_icons::Ib::new(key))
                 .rich_tip_with(|| format!("{}\n{}", tr(key), tr("docker.shaping_apply_desc")))
                 .clicked()
         })

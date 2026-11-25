@@ -226,7 +226,7 @@ pub fn mesh_bar(app: &mut App, ui: &mut Ui) {
     if ui
         .add_enabled(
             !app.selection.is_empty(),
-            egui::Button::new(tr("toolbar.mesh_shuffle")),
+            crate::ui::btn_icons::Ib::new("toolbar.mesh_shuffle"),
         )
         .rich_tip(crate::ui::tips::keyed("toolbar.mesh_shuffle"))
         .rich_disabled_tip(crate::ui::tips::keyed("toolbar.mesh_shuffle"))
@@ -236,7 +236,7 @@ pub fn mesh_bar(app: &mut App, ui: &mut Ui) {
     }
     crate::ui::propbar::sep(ui);
     if ui
-        .add_enabled(mesh.is_some(), egui::Button::new(tr("toolbar.clear_mesh")))
+        .add_enabled(mesh.is_some(), crate::ui::btn_icons::Ib::new("toolbar.clear_mesh"))
         .rich_tip(tr("toolbar.clear_mesh"))
         .clicked()
     {

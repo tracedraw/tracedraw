@@ -5,6 +5,7 @@
 //! interactively" buttons, and Create object / Replace object. The
 //! drawing previews the object with its origin point marked.
 
+use crate::ui::btn_icons::IconUi;
 use crate::app::App;
 use crate::coords::{CoordKind, CoordPick};
 use crate::i18n::tr;
@@ -575,7 +576,7 @@ pub fn coordinates(app: &mut App, ui: &mut Ui) {
     let can = app.coords.shape_kind().is_some();
     ui.horizontal(|ui| {
         if ui
-            .add_enabled(can, egui::Button::new(tr("coords.create")))
+            .add_enabled(can, crate::ui::btn_icons::Ib::new("coords.create"))
             .rich_tip(crate::ui::tips::keyed("coords.create"))
             .rich_disabled_tip(crate::ui::tips::keyed("coords.create"))
             .clicked()
@@ -585,7 +586,7 @@ pub fn coordinates(app: &mut App, ui: &mut Ui) {
         if ui
             .add_enabled(
                 can && app.coords_target().is_some(),
-                egui::Button::new(tr("coords.replace")),
+                crate::ui::btn_icons::Ib::new("coords.replace"),
             )
             .rich_tip(crate::ui::tips::keyed("coords.replace"))
             .rich_disabled_tip(crate::ui::tips::keyed("coords.replace"))
@@ -807,7 +808,7 @@ fn multipoint(
         }
         pick_button(ui, waiting, CoordPick::Point, pick);
         if ui
-            .selectable_label(c.closed, tr("coords.auto_close"))
+            .iselectable(c.closed, "coords.auto_close")
             .clicked()
         {
             c.closed = !c.closed;

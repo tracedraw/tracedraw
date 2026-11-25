@@ -8,6 +8,7 @@
 //! Commands dragged onto it from Options > Customization > Commands
 //! follow the tools, as on the toolbars (#3211).
 
+use crate::ui::btn_icons::IconUi;
 use crate::app::App;
 use crate::i18n::tr;
 use crate::theme::{self, Tokens};
@@ -1112,14 +1113,14 @@ fn quick_customize_button(app: &mut App, ui: &mut Ui) {
                 }
             }
             ui.separator();
-            if ui.button(tr("toolbox.reset")).clicked() {
+            if ui.ibutton("toolbox.reset").clicked() {
                 app.settings.toolbox_hidden.clear();
                 app.settings.show_outline_flyout = false;
                 ui.close();
             }
             // Commands to drag onto the toolbox, or onto a toolbar of
             // one's own docked beside it (#3723).
-            if ui.button(tr("bars.customize_options")).clicked() {
+            if ui.ibutton("bars.customize_options").clicked() {
                 open_commands_page(app);
                 ui.close();
             }

@@ -2,6 +2,7 @@
 //! vertical placement, placement along the path, distance from it, offset
 //! along it, the two mirrors and Straighten Text.
 
+use crate::ui::btn_icons::IconUi;
 use crate::app::App;
 use crate::i18n::tr;
 use crate::ui::field::NumField;
@@ -165,7 +166,7 @@ pub fn text_path_bar(app: &mut App, ui: &mut Ui) {
     // Tick snapping: a drag off the path moves the text in steps.
     let snap = app.settings.path_tick_snap;
     if ui
-        .selectable_label(snap, tr("toolbar.path_tick_snap"))
+        .iselectable(snap, "toolbar.path_tick_snap")
         .rich_tip(tr("toolbar.path_tick_snap_tip"))
         .clicked()
     {
@@ -199,7 +200,7 @@ pub fn text_path_bar(app: &mut App, ui: &mut Ui) {
     // changes. Shown while the path it was fitted to is in the drawing.
     if let Some(link) = app.fitted_text_link() {
         if ui
-            .selectable_label(link.follow, tr("toolbar.path_follow"))
+            .iselectable(link.follow, "toolbar.path_follow")
             .rich_tip(tr("toolbar.path_follow_tip"))
             .clicked()
         {
@@ -207,7 +208,7 @@ pub fn text_path_bar(app: &mut App, ui: &mut Ui) {
         }
     }
     if ui
-        .button(tr("menu.text.straighten_text"))
+        .ibutton("menu.text.straighten_text")
         .rich_tip(tr("toolbar.path_straighten_tip"))
         .clicked()
     {

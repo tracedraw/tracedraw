@@ -4,6 +4,7 @@
 //! retouching, distortion, effects, the picture and its histogram). See
 //! `pixel_mode.rs` and docs/behavior/edit-inside-picture.md.
 
+use crate::ui::btn_icons::IconUi;
 use crate::app::App;
 use crate::i18n::tr;
 use crate::pixel_edit::{self, PixelTool};
@@ -127,7 +128,7 @@ pub(crate) fn tool_options(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app::Pi
     }
     if matches!(t, PixelTool::Brush | PixelTool::Clone) {
         // Following the surface of the photo, in a menu.
-        ui.menu_button(tr("pixel.opt.surface"), |ui| {
+        ui.imenu_button("pixel.opt.surface", |ui| {
             ui.checkbox(&mut o.surface, tr("pixel.opt.surface_on"))
                 .rich_tip(tr("pixel.opt.surface_tip"));
             ui.add_enabled(
@@ -163,7 +164,7 @@ pub(crate) fn tool_options(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app::Pi
             percent(ui, "pixel.opt.flow", &mut o.flow);
         }
         // The tip's spacing, scatter, angle and roundness, in a menu.
-        ui.menu_button(tr("pixel.opt.tip"), |ui| {
+        ui.imenu_button("pixel.opt.tip", |ui| {
             let mut sp = (o.spacing * 100.0).round();
             if ui
                 .add(
@@ -459,7 +460,7 @@ fn placement_options(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app::PixelEdi
     let ready = !p.is_identity();
     let place = *p;
     if ui
-        .add_enabled(ready, egui::Button::new(tr("pixel.apply")))
+        .add_enabled(ready, crate::ui::btn_icons::Ib::new("pixel.apply"))
         .rich_tip(tr("pixel.opt.place_tip"))
         .clicked()
     {
@@ -467,7 +468,7 @@ fn placement_options(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app::PixelEdi
         pe.placement = Default::default();
     }
     if ui
-        .add_enabled(ready, egui::Button::new(tr("pixel.opt.reset")))
+        .add_enabled(ready, crate::ui::btn_icons::Ib::new("pixel.opt.reset"))
         .clicked()
     {
         pe.placement = Default::default();
@@ -579,16 +580,16 @@ pub(crate) fn layers_section(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app::
 pub(crate) fn selection_section(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app::PixelEdit) {
     let (w, h) = pe.pi.img.dimensions();
     ui.horizontal_wrapped(|ui| {
-        if ui.button(tr("pixel.sel.all")).clicked() {
+        if ui.ibutton("pixel.sel.all").clicked() {
             pe.set_selection(Some(image::GrayImage::from_pixel(w, h, image::Luma([255]))));
         }
         if ui
-            .add_enabled(pe.pi.sel.is_some(), egui::Button::new(tr("pixel.sel.none")))
+            .add_enabled(pe.pi.sel.is_some(), crate::ui::btn_icons::Ib::new("pixel.sel.none"))
             .clicked()
         {
             pe.set_selection(None);
         }
-        if ui.button(tr("pixel.sel.invert")).clicked() {
+        if ui.ibutton("pixel.sel.invert").clicked() {
             let inv = pixel_edit::invert(pe.pi.sel.as_ref(), w, h);
             pe.set_selection(Some(inv));
         }
@@ -601,7 +602,7 @@ pub(crate) fn selection_section(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_ap
                 .suffix(" px"),
         );
         if ui
-            .add_enabled(has, egui::Button::new(tr("pixel.sel.feather")))
+            .add_enabled(has, crate::ui::btn_icons::Ib::new("pixel.sel.feather"))
             .clicked()
         {
             if let Some(m) = pe
@@ -621,7 +622,7 @@ pub(crate) fn selection_section(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_ap
                 .suffix(" px"),
         );
         if ui
-            .add_enabled(has, egui::Button::new(tr("pixel.sel.grow")))
+            .add_enabled(has, crate::ui::btn_icons::Ib::new("pixel.sel.grow"))
             .clicked()
         {
             if let Some(m) = pe.pi.sel.as_ref().map(|m| pixel_edit::grow(m, pe.grow_px)) {
@@ -631,18 +632,18 @@ pub(crate) fn selection_section(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_ap
     });
     ui.horizontal_wrapped(|ui| {
         if ui
-            .button(tr("pixel.sel.delete"))
+            .ibutton("pixel.sel.delete")
             .rich_tip(tr("pixel.sel.delete_tip"))
             .clicked()
         {
             pe.apply(false, pixel_edit::clear_selection);
         }
-        if ui.button(tr("pixel.sel.fill")).clicked() {
+        if ui.ibutton("pixel.sel.fill").clicked() {
             let (c, o) = (pe.opts.color, pe.opts.opacity);
             pe.apply(false, |pi| pixel_edit::fill_selection(pi, c, o));
         }
         if ui
-            .add_enabled(has, egui::Button::new(tr("pixel.sel.crop")))
+            .add_enabled(has, crate::ui::btn_icons::Ib::new("pixel.sel.crop"))
             .clicked()
         {
             pe.apply_all(true, pixel_edit::crop_to_selection);
@@ -658,7 +659,7 @@ fn more_selection(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app::PixelEdit) 
     use pixel_edit::Tones;
     let mut quick = pe.target == MaskTarget::QuickMask;
     if ui
-        .toggle_value(&mut quick, tr("pixel.sel.quick_mask"))
+        .itoggle(&mut quick, "pixel.sel.quick_mask")
         .rich_tip(tr("pixel.sel.quick_mask_tip"))
         .changed()
     {
@@ -671,7 +672,7 @@ fn more_selection(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app::PixelEdit) 
             (Tones::Midtones, "pixel.sel.midtones"),
             (Tones::Highlights, "pixel.sel.highlights"),
         ] {
-            if ui.button(tr(key)).clicked() {
+            if ui.ibutton(key).clicked() {
                 let m = pixel_edit::tone_mask(&pe.pi.img, t);
                 pe.set_selection(Some(m));
             }
@@ -685,7 +686,7 @@ fn more_selection(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app::PixelEdit) 
             (2, "pixel.sel.blue"),
             (3, "pixel.sel.alpha"),
         ] {
-            if ui.button(tr(key)).clicked() {
+            if ui.ibutton(key).clicked() {
                 let m = pixel_edit::channel_mask(&pe.pi.img, ch);
                 pe.set_selection(Some(m));
             }
@@ -694,7 +695,7 @@ fn more_selection(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app::PixelEdit) 
     let has = pe.pi.sel.is_some();
     ui.horizontal_wrapped(|ui| {
         if ui
-            .add_enabled(has, egui::Button::new(tr("pixel.sel.border")))
+            .add_enabled(has, crate::ui::btn_icons::Ib::new("pixel.sel.border"))
             .rich_tip(tr("pixel.sel.border_tip"))
             .clicked()
         {
@@ -708,7 +709,7 @@ fn more_selection(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app::PixelEdit) 
             }
         }
         if ui
-            .add_enabled(has, egui::Button::new(tr("pixel.sel.smooth")))
+            .add_enabled(has, crate::ui::btn_icons::Ib::new("pixel.sel.smooth"))
             .rich_tip(tr("pixel.sel.smooth_tip"))
             .clicked()
         {
@@ -722,7 +723,7 @@ fn more_selection(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app::PixelEdit) 
             }
         }
         if ui
-            .add_enabled(has, egui::Button::new(tr("pixel.sel.save")))
+            .add_enabled(has, crate::ui::btn_icons::Ib::new("pixel.sel.save"))
             .rich_tip(tr("pixel.sel.save_tip"))
             .clicked()
         {
@@ -760,14 +761,14 @@ fn more_selection(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app::PixelEdit) 
 pub(crate) fn retouch_section(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app::PixelEdit) {
     let has = pe.pi.sel.is_some();
     if ui
-        .add_enabled(has, egui::Button::new(tr("pixel.content_fill")))
+        .add_enabled(has, crate::ui::btn_icons::Ib::new("pixel.content_fill"))
         .rich_tip(tr("pixel.content_fill_tip"))
         .clicked()
     {
         pe.apply(false, pixel_edit::content_fill);
     }
     if ui
-        .button(tr("pixel.red_eye"))
+        .ibutton("pixel.red_eye")
         .rich_tip(tr("pixel.red_eye_tip"))
         .clicked()
     {
@@ -872,7 +873,7 @@ pub(crate) fn effects_section(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app:
         {
             changed = true;
         }
-        if ui.button(tr("pixel.apply")).clicked() {
+        if ui.ibutton("pixel.apply").clicked() {
             if let Some(e) = pe.effect.clone() {
                 pe.apply(true, |pi| pixel_edit::apply_effect(pi, &e));
             }
@@ -963,7 +964,7 @@ pub(crate) fn distort_section(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app:
         );
         if !busy {
             if ui
-                .button(tr("pixel.warp.start"))
+                .ibutton("pixel.warp.start")
                 .rich_tip(tr("pixel.warp.start_tip"))
                 .clicked()
                 && !pe.pi.active_locked()
@@ -972,14 +973,14 @@ pub(crate) fn distort_section(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app:
                 pe.tool = PixelTool::Warp;
             }
         } else {
-            if ui.button(tr("pixel.apply")).clicked() {
+            if ui.ibutton("pixel.apply").clicked() {
                 pe.apply_warp();
             }
-            if ui.button(tr("pixel.warp.reset")).clicked() {
+            if ui.ibutton("pixel.warp.reset").clicked() {
                 pe.start_warp();
                 pe.tool = PixelTool::Warp;
             }
-            if ui.button(tr("pixel.cancel")).clicked() {
+            if ui.ibutton("pixel.cancel").clicked() {
                 pe.cancel_warp();
             }
         }
@@ -988,13 +989,13 @@ pub(crate) fn distort_section(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app:
 
 pub(crate) fn picture_section(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app::PixelEdit) {
     ui.horizontal_wrapped(|ui| {
-        if ui.button(tr("pixel.flip_h")).clicked() {
+        if ui.ibutton("pixel.flip_h").clicked() {
             pe.apply_all(true, |pi| {
                 pixel_edit::flip(pi, true);
                 Some([0, 0, pi.img.width(), pi.img.height()])
             });
         }
-        if ui.button(tr("pixel.flip_v")).clicked() {
+        if ui.ibutton("pixel.flip_v").clicked() {
             pe.apply_all(true, |pi| {
                 pixel_edit::flip(pi, false);
                 Some([0, 0, pi.img.width(), pi.img.height()])
@@ -1031,7 +1032,7 @@ pub(crate) fn picture_section(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app:
                 .color(Tokens::text_dim()),
         );
         if ui
-            .add_enabled((nw, nh) != (w, h), egui::Button::new(tr("pixel.apply")))
+            .add_enabled((nw, nh) != (w, h), crate::ui::btn_icons::Ib::new("pixel.apply"))
             .clicked()
         {
             pe.apply_all(true, |pi| crate::pixel_liquify::smart_resize(pi, nw, nh));
@@ -1082,7 +1083,7 @@ fn canvas_size_rows(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app::PixelEdit
             });
     });
     if ui
-        .add_enabled((nw, nh) != (w, h), egui::Button::new(tr("pixel.apply")))
+        .add_enabled((nw, nh) != (w, h), crate::ui::btn_icons::Ib::new("pixel.apply"))
         .clicked()
     {
         let a = ((anchor % 3) as f32 / 2.0, (anchor / 3) as f32 / 2.0);

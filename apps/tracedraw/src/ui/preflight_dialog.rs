@@ -1,6 +1,7 @@
 //! File > Preflight: the issues the preflight finds (`preflight.rs`), the
 //! hint for the one picked, and the checks to run with their thresholds.
 
+use crate::ui::btn_icons::IconUi;
 use crate::app::App;
 use crate::i18n::{tr, trf};
 use crate::preflight::{self, Check, Issue, PreflightPrefs, Severity};
@@ -205,7 +206,7 @@ pub fn dialog(app: &mut App, ctx: &egui::Context, st: &mut PreflightState, close
         }
         ui.add_space(6.0);
         ui.horizontal(|ui| {
-            if ui.button(tr("preflight.refresh")).clicked() {
+            if ui.ibutton("preflight.refresh").clicked() {
                 st.refresh(app);
             }
             let label = if st.settings_open {
@@ -213,7 +214,10 @@ pub fn dialog(app: &mut App, ctx: &egui::Context, st: &mut PreflightState, close
             } else {
                 tr("preflight.show_settings")
             };
-            if ui.button(label).clicked() {
+            if ui
+                .add(crate::ui::btn_icons::Ib::with_text("preflight.show_settings", label))
+                .clicked()
+            {
                 st.settings_open = !st.settings_open;
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -479,7 +483,7 @@ fn settings(app: &mut App, ui: &mut Ui) {
         0.0..=5.0,
         "mm",
     );
-    if ui.button(tr("preflight.defaults")).clicked() {
+    if ui.ibutton("preflight.defaults").clicked() {
         *prefs = PreflightPrefs::default();
     }
 }

@@ -3,6 +3,7 @@
 //! run, the "still running" notice with Stop, the Macro Manager docker and
 //! the Macro Editor (Alt+F11). See docs/behavior/vba.md.
 
+use crate::ui::btn_icons::IconUi;
 use crate::app::App;
 use crate::i18n::{tr, trf};
 use crate::macro_forms::{LiveControl, LiveForm};
@@ -498,7 +499,7 @@ fn running_notice(app: &mut App, ctx: &Context) {
                         ui.spinner();
                     }
                     ui.label(trf("macros.still_running", &[("name", &name)]));
-                    if ui.button(tr("macros.stop")).clicked() {
+                    if ui.ibutton("macros.stop").clicked() {
                         stop = true;
                     }
                 });
@@ -1398,7 +1399,7 @@ pub fn manager(app: &mut App, ui: &mut Ui) {
     let mut act: Option<&str> = None;
     ui.horizontal_wrapped(|ui| {
         if ui
-            .button(tr("macros.load"))
+            .ibutton("macros.load")
             .rich_tip(tr("macros.load_hint"))
             .clicked()
         {
@@ -1407,7 +1408,7 @@ pub fn manager(app: &mut App, ui: &mut Ui) {
         if ui
             .add_enabled(
                 chosen_macro.is_some() && !running,
-                egui::Button::new(tr("macros.run")),
+                crate::ui::btn_icons::Ib::new("macros.run"),
             )
             .rich_tip(crate::ui::tips::keyed("macros.run"))
             .rich_disabled_tip(crate::ui::tips::keyed("macros.run"))
@@ -1417,14 +1418,14 @@ pub fn manager(app: &mut App, ui: &mut Ui) {
         }
         if running
             && ui
-                .button(tr("macros.stop"))
+                .ibutton("macros.stop")
                 .rich_tip(crate::ui::tips::keyed("macros.stop"))
                 .clicked()
         {
             act = Some("stop");
         }
         if ui
-            .add_enabled(chosen.is_some(), egui::Button::new(tr("macros.edit")))
+            .add_enabled(chosen.is_some(), crate::ui::btn_icons::Ib::new("macros.edit"))
             .rich_tip(crate::ui::tips::keyed("macros.edit"))
             .rich_disabled_tip(crate::ui::tips::keyed("macros.edit"))
             .clicked()
@@ -1432,7 +1433,7 @@ pub fn manager(app: &mut App, ui: &mut Ui) {
             act = Some("edit");
         }
         if ui
-            .add_enabled(chosen.is_some(), egui::Button::new(tr("macros.rename")))
+            .add_enabled(chosen.is_some(), crate::ui::btn_icons::Ib::new("macros.rename"))
             .rich_tip(crate::ui::tips::keyed("macros.rename"))
             .rich_disabled_tip(crate::ui::tips::keyed("macros.rename"))
             .clicked()
@@ -1442,7 +1443,7 @@ pub fn manager(app: &mut App, ui: &mut Ui) {
         if ui
             .add_enabled(
                 chosen.is_some() && !running,
-                egui::Button::new(tr("macros.unload")),
+                crate::ui::btn_icons::Ib::new("macros.unload"),
             )
             .rich_tip(crate::ui::tips::keyed("macros.unload"))
             .rich_disabled_tip(crate::ui::tips::keyed("macros.unload"))
@@ -1451,7 +1452,7 @@ pub fn manager(app: &mut App, ui: &mut Ui) {
             act = Some("unload");
         }
         if ui
-            .add_enabled(chosen.is_some(), egui::Button::new(tr("macros.export")))
+            .add_enabled(chosen.is_some(), crate::ui::btn_icons::Ib::new("macros.export"))
             .rich_tip(crate::ui::tips::keyed("macros.export"))
             .rich_disabled_tip(crate::ui::tips::keyed("macros.export"))
             .clicked()
@@ -1886,26 +1887,26 @@ fn editor(app: &mut App, ctx: &Context) {
         .show(ctx, |ui| {
             ui.horizontal(|ui| {
                 if ui
-                    .add_enabled(ed.dirty, egui::Button::new(tr("macros.save")))
+                    .add_enabled(ed.dirty, crate::ui::btn_icons::Ib::new("macros.save"))
                     .rich_tip("Ctrl+S")
                     .clicked()
                 {
                     act = Some("save");
                 }
                 if ui
-                    .add_enabled(!running, egui::Button::new(tr("macros.run_sub")))
+                    .add_enabled(!running, crate::ui::btn_icons::Ib::new("macros.run_sub"))
                     .rich_tip(tr("macros.run_sub_hint"))
                     .clicked()
                 {
                     act = Some("run");
                 }
-                if running && ui.button(tr("macros.stop")).clicked() {
+                if running && ui.ibutton("macros.stop").clicked() {
                     act = Some("stop");
                 }
                 ui.separator();
                 ui.label(tr("macros.find"));
                 let r = ui.add(egui::TextEdit::singleline(&mut ed.find).desired_width(160.0));
-                if ui.button(tr("macros.find_next")).clicked()
+                if ui.ibutton("macros.find_next").clicked()
                     || (r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)))
                 {
                     act = Some("find");
@@ -1935,14 +1936,14 @@ fn editor(app: &mut App, ctx: &Context) {
                 }
                 ui.separator();
                 if ui
-                    .selectable_label(ed.show_report, tr("convert.check"))
+                    .iselectable(ed.show_report, "convert.check")
                     .rich_tip(tr("convert.check_hint"))
                     .clicked()
                 {
                     act = Some(if ed.show_report { "hide_report" } else { "check" });
                 }
                 if ui
-                    .button(tr("convert.fix"))
+                    .ibutton("convert.fix")
                     .rich_tip(tr("convert.fix_hint"))
                     .clicked()
                 {
@@ -1951,7 +1952,7 @@ fn editor(app: &mut App, ctx: &Context) {
                 if ed.js_tab {
                     ui.separator();
                     if ui
-                        .button(tr("convert.convert_again"))
+                        .ibutton("convert.convert_again")
                         .rich_tip(tr("convert.convert_again_hint"))
                         .clicked()
                     {
@@ -1973,7 +1974,7 @@ fn editor(app: &mut App, ctx: &Context) {
                     if ui
                         .add_enabled(
                             !running && !ed.js_run.is_empty(),
-                            egui::Button::new(tr("convert.run_js")),
+                            crate::ui::btn_icons::Ib::new("convert.run_js"),
                         )
                         .rich_tip(tr("convert.run_js_hint"))
                         .clicked()
@@ -1981,14 +1982,14 @@ fn editor(app: &mut App, ctx: &Context) {
                         act = Some("run_js");
                     }
                     if ui
-                        .add_enabled(!ed.js.is_empty(), egui::Button::new(tr("convert.save_js")))
+                        .add_enabled(!ed.js.is_empty(), crate::ui::btn_icons::Ib::new("convert.save_js"))
                         .rich_tip(tr("convert.save_js_hint"))
                         .clicked()
                     {
                         act = Some("save_js");
                     }
                     if ui
-                        .add_enabled(!ed.js.is_empty(), egui::Button::new(tr("convert.to_scripts")))
+                        .add_enabled(!ed.js.is_empty(), crate::ui::btn_icons::Ib::new("convert.to_scripts"))
                         .rich_tip(tr("convert.to_scripts_hint"))
                         .clicked()
                     {

@@ -8,6 +8,7 @@
 //! The preset row and the preview are adapted from the Sign & Cut window
 //! kit of #170 by LaMka21.
 
+use crate::ui::btn_icons::IconUi;
 use crate::app::{App, Units};
 use crate::i18n::tr;
 use crate::theme::Tokens;
@@ -121,7 +122,7 @@ fn tool_list(app: &mut App, ui: &mut Ui, st: &mut TraceCutState) {
             if ui
                 .add_sized(
                     [LIST_W - 8.0, 24.0],
-                    egui::Button::selectable(on, tr(t.key())),
+                    crate::ui::btn_icons::Ib::selectable(on, t.key()),
                 )
                 .rich_tip(crate::ui::tips::keyed(t.key()))
                 .clicked()
@@ -299,20 +300,20 @@ fn preset_row(ui: &mut Ui, st: &mut TraceCutState) {
         );
         let named = !st.preset_name.trim().is_empty();
         if ui
-            .add_enabled(named, egui::Button::new(tr("tracecut.preset_save")))
+            .add_enabled(named, crate::ui::btn_icons::Ib::new("tracecut.preset_save"))
             .clicked()
         {
             let name = st.preset_name.clone();
             st.presets.save_preset(tool, &name, &st.settings);
         }
         if ui
-            .add_enabled(named, egui::Button::new(tr("tracecut.preset_delete")))
+            .add_enabled(named, crate::ui::btn_icons::Ib::new("tracecut.preset_delete"))
             .clicked()
         {
             let name = st.preset_name.clone();
             st.presets.delete_preset(tool, &name);
         }
-        if ui.button(tr("tracecut.preset_reset")).clicked() {
+        if ui.ibutton("tracecut.preset_reset").clicked() {
             st.settings.reset(tool);
             st.worked = None;
         }

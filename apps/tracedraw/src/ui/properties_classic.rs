@@ -8,6 +8,7 @@
 //! nib. The grouped layout stays the default; a button at the end of
 //! the tab row switches between the two.
 
+use crate::ui::btn_icons::IconUi;
 use super::*;
 
 /// The width of the right-aligned label column of the classic outline.
@@ -455,14 +456,14 @@ pub(super) fn outline_editor(
                 let current = stroke.as_ref().map(|s| s.width);
                 let mut pick: Option<Option<f64>> = None;
                 if ui
-                    .selectable_label(!width_mixed && current.is_none(), tr("toolbar.none"))
+                    .iselectable(!width_mixed && current.is_none(), "toolbar.none")
                     .clicked()
                 {
                     pick = Some(None);
                 }
                 let hair = current.is_some_and(|w| w <= Stroke::HAIRLINE + 1e-9);
                 if ui
-                    .selectable_label(!width_mixed && hair, tr("toolbar.hairline"))
+                    .iselectable(!width_mixed && hair, "toolbar.hairline")
                     .clicked()
                 {
                     pick = Some(Some(Stroke::HAIRLINE));

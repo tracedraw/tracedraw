@@ -4,6 +4,7 @@
 //! text (tabs, columns, bullets, drop cap, statistics, spell check),
 //! colour management, font manager, palette editor, confirmations.
 
+use crate::ui::btn_icons::IconUi;
 use crate::app::{App, Units};
 use crate::i18n::{tr, trf};
 use crate::theme::Tokens;
@@ -2881,7 +2882,7 @@ pub fn show(app: &mut App, ctx: &Context) {
                         },
                     );
                     if ui
-                        .button(tr("dialog.swap"))
+                        .ibutton("dialog.swap")
                         .rich_tip(crate::ui::tips::keyed("dialog.swap"))
                         .clicked()
                     {
@@ -4747,7 +4748,7 @@ pub(crate) fn page_size_page(app: &mut App, ui: &mut Ui) {
                 "options.label_preset_tip",
             ));
         if ui
-            .button(tr("options.apply_labels"))
+            .ibutton("options.apply_labels")
             .rich_tip(crate::ui::tips::pair(
                 "options.apply_labels",
                 "options.apply_labels_tip",
@@ -4960,7 +4961,7 @@ pub(crate) fn page_size_page(app: &mut App, ui: &mut Ui) {
         if ui
             .add_enabled(
                 !app.selection.is_empty(),
-                egui::Button::new(tr("options.fit_page_selection")),
+                crate::ui::btn_icons::Ib::new("options.fit_page_selection"),
             )
             .rich_tip_always(crate::ui::tips::pair(
                 "options.fit_page_selection",
@@ -4973,7 +4974,7 @@ pub(crate) fn page_size_page(app: &mut App, ui: &mut Ui) {
         if ui
             .add_enabled(
                 app.drawing_bounds().is_some(),
-                egui::Button::new(tr("options.fit_page_drawing")),
+                crate::ui::btn_icons::Ib::new("options.fit_page_drawing"),
             )
             .rich_tip_always(crate::ui::tips::pair(
                 "options.fit_page_drawing",
@@ -5009,7 +5010,7 @@ pub(crate) fn page_size_page(app: &mut App, ui: &mut Ui) {
         if ui
             .add_sized(
                 [150.0, 26.0],
-                egui::Button::new(tr("options.add_page_frame")),
+                crate::ui::btn_icons::Ib::new("options.add_page_frame"),
             )
             .rich_tip(crate::ui::tips::pair(
                 "options.add_page_frame",
@@ -5953,7 +5954,7 @@ fn export_dialog(app: &mut App, ctx: &Context, st: &mut ExportState, close: &mut
                     // and colour bars, passwords and the rest (#2197):
                     // the PDF Settings dialog, for the same file.
                     if ui
-                        .button(tr("dialog.export_pdf_settings"))
+                        .ibutton("dialog.export_pdf_settings")
                         .rich_tip(crate::ui::tips::keyed("dialog.export_pdf_settings"))
                         .clicked()
                     {
@@ -6782,7 +6783,7 @@ pub(crate) fn print_layout_fields(app: &App, ui: &mut Ui, st: &mut PrintState) {
                             if ui
                                 .add_enabled(
                                     !name.is_empty(),
-                                    egui::Button::new(tr("print.sheet_save")),
+                                    crate::ui::btn_icons::Ib::new("print.sheet_save"),
                                 )
                                 .clicked()
                             {
@@ -7209,7 +7210,7 @@ fn print_dialog(app: &mut App, ctx: &Context, st: &mut PrintState, close: &mut b
         ui.separator();
         ui.horizontal(|ui| {
             if ui
-                .button(tr("menu.file.print_preview"))
+                .ibutton("menu.file.print_preview")
                 .rich_tip(crate::ui::tips::pair(
                     "menu.file.print_preview",
                     "print.preview_desc",
@@ -7221,7 +7222,7 @@ fn print_dialog(app: &mut App, ctx: &Context, st: &mut PrintState, close: &mut b
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
-                    .button(tr("print.apply"))
+                    .ibutton("print.apply")
                     .rich_tip(crate::ui::tips::keyed("print.apply"))
                     .clicked()
                 {
@@ -7247,7 +7248,7 @@ fn print_dialog(app: &mut App, ctx: &Context, st: &mut PrintState, close: &mut b
                     && !ui.memory(|m| m.focused().is_some())
                     && !egui::Popup::is_any_open(ui.ctx());
                 if ui
-                    .add_enabled(!waiting, egui::Button::new(tr("dialog.print")))
+                    .add_enabled(!waiting, crate::ui::btn_icons::Ib::new("dialog.print"))
                     .rich_tip(crate::ui::tips::pair("dialog.print", "print.print_desc"))
                     .rich_disabled_tip(crate::ui::tips::pair("dialog.print", "print.print_desc"))
                     .clicked()
@@ -7881,7 +7882,7 @@ fn print_tab_issues(
             }
         });
     ui.add_space(6.0);
-    if ui.button(tr("preflight.open")).clicked() {
+    if ui.ibutton("preflight.open").clicked() {
         app.dialog = Dialog::Preflight(Default::default());
         *close = true;
     }
@@ -8010,7 +8011,7 @@ fn print_merge_dialog(app: &mut App, ctx: &Context, st: &mut PrintMergeState, cl
             ui.label(tr("merge.hint"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
-                    .button(tr("merge.import_file"))
+                    .ibutton("merge.import_file")
                     .rich_tip(crate::ui::tips::keyed("merge.import_file"))
                     .clicked()
                 {
@@ -8040,7 +8041,7 @@ fn print_merge_dialog(app: &mut App, ctx: &Context, st: &mut PrintMergeState, cl
         ui.strong(tr("merge.add_or_edit"));
         ui.horizontal(|ui| {
             if ui
-                .button(tr("merge.add_column"))
+                .ibutton("merge.add_column")
                 .rich_tip(crate::ui::tips::keyed("merge.add_column"))
                 .clicked()
             {
@@ -8050,7 +8051,7 @@ fn print_merge_dialog(app: &mut App, ctx: &Context, st: &mut PrintMergeState, cl
             if ui
                 .add_enabled(
                     !st.headers.is_empty(),
-                    egui::Button::new(tr("merge.configure")).selected(st.configure),
+                    crate::ui::btn_icons::Ib::new("merge.configure").selected(st.configure),
                 )
                 .rich_tip_always(crate::ui::tips::keyed("merge.configure"))
                 .clicked()
@@ -8069,7 +8070,10 @@ fn print_merge_dialog(app: &mut App, ctx: &Context, st: &mut PrintMergeState, cl
                     crate::ui::tips::keyed("merge.view_single")
                 };
                 if ui
-                    .add_enabled(!st.rows.is_empty(), egui::Button::new(label))
+                    .add_enabled(
+                        !st.rows.is_empty(),
+                        crate::ui::btn_icons::Ib::with_text("merge.view_all", label),
+                    )
                     .rich_tip_always(tip)
                     .clicked()
                 {
@@ -8155,7 +8159,7 @@ fn print_merge_dialog(app: &mut App, ctx: &Context, st: &mut PrintMergeState, cl
                 ui.horizontal(|ui| {
                     let ok = !name.trim().is_empty();
                     if ui
-                        .add_enabled(ok, egui::Button::new(tr("merge.add")))
+                        .add_enabled(ok, crate::ui::btn_icons::Ib::new("merge.add"))
                         .rich_tip_always(crate::ui::tips::keyed("merge.add"))
                         .clicked()
                     {
@@ -8300,7 +8304,7 @@ fn print_merge_dialog(app: &mut App, ctx: &Context, st: &mut PrintMergeState, cl
                                     {
                                         merge_random_fields(ui, min, max, digits, prefix, unique);
                                         if ui
-                                            .button(tr("merge.random_draw"))
+                                            .ibutton("merge.random_draw")
                                             .rich_tip(crate::ui::tips::keyed("merge.random_draw"))
                                             .clicked()
                                         {
@@ -8517,7 +8521,7 @@ fn print_merge_dialog(app: &mut App, ctx: &Context, st: &mut PrintMergeState, cl
             let sel = st.cells.filter(|_| !st.single && !st.rows.is_empty());
             ui.separator();
             if ui
-                .add_enabled(sel.is_some(), egui::Button::new(tr("merge.sel_add")))
+                .add_enabled(sel.is_some(), crate::ui::btn_icons::Ib::new("merge.sel_add"))
                 .rich_tip_always(crate::ui::tips::pair("merge.sel_add", "merge.sel_add_tip"))
                 .clicked()
             {
@@ -8531,7 +8535,7 @@ fn print_merge_dialog(app: &mut App, ctx: &Context, st: &mut PrintMergeState, cl
                 }
             }
             if ui
-                .add_enabled(sel.is_some(), egui::Button::new(tr("merge.sel_delete")))
+                .add_enabled(sel.is_some(), crate::ui::btn_icons::Ib::new("merge.sel_delete"))
                 .rich_tip_always(crate::ui::tips::pair(
                     "merge.sel_delete",
                     "merge.sel_delete_tip",
@@ -8546,7 +8550,7 @@ fn print_merge_dialog(app: &mut App, ctx: &Context, st: &mut PrintMergeState, cl
             let clear_key = ui.memory(|m| m.focused().is_none())
                 && ui.input(|i| i.key_pressed(egui::Key::Delete));
             if ui
-                .add_enabled(sel.is_some(), egui::Button::new(tr("merge.sel_clear")))
+                .add_enabled(sel.is_some(), crate::ui::btn_icons::Ib::new("merge.sel_clear"))
                 .rich_tip_always(crate::ui::tips::pair(
                     "merge.sel_clear",
                     "merge.sel_clear_tip",
@@ -8561,7 +8565,7 @@ fn print_merge_dialog(app: &mut App, ctx: &Context, st: &mut PrintMergeState, cl
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let n = st.rows.len();
                 if ui
-                    .add_enabled(n > 0, egui::Button::new(tr("merge.go_to")))
+                    .add_enabled(n > 0, crate::ui::btn_icons::Ib::new("merge.go_to"))
                     .rich_tip_always(crate::ui::tips::keyed("merge.go_to"))
                     .clicked()
                 {
@@ -8631,7 +8635,7 @@ fn print_merge_dialog(app: &mut App, ctx: &Context, st: &mut PrintMergeState, cl
             if ui
                 .add_enabled(
                     !st.headers.is_empty(),
-                    egui::Button::new(tr("merge.save_data")),
+                    crate::ui::btn_icons::Ib::new("merge.save_data"),
                 )
                 .rich_tip_always(crate::ui::tips::keyed("merge.save_data"))
                 .clicked()
@@ -8661,7 +8665,7 @@ fn print_merge_dialog(app: &mut App, ctx: &Context, st: &mut PrintMergeState, cl
                 if ui
                     .add_enabled(
                         !st.headers.is_empty(),
-                        egui::Button::new(tr("merge.finish")),
+                        crate::ui::btn_icons::Ib::new("merge.finish"),
                     )
                     .rich_tip_always(crate::ui::tips::keyed("merge.finish"))
                     .clicked()
@@ -9126,7 +9130,7 @@ fn paragraph_dialog(app: &mut App, ctx: &Context, which: &Dialog, close: &mut bo
                     changed = true;
                 }
                 if ui
-                    .button(tr("dialog.add_tab"))
+                    .ibutton("dialog.add_tab")
                     .rich_tip(crate::ui::tips::keyed("dialog.add_tab"))
                     .clicked()
                 {
@@ -9414,7 +9418,7 @@ fn border_grommet_dialog(
                 .rich_tip(crate::ui::tips::keyed("dialog.help_button"))
                 .clicked();
             if ui
-                .add_sized([100.0, 27.0], egui::Button::new(tr("dialog.reset")))
+                .add_sized([100.0, 27.0], crate::ui::btn_icons::Ib::new("dialog.reset"))
                 .rich_tip(crate::ui::tips::keyed("dialog.reset"))
                 .clicked()
             {
@@ -11772,14 +11776,14 @@ fn edit_text_box(
             .rich_tip(crate::ui::tips::pair("edit_text.marks", "edit_text.marks_tip"));
         ui.separator();
         if ui
-            .button(tr("edit_text.import"))
+            .ibutton("edit_text.import")
             .rich_tip(crate::ui::tips::pair("edit_text.import", "edit_text.import_tip"))
             .clicked()
         {
             asked = EditTextAsk::Import;
         }
         if ui
-            .button(tr("edit_text.spell"))
+            .ibutton("edit_text.spell")
             .rich_tip(crate::ui::tips::pair("edit_text.spell", "edit_text.spell_tip"))
             .clicked()
         {
@@ -12091,7 +12095,7 @@ fn resample_file_section(
             "resample.target_desc",
         ));
         if ui
-            .add_enabled(st.target_kb > 0.0, egui::Button::new(tr("resample.fit")))
+            .add_enabled(st.target_kb > 0.0, crate::ui::btn_icons::Ib::new("resample.fit"))
             .rich_tip(crate::ui::tips::pair(
                 "resample.fit",
                 "resample.target_desc",
@@ -12106,7 +12110,7 @@ fn resample_file_section(
         }
     });
     if ui
-        .button(tr("resample.save_as"))
+        .ibutton("resample.save_as")
         .rich_tip(crate::ui::tips::pair(
             "resample.save_as",
             "resample.save_as_desc",
@@ -12189,7 +12193,7 @@ pub(crate) fn page_look_editor(ui: &mut egui::Ui, look: &mut crate::settings::Pa
             if ui
                 .add_enabled(
                     !look.is_default(),
-                    egui::Button::new(tr("options.page_look_reset")),
+                    crate::ui::btn_icons::Ib::new("options.page_look_reset"),
                 )
                 .rich_tip(tip("options.page_look_reset"))
                 .clicked()

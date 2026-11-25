@@ -5,6 +5,7 @@
 //! Scripts panel, kept in the preferences, and turned on or off, edited
 //! or removed in the Plugin Manager.
 
+use crate::ui::btn_icons::IconUi;
 use crate::app::App;
 use crate::i18n::{tr, trf};
 use crate::scripting::{self, Plugin};
@@ -289,11 +290,11 @@ pub fn manager(app: &mut App, ctx: &egui::Context, close: &mut bool) {
         ui.add_space(6.0);
         ui.horizontal(|ui| {
             install = ui
-                .button(tr("menu.tools.plugin_install"))
+                .ibutton("menu.tools.plugin_install")
                 .rich_tip(crate::ui::tips::keyed("menu.tools.plugin_install"))
                 .clicked();
             new = ui
-                .button(tr("menu.tools.plugin_new"))
+                .ibutton("menu.tools.plugin_new")
                 .rich_tip(crate::ui::tips::keyed("menu.tools.plugin_new"))
                 .clicked();
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {

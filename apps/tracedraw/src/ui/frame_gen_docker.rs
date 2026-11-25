@@ -139,7 +139,7 @@ pub fn frame_generator(app: &mut App, ui: &mut Ui) {
         }
     });
     let tip = crate::ui::tips::pair("docker.apply", "docker.frame_apply_desc");
-    if crate::ui::docker_form::wide_button(ui, &tr("docker.apply"), true, &tip) {
+    if crate::ui::docker_form::wide_button(ui, "docker.apply", true, &tip) {
         let s = app.frame_gen.clone();
         app.apply_frame(&s);
     }

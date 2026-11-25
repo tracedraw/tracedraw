@@ -4,6 +4,7 @@
 //! Extrude, Bevel, Brush Strokes, Color Mask, Object Data, Links,
 //! Symbols, Pages, Guidelines, Fonts.
 
+use crate::ui::btn_icons::IconUi;
 use crate::app::{App, DockerTab};
 use crate::i18n::{tr, trf};
 use crate::theme::Tokens;
@@ -133,7 +134,7 @@ fn step_and_repeat(app: &mut App, ui: &mut Ui) {
         "docker.sr_apply_desc"
     };
     if ui
-        .add_enabled(has && can_apply, egui::Button::new(tr("docker.apply")))
+        .add_enabled(has && can_apply, crate::ui::btn_icons::Ib::new("docker.apply"))
         .rich_tip(crate::ui::tips::pair("docker.apply", desc))
         .clicked()
     {
@@ -541,7 +542,7 @@ fn default_properties(app: &mut App, ui: &mut Ui) {
                 let from = ui
                     .add_enabled(
                         first.is_some(),
-                        egui::Button::new(tr("docker.from_selection")).small(),
+                        crate::ui::btn_icons::Ib::new("docker.from_selection").small(),
                     )
                     .rich_tip(tr("defaults.from_selection_hint"));
                 if from.clicked() {
@@ -576,7 +577,7 @@ fn styles_list(app: &mut App, ui: &mut Ui) {
             if ui
                 .add_enabled(
                     !app.selection.is_empty(),
-                    egui::Button::new(tr("docker.new_style_from_selection")).small(),
+                    crate::ui::btn_icons::Ib::new("docker.new_style_from_selection").small(),
                 )
                 .rich_tip(crate::ui::tips::keyed("docker.new_style_from_selection"))
                 .clicked()
@@ -630,7 +631,7 @@ fn styles_list(app: &mut App, ui: &mut Ui) {
             if ui
                 .add_enabled(
                     !app.selection.is_empty(),
-                    egui::Button::new(tr("docker.apply")).small(),
+                    crate::ui::btn_icons::Ib::new("docker.apply").small(),
                 )
                 .rich_tip(tr("docker.style_apply_hint"))
                 .clicked()
@@ -640,7 +641,7 @@ fn styles_list(app: &mut App, ui: &mut Ui) {
             if ui
                 .add_enabled(
                     first.is_some(),
-                    egui::Button::new(tr("docker.update_from_selection")).small(),
+                    crate::ui::btn_icons::Ib::new("docker.update_from_selection").small(),
                 )
                 .rich_tip(tr("docker.style_update_hint"))
                 .clicked()
@@ -673,7 +674,7 @@ fn styles_list(app: &mut App, ui: &mut Ui) {
     }
     let linked = !app.styled_selection().is_empty();
     if ui
-        .add_enabled(linked, egui::Button::new(tr("docker.break_style_link")))
+        .add_enabled(linked, crate::ui::btn_icons::Ib::new("docker.break_style_link"))
         .rich_tip(crate::ui::tips::keyed("docker.break_style_link"))
         .clicked()
     {
@@ -720,7 +721,7 @@ fn find_field(ui: &mut Ui, text: &mut String, name: &str, spaces: bool) -> egui:
     response.context_menu(|ui| {
         let picked: String = text.chars().skip(from).take(to - from).collect();
         if ui
-            .add_enabled(from < to, egui::Button::new(tr("menu.edit.cut")))
+            .add_enabled(from < to, crate::ui::btn_icons::Ib::new("menu.edit.cut"))
             .clicked()
         {
             ui.ctx().copy_text(picked.clone());
@@ -728,25 +729,25 @@ fn find_field(ui: &mut Ui, text: &mut String, name: &str, spaces: bool) -> egui:
             ui.close();
         }
         if ui
-            .add_enabled(from < to, egui::Button::new(tr("menu.edit.copy")))
+            .add_enabled(from < to, crate::ui::btn_icons::Ib::new("menu.edit.copy"))
             .clicked()
         {
             ui.ctx().copy_text(picked);
             ui.close();
         }
-        if ui.button(tr("menu.edit.paste")).clicked() {
+        if ui.ibutton("menu.edit.paste").clicked() {
             if let Some(t) = crate::clipboard::system_text() {
                 // One line: the field has no room for line ends.
                 put = Some((from, to, t.replace(['\r', '\n'], " ")));
             }
             ui.close();
         }
-        if ui.button(tr("menu.edit.select_all")).clicked() {
+        if ui.ibutton("menu.edit.select_all").clicked() {
             select_all = true;
             ui.close();
         }
         ui.separator();
-        ui.menu_button(tr("find.special_character"), |ui| {
+        ui.imenu_button("find.special_character", |ui| {
             for (key, code) in FIND_CODES {
                 if code == "^w" && !spaces {
                     continue;
@@ -835,7 +836,7 @@ fn find_replace(app: &mut App, ui: &mut Ui) {
     }
     ui.horizontal_wrapped(|ui| {
         if ui
-            .button(tr("dialog.find_next"))
+            .ibutton("dialog.find_next")
             .rich_tip(crate::ui::tips::pair(
                 "dialog.find_next",
                 "docker.find_next_desc",
@@ -851,7 +852,7 @@ fn find_replace(app: &mut App, ui: &mut Ui) {
             }
         }
         if ui
-            .button(tr("dialog.find_all"))
+            .ibutton("dialog.find_all")
             .rich_tip(crate::ui::tips::pair(
                 "dialog.find_all",
                 "docker.find_all_desc",
@@ -864,7 +865,7 @@ fn find_replace(app: &mut App, ui: &mut Ui) {
         }
         if st.kind == 0 {
             if ui
-                .button(tr("dialog.replace"))
+                .ibutton("dialog.replace")
                 .rich_tip(crate::ui::tips::pair(
                     "dialog.replace",
                     "docker.replace_desc",
@@ -881,7 +882,7 @@ fn find_replace(app: &mut App, ui: &mut Ui) {
                 );
             }
             if ui
-                .button(tr("dialog.replace_all"))
+                .ibutton("dialog.replace_all")
                 .rich_tip(crate::ui::tips::pair(
                     "dialog.replace_all",
                     "docker.replace_all_desc",
@@ -1031,7 +1032,7 @@ fn find_properties(app: &mut App, ui: &mut Ui, st: &mut crate::ui::dialogs::Find
         if ui
             .add_enabled(
                 first.is_some(),
-                egui::Button::new(tr("find.from_selection")),
+                crate::ui::btn_icons::Ib::new("find.from_selection"),
             )
             .rich_tip(crate::ui::tips::pair(
                 "find.from_selection",
@@ -1044,7 +1045,7 @@ fn find_properties(app: &mut App, ui: &mut Ui, st: &mut crate::ui::dialogs::Find
             }
         }
         if ui
-            .button(tr("find.reset"))
+            .ibutton("find.reset")
             .rich_tip(crate::ui::tips::pair("find.reset", "find.reset_desc"))
             .clicked()
         {
@@ -1118,7 +1119,7 @@ fn find_properties(app: &mut App, ui: &mut Ui, st: &mut crate::ui::dialogs::Find
     ui.add_space(4.0);
     ui.horizontal_wrapped(|ui| {
         if ui
-            .add_enabled(can_find, egui::Button::new(tr("find.previous")))
+            .add_enabled(can_find, crate::ui::btn_icons::Ib::new("find.previous"))
             .rich_tip(crate::ui::tips::pair("find.previous", "find.previous_desc"))
             .clicked()
         {
@@ -1126,7 +1127,7 @@ fn find_properties(app: &mut App, ui: &mut Ui, st: &mut crate::ui::dialogs::Find
             st.results = st.props.hits.iter().map(|h| h.id).collect();
         }
         if ui
-            .add_enabled(can_find, egui::Button::new(tr("dialog.find_next")))
+            .add_enabled(can_find, crate::ui::btn_icons::Ib::new("dialog.find_next"))
             .rich_tip(crate::ui::tips::pair(
                 "dialog.find_next",
                 "docker.find_next_desc",
@@ -1137,7 +1138,7 @@ fn find_properties(app: &mut App, ui: &mut Ui, st: &mut crate::ui::dialogs::Find
             st.results = st.props.hits.iter().map(|h| h.id).collect();
         }
         if ui
-            .add_enabled(can_find, egui::Button::new(tr("dialog.find_all")))
+            .add_enabled(can_find, crate::ui::btn_icons::Ib::new("dialog.find_all"))
             .rich_tip(crate::ui::tips::pair(
                 "dialog.find_all",
                 "docker.find_all_desc",
@@ -1155,7 +1156,7 @@ fn find_properties(app: &mut App, ui: &mut Ui, st: &mut crate::ui::dialogs::Find
             );
         }
         if ui
-            .add_enabled(can_replace, egui::Button::new(tr("dialog.replace_all")))
+            .add_enabled(can_replace, crate::ui::btn_icons::Ib::new("dialog.replace_all"))
             .rich_tip(crate::ui::tips::pair(
                 "dialog.replace_all",
                 "find.replace_all_desc",
@@ -1197,7 +1198,7 @@ fn scripts(app: &mut App, ui: &mut Ui) {
     let vba = app.macros.scripts_vba;
     ui.horizontal_wrapped(|ui| {
         if ui
-            .add_enabled(!debugging, egui::Button::new(tr("docker.run")))
+            .add_enabled(!debugging, crate::ui::btn_icons::Ib::new("docker.run"))
             .rich_tip(crate::ui::tips::pair(
                 "docker.run",
                 "docker.run_script_desc",
@@ -1213,7 +1214,7 @@ fn scripts(app: &mut App, ui: &mut Ui) {
         }
         if app.macros.run.is_some()
             && ui
-                .button(tr("docker.stop"))
+                .ibutton("docker.stop")
                 .rich_tip(crate::ui::tips::pair(
                     "docker.stop",
                     "docker.stop_script_desc",
@@ -1227,7 +1228,7 @@ fn scripts(app: &mut App, ui: &mut Ui) {
             && ui
                 .add_enabled(
                     !debugging && !crate::files::WEB,
-                    egui::Button::new(tr("docker.debug")),
+                    crate::ui::btn_icons::Ib::new("docker.debug"),
                 )
                 .rich_tip(tr("docker.debug_hint"))
                 .rich_disabled_tip(if crate::files::WEB {
@@ -1240,7 +1241,7 @@ fn scripts(app: &mut App, ui: &mut Ui) {
             app.start_script_debug();
         }
         if ui
-            .selectable_label(app.recording.is_some(), tr("docker.record"))
+            .iselectable(app.recording.is_some(), "docker.record")
             .rich_tip(crate::ui::tips::pair("docker.record", "docker.record_desc"))
             .clicked()
         {
@@ -1252,7 +1253,7 @@ fn scripts(app: &mut App, ui: &mut Ui) {
             ("JavaScript", "js")
         };
         if ui
-            .button(tr("docker.load"))
+            .ibutton("docker.load")
             .rich_tip(crate::ui::tips::pair(
                 "docker.load",
                 "docker.load_script_desc",
@@ -1268,7 +1269,7 @@ fn scripts(app: &mut App, ui: &mut Ui) {
                 });
         }
         if ui
-            .button(tr("docker.save"))
+            .ibutton("docker.save")
             .rich_tip(crate::ui::tips::pair(
                 "docker.save",
                 "docker.save_script_desc",
@@ -1284,7 +1285,7 @@ fn scripts(app: &mut App, ui: &mut Ui) {
                 .save_bytes(app, source);
         }
         if ui
-            .button(tr("docker.clear"))
+            .ibutton("docker.clear")
             .rich_tip(crate::ui::tips::pair(
                 "docker.clear",
                 "docker.clear_output_desc",
@@ -1295,7 +1296,7 @@ fn scripts(app: &mut App, ui: &mut Ui) {
         }
         if !vba
             && ui
-                .button(tr("docker.install_filter"))
+                .ibutton("docker.install_filter")
                 .rich_tip(tr("docker.install_filter_hint"))
                 .clicked()
         {
@@ -1306,7 +1307,7 @@ fn scripts(app: &mut App, ui: &mut Ui) {
         // Tools > Plugins (#1802).
         if !vba
             && ui
-                .button(tr("docker.install_plugin"))
+                .ibutton("docker.install_plugin")
                 .rich_tip(crate::ui::tips::keyed("docker.install_plugin"))
                 .clicked()
         {
@@ -1387,18 +1388,18 @@ fn script_debug_bar(app: &mut App, ui: &mut Ui) {
     let paused = app.debug_paused;
     ui.horizontal_wrapped(|ui| {
         if ui
-            .add_enabled(paused.is_some(), egui::Button::new(tr("docker.continue")))
+            .add_enabled(paused.is_some(), crate::ui::btn_icons::Ib::new("docker.continue"))
             .clicked()
         {
             app.debug_control(DebugCtl::Continue);
         }
         if ui
-            .add_enabled(paused.is_some(), egui::Button::new(tr("docker.step")))
+            .add_enabled(paused.is_some(), crate::ui::btn_icons::Ib::new("docker.step"))
             .clicked()
         {
             app.debug_control(DebugCtl::Step);
         }
-        if ui.button(tr("docker.stop")).clicked() {
+        if ui.ibutton("docker.stop").clicked() {
             app.debug_control(DebugCtl::Stop);
         }
         match paused {
@@ -1414,7 +1415,7 @@ fn script_debug_bar(app: &mut App, ui: &mut Ui) {
                     .desired_width(ui.available_width() - 80.0),
             );
             let enter = edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-            if (ui.button(tr("docker.evaluate")).clicked() || enter)
+            if (ui.ibutton("docker.evaluate").clicked() || enter)
                 && !app.debug_expr.trim().is_empty()
             {
                 let e = app.debug_expr.trim().to_string();
@@ -1702,7 +1703,7 @@ fn lens(app: &mut App, ui: &mut Ui) {
     let has = !app.selection.is_empty();
     ui.horizontal(|ui| {
         if ui
-            .add_enabled(has, egui::Button::new(tr("docker.apply")))
+            .add_enabled(has, crate::ui::btn_icons::Ib::new("docker.apply"))
             .rich_tip(crate::ui::tips::pair(
                 "docker.apply",
                 "docker.lens_apply_desc",
@@ -1724,7 +1725,7 @@ fn lens(app: &mut App, ui: &mut Ui) {
             }
         }
         if ui
-            .add_enabled(has, egui::Button::new(tr("docker.remove")))
+            .add_enabled(has, crate::ui::btn_icons::Ib::new("docker.remove"))
             .rich_tip(crate::ui::tips::pair(
                 "docker.remove",
                 "docker.lens_remove_desc",
@@ -1975,7 +1976,7 @@ fn blend(app: &mut App, ui: &mut Ui) {
     // straight again.
     if opt.bend.is_some()
         && ui
-            .button(tr("docker.blend_straighten"))
+            .ibutton("docker.blend_straighten")
             .rich_tip(crate::ui::tips::keyed("docker.blend_straighten"))
             .clicked()
     {
@@ -2044,7 +2045,7 @@ fn blend(app: &mut App, ui: &mut Ui) {
             if ui
                 .add_enabled(
                     accel_o != 0.0 || accel_c != 0.0,
-                    egui::Button::new(tr("docker.reset")).min_size(egui::vec2(90.0, 22.0)),
+                    crate::ui::btn_icons::Ib::new("docker.reset").min_size(egui::vec2(90.0, 22.0)),
                 )
                 .rich_tip(crate::ui::tips::pair(
                     "docker.reset",
@@ -2119,7 +2120,7 @@ fn blend(app: &mut App, ui: &mut Ui) {
             |ui| {
                 ui.add_enabled(
                     two,
-                    egui::Button::new(tr("docker.apply")).min_size(egui::vec2(90.0, 22.0)),
+                    crate::ui::btn_icons::Ib::new("docker.apply").min_size(egui::vec2(90.0, 22.0)),
                 )
                 .rich_tip(crate::ui::tips::pair(
                     "docker.apply",
@@ -2165,7 +2166,7 @@ fn blend(app: &mut App, ui: &mut Ui) {
         section(ui, None);
         ui.horizontal_wrapped(|ui| {
             if ui
-                .button(tr("docker.new_path"))
+                .ibutton("docker.new_path")
                 .rich_tip(crate::ui::tips::keyed("docker.new_path"))
                 .clicked()
             {
@@ -2174,21 +2175,21 @@ fn blend(app: &mut App, ui: &mut Ui) {
             }
             if has_path
                 && ui
-                    .button(tr("docker.detach_path"))
+                    .ibutton("docker.detach_path")
                     .rich_tip(crate::ui::tips::keyed("docker.detach_path"))
                     .clicked()
             {
                 app.detach_blend_path();
             }
             if ui
-                .button(tr("docker.clear_blend"))
+                .ibutton("docker.clear_blend")
                 .rich_tip(crate::ui::tips::keyed("docker.clear_blend"))
                 .clicked()
             {
                 app.clear_blend();
             }
             if ui
-                .button(tr("docker.break_apart"))
+                .ibutton("docker.break_apart")
                 .rich_tip(crate::ui::tips::pair(
                     "docker.break_apart",
                     "toolbar.effect_break_apart_desc",
@@ -2201,7 +2202,7 @@ fn blend(app: &mut App, ui: &mut Ui) {
     } else {
         let two = app.selection.len() == 2;
         let tip = crate::ui::tips::pair("docker.apply", "docker.blend_apply_desc");
-        if crate::ui::docker_form::wide_button(ui, &tr("docker.apply"), two, &tip) {
+        if crate::ui::docker_form::wide_button(ui, "docker.apply", two, &tip) {
             app.blend_selection(steps, accel_o, accel_c, rot);
         }
         if !two {
@@ -2370,7 +2371,7 @@ fn bevel(app: &mut App, ui: &mut Ui) {
     ui.horizontal(|ui| {
         if cur.is_none()
             && ui
-                .add_enabled(has, egui::Button::new(tr("docker.apply")))
+                .add_enabled(has, crate::ui::btn_icons::Ib::new("docker.apply"))
                 .rich_tip(crate::ui::tips::pair(
                     "docker.apply",
                     "docker.bevel_apply_desc",
@@ -2381,7 +2382,7 @@ fn bevel(app: &mut App, ui: &mut Ui) {
         }
         if cur.is_some()
             && ui
-                .button(tr("docker.remove"))
+                .ibutton("docker.remove")
                 .rich_tip(crate::ui::tips::pair(
                     "docker.remove",
                     "docker.bevel_remove_desc",
@@ -2505,7 +2506,7 @@ fn brush_strokes(app: &mut App, ui: &mut Ui) {
         .iter()
         .any(|s| matches!(s.kind, ShapeKind::Path { .. }));
     if ui
-        .add_enabled(has_curve, egui::Button::new(tr("docker.apply_to_curve")))
+        .add_enabled(has_curve, crate::ui::btn_icons::Ib::new("docker.apply_to_curve"))
         .rich_tip(crate::ui::tips::keyed("docker.apply_to_curve"))
         .rich_disabled_tip(crate::ui::tips::keyed("docker.apply_to_curve"))
         .clicked()
@@ -2719,7 +2720,7 @@ fn bitmap_mask(app: &mut App, ui: &mut Ui) {
     if ui
         .add_enabled(
             can,
-            egui::Button::new(tr("docker.apply")).min_size(egui::vec2(ui.available_width(), 26.0)),
+            crate::ui::btn_icons::Ib::new("docker.apply").min_size(egui::vec2(ui.available_width(), 26.0)),
         )
         .rich_tip(crate::ui::tips::pair(
             "docker.apply",
@@ -2743,7 +2744,7 @@ fn object_data(app: &mut App, ui: &mut Ui) {
     let sheet_open = egui::Id::new("object_data_sheet_open");
     let mut open = ui.data(|d| d.get_temp::<bool>(sheet_open)).unwrap_or(false);
     if ui
-        .button(tr("docker.data_sheet"))
+        .ibutton("docker.data_sheet")
         .rich_tip(crate::ui::tips::pair(
             "docker.data_sheet",
             "docker.data_sheet_tip",
@@ -2809,7 +2810,7 @@ fn object_data(app: &mut App, ui: &mut Ui) {
     }
     ui.horizontal(|ui| {
         if ui
-            .button(tr("docker.add_field"))
+            .ibutton("docker.add_field")
             .rich_tip(crate::ui::tips::keyed("docker.add_field"))
             .clicked()
         {
@@ -2834,7 +2835,7 @@ fn object_data(app: &mut App, ui: &mut Ui) {
     // Copy the fields to the other selected objects (#3262).
     if app.selected_shapes().len() > 1
         && ui
-            .button(tr("docker.data_copy_to_selection"))
+            .ibutton("docker.data_copy_to_selection")
             .rich_tip(crate::ui::tips::pair(
                 "docker.data_copy_to_selection",
                 "docker.data_copy_to_selection_tip",
@@ -3191,7 +3192,7 @@ fn symbols(app: &mut App, ui: &mut Ui) {
     let has = !app.selection.is_empty();
     ui.horizontal(|ui| {
         if ui
-            .add_enabled(has, egui::Button::new(tr("docker.new_symbol")))
+            .add_enabled(has, crate::ui::btn_icons::Ib::new("docker.new_symbol"))
             .rich_tip(crate::ui::tips::keyed("docker.new_symbol"))
             .rich_disabled_tip(crate::ui::tips::keyed("docker.new_symbol"))
             .clicked()
@@ -3201,7 +3202,7 @@ fn symbols(app: &mut App, ui: &mut Ui) {
         // Every group copying the selected one becomes an instance where
         // it stood, labels staying text (#2343).
         if ui
-            .add_enabled(has, egui::Button::new(tr("docker.symbolize_similar")))
+            .add_enabled(has, crate::ui::btn_icons::Ib::new("docker.symbolize_similar"))
             .rich_tip(tr("docker.symbolize_similar_tip"))
             .rich_disabled_tip(tr("docker.symbolize_similar_tip"))
             .clicked()
@@ -3209,7 +3210,7 @@ fn symbols(app: &mut App, ui: &mut Ui) {
             app.symbolize_similar();
         }
         if ui
-            .button(tr("docker.revert_to_objects"))
+            .ibutton("docker.revert_to_objects")
             .rich_tip(crate::ui::tips::keyed("docker.revert_to_objects"))
             .clicked()
         {
@@ -3289,7 +3290,7 @@ fn symbols(app: &mut App, ui: &mut Ui) {
             } else if ui
                 .add_enabled(
                     app.clip_frame_edit.is_none(),
-                    egui::Button::new(tr("docker.edit_symbol")).small(),
+                    crate::ui::btn_icons::Ib::new("docker.edit_symbol").small(),
                 )
                 .rich_tip(crate::ui::tips::pair(
                     "docker.edit_symbol",
@@ -3303,7 +3304,7 @@ fn symbols(app: &mut App, ui: &mut Ui) {
             if ui
                 .add_enabled(
                     app.clip_frame_edit.is_none(),
-                    egui::Button::new(tr("docker.duplicate_symbol")).small(),
+                    crate::ui::btn_icons::Ib::new("docker.duplicate_symbol").small(),
                 )
                 .rich_tip(tr("docker.duplicate_symbol_tip"))
                 .clicked()
@@ -3428,14 +3429,14 @@ fn pages(app: &mut App, ui: &mut Ui) {
     // going onto the next line instead of past the edge (#4148).
     ui.horizontal_wrapped(|ui| {
         if ui
-            .button(tr("menu.layout.insert_page"))
+            .ibutton("menu.layout.insert_page")
             .rich_tip(crate::ui::tips::keyed("menu.layout.insert_page"))
             .clicked()
         {
             app.add_page();
         }
         if ui
-            .add_enabled(n > 1, egui::Button::new(tr("menu.layout.delete_page")))
+            .add_enabled(n > 1, crate::ui::btn_icons::Ib::new("menu.layout.delete_page"))
             .rich_tip(crate::ui::tips::keyed("menu.layout.delete_page"))
             .rich_disabled_tip(crate::ui::tips::keyed("menu.layout.delete_page"))
             .clicked()
@@ -3443,14 +3444,14 @@ fn pages(app: &mut App, ui: &mut Ui) {
             app.ask_delete_page();
         }
         if ui
-            .button(tr("menu.layout.duplicate_page"))
+            .ibutton("menu.layout.duplicate_page")
             .rich_tip(crate::ui::tips::keyed("menu.layout.duplicate_page"))
             .clicked()
         {
             app.dialog = crate::ui::dialogs::Dialog::duplicate_page();
         }
         if ui
-            .selectable_label(app.page_sorter, tr("menu.view.page_sorter"))
+            .iselectable(app.page_sorter, "menu.view.page_sorter")
             .rich_tip(crate::ui::tips::keyed("menu.view.page_sorter"))
             .clicked()
         {
@@ -3679,7 +3680,7 @@ fn corners(app: &mut App, ui: &mut Ui) {
     };
     ui.add_space(8.0);
     if ui
-        .add_enabled(valid, egui::Button::new(tr("docker.apply")))
+        .add_enabled(valid, crate::ui::btn_icons::Ib::new("docker.apply"))
         .rich_tip(crate::ui::tips::pair(
             "docker.apply",
             "docker.corners_apply_desc",
@@ -3761,7 +3762,7 @@ fn join_curves(app: &mut App, ui: &mut Ui) {
         .any(|s| matches!(s.kind, ShapeKind::Path { .. }));
     ui.add_space(8.0);
     if ui
-        .add_enabled(curves, egui::Button::new(tr("docker.apply")))
+        .add_enabled(curves, crate::ui::btn_icons::Ib::new("docker.apply"))
         .rich_tip(crate::ui::tips::pair(
             "docker.apply",
             "docker.join_apply_desc",
@@ -4224,7 +4225,7 @@ fn fit_to_path(app: &mut App, ui: &mut Ui) {
     app.docker_preview.extend(preview);
     ui.add_space(8.0);
     if ui
-        .add_enabled(valid, egui::Button::new(tr("docker.apply")))
+        .add_enabled(valid, crate::ui::btn_icons::Ib::new("docker.apply"))
         .rich_tip(crate::ui::tips::pair(
             "docker.apply",
             "docker.fit_to_path_apply_desc",

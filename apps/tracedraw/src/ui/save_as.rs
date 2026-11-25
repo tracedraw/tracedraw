@@ -7,6 +7,7 @@
 //! where every save is a download, it keeps the name, type, version and
 //! properties. See docs/behavior/files.md.
 
+use crate::ui::btn_icons::IconUi;
 use crate::app::App;
 use crate::files::{self, DirEntry, Place};
 use crate::i18n::{tr, trf};
@@ -1023,14 +1024,14 @@ fn folder_bar(ui: &mut Ui, st: &mut SaveAsState) {
                 st.note = Some(tr("dialog.no_such_folder"));
             }
         }
-        if ui.button(tr("dialog.new_folder")).clicked() {
+        if ui.ibutton("dialog.new_folder").clicked() {
             st.new_folder();
         }
         // The system's own folder window, for the places only it knows
         // (Windows libraries, Quick access, cloud folders, #3416).
         if let files::FolderAction::PickFolder(token) = files::FolderUse::SaveDrawing.action() {
             if ui
-                .button(tr("options.browse"))
+                .ibutton("options.browse")
                 .rich_tip(tr("options.browse_tip"))
                 .clicked()
             {
@@ -1097,7 +1098,7 @@ fn places(ui: &mut Ui, st: &mut SaveAsState) {
                             open = Some(path.clone());
                         }
                         r.context_menu(|ui| {
-                            if ui.button(tr("dialog.remove_bookmark")).clicked() {
+                            if ui.ibutton("dialog.remove_bookmark").clicked() {
                                 unbookmark = Some(path.clone());
                                 ui.close();
                             }
@@ -1227,17 +1228,17 @@ fn listing(ui: &mut Ui, st: &mut SaveAsState) {
                                     pick = Some(e.path.clone());
                                 }
                                 r.context_menu(|ui| {
-                                    if e.is_dir && ui.button(tr("dialog.open_entry")).clicked() {
+                                    if e.is_dir && ui.ibutton("dialog.open_entry").clicked() {
                                         open = Some(e.path.clone());
                                         ui.close();
                                     }
-                                    if ui.button(tr("dialog.rename_entry")).clicked() {
+                                    if ui.ibutton("dialog.rename_entry").clicked() {
                                         rename = Some(e.path.clone());
                                         ui.close();
                                     }
                                     if e.is_dir
                                         && !st.bookmarks.contains(&e.path)
-                                        && ui.button(tr("dialog.add_bookmark")).clicked()
+                                        && ui.ibutton("dialog.add_bookmark").clicked()
                                     {
                                         bookmark = Some(e.path.clone());
                                         ui.close();

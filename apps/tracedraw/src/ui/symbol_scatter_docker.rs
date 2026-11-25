@@ -3,6 +3,7 @@
 //! spacing, the size range and random turn, Stay inside, the colours, the
 //! seed with Shuffle, Keep objects, and a full-width Apply.
 
+use crate::ui::btn_icons::IconUi;
 use crate::app::App;
 use crate::i18n::{tr, trf};
 use crate::symbol_scatter::{unit, Builtin, ColorMode, Source};
@@ -89,7 +90,7 @@ pub fn symbol_scatter(app: &mut App, ui: &mut Ui) {
                     }
                     let on = s.source == Source::Picked;
                     if ui
-                        .selectable_label(on, tr("docker.scatter_picked"))
+                        .iselectable(on, "docker.scatter_picked")
                         .clicked()
                     {
                         s.source = Source::Picked;
@@ -104,7 +105,7 @@ pub fn symbol_scatter(app: &mut App, ui: &mut Ui) {
             pick = ui
                 .add_enabled(
                     !app.selection.is_empty(),
-                    egui::Button::new(tr("docker.scatter_use_selection")),
+                    crate::ui::btn_icons::Ib::new("docker.scatter_use_selection"),
                 )
                 .rich_tip(crate::ui::tips::keyed("docker.scatter_use_selection"))
                 .rich_disabled_tip(crate::ui::tips::keyed("docker.scatter_use_selection"))
@@ -192,7 +193,7 @@ pub fn symbol_scatter(app: &mut App, ui: &mut Ui) {
                 s.seed = seed as u64;
             }
             if ui
-                .button(tr("docker.scatter_shuffle"))
+                .ibutton("docker.scatter_shuffle")
                 .rich_tip(crate::ui::tips::keyed("docker.scatter_shuffle"))
                 .clicked()
             {
@@ -207,7 +208,7 @@ pub fn symbol_scatter(app: &mut App, ui: &mut Ui) {
     let ready = !app.selection.is_empty()
         && (app.symbol_scatter.source == Source::Builtin || !app.symbol_scatter.picked.is_empty());
     let tip = crate::ui::tips::pair("docker.apply", "docker.scatter_apply_desc");
-    if crate::ui::docker_form::wide_button(ui, &tr("docker.apply"), ready, &tip) {
+    if crate::ui::docker_form::wide_button(ui, "docker.apply", ready, &tip) {
         let s = app.symbol_scatter.clone();
         app.apply_symbol_scatter(&s);
     }

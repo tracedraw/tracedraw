@@ -3,6 +3,7 @@
 //! spin arrows, icon buttons that stay pressed, the object origin selector,
 //! and the page, object, outline and zoom bars built from them.
 
+use crate::ui::btn_icons::IconUi;
 use crate::app::{App, Units};
 use crate::i18n::tr;
 use crate::theme::Tokens;
@@ -1593,7 +1594,7 @@ fn page_size_list(app: &mut App, ui: &mut Ui, current: &str, size: Size) {
     ui.separator();
     let custom = crate::ui::dialogs::paper_name(size, &saved).is_none();
     if ui
-        .selectable_label(custom, tr("toolbar.custom_page"))
+        .iselectable(custom, "toolbar.custom_page")
         .clicked()
     {
         app.dialog = crate::ui::dialogs::Dialog::PageSize {
@@ -1602,7 +1603,7 @@ fn page_size_list(app: &mut App, ui: &mut Ui, current: &str, size: Size) {
             all_pages: app.settings.page_size_all,
         };
     }
-    if ui.button(tr("toolbar.edit_page_sizes")).clicked() {
+    if ui.ibutton("toolbar.edit_page_sizes").clicked() {
         app.dialog = crate::ui::dialogs::Dialog::Options;
         app.options_page = crate::ui::dialogs::OptionsPage::PageSize;
         ui.close();
@@ -1697,7 +1698,7 @@ pub fn page_bar(app: &mut App, ui: &mut Ui) {
             if ui
                 .add_sized(
                     Vec2::new(ui.available_width(), 24.0),
-                    egui::Button::new(tr("toolbar.autofit_page")),
+                    crate::ui::btn_icons::Ib::new("toolbar.autofit_page"),
                 )
                 .clicked()
             {
@@ -2327,12 +2328,12 @@ fn outline_width_rows(
     ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
     let mut picked = None;
     if ui
-        .selectable_label(!mixed && width.is_none(), tr("toolbar.none"))
+        .iselectable(!mixed && width.is_none(), "toolbar.none")
         .clicked()
     {
         picked = Some(None);
     }
-    if ui.selectable_label(false, tr("toolbar.hairline")).clicked() {
+    if ui.iselectable(false, "toolbar.hairline").clicked() {
         picked = Some(Some(tracedraw_core::Stroke::HAIRLINE));
     }
     for w in outline_width_presets(app.outline_units()) {
@@ -2588,7 +2589,7 @@ pub fn outline_part(app: &mut App, ui: &mut Ui) {
                 }
             }
             ui.separator();
-            if ui.button(tr("docker.edit_line_style")).clicked() {
+            if ui.ibutton("docker.edit_line_style").clicked() {
                 crate::ui::line_style::request(ui);
             }
         })
@@ -3649,7 +3650,7 @@ fn wrap_style_list(app: &mut App, ui: &mut Ui) {
             // the offset, greyed out while nothing wraps (typing one
             // would turn wrapping back on).
             ui.label(egui::RichText::new(tr("context.wrap_style")).strong());
-            if ui.selectable_label(!on, tr("context.wrap_none")).clicked() && on {
+            if ui.iselectable(!on, "context.wrap_none").clicked() && on {
                 let shapes = app.selection.clone();
                 app.run(tracedraw_core::Command::SetWrapText {
                     shapes,
