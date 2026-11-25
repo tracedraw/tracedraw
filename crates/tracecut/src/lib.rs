@@ -70,6 +70,16 @@ fn collect(shape: &Shape, parent: Affine, depth: usize, out: &mut Vec<BezPath>) 
             }
         }
         ShapeKind::ClipFrame { frame, .. } => collect(frame, t, depth + 1, out),
+        // A picture with see-through pixels: round what shows (#3245).
+        ShapeKind::Bitmap { rect, png, .. } => {
+            let p = match tracedraw_core::alpha_outline::opaque_outline(png, *rect) {
+                Some(a) => t * a,
+                None => t * shape.local_path(),
+            };
+            if !p.elements().is_empty() {
+                out.push(p);
+            }
+        }
         _ => {
             let p = t * shape.local_path();
             if !p.elements().is_empty() {

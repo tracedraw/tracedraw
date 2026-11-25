@@ -3349,7 +3349,7 @@ fn group_area(shape: &Shape) -> BezPath {
     let mut acc = BezPath::new();
     for c in children {
         let part = crate::shaping::overlay_with(
-            &c.page_path(),
+            &opaque_or_page_path(c),
             &BezPath::new(),
             crate::shaping::Op::Weld,
             area_rule(c),
@@ -3357,6 +3357,25 @@ fn group_area(shape: &Shape) -> BezPath {
         acc = crate::shaping::overlay(&acc, &part, crate::shaping::Op::Weld);
     }
     acc
+}
+
+/// The outline of a picture with transparency: round its opaque pixels
+/// (#3245), in its own space; `None` for other objects and for pictures
+/// that show everywhere.
+fn opaque_area(shape: &Shape) -> Option<BezPath> {
+    match &shape.kind {
+        ShapeKind::Bitmap { rect, png, .. } => crate::alpha_outline::opaque_outline(png, *rect),
+        _ => None,
+    }
+}
+
+/// An object's outline on the page: a picture with transparency goes by
+/// its opaque pixels (#3245).
+fn opaque_or_page_path(shape: &Shape) -> BezPath {
+    match opaque_area(shape) {
+        Some(a) => shape.transform * a,
+        None => shape.page_path(),
+    }
 }
 
 fn contour(shape: &Shape, rule: crate::shaping::FillRule, p: &ContourParams) -> Vec<Shape> {
@@ -3369,8 +3388,12 @@ fn contour(shape: &Shape, rule: crate::shaping::FillRule, p: &ContourParams) -> 
     // A group: its objects' area as one, read even-odd as the union is,
     // and the look of the first object in it (#3245).
     let group = matches!(shape.kind, ShapeKind::Group { .. });
+    let picture = matches!(shape.kind, ShapeKind::Bitmap { .. });
+    let alpha = opaque_area(shape);
     let (base, rule) = if group {
         (to_page * group_area(shape), crate::shaping::FillRule::EvenOdd)
+    } else if let Some(a) = alpha {
+        (to_page * a, crate::shaping::FillRule::EvenOdd)
     } else {
         (to_page * shape.local_path(), rule)
     };
@@ -3442,7 +3465,9 @@ fn contour(shape: &Shape, rule: crate::shaping::FillRule, p: &ContourParams) -> 
                 s.stroke = style.stroke.clone();
             }
             match &style.fill {
-                Fill::None => {}
+                // A picture's steps are filled from white toward the
+                // last step's colour, round what shows of it (#3245).
+                Fill::None if !picture => {}
                 // A fountain stays a fountain (#1265): each stop goes
                 // toward the last step's colour at its place between the
                 // first (fill) and the last (last fill) colours.
@@ -6519,6 +6544,55 @@ mod tests {
             }
             f => panic!("{f:?}"),
         }
+    }
+
+    #[test]
+    fn a_picture_takes_its_contour_round_what_shows() {
+        // #3245: a picture of a disc on see-through pixels is contoured
+        // round the disc, not round the picture's square box.
+        let png = crate::alpha_outline::tests::png_with(100, 100, |x, y| {
+            let (dx, dy) = (x as f64 - 49.5, y as f64 - 49.5);
+            if dx * dx + dy * dy <= 30.0 * 30.0 {
+                255
+            } else {
+                0
+            }
+        });
+        let mut pic = Shape::new(
+            crate::ShapeId(5),
+            ShapeKind::Bitmap {
+                rect: Rect::new(0.0, 0.0, 100.0, 100.0),
+                width_px: 100,
+                height_px: 100,
+                png,
+                fx: None,
+            },
+        );
+        pic.effects.push(Effect::Contour {
+            steps: 1,
+            offset: 5.0,
+            outside: true,
+            to_center: false,
+            both: false,
+            fill_to: Color::rgb8(255, 0, 0),
+            outline_to: None,
+            fill_end_to: None,
+            color_blend: 0,
+            corners: Some(crate::shaping::Join::Round),
+            accel_objects: 0.0,
+            accel_colors: 0.0,
+        });
+        let ev = evaluate(&pic);
+        assert_eq!(ev.below.len(), 1);
+        let ring = ev.below[0].page_path();
+        let b = ring.bounding_box();
+        // The disc spans 20 to 80; 5 mm out it spans 15 to 85.
+        assert!((b.x0 - 15.0).abs() < 1.5 && (b.x1 - 85.0).abs() < 1.5, "{b:?}");
+        // The box's corner is left out: the ring is round.
+        assert!(!ring.contains(Point::new(4.0, 4.0)));
+        assert!(ring.contains(Point::new(50.0, 50.0)));
+        // Filled, so it shows behind the picture.
+        assert!(matches!(ev.below[0].fill, Fill::Solid(_)));
     }
 
     #[test]

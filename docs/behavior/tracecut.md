@@ -244,6 +244,11 @@ travel before and after.
 
 ### CutContour
 
+A picture with see-through pixels gets a new cut line round its opaque
+pixels (the outline the contour uses, see `contour.md`), not round its
+box; TraceCut reads pictures by that outline everywhere (#3245,
+`tracecut_cut::tests::a_picture_is_cut_round_its_opaque_pixels`).
+
 Marks the selected objects' outlines as cut lines for print and cut: OK
 gives them an outline in the spot colour named **CutContour** (added to
 the drawing's spot colours once, its stand-in 100 % magenta), a hairline

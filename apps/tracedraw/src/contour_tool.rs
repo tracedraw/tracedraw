@@ -390,10 +390,8 @@ impl App {
         let mut ids = Vec::new();
         for s in self.selected_shapes() {
             let has = s.effects.iter().any(is_contour);
-            if (!has && !add)
-                || (add && has)
-                || matches!(s.kind, ShapeKind::Bitmap { .. })
-            {
+            // Pictures take one too, round their opaque pixels (#3245).
+            if (!has && !add) || (add && has) {
                 continue;
             }
             let effects = with_contour(&s.effects, next.clone());
@@ -445,11 +443,7 @@ impl App {
         let Some(id) = self.hit_test_inside(at) else {
             return false;
         };
-        if self
-            .doc()
-            .find_shape(id)
-            .is_none_or(|s| matches!(s.kind, ShapeKind::Bitmap { .. }))
-        {
+        if self.doc().find_shape(id).is_none() {
             return false;
         }
         self.select(vec![id]);
@@ -683,6 +677,40 @@ mod tests {
             panic!("a contour");
         };
         assert!((offset - (tol * 3.0 + 2.0)).abs() < 0.05, "{offset}");
+    }
+
+    /// A picture takes a contour (#3245), drawn round its opaque pixels;
+    /// before, pictures were left out of Apply and of a drag.
+    #[test]
+    fn a_picture_takes_a_contour() {
+        let mut app = App::headless();
+        let img = image::RgbaImage::from_fn(60, 60, |x, y| {
+            let a = if (15..45).contains(&x) && (15..45).contains(&y) { 255 } else { 0 };
+            image::Rgba([200, 40, 40, a])
+        });
+        let mut png = Vec::new();
+        image::DynamicImage::ImageRgba8(img)
+            .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+            .expect("png");
+        let id = app
+            .new_shape(ShapeKind::Bitmap {
+                rect: Rect::new(0.0, 0.0, 60.0, 60.0),
+                width_px: 60,
+                height_px: 60,
+                png: png.into(),
+                fx: None,
+            })
+            .expect("picture");
+        app.select(vec![id]);
+        app.contour.direction = ContourDirection::Outside;
+        app.add_contour();
+        assert!(contour_of(&app, id).is_some(), "the picture has a contour");
+        let shape = app.doc().find_shape(id).expect("picture");
+        let ev = tracedraw_core::live::evaluate(shape);
+        let b = tracedraw_core::geometry::Shape::bounding_box(&ev.below[0].page_path());
+        assert!(b.x0 > 5.0 && b.x1 < 55.0, "round the opaque square: {b:?}");
+        app.clear_contour();
+        assert!(app.begin_contour(Point::new(30.0, 30.0)));
     }
 
     /// A group takes a contour (#3245): Apply on a selected group puts

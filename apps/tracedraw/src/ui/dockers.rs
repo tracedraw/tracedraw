@@ -2802,6 +2802,7 @@ fn qr_kind_key(k: tracedraw_core::QrKind) -> &'static str {
         QrKind::Contact => "qr.kind_contact",
         QrKind::Text => "qr.kind_text",
         QrKind::Location => "qr.kind_location",
+        QrKind::Pix => "qr.kind_pix",
     }
 }
 

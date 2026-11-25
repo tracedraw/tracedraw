@@ -302,7 +302,10 @@ default preset guideline colour, and presets added in the preset colour:
   upper left quarter).
 - User defined: margins (top, bottom, left, right), columns (number,
   distance between, set between the margins when those are on), grid
-  (rows, columns), and bleed (off; top, bottom, left, right, 3 mm each):
+  (rows, columns, space between rows and space between columns, 0 by
+  default, a guideline on each side of a space; Inside the margins lays
+  it between the margin guidelines when Margins is on: a modular grid,
+  `guides::tests::a_modular_grid_has_gutters_between_its_fields`), and bleed (off; top, bottom, left, right, 3 mm each):
   lines that far outside the page edges (#3916). Margins and bleed each
   have Mirror: no mirror, top to bottom (the bottom takes the top's
   value), left to right (the right takes the left's), or all four sides

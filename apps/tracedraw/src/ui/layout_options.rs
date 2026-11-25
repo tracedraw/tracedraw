@@ -262,6 +262,13 @@ pub struct PresetForm {
     pub grid: bool,
     pub grid_rows: u32,
     pub grid_columns: u32,
+    /// A modular grid: the space between one row and the next, and
+    /// between one column and the next (a guideline on each side of it).
+    pub grid_row_gutter: f64,
+    pub grid_column_gutter: f64,
+    /// The grid laid inside the margins (when Margins is on) instead of
+    /// over the whole page.
+    pub grid_in_margins: bool,
     /// The pages Apply Presets adds the guidelines to (#4118).
     pub scope: PresetScope,
 }
@@ -321,6 +328,9 @@ impl Default for PresetForm {
             grid: false,
             grid_rows: 4,
             grid_columns: 4,
+            grid_row_gutter: 0.0,
+            grid_column_gutter: 0.0,
+            grid_in_margins: false,
             scope: PresetScope::Current,
         }
     }
@@ -1121,7 +1131,33 @@ pub fn guidelines_page(app: &mut App, ui: &mut Ui) {
                     );
 
                     ui.end_row();
+                    row_label(ui, "guides.row_gutter");
+                    if let Some(v) =
+                        paper_field(ui, "guides.row_gutter", units, form.grid_row_gutter, 0.1)
+                    {
+                        form.grid_row_gutter = v.max(0.0);
+                    }
+                    ui.end_row();
+                    row_label(ui, "guides.column_gutter");
+                    if let Some(v) = paper_field(
+                        ui,
+                        "guides.column_gutter",
+                        units,
+                        form.grid_column_gutter,
+                        0.1,
+                    ) {
+                        form.grid_column_gutter = v.max(0.0);
+                    }
+                    ui.end_row();
                 });
+            ui.add_enabled(
+                form.margins,
+                egui::Checkbox::new(&mut form.grid_in_margins, tr("guides.grid_in_margins")),
+            )
+            .rich_tip(crate::ui::tips::pair(
+                "guides.grid_in_margins",
+                "guides.grid_in_margins_tip",
+            ));
         });
         ui.checkbox(&mut form.bleed, tr("guides.bleed"))
             .rich_tip(crate::ui::tips::pair("guides.bleed", "guides.bleed_tip"));
@@ -1268,12 +1304,31 @@ pub fn preset_guides(
             }
         }
         if form.grid {
-            for line in (GuidePreset::Grid {
-                rows: form.grid_rows,
-                columns: form.grid_columns,
-            })
-            .lines(size)
-            {
+            // A modular grid: inside the margins when asked, with the
+            // gutters between its rows and columns.
+            let area = if form.grid_in_margins && form.margins {
+                let [top, bottom, left, right] = form.margin_mirror.apply([
+                    form.margin_top,
+                    form.margin_bottom,
+                    form.margin_left,
+                    form.margin_right,
+                ]);
+                tracedraw_core::geometry::Rect::new(
+                    left,
+                    bottom,
+                    (size.width - right).max(left),
+                    (size.height - top).max(bottom),
+                )
+            } else {
+                tracedraw_core::geometry::Rect::new(0.0, 0.0, size.width, size.height)
+            };
+            for line in crate::guides::modular_grid_lines(
+                area,
+                form.grid_rows,
+                form.grid_columns,
+                form.grid_row_gutter,
+                form.grid_column_gutter,
+            ) {
                 push(line, None);
             }
         }

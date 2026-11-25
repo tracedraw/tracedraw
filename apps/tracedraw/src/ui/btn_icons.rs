@@ -415,6 +415,7 @@ fn exact(key: &str) -> Option<Src> {
         "print.print_sheet" | "print.print_and_close" | "merge.print_document" | "dialog.print" => {
             Src::Action(Action::Print)
         }
+        "print.use_bleed_title" => Src::B(B::Page),
         "print.sheet_save" => Src::Action(Action::Save),
         "preview.back_to_page" => Src::B(B::Page),
         "preflight.refresh" => Src::B(B::Refresh),

@@ -3579,10 +3579,14 @@ pub enum QrKind {
     Contact,
     Text,
     Location,
+    /// A Brazilian instant payment (Pix): the receiver's key, name and
+    /// city, and an optional amount, reference and message, written as
+    /// the payment code banks' apps read (see [`pix_payload`]).
+    Pix,
 }
 
 impl QrKind {
-    pub const ALL: [QrKind; 7] = [
+    pub const ALL: [QrKind; 8] = [
         QrKind::Url,
         QrKind::Email,
         QrKind::Phone,
@@ -3590,6 +3594,7 @@ impl QrKind {
         QrKind::Contact,
         QrKind::Text,
         QrKind::Location,
+        QrKind::Pix,
     ];
 
     /// The names of the kind's fields (keys of the interface's strings),
@@ -3611,6 +3616,14 @@ impl QrKind {
             ],
             QrKind::Text => &["qr.field_text"],
             QrKind::Location => &["qr.field_latitude", "qr.field_longitude"],
+            QrKind::Pix => &[
+                "qr.field_pix_key",
+                "qr.field_receiver",
+                "qr.field_city",
+                "qr.field_amount",
+                "qr.field_reference",
+                "qr.field_message",
+            ],
         }
     }
 
@@ -3722,8 +3735,138 @@ impl QrCode {
             }
             QrKind::Location if f(0).is_empty() || f(1).is_empty() => String::new(),
             QrKind::Location => format!("geo:{},{}", f(0), f(1)),
+            QrKind::Pix => pix_payload(f(0), f(1), f(2), f(3), f(4), f(5)),
         }
     }
+}
+
+/// A Pix payment code: the fields as tag, two-digit length and value
+/// (the merchant-presented code layout), ending with the CRC-16 (CCITT,
+/// start 0xFFFF) of everything before it. Empty while the key, the
+/// receiver's name or the city is missing.
+///
+/// Names and cities are written in plain ASCII (accents
+/// taken off) and cut to the lengths the layout allows (25 and 15); a
+/// key made of a tax number's digits and dots, dashes or slashes keeps
+/// only its digits; the amount takes a comma or a point and is written
+/// with two decimals (left out when empty or not above zero); the
+/// reference keeps letters and digits, up to 25, `***` when empty.
+pub fn pix_payload(
+    key: &str,
+    name: &str,
+    city: &str,
+    amount: &str,
+    reference: &str,
+    message: &str,
+) -> String {
+    let key = pix_key(key);
+    let name = pix_text(name, 25);
+    let city = pix_text(city, 15);
+    if key.is_empty() || name.is_empty() || city.is_empty() {
+        return String::new();
+    }
+    let tlv = |tag: &str, v: &str| format!("{tag}{:02}{v}", v.len());
+    let mut account = tlv("00", "br.gov.bcb.pix") + &tlv("01", &key);
+    let message = pix_text(message, 99);
+    // The account field holds 99 characters at most.
+    let room = 99usize.saturating_sub(account.len() + 4);
+    let message: String = message.chars().take(room).collect();
+    if !message.is_empty() {
+        account += &tlv("02", &message);
+    }
+    if account.len() > 99 {
+        return String::new();
+    }
+    let mut out = tlv("00", "01") + &tlv("26", &account) + &tlv("52", "0000") + &tlv("53", "986");
+    let amount = amount.trim().replace(',', ".");
+    if let Ok(v) = amount.parse::<f64>() {
+        if v.is_finite() && v > 0.0 && v < 1e10 {
+            out += &tlv("54", &format!("{v:.2}"));
+        }
+    }
+    out += &tlv("58", "BR");
+    out += &tlv("59", &name);
+    out += &tlv("60", &city);
+    let mut reference: String = reference
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .take(25)
+        .collect();
+    if reference.is_empty() {
+        reference = "***".into();
+    }
+    out += &tlv("62", &tlv("05", &reference));
+    out += "6304";
+    let crc = crc16_ccitt(out.as_bytes());
+    out + &format!("{crc:04X}")
+}
+
+/// A Pix key as written in the code: an email or random key as typed, a
+/// phone number with its `+` and digits, a tax number as its digits.
+fn pix_key(key: &str) -> String {
+    let key = key.trim();
+    let digits_only = |s: &str| s.chars().filter(|c| c.is_ascii_digit()).collect::<String>();
+    if let Some(rest) = key.strip_prefix('+') {
+        if rest.chars().all(|c| c.is_ascii_digit() || " ()-.".contains(c)) {
+            return format!("+{}", digits_only(rest));
+        }
+    }
+    if !key.is_empty()
+        && key.chars().any(|c| c.is_ascii_digit())
+        && key.chars().all(|c| c.is_ascii_digit() || " .-/".contains(c))
+    {
+        return digits_only(key);
+    }
+    key.chars().filter(|c| !c.is_whitespace()).collect()
+}
+
+/// Text for a Pix code: accents taken off, other characters outside
+/// printable ASCII left out, spaces run together, cut to `max`.
+fn pix_text(s: &str, max: usize) -> String {
+    let mut out = String::new();
+    for c in s.chars() {
+        let plain = match c {
+            'á' | 'à' | 'â' | 'ã' | 'ä' => 'a',
+            'Á' | 'À' | 'Â' | 'Ã' | 'Ä' => 'A',
+            'é' | 'è' | 'ê' | 'ë' => 'e',
+            'É' | 'È' | 'Ê' | 'Ë' => 'E',
+            'í' | 'ì' | 'î' | 'ï' => 'i',
+            'Í' | 'Ì' | 'Î' | 'Ï' => 'I',
+            'ó' | 'ò' | 'ô' | 'õ' | 'ö' => 'o',
+            'Ó' | 'Ò' | 'Ô' | 'Õ' | 'Ö' => 'O',
+            'ú' | 'ù' | 'û' | 'ü' => 'u',
+            'Ú' | 'Ù' | 'Û' | 'Ü' => 'U',
+            'ç' => 'c',
+            'Ç' => 'C',
+            'ñ' => 'n',
+            'Ñ' => 'N',
+            c if c.is_ascii_graphic() => c,
+            c if c.is_whitespace() => ' ',
+            _ => continue,
+        };
+        if plain == ' ' && (out.is_empty() || out.ends_with(' ')) {
+            continue;
+        }
+        out.push(plain);
+    }
+    let out = out.trim_end();
+    out.chars().take(max).collect::<String>().trim_end().to_string()
+}
+
+/// CRC-16/CCITT with start value 0xFFFF and no final change.
+fn crc16_ccitt(data: &[u8]) -> u16 {
+    let mut crc: u16 = 0xFFFF;
+    for &b in data {
+        crc ^= (b as u16) << 8;
+        for _ in 0..8 {
+            crc = if crc & 0x8000 != 0 {
+                (crc << 1) ^ 0x1021
+            } else {
+                crc << 1
+            };
+        }
+    }
+    crc
 }
 
 /// Bitmap effects on a vector object, and the picture they make of it.
@@ -8682,6 +8825,52 @@ mod index_keys {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn pix_codes_are_written_as_banks_read_them() {
+        use super::{crc16_ccitt, pix_payload, QrCode, QrKind};
+        // The example of the payment code's published layout.
+        let p = pix_payload(
+            "123e4567-e12b-12d1-a456-426655440000",
+            "Fulano de Tal",
+            "BRASILIA",
+            "",
+            "",
+            "",
+        );
+        assert_eq!(
+            p,
+            "00020126580014br.gov.bcb.pix0136123e4567-e12b-12d1-a456-426655440000\
+             5204000053039865802BR5913Fulano de Tal6008BRASILIA62070503***63041D3D"
+        );
+        // Accents off, tax number digits, amount with a comma, a
+        // reference and a message, names cut to their room.
+        let p = pix_payload(
+            "123.456.789-09",
+            "Gráfica São João Comunicação Visual Ltda",
+            "São José dos Campos",
+            "15,5",
+            "PED-0042",
+            "Pedido 42",
+        );
+        assert!(p.contains("0111123456789090209Pedido 42"), "{p}");
+        assert!(p.contains("540515.50"), "{p}");
+        assert!(p.contains("5925Grafica Sao Joao Comunica"), "{p}");
+        assert!(p.contains("6015Sao Jose dos Ca"), "{p}");
+        assert!(p.contains("62110507PED0042"), "{p}");
+        let crc = crc16_ccitt(p[..p.len() - 4].as_bytes());
+        assert!(p.ends_with(&format!("{crc:04X}")));
+        // A phone key keeps its plus; missing city: no code.
+        assert!(pix_payload("+55 (11) 91234-5678", "A", "B", "", "", "").contains("0114+5511912345678"));
+        assert_eq!(pix_payload("k", "A", " ", "", "", ""), "");
+        assert!(pix_payload("k", "A", "B", "0", "", "").contains("9865802BR"));
+        let q = QrCode {
+            kind: QrKind::Pix,
+            fields: vec!["k@x.br".into(), "Ana".into(), "Rio".into()],
+            ..QrCode::default()
+        };
+        assert!(q.payload().starts_with("000201"));
+    }
+
     /// #3559: a curve's box is measured from its own segments, without
     /// copying the curve; it is the box of the placed curve, turned,
     /// slanted and inside a turned group too, and empty for no segments.

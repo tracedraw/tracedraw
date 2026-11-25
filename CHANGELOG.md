@@ -6,6 +6,10 @@ full, row-by-row status.
 
 ## Unreleased
 
+- QR code objects: a Pix payment kind (Brazilian instant payments) takes the Pix key, the receiver's name and city, and an optional amount, reference and message, and makes the payment code bank apps read, with its checksum.
+- Contour on pictures: a picture with see-through pixels takes a contour round what shows of it instead of its box, and TraceCut's CutContour puts the cut line round its opaque pixels too (#3245).
+- Guideline presets, user defined grid: Space between rows and Space between columns make a modular grid with a guideline on each side of every gutter, and Inside the margins lays it between the margin guidelines.
+- Print Preview: when objects run past the page edges (a background larger than the page) and Bleed is off, a Print bleed button turns Bleed on by that much, so the print keeps it and the crop marks stay at the page edges (#4071).
 - Symmetry: up to 32 mirror lines, where 12 was the most (#4272).
 - Options > Customization > Commands: typing a letter in the list jumps to the next command starting with it, round to the top again past the end (#4217).
 - Edit > Select Similar > Same Size: picks the objects as wide and as tall as a selected one, whatever their kind; Repeat on Similar has it too (#4238).

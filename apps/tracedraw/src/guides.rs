@@ -89,6 +89,53 @@ impl GuidePreset {
     }
 }
 
+/// The guidelines of a modular grid over `area` (page space, y up):
+/// `rows` by `columns` equal fields with `row_gutter` between one row and
+/// the next and `column_gutter` between one column and the next, a line
+/// on every field edge (one line where a gutter is zero). The fields
+/// share what the gutters leave of the area.
+pub fn modular_grid_lines(
+    area: tracedraw_core::geometry::Rect,
+    rows: u32,
+    columns: u32,
+    row_gutter: f64,
+    column_gutter: f64,
+) -> Vec<GuideLine> {
+    fn edges(from: f64, to: f64, n: u32, gutter: f64) -> Vec<f64> {
+        let n = n.clamp(1, 200);
+        let span = (to - from).max(0.0);
+        let gutter = if gutter.is_finite() {
+            gutter.clamp(0.0, span / n.max(1) as f64)
+        } else {
+            0.0
+        };
+        let field = ((span - gutter * (n - 1) as f64) / n as f64).max(0.0);
+        let mut out = vec![from];
+        let mut at = from;
+        for i in 0..n {
+            at += field;
+            out.push(at);
+            if i + 1 < n && gutter > 0.0 {
+                at += gutter;
+                out.push(at);
+            }
+        }
+        out.dedup_by(|a, b| (*a - *b).abs() < 1e-9);
+        out
+    }
+    let mut out = Vec::new();
+    for x in edges(area.x0, area.x1, columns, column_gutter) {
+        out.push(GuideLine::Vertical { x });
+    }
+    // Rows count from the top of the area down.
+    for y in edges(area.y0, area.y1, rows, row_gutter) {
+        out.push(GuideLine::Horizontal {
+            y: area.y1 - (y - area.y0),
+        });
+    }
+    out
+}
+
 impl GuidePreset {
     /// The lines of a Margins preset with the page edge each keeps its
     /// distance from (#4268), in the order [`GuidePreset::lines`] gives
@@ -2000,6 +2047,51 @@ mod tests {
         .lines(Size::new(100.0, 50.0));
         assert_eq!(grid.len(), 5 + 3);
         assert!(grid.contains(&GuideLine::Horizontal { y: 25.0 }));
+    }
+
+    /// A modular grid: fields with gutters between them, inside an area
+    /// (the margins); with no gutters it is the even grid of before.
+    #[test]
+    fn a_modular_grid_has_gutters_between_its_fields() {
+        use tracedraw_core::geometry::Rect;
+        let even = modular_grid_lines(Rect::new(0.0, 0.0, 100.0, 50.0), 2, 4, 0.0, 0.0);
+        let mut before = GuidePreset::Grid {
+            rows: 2,
+            columns: 4,
+        }
+        .lines(Size::new(100.0, 50.0));
+        let key = |l: &GuideLine| match l {
+            GuideLine::Vertical { x } => (0, (x * 1e6).round() as i64),
+            GuideLine::Horizontal { y } => (1, (y * 1e6).round() as i64),
+            _ => (2, 0),
+        };
+        let mut now = even.clone();
+        before.sort_by_key(key);
+        now.sort_by_key(key);
+        assert_eq!(now, before);
+        // 3 columns in 10..190 with 6 mm gutters: fields of 56.
+        let m = modular_grid_lines(Rect::new(10.0, 20.0, 190.0, 280.0), 2, 3, 4.0, 6.0);
+        let xs: Vec<f64> = m
+            .iter()
+            .filter_map(|l| match l {
+                GuideLine::Vertical { x } => Some(*x),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(xs, vec![10.0, 66.0, 72.0, 128.0, 134.0, 190.0]);
+        // 2 rows in 20..280 with a 4 mm gutter, from the top: 280, 152,
+        // 148, 20.
+        let ys: Vec<f64> = m
+            .iter()
+            .filter_map(|l| match l {
+                GuideLine::Horizontal { y } => Some(*y),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(ys, vec![280.0, 152.0, 148.0, 20.0]);
+        // A gutter too wide for the area is held to it; nothing breaks.
+        let wide = modular_grid_lines(Rect::new(0.0, 0.0, 10.0, 10.0), 3, 3, 1e9, f64::NAN);
+        assert!(!wide.is_empty());
     }
 
     /// The Transformations docker turns a guideline in rotate mode about

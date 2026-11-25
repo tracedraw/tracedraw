@@ -17,6 +17,9 @@ use tracedraw_core::Document;
 /// and what was last built from them.
 pub struct PrintPreview {
     pub st: PrintState,
+    /// How far the drawing runs past its pages (#4071), worked out for
+    /// the drawing's revision it holds.
+    pub overhang: Option<(u64, f64)>,
     /// Index of the sheet shown.
     pub sheet: usize,
     /// With Print separations on, the plate of the sheet shown: 0 the
@@ -116,6 +119,7 @@ impl PrintPreview {
     pub fn new(st: PrintState) -> Self {
         PrintPreview {
             st,
+            overhang: None,
             sheet: 0,
             plate: 0,
             inks: Vec::new(),
@@ -843,6 +847,15 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                             .rich_tip(crate::ui::tips::keyed("print.skip_empty_plates"));
                     });
                 }
+                let rev = app.engine.revision();
+                let overhang = match pv.overhang {
+                    Some((r, v)) if r == rev => v,
+                    _ => {
+                        let v = crate::export::page_overhang(app.doc());
+                        pv.overhang = Some((rev, v));
+                        v
+                    }
+                };
                 let st = &mut pv.st;
                 egui::Grid::new("print_preview_marks")
                     .num_columns(2)
@@ -863,6 +876,25 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                         });
                         ui.checkbox(&mut st.crop_marks, tr("dialog.crop_marks"));
                         ui.end_row();
+                        // Objects run past the pages but Bleed is off: the
+                        // print cuts them at the page edge, where the crop
+                        // marks are, so the marks seem to sit on their
+                        // edge (#4071). One click prints the bleed.
+                        if !st.bleed && overhang > 0.05 {
+                            let label = trf(
+                                "print.use_bleed",
+                                &[("n", &format!("{overhang:.1}"))],
+                            );
+                            if ui
+                                .add(crate::ui::btn_icons::Ib::with_text("print.use_bleed_title", label))
+                                .rich_tip(crate::ui::tips::pair("print.use_bleed_title", "print.use_bleed_desc"))
+                                .clicked()
+                            {
+                                st.bleed = true;
+                                st.bleed_limit = overhang;
+                            }
+                            ui.end_row();
+                        }
                         ui.checkbox(&mut st.registration_marks, tr("dialog.registration_marks"));
                         ui.checkbox(&mut st.color_bars, tr("print.color_bars"));
                         ui.end_row();

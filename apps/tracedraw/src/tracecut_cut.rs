@@ -758,7 +758,9 @@ impl App {
             let Some(sh) = self.doc().shape_on_page(*id) else {
                 continue;
             };
-            let group = matches!(sh.kind, ShapeKind::Group { .. });
+            // A group, and a picture (its outline can't be stroked): a
+            // new cut line round what they cover (#3245).
+            let group = matches!(sh.kind, ShapeKind::Group { .. } | ShapeKind::Bitmap { .. });
             let area = (s.merge || group || bleed > 0.0).then(|| outer_area(&sh));
             if area.as_ref().is_some_and(|a| a.elements().is_empty()) {
                 // Nothing closed to go round: the outline as it is.
@@ -1424,6 +1426,42 @@ mod tests {
         assert!(lb.x0.abs() < 1e-6 && (lb.x1 - 30.0).abs() < 1e-6, "{lb:?}");
         app.undo();
         assert_eq!(app.doc().pages[0].layers[0].shapes.len(), 1);
+    }
+
+    /// A picture with see-through pixels gets its cut line round what
+    /// shows of it, not round its box (#3245).
+    #[test]
+    fn a_picture_is_cut_round_its_opaque_pixels() {
+        let mut app = App::headless();
+        let img = image::RgbaImage::from_fn(100, 100, |x, y| {
+            let (dx, dy) = (x as f64 - 49.5, y as f64 - 49.5);
+            let a = if dx * dx + dy * dy <= 30.0 * 30.0 { 255 } else { 0 };
+            image::Rgba([20, 120, 200, a])
+        });
+        let mut png = Vec::new();
+        image::DynamicImage::ImageRgba8(img)
+            .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+            .expect("png");
+        let id = app
+            .new_shape(ShapeKind::Bitmap {
+                rect: Rect::new(0.0, 0.0, 100.0, 100.0),
+                width_px: 100,
+                height_px: 100,
+                png: png.into(),
+                fx: None,
+            })
+            .expect("picture");
+        app.select(vec![id]);
+        let c = app.tracecut_cut_contour(&CutContourSettings::default());
+        assert!(app.tracecut_apply_changes(&c));
+        let shapes = &app.doc().pages[0].layers[0].shapes;
+        assert_eq!(shapes.len(), 2, "the picture and its cut line");
+        let line = &shapes[1];
+        assert_eq!(line.fill, Fill::None);
+        let lb = line.bounds();
+        // The disc spans 20 to 80.
+        assert!((lb.x0 - 20.0).abs() < 1.5 && (lb.x1 - 80.0).abs() < 1.5, "{lb:?}");
+        assert!(!line.page_path().contains(Point::new(3.0, 3.0)));
     }
 
     #[test]

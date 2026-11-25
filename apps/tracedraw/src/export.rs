@@ -2731,6 +2731,31 @@ pub fn inks_page(
     p
 }
 
+/// How far the printable objects on the pages run past their page's
+/// edges (#4071), in mm, up to the 50 mm a bleed can take: a background
+/// made larger than its page to bleed. Objects that don't touch their
+/// page (beside it on the desktop) don't count.
+pub fn page_overhang(doc: &Document) -> f64 {
+    let mut most: f64 = 0.0;
+    for page in &doc.pages {
+        let r = Rect::from_origin_size((0.0, 0.0), page.size);
+        for layer in page.layers.iter().filter(|l| l.visible && l.printable) {
+            for sh in &layer.shapes {
+                let b = sh.bounds();
+                if !b.is_finite() || b.intersect(r).area() <= 0.0 {
+                    continue;
+                }
+                let past = (r.x0 - b.x0)
+                    .max(r.y0 - b.y0)
+                    .max(b.x1 - r.x1)
+                    .max(b.y1 - r.y1);
+                most = most.max(past);
+            }
+        }
+    }
+    (most.clamp(0.0, 50.0) * 10.0).round() / 10.0
+}
+
 /// The print layout for the Print dialog's settings: the imposition, the
 /// sheet, the bleed and the marks.
 pub fn print_layout(app: &App, st: &PrintState, doc: &Document) -> crate::imposition::Options {
@@ -3916,6 +3941,38 @@ pub fn replace_properties(app: &mut App, st: &mut FindReplaceState) -> usize {
 #[cfg(test)]
 mod tests {
     use super::{is_address, shared_file_name, why_not_send_to, SendTarget};
+
+    /// A card's background made 2.5 mm larger than its page all round
+    /// runs past the page by 2.5 mm, what Print Preview offers to print
+    /// as the bleed (#4071); objects beside the page don't count.
+    #[test]
+    fn the_overhang_is_how_far_objects_run_past_their_page() {
+        use crate::app::App;
+        use tracedraw_core::geometry::Rect;
+        use tracedraw_core::ShapeKind;
+        let mut app = App::headless();
+        app.engine
+            .run(&tracedraw_core::Command::ResizePage {
+                page: app.doc().pages[0].id,
+                size: tracedraw_core::geometry::Size::new(90.0, 50.0),
+            })
+            .expect("card");
+        assert_eq!(super::page_overhang(app.doc()), 0.0);
+        let rect = |r: Rect| ShapeKind::Rect {
+            rect: r,
+            radius: 0.0,
+            corners: None,
+        };
+        app.new_shape(rect(Rect::new(10.0, 10.0, 20.0, 20.0)))
+            .expect("inside");
+        assert_eq!(super::page_overhang(app.doc()), 0.0);
+        app.new_shape(rect(Rect::new(300.0, 0.0, 400.0, 100.0)))
+            .expect("beside");
+        assert_eq!(super::page_overhang(app.doc()), 0.0);
+        app.new_shape(rect(Rect::new(-2.5, -2.5, 92.5, 52.5)))
+            .expect("background");
+        assert_eq!(super::page_overhang(app.doc()), 2.5);
+    }
 
     /// A 180 ft x 10 ft banner at 50 dpi as JPEG: wider than a JPEG can
     /// be, so it is turned down at once with a word on what to use,

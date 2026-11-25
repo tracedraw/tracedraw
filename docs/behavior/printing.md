@@ -370,7 +370,12 @@ same function (`export::print_sheets`).
   Prepress: Print separations, Bleed with its limit (the Print dialog's
   Bleed limit, the same setting: 0 to 50 mm, greyed while Bleed is off,
   #1653, `print_preview::tests::the_bleed_limit_is_set_beside_bleed`)
-  beside Crop marks, Registration
+  beside Crop marks; when Bleed is off and objects on the pages run past
+  their page's edges (a background made larger than the page), a button
+  Print bleed (n mm) turns Bleed on by that much, up to 50 mm, so the
+  print keeps what runs past the page and the crop marks stay at the page
+  edges outside it (#4071, `export::tests::the_overhang_is_how_far_objects_run_past_their_page`);
+  Registration
   marks beside Color bars, Densitometer scale beside Page information,
   Mirror beside Invert, Grayscale beside Reverse order (#1657, #1394),
   Transform and Artwork position; then the layout
