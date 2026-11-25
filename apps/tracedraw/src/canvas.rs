@@ -3866,6 +3866,11 @@ fn draw_nodes(app: &App, painter: &Painter) {
                     ));
                 }
             }
+            // The nodes, then a rectangle's edge handles: the list of
+            // nodes alone left the edge handles out, so their diamonds
+            // and arcs never showed (#3813).
+            let mut own = own;
+            own.extend(crate::kind_nodes::edge_handles(&s));
             for (node, p) in own {
                 let chosen = matches!(
                     node,
@@ -5866,6 +5871,44 @@ mod tests {
         app.group_selection();
         let group = app.selection[0];
         assert!(marks(&app, group).is_empty());
+    }
+
+    /// #3813: with the Shape tool a rectangle shows the arc of each
+    /// edge handle just outside its side.
+    #[test]
+    fn a_rectangle_shows_its_edge_handles_with_the_shape_tool() {
+        use tracedraw_core::document::ShapeKind;
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        let id = app
+            .new_shape(ShapeKind::Rect {
+                rect: tracedraw_core::geometry::Rect::new(20.0, 20.0, 80.0, 60.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        app.select(vec![id]);
+        app.tool = crate::tools::Tool::Shape;
+        let input = egui::RawInput {
+            screen_rect: Some(ERect::from_min_size(Pos2::ZERO, egui::vec2(800.0, 600.0))),
+            ..Default::default()
+        };
+        let mut out = ctx.run_ui(input, |ui| {
+            let painter = ui.painter().clone();
+            draw_nodes(&app, &painter);
+        });
+        out.textures_delta.clear();
+        // Each edge's arc is a line of nine points, drawn twice (a white
+        // edge under the node colour) (#3813).
+        fn arcs(s: &egui::Shape) -> usize {
+            match s {
+                egui::Shape::Vec(v) => v.iter().map(arcs).sum(),
+                egui::Shape::Path(p) => usize::from(!p.closed && p.points.len() == 9),
+                _ => 0,
+            }
+        }
+        let n: usize = out.shapes.iter().map(|c| arcs(&c.shape)).sum();
+        assert_eq!(n, 8, "four edge arcs, each drawn twice");
     }
 
     /// #1906: View > Page > Page Border and Page Shadow are two options:
