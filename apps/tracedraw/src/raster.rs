@@ -29,6 +29,12 @@ use tracedraw_render::{
 /// rendered anew instead of showing the last render moved into place.
 pub const SETTLE_SECONDS: f64 = 0.12;
 
+/// How long the drawing must rest at a revision, seconds, before a render
+/// still running for an earlier one is asked to give up (#4233): a few
+/// frames, enough to tell a drag that goes on from one that has stopped.
+#[cfg(not(target_arch = "wasm32"))]
+pub const REVISION_REST: f64 = 0.08;
+
 /// The shortest wait, seconds, after the last step of a zoom before a
 /// render still running for an earlier zoom is asked to give up: a few
 /// frames, enough to tell a wheel that has stopped from one that goes on.
@@ -299,6 +305,11 @@ pub struct Raster {
     /// render ran: the wait before a render in flight for an earlier
     /// zoom is asked to give up follows the pace of these steps.
     zoom_step: Option<f64>,
+    /// The drawing's revision last asked for and when (egui time) it was
+    /// first asked for: a render for an earlier revision gives up only
+    /// once the drawing has rested at this one (#4233).
+    #[cfg(not(target_arch = "wasm32"))]
+    revision_since: Option<(u64, f64)>,
     /// Proofed colours on a grid of screen colours (View > Proof Colors),
     /// made when first needed and dropped with the texture (the colour
     /// settings changed).
@@ -851,10 +862,27 @@ impl Raster {
             // A render for an earlier revision of the main canvas is
             // obsolete too (#3903): letting it run to completion wastes
             // CPU while holding both the render turn and the old document
-            // snapshot.
+            // snapshot. But only once the drawing has rested at the latest
+            // revision: while it changes every frame (a shadow, a fill or
+            // a handle dragged over a picture or a heavy page), giving up
+            // at each change meant no picture ever came until the drag
+            // stopped (#4233). The running render ends, its picture shows,
+            // and the next one starts at the latest revision.
+            let since = match self.revision_since {
+                Some((rev, t)) if rev == key.revision => t,
+                _ => {
+                    self.revision_since = Some((key.revision, now));
+                    now
+                }
+            };
             if let Some(job) = &self.job {
                 if !self.follows_zoom && job.key.revision != key.revision {
-                    job.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+                    let due = since + REVISION_REST;
+                    if now >= due {
+                        job.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+                    } else {
+                        ctx.request_repaint_after(std::time::Duration::from_secs_f64(due - now));
+                    }
                 }
             }
             if stale_zoom {
@@ -3205,8 +3233,9 @@ mod tests {
 
     /// #3903: when the drawing's revision moves on while a render job for an
     /// earlier revision is still running on its thread, the obsolete job is
-    /// told to give up instead of running to completion and uploading an
-    /// outdated picture, and the latest revision renders right after.
+    /// told to give up once the drawing rests at the new revision, instead
+    /// of running to completion and uploading an outdated picture, and the
+    /// latest revision renders right after.
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn a_newer_revision_cancels_a_stale_render_in_flight() {
@@ -3269,19 +3298,39 @@ mod tests {
             .expect("job 2")
             .cancel
             .load(std::sync::atomic::Ordering::Relaxed));
+        // While the drawing changes every frame (a drag), job 2 goes on:
+        // giving up at each change would never let a picture come
+        // (#4233).
         for rev in 3..=5 {
             frame(&mut raster, rev);
             assert_eq!(raster.render_count(), renders + 1);
             assert!(
-                raster
+                !raster
                     .job
                     .as_ref()
                     .expect("still job 2")
                     .cancel
                     .load(std::sync::atomic::Ordering::Relaxed),
-                "revision {rev} should cancel stale job 2"
+                "revision {rev}: the drag goes on, job 2 keeps drawing"
             );
         }
+        // Once the drawing rests at revision 5, the stale job gives up.
+        let mut given_up = false;
+        for _ in 0..30 {
+            frame(&mut raster, 5);
+            assert_eq!(raster.render_count(), renders + 1);
+            if raster
+                .job
+                .as_ref()
+                .expect("still job 2")
+                .cancel
+                .load(std::sync::atomic::Ordering::Relaxed)
+            {
+                given_up = true;
+                break;
+            }
+        }
+        assert!(given_up, "revision 5 rested: stale job 2 should give up");
         drop(held);
         let mut settled = false;
         for _ in 0..400 {
