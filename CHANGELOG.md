@@ -6,6 +6,19 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Symmetry: up to 32 mirror lines, where 12 was the most (#4272).
+- Options > Customization > Commands: typing a letter in the list jumps to the next command starting with it, round to the top again past the end (#4217).
+- Edit > Select Similar > Same Size: picks the objects as wide and as tall as a selected one, whatever their kind; Repeat on Similar has it too (#4238).
+- Interactive Fill bar: a Reverse button beside the gradient's colours runs each selected gradient the other way round, one undo step (#4274).
+- Shape tool corner rings: with Options > Nodes and Handles > Round one corner at a time off, where a drag rounds every corner, Ctrl+drag rounds that corner alone (#4216).
+- Dimensions: the dimension bar's more options have Delete dimensions with the object; on, deleting an object also deletes the dimensions held to it, in the same undo step (off by default, #4211).
+- Text > Font Size Box (Ctrl+Alt+Z, changeable in Options > Customization > Commands): a small box beside the selected text with its size ready to type over; the text shows the size as it is typed or pointed at in the list, Enter applies it (#4285).
+- Objects panel: a search field at the top of the panel lists only the layers, and the objects in them, whose names hold the text typed (any case); groups holding a match open to show it (#4258; PR #3982 by ratmanz0000).
+- Repeat Copies: Across and down makes the copies across and down at once, Copies across and Down rows down, a grid with the selection in its corner, previewed the same (#4230).
+- Object > Convert to Ellipse: a closed curve that runs round an ellipse, such as a circle brought from a plan as many short lines, becomes an ellipse object again (#4214).
+- Ellipse bar: Divide into Slices cuts the selected ellipse or pie into the number of equal wedges typed, each an object of its own with the same look (#4209).
+- Polygon and Star bars: Divide into Triangles cuts the selected polygon or star into one triangle per side, each joining the side to the centre (#4210).
+- Time Tracker: Start with every drawing starts the clock on its own for each drawing opened or begun, adding a task when it has none; a pause holds for that drawing (#4282).
 - `.cdr` version 27: mesh fills saved with the newer colour records are read (they opened as plain curves), a transparency that was taken off no longer hides or fades its object, the merge modes of transparencies are read (Add, Subtract, Multiply, Overlay and the others, which opened as Normal with a warning), a Gaussian blur that was never hidden is applied, and a skewed linear fountain fill keeps the slant of its bands (#1238).
 - `.cdr` version 27 text set in a variable font keeps its font: the font's axes were read as its name, so the text was drawn with a substitute and the missing fonts box listed numbers instead of a font (#1238).
 - PDF export: a mesh fill on an object that was moved, turned or sized as a whole (every mesh read from a `.cdr` file) keeps its colours instead of going out black, and a transparency merged with Add goes out as Screen, the nearest PDF blend (#1238).

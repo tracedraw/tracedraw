@@ -216,6 +216,12 @@ fn options_part(app: &mut App, ui: &mut Ui, style: &DimensionStyle) {
             ui.separator();
             text_background_row(app, ui, style);
             add_dimensions_gap_row(app, ui);
+            // Deleting a measured object takes its dimensions (#4211).
+            ui.checkbox(
+                &mut app.settings.delete_dimensions_with_object,
+                tr("dimension.delete_with_object"),
+            )
+            .rich_tip(crate::ui::tips::keyed("dimension.delete_with_object"));
         });
 }
 

@@ -160,6 +160,20 @@ fn step_and_repeat_fields(
             .rich_tip(crate::ui::tips::keyed("docker.sr_copies"))
             .has_focus();
     });
+    // Across and down at once, a grid of copies (#4230).
+    ui.add_enabled_ui(sr.use_x && sr.use_y, |ui| {
+        ui.horizontal(|ui| {
+            ui.checkbox(&mut sr.grid, tr("docker.sr_grid"))
+                .rich_tip(crate::ui::tips::keyed("docker.sr_grid"));
+            ui.add_enabled_ui(sr.grid, |ui| {
+                ui.label(tr("docker.sr_copies_down"));
+                focused |= ui
+                    .add(crate::ui::field::NumField::new(&mut sr.copies_down).range(1..=999))
+                    .rich_tip(crate::ui::tips::keyed("docker.sr_copies_down"))
+                    .has_focus();
+            });
+        });
+    });
     // Each axis can be turned off, so the copies go across only or up
     // and down only, and each goes one way or the other (#2572).
     ui.checkbox(

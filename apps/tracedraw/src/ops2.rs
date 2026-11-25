@@ -70,6 +70,11 @@ pub struct StepRepeat {
     /// off the copies go along the other axis only.
     pub use_x: bool,
     pub use_y: bool,
+    /// Copies across and down at once (#4230): `copies` across and
+    /// `copies_down` down, a grid with the selection in its corner.
+    /// Needs both axes on.
+    pub grid: bool,
+    pub copies_down: u32,
     /// The copies go to the left (else right) and up (else down) of the
     /// selection; the distances typed are taken that way (#2572).
     pub left: bool,
@@ -101,6 +106,31 @@ pub struct StepRepeat {
     pub mark_offset: f64,
 }
 
+impl StepRepeat {
+    /// Whether the copies go across and down at once (#4230).
+    pub fn is_grid(&self) -> bool {
+        self.grid && self.use_x && self.use_y
+    }
+
+    /// How far each copy lies from the selection, `step` apart: one
+    /// after another, or with [`StepRepeat::is_grid`] a grid of
+    /// `copies` + 1 across and `copies_down` + 1 down, the selection the
+    /// first place of it, row by row.
+    pub fn offsets(&self, step: tracedraw_core::geometry::Vec2) -> Vec<tracedraw_core::geometry::Vec2> {
+        use tracedraw_core::geometry::Vec2;
+        let across = self.copies.clamp(1, 999);
+        if !self.is_grid() {
+            return (1..=across).map(|k| step * k as f64).collect();
+        }
+        let down = self.copies_down.clamp(1, 999);
+        (0..=down)
+            .flat_map(|j| (0..=across).map(move |i| (i, j)))
+            .filter(|&(i, j)| i > 0 || j > 0)
+            .map(|(i, j)| Vec2::new(step.x * i as f64, step.y * j as f64))
+            .collect()
+    }
+}
+
 impl Default for StepRepeat {
     fn default() -> Self {
         StepRepeat {
@@ -111,6 +141,8 @@ impl Default for StepRepeat {
             mode_y: 0,
             use_x: true,
             use_y: true,
+            grid: false,
+            copies_down: 1,
             left: false,
             up: false,
             fill: false,
@@ -5743,14 +5775,13 @@ impl App {
         let Some(step) = self.step_and_repeat_step() else {
             return;
         };
-        let (dx, dy) = (step.x, step.y);
-        let sr = self.step_repeat.clone();
+        let offsets = self.step_repeat.offsets(step);
         let Some(layer) = self.active_layer() else {
             return;
         };
         let mut cmds = Vec::new();
         let mut new_sel = Vec::new();
-        for k in 1..=sr.copies.max(1) {
+        for d in offsets {
             // Each copy and every object inside it (a group's or a
             // PowerClip's) take new ids, as Duplicate gives them: the
             // objects inside kept their originals' ids, so a drawing had
@@ -5759,7 +5790,7 @@ impl App {
             for s in &shapes {
                 let id = self.engine.new_shape_id();
                 let mut c = crate::app::reid_pub(s.clone(), id, &mut self.engine);
-                c.transform_by(Affine::translate((dx * k as f64, dy * k as f64)));
+                c.transform_by(Affine::translate(d));
                 new_sel.push(c.id);
                 round.push(c);
             }

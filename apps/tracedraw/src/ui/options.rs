@@ -4061,6 +4061,26 @@ fn commands_page_body(app: &mut App, ui: &mut Ui) {
     {
         app.shortcut_editor.selected = items.first().map(|c| c.id.clone());
     }
+    // Typing a letter with no field taking the keys jumps to the next
+    // command starting with it, as in a long list of files (#4217).
+    let typing = app.shortcut_editor.capture.is_none() && ui.ctx().memory(|m| m.focused().is_none());
+    if typing {
+        let typed = ui.input(|i| {
+            i.events.iter().find_map(|e| match e {
+                egui::Event::Text(t) if !i.modifiers.ctrl && !i.modifiers.command => {
+                    t.chars().next().filter(|c| c.is_alphanumeric())
+                }
+                _ => None,
+            })
+        });
+        if let Some(c) = typed {
+            let names: Vec<(&str, &str)> = items.iter().map(|c| (c.id.as_str(), c.name.as_str())).collect();
+            if let Some(id) = next_starting_with(&names, app.shortcut_editor.selected.as_deref(), c) {
+                app.shortcut_editor.selected = Some(id);
+                app.shortcut_editor.scroll_to_selected = true;
+            }
+        }
+    }
     ui.horizontal_top(|ui| {
         egui::Frame::new()
             .stroke(egui::Stroke::new(1.0, Tokens::control_border()))
@@ -4143,6 +4163,23 @@ fn commands_page_body(app: &mut App, ui: &mut Ui) {
             }
         });
     });
+}
+
+/// The command a typed letter jumps to on the Commands page (#4217): the
+/// first after `current` (in the list's order, from the top again past
+/// its end) whose name starts with `letter`, any case; `None` when no
+/// name does. `items` are (id, name) pairs.
+fn next_starting_with(items: &[(&str, &str)], current: Option<&str>, letter: char) -> Option<String> {
+    let want: String = letter.to_lowercase().collect();
+    let starts = |name: &str| name.trim_start().to_lowercase().starts_with(&want);
+    let from = current
+        .and_then(|c| items.iter().position(|(id, _)| *id == c))
+        .map_or(0, |i| i + 1);
+    let n = items.len();
+    (0..n)
+        .map(|k| &items[(from + k) % n.max(1)])
+        .find(|(_, name)| starts(name))
+        .map(|(id, _)| id.to_string())
 }
 
 /// The command whose keys `c` shows and sets: a bar button that runs a
@@ -6523,6 +6560,27 @@ fn bleed_page(app: &mut App, ui: &mut Ui) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A typed letter on the Commands page jumps to the next command
+    /// starting with it, any case, from the top again past the end; a
+    /// letter no name starts with stays put (#4217).
+    #[test]
+    fn a_typed_letter_jumps_to_the_next_command_starting_with_it() {
+        let items = [
+            ("a", "Align"),
+            ("b", "Blend"),
+            ("c", "Break Apart"),
+            ("d", "Combine"),
+            ("e", "break curve"),
+        ];
+        assert_eq!(next_starting_with(&items, None, 'b').as_deref(), Some("b"));
+        assert_eq!(next_starting_with(&items, Some("b"), 'B').as_deref(), Some("c"));
+        assert_eq!(next_starting_with(&items, Some("c"), 'b').as_deref(), Some("e"));
+        assert_eq!(next_starting_with(&items, Some("e"), 'b').as_deref(), Some("b"), "round again");
+        assert_eq!(next_starting_with(&items, Some("a"), 'c').as_deref(), Some("d"));
+        assert_eq!(next_starting_with(&items, Some("a"), 'z'), None);
+        assert_eq!(next_starting_with(&[], None, 'a'), None);
+    }
 
     /// #1415: the splash, hardware acceleration and AI agent options are
     /// shown on the desktop and hidden on Android and in the browser,

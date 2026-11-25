@@ -3634,6 +3634,7 @@ fn interactive_fill_bar(app: &mut App, ui: &mut Ui, shapes: &[tracedraw_core::do
     let point_spread = app.color_point_spread();
     let mut spread_edit: Option<f64> = None;
     let mut delete_point = false;
+    let mut reverse_gradient = false;
     for (i, key) in [
         "docker.fill_none",
         "docker.fill_uniform",
@@ -3860,6 +3861,17 @@ fn interactive_fill_bar(app: &mut App, ui: &mut Ui, shapes: &[tracedraw_core::do
                 }
             }
             if f.kind != FountainKind::Points {
+                // Reverse: the colours run the other way (#4274).
+                if ui
+                    .add_enabled(!shapes.is_empty(), crate::ui::btn_icons::Ib::new("edit_fill.reverse"))
+                    .rich_tip(crate::ui::tips::pair(
+                        "edit_fill.reverse",
+                        "edit_fill.reverse_tip",
+                    ))
+                    .clicked()
+                {
+                    reverse_gradient = true;
+                }
                 if dim_labelled_as(ui, "toolbar.angle", "toolbar.fill_angle_desc", |ui| {
                     ui.add(
                         crate::ui::field::NumField::new(&mut f.angle)
@@ -3914,6 +3926,9 @@ fn interactive_fill_bar(app: &mut App, ui: &mut Ui, shapes: &[tracedraw_core::do
     }
     if delete_point {
         app.delete_color_point();
+    }
+    if reverse_gradient {
+        app.reverse_selection_gradients();
     }
     vsep(ui);
     // Copy Fill: the next click picks the object whose fill the

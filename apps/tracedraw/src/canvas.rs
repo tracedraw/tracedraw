@@ -1650,7 +1650,7 @@ fn draw_symmetry_lines(app: &App, painter: &Painter, rect: ERect) {
         }
     }
     for (center, angle, lines) in shown {
-        let n = lines.clamp(1, 12) as usize;
+        let n = lines.clamp(1, tracedraw_core::live::SYMMETRY_MAX_LINES) as usize;
         let far = 100_000.0 / view.zoom.max(0.01) as f64;
         for k in 0..n {
             let a = (angle + 180.0 * k as f64 / n as f64).to_radians();

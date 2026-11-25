@@ -274,6 +274,9 @@ fn exact(key: &str) -> Option<Src> {
         "docker.fill_texture" => Src::Fill(4),
         "docker.fill_mesh" => Src::Fill(5),
         "docker.fill_procedural" => Src::Fill(6),
+        // Shapes cut into parts (#4209, #4210).
+        "toolbar.slices" => Src::Pic(Pic::Pie),
+        "toolbar.triangles" => Src::Tool(Tool::Polygon),
         "toolbar.copy_fill" | "docker.data_copy_to_selection" => Src::Glyph(Glyph::CopyProperties),
         // Effects and tools.
         "toolbar.clear_shadow" | "shadow.break_apart" | "context.edit_shadow" => Src::Tool(Tool::DropShadow),

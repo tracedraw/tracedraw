@@ -32,6 +32,7 @@ pub(crate) fn children(scene: &str, parent: &str) -> &'static [&'static str] {
             "menu.edit.similar_outline",
             "menu.edit.similar_text_format",
             "menu.edit.similar_kind",
+            "menu.edit.similar_size",
             "menu.edit.similar_look",
         ],
         ("canvas_object" | "objects_object", "menu.object.order") => &[

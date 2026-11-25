@@ -745,7 +745,10 @@ impl App {
             if let Some(w) = self.corner_widget_at(p) {
                 // Ctrl+click chooses the corner, or takes it out.
                 let one_at_a_time = self.settings.nodes.corner_one_at_a_time;
-                if self.start_corner_drag(w, p, one_at_a_time && mods.shift) {
+                // With every corner rounding together, Ctrl+drag rounds
+                // this corner alone (#4216).
+                let own_only = !one_at_a_time && mods.command && !mods.shift;
+                if self.start_corner_drag_with(w, p, one_at_a_time && mods.shift, own_only) {
                     return;
                 }
             }

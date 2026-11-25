@@ -4541,6 +4541,15 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
     ) {
         app.convert_to_curves();
     }
+    // A curve that runs round an ellipse becomes one again (#4214).
+    if item(
+        ui,
+        "menu.object.convert_to_ellipse",
+        "",
+        app.can_convert_to_ellipse(),
+    ) {
+        app.convert_to_ellipse();
+    }
     if item(ui, "menu.object.convert_to_bitmap", "", has) {
         app.dialog = Dialog::ConvertToBitmap(Default::default());
     }
@@ -5073,6 +5082,10 @@ fn text_menu(app: &mut App, ui: &mut Ui) {
     }
     if item(ui, "menu.text.edit_text", "Ctrl+Shift+T", is_text) {
         app.open_edit_text_dialog();
+    }
+    // The font size in a box beside the text (#4285).
+    if item(ui, "menu.text.font_size_box", "Ctrl+Alt+Z", app.has_text_target()) {
+        crate::ui::font_size_popup::open(app, ui.ctx());
     }
     if item(ui, "menu.text.insert_placeholder_text", "", is_para) {
         app.insert_placeholder_text();

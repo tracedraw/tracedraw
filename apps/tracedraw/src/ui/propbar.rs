@@ -2833,6 +2833,36 @@ pub fn ellipse_part(app: &mut App, ui: &mut Ui) {
         arc.inner = (inner / 100.0).clamp(0.0, 0.99);
         new = Some(arc);
     }
+    // Divide into Slices (#4209): the selected ellipses or pies into
+    // that many equal wedges.
+    if !selected.is_empty() {
+        let id = egui::Id::new("divide_slices_count");
+        let mut n: u32 = ui.data_mut(|d| d.get_temp(id)).unwrap_or(4);
+        let r = ui
+            .add(
+                crate::ui::field::NumField::new(&mut n)
+                    .range(2..=crate::slices::MAX_PARTS)
+                    .width(44.0),
+            )
+            .rich_tip(crate::ui::tips::pair(
+                "toolbar.slices",
+                "toolbar.slices_desc",
+            ));
+        if r.changed() {
+            ui.data_mut(|d| d.insert_temp(id, n));
+        }
+        if ui
+            .add_enabled(app.can_divide_slices(), crate::ui::btn_icons::Ib::new("toolbar.slices"))
+            .rich_tip(crate::ui::tips::pair(
+                "toolbar.slices",
+                "toolbar.slices_desc",
+            ))
+            .clicked()
+        {
+            app.divide_into_slices(n.clamp(2, crate::slices::MAX_PARTS));
+            return;
+        }
+    }
     if new != current {
         app.ellipse_arc = new;
         let cmds: Vec<Command> = selected
@@ -3030,6 +3060,22 @@ pub fn polygon_part(app: &mut App, ui: &mut Ui, star: bool) {
                 app.status = e.to_string();
             }
         }
+    }
+    // Divide into Triangles (#4210): the selected polygons or stars into
+    // one triangle per side, to the centre.
+    if !selected.is_empty()
+        && ui
+            .add_enabled(
+                app.can_divide_triangles(),
+                crate::ui::btn_icons::Ib::new("toolbar.triangles"),
+            )
+            .rich_tip(crate::ui::tips::pair(
+                "toolbar.triangles",
+                "toolbar.triangles_desc",
+            ))
+            .clicked()
+    {
+        app.divide_into_triangles();
     }
 }
 

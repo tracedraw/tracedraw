@@ -427,6 +427,12 @@ pub fn dialog(app: &mut App, ctx: &egui::Context, st: &mut TrackerDialog, close:
             }
             ui.label(tr("tracker.idle_after"));
         });
+        // Start with every drawing (D#4282).
+        ui.checkbox(
+            &mut app.settings.time_tracker.auto_start,
+            tr("tracker.auto_start"),
+        )
+        .rich_tip(crate::ui::tips::keyed("tracker.auto_start"));
         ui.add_space(10.0);
         ui.horizontal(|ui| {
             if ui.ibutton("tracker.export_csv").clicked() {

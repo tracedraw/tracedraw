@@ -4155,7 +4155,7 @@ pub fn symmetry_back_to_turned(
     origin: Point,
     p: Point,
 ) -> Affine {
-    let n = lines.clamp(1, 12) as usize;
+    let n = lines.clamp(1, SYMMETRY_MAX_LINES) as usize;
     let slice = std::f64::consts::PI / n as f64 * if rotate { 2.0 } else { 1.0 };
     let wedges = if rotate { n } else { 2 * n } as i64;
     let a0 = angle.to_radians();
@@ -4177,8 +4177,11 @@ pub fn symmetry_back_to_turned(
         .unwrap_or(Affine::IDENTITY)
 }
 
+/// The most mirror lines a symmetry takes (#4272).
+pub const SYMMETRY_MAX_LINES: u8 = 32;
+
 fn symmetry_mirrors(center: Point, angle: f64, lines: u8, rotate: bool) -> Vec<Affine> {
-    let n = lines.clamp(1, 12) as usize;
+    let n = lines.clamp(1, SYMMETRY_MAX_LINES) as usize;
     let mut out = Vec::with_capacity(2 * n);
     let to_center = Affine::translate(center.to_vec2());
     let from_center = Affine::translate(-center.to_vec2());
@@ -7698,6 +7701,18 @@ mod tests {
             assert_eq!(slice(q), slice(origin), "{p:?} -> {q:?}");
             assert!(((q - c).hypot() - 15.0).abs() < 1e-9);
         }
+    }
+
+    /// A symmetry takes up to 32 mirror lines (#4272): 24 lines make 48
+    /// copies (24 mirrors and 23 turns besides the object), more than 32
+    /// stop at 32.
+    #[test]
+    fn a_symmetry_takes_up_to_thirty_two_lines() {
+        let c = Point::new(0.0, 0.0);
+        assert_eq!(symmetry_mirrors(c, 0.0, 24, false).len(), 47);
+        assert_eq!(symmetry_mirrors(c, 0.0, 32, false).len(), 63);
+        assert_eq!(symmetry_mirrors(c, 0.0, 40, false).len(), 63);
+        assert_eq!(symmetry_mirrors(c, 0.0, 24, true).len(), 23);
     }
 
     /// Two open curves with a yellow outline, the end one faded, blended

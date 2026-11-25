@@ -7889,7 +7889,12 @@ impl App {
         if self.selection.is_empty() {
             return;
         }
-        let shapes = std::mem::take(&mut self.selection);
+        let mut shapes = std::mem::take(&mut self.selection);
+        // The dimensions measuring what goes, when so set (#4211).
+        if self.settings.delete_dimensions_with_object {
+            let more = self.dimensions_measuring(&shapes);
+            shapes.extend(more);
+        }
         // A part of a dimension goes on its own, the rest of it staying
         // as objects of their own (#3348).
         if let Some(cmds) = self.dimension_part_delete_commands(&shapes) {

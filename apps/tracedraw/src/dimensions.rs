@@ -1847,6 +1847,39 @@ impl App {
         Some(cmds)
     }
 
+    /// The dimensions (not among `ids`) that measure one of the objects
+    /// `ids` or an object inside them: those with a point held to it
+    /// (#4211). Delete takes them along when the dimension bar's
+    /// "Delete dimensions with the object" is on.
+    pub(crate) fn dimensions_measuring(&self, ids: &[ShapeId]) -> Vec<ShapeId> {
+        fn inside(s: &Shape, out: &mut Vec<ShapeId>) {
+            out.push(s.id);
+            match &s.kind {
+                ShapeKind::Group { children } => children.iter().for_each(|c| inside(c, out)),
+                ShapeKind::ClipFrame { frame, contents } => {
+                    inside(frame, out);
+                    contents.iter().for_each(|c| inside(c, out));
+                }
+                _ => {}
+            }
+        }
+        let doc = self.doc();
+        let mut gone = Vec::new();
+        for id in ids {
+            if let Some(s) = doc.find_shape(*id) {
+                inside(s, &mut gone);
+            }
+        }
+        doc.all_layers()
+            .flat_map(|l| &l.shapes)
+            .filter(|s| !ids.contains(&s.id))
+            .filter(|s| {
+                Dimension::of(s).is_some_and(|d| d.anchors.iter().any(|a| gone.contains(&a.shape)))
+            })
+            .map(|s| s.id)
+            .collect()
+    }
+
     /// Dynamic dimensioning: dimensions moved, scaled, turned or skewed
     /// since the last look are drawn again with the transform in their
     /// points, and those whose label was edited in place with the edit
@@ -2472,6 +2505,43 @@ mod tests {
     }
 
     /// A dimension drawn between two nodes of an object holds to them:
+    /// With "Delete dimensions with the object" on, deleting a measured
+    /// object deletes its dimension in the same step (one Undo brings
+    /// both back) and leaves a dimension of another object; off (the
+    /// default), the dimension stays (#4211).
+    #[test]
+    fn deleting_a_measured_object_can_take_its_dimensions() {
+        let mut app = App::headless();
+        app.view.zoom = 1.0;
+        let rect = |app: &mut App, x: f64| {
+            app.new_shape(ShapeKind::Rect {
+                rect: Rect::new(x, 10.0, x + 40.0, 30.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect")
+        };
+        let a = rect(&mut app, 10.0);
+        let b = rect(&mut app, 100.0);
+        app.create_dimension(Point::new(10.0, 10.0), Point::new(50.0, 10.0), Point::new(30.0, 0.0));
+        let dim_a = app.selection[0];
+        app.create_dimension(Point::new(100.0, 10.0), Point::new(140.0, 10.0), Point::new(120.0, 0.0));
+        let dim_b = app.selection[0];
+        assert!(!app.settings.delete_dimensions_with_object, "off by default");
+        app.select(vec![a]);
+        app.delete_selection();
+        assert!(app.doc().find_shape(dim_a).is_some(), "off: the dimension stays");
+        app.undo();
+        app.settings.delete_dimensions_with_object = true;
+        app.select(vec![a]);
+        app.delete_selection();
+        assert!(app.doc().find_shape(a).is_none());
+        assert!(app.doc().find_shape(dim_a).is_none(), "on: it goes too");
+        assert!(app.doc().find_shape(dim_b).is_some() && app.doc().find_shape(b).is_some());
+        app.undo();
+        assert!(app.doc().find_shape(a).is_some() && app.doc().find_shape(dim_a).is_some());
+    }
+
     /// resizing or moving the object takes the dimension along and its
     /// value follows; a dimension moved by itself stays held (#1492); one whose
     /// object is deleted lets go (#838).

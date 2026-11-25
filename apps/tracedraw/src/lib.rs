@@ -241,6 +241,7 @@ mod scripting;
 mod segment_delete;
 mod select_region;
 mod select_similar;
+mod slices;
 mod settings;
 mod shadow_tool;
 #[cfg(test)]

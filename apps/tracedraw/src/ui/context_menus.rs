@@ -188,6 +188,7 @@ macro_rules! object_items {
             "menu.edit.similar_outline",
             "menu.edit.similar_text_format",
             "menu.edit.similar_kind",
+            "menu.edit.similar_size",
             "menu.edit.similar_look",
             "menu.object.order",
             "menu.object.to_front_of_page",

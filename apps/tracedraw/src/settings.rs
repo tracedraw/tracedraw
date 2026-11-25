@@ -721,6 +721,9 @@ pub struct Settings {
     /// How far Object > Insert > Add Dimensions puts its dimension lines
     /// from the measured box, mm (#3530).
     pub add_dimensions_gap: f64,
+    /// Deleting an object deletes the dimensions that measure it too
+    /// (the dimension bar's more options, #4211). Off: they stay.
+    pub delete_dimensions_with_object: bool,
     /// Options > Tools > Connector: an object's own nodes are anchors
     /// too, besides its side midpoints and custom anchors (#1436).
     pub connector_geometric_anchors: bool,
@@ -1940,6 +1943,9 @@ pub struct TimeTrackerPrefs {
     /// The toolbar in its mini form: the stopwatch, the task's time, the
     /// record button and its light only, to sit beside other bars (#3261).
     pub mini: bool,
+    /// The clock starts on its own for every drawing opened or begun
+    /// (D#4282); pausing it holds for that drawing.
+    pub auto_start: bool,
 }
 
 impl Default for TimeTrackerPrefs {
@@ -1948,6 +1954,7 @@ impl Default for TimeTrackerPrefs {
             show_bar: false,
             idle_minutes: 5,
             mini: false,
+            auto_start: false,
         }
     }
 }
@@ -2733,6 +2740,7 @@ impl Default for Settings {
             spiral_expansion: 100,
             angular_dimension: Default::default(),
             add_dimensions_gap: crate::dimensions::ADD_DIMENSIONS_GAP,
+            delete_dimensions_with_object: false,
             connector_geometric_anchors: false,
             connector_gap: 0.0,
             upgrades: UPGRADES,

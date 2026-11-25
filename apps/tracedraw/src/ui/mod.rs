@@ -130,6 +130,7 @@ pub mod pixel_menu_icons;
 pub mod pixel_mode;
 pub mod pixel_lights;
 pub mod symmetry_bar;
+pub mod font_size_popup;
 pub mod tab_focus;
 pub mod table_bar;
 pub mod tabs;
@@ -960,6 +961,7 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
 
     if app.has_document() && !app.show_welcome {
         symmetry_bar::show(app, &ctx);
+        font_size_popup::show(app, &ctx);
         pixel_bar::show(app);
         clip_bar::show(app, &ctx);
         focus_bar::show(app, &ctx);

@@ -50,6 +50,9 @@ const PLUS_GREEN: Color32 = Color32::from_rgb(0x1E, 0x9E, 0x3C);
 /// What the docker asks for after drawing.
 #[derive(Default)]
 struct Actions {
+    /// The search text (lower case) while objects not matching it are
+    /// left out of the rows drawn now (#4258); empty: all are listed.
+    object_filter: String,
     /// Edit Across Layers turned on or off (#3276).
     across: Option<bool>,
     visible: Option<(LayerId, bool)>,
@@ -570,7 +573,7 @@ fn square(rect: Rect, x: f32, size: f32) -> Rect {
 /// The layer search text kept between frames (see [`layer_search`]).
 const LAYER_FILTER: &str = "objects_layer_filter";
 
-/// The search field above the tree: the layers whose names hold the text
+/// The search field at the top of the panel, over the tree: the layers whose names hold the text
 /// (any case) stay listed, the others are hidden while it is not empty.
 pub(crate) fn layer_search(ui: &mut Ui) {
     let id = egui::Id::new(LAYER_FILTER);
@@ -602,13 +605,38 @@ fn layer_needle(ui: &Ui) -> String {
         .to_lowercase()
 }
 
-/// Whether a layer is listed under the search `needle` (empty lists all).
+/// Whether a layer is listed under the search `needle` (empty lists
+/// all): its name holds the text, or one of its objects' (#4258).
 fn layer_hit(layer: &Layer, needle: &str) -> bool {
-    needle.is_empty() || layer.name.to_lowercase().contains(needle)
+    needle.is_empty() || layer_name_hit(layer, needle) || layer.shapes.iter().any(|s| shape_hit(s, needle))
+}
+
+/// Whether the layer's own name holds the search `needle`.
+fn layer_name_hit(layer: &Layer, needle: &str) -> bool {
+    layer.name.to_lowercase().contains(needle)
+}
+
+/// Whether the label of `s` (its name, else what it is) holds the
+/// search `needle` (#4258).
+fn own_hit(s: &Shape, needle: &str) -> bool {
+    object_label(s).to_lowercase().contains(needle)
+}
+
+/// Whether `s` or an object inside it (a group's, a PowerClip's
+/// contents) holds the search `needle` in its label (#4258).
+fn shape_hit(s: &Shape, needle: &str) -> bool {
+    own_hit(s, needle)
+        || match &s.kind {
+            ShapeKind::Group { children } => children.iter().any(|c| shape_hit(c, needle)),
+            ShapeKind::ClipFrame { contents, .. } => contents.iter().any(|c| shape_hit(c, needle)),
+            _ => false,
+        }
 }
 
 /// The docker: the tree above the bar with its buttons.
 pub fn objects_docker(app: &mut App, ui: &mut Ui) {
+    // The search field at the top of the panel (#4258).
+    layer_search(ui);
     let content_h = (ui.available_height() - BAR_H - 4.0).max(40.0);
     let out = egui::ScrollArea::vertical()
         .max_height(content_h)
@@ -1410,11 +1438,24 @@ fn layer_rows(
         // they go back, instead of all showing under the current page as
         // if selecting had moved them there (#3935).
         let (away, here) = spread_borrowed(app, at.page, layer.id);
+        // A search that the layer's own name does not answer lists only
+        // the objects that do, and the groups holding them (#4258).
+        let needle = layer_needle(ui);
+        act.object_filter = if needle.is_empty() || layer_name_hit(layer, &needle) {
+            String::new()
+        } else {
+            needle
+        };
         for s in here.iter().filter_map(|id| app.doc().find_shape(*id)) {
-            object_rows(app, ui, s, LAYER_OBJECT_DEPTH, act);
+            if act.object_filter.is_empty() || shape_hit(s, &act.object_filter) {
+                object_rows(app, ui, s, LAYER_OBJECT_DEPTH, act);
+            }
         }
         for s in layer.shapes.iter().rev() {
             if contents.contains(&s.id) || away.contains(&s.id) {
+                continue;
+            }
+            if !act.object_filter.is_empty() && !shape_hit(s, &act.object_filter) {
                 continue;
             }
             object_rows(app, ui, s, LAYER_OBJECT_DEPTH, act);
@@ -1429,6 +1470,7 @@ fn layer_rows(
                 }
             }
         }
+        act.object_filter.clear();
     }
 }
 
@@ -2118,7 +2160,16 @@ fn object_rows(app: &App, ui: &mut Ui, s: &Shape, depth: usize, act: &mut Action
         ShapeKind::ClipFrame { contents, .. } if !contents.is_empty() => Some(contents),
         _ => None,
     };
-    let expanded = app.objects_open_groups.contains(&s.id);
+    // While a search lists only matching objects, a group that holds one
+    // (not matching itself) shows open with only those (#4258); a group
+    // that matches shows all it holds.
+    let filter = std::mem::take(&mut act.object_filter);
+    let inner = if filter.is_empty() || own_hit(s, &filter) {
+        String::new()
+    } else {
+        filter.clone()
+    };
+    let expanded = app.objects_open_groups.contains(&s.id) || !inner.is_empty();
     // Rows scrolled out of sight are only laid out: nothing is drawn or
     // asked of them, so a long list costs little.
     if let (Some(resp), true) = (resp, visible) {
@@ -2127,9 +2178,13 @@ fn object_rows(app: &App, ui: &mut Ui, s: &Shape, depth: usize, act: &mut Action
     }
     if let (Some(children), true) = (children, expanded) {
         for c in children.iter().rev() {
-            object_rows(app, ui, c, depth + 1, act);
+            if inner.is_empty() || shape_hit(c, &inner) {
+                act.object_filter = inner.clone();
+                object_rows(app, ui, c, depth + 1, act);
+            }
         }
     }
+    act.object_filter = filter;
 }
 
 /// The contents of the row of `s`: the group arrow, the thumbnail, the
@@ -4558,6 +4613,45 @@ pub(crate) mod tests {
 
     fn draw(app: &mut App) {
         with_ui(|ui| objects_docker(app, ui));
+    }
+
+    /// The search field finds objects by name too (#4258): a layer is
+    /// listed when its name or one of its objects' names holds the text
+    /// (any case), a group when it or an object inside it does.
+    #[test]
+    fn the_search_finds_objects_by_name() {
+        crate::i18n::set_language("en");
+        let mut water = Shape::new(ShapeId(1), rect_kind());
+        water.name = Some("Water Tank".into());
+        let mut roof = Shape::new(ShapeId(2), rect_kind());
+        roof.name = Some("Roof".into());
+        let group = Shape::new(
+            ShapeId(3),
+            ShapeKind::Group {
+                children: vec![water.clone(), roof.clone()],
+            },
+        );
+        assert!(own_hit(&water, "tank") && !own_hit(&roof, "tank"));
+        assert!(shape_hit(&group, "tank"), "found inside the group");
+        assert!(!own_hit(&group, "tank"), "the group itself does not match");
+        assert!(shape_hit(&Shape::new(ShapeId(4), rect_kind()), "rectangle"), "an unnamed kind matches too");
+        let mut app = App::headless();
+        let id = app.new_shape(rect_kind()).expect("rect");
+        let mut layer = app
+            .page_layers()
+            .into_iter()
+            .find(|l| l.shapes.iter().any(|s| s.id == id))
+            .cloned()
+            .expect("layer");
+        for s in &mut layer.shapes {
+            if s.id == id {
+                s.name = Some("Logo Front".into());
+            }
+        }
+        assert!(layer_hit(&layer, "logo"));
+        assert!(!layer_hit(&layer, "nothing like it"));
+        assert!(layer_hit(&layer, ""), "no search lists everything");
+        draw(&mut app);
     }
 
     #[test]
