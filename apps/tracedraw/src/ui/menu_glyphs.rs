@@ -180,7 +180,9 @@ pub fn for_key(key: &str) -> Option<Glyph> {
         "menu.edit.find_and_replace" => Find,
         "menu.edit.step_and_repeat" => StepRepeat,
         "menu.edit.copy_properties_from" => CopyProperties,
-        "menu.edit.paste_special" | "menu.edit.paste_in_view" => PasteSpecial,
+        "menu.edit.paste_special" | "menu.edit.paste_in_view" | "menu.edit.paste_at_pointer" => {
+            PasteSpecial
+        }
         "menu.edit.repeat" => Repeat,
         "menu.layout.insert_page" => PageInsert,
         "menu.layout.delete_page" | "page_tab.delete" => PageDelete,

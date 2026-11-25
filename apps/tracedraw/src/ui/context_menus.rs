@@ -288,6 +288,7 @@ pub(crate) const CATALOG: &[MenuDefinition] = &[
         items: &[
             "menu.object.clip_frame_finish",
             "menu.edit.paste",
+            "menu.edit.paste_at_pointer",
             "menu.edit.select_all_objects",
             "menu.file.import",
             "menu.layout.insert_page",

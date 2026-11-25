@@ -6183,20 +6183,16 @@ impl App {
     }
 
     /// Edit > Paste in View: what Edit > Paste pastes (the copy here or
-    /// what another program copied), centred on the pointer in the drawing
-    /// window, or on the visible area when no drawing pointer is available.
+    /// what another program copied), centred on the visible area.
     pub fn paste_in_view(&mut self) {
-        let at = self.pointer_page.unwrap_or_else(|| self.view_center());
+        let at = self.view_center();
         self.paste_any_at(Some(at));
     }
 
-    /// The destination of a pointer paste, using the pointer of the shortcut's
-    /// frame rather than the previous frame's canvas hover.
-    pub(crate) fn paste_pointer_target(&self, pointer: Option<egui::Pos2>) -> Point {
-        pointer
-            .filter(|p| self.canvas_rect.contains(*p))
-            .map(|p| self.view.to_page(p))
-            .unwrap_or_else(|| self.view_center())
+    /// Paste at Pointer in the page's right-click menu: what Edit > Paste
+    /// pastes, centred where the menu was opened (`at`, page space).
+    pub fn paste_at_pointer(&mut self, at: Point) {
+        self.paste_any_at(Some(at));
     }
 
     pub fn select_all_of(&mut self, pred: impl Fn(&Shape) -> bool) {

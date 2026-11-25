@@ -1355,6 +1355,14 @@ fn page_menu(app: &mut App, ui: &mut Ui, close: &mut bool) {
                 app.paste_any();
             }
         }
+        "menu.edit.paste_at_pointer" => {
+            // The same, centred where the menu was opened.
+            if let Some((_, at)) = app.context_menu {
+                if ci(ui, close, "menu.edit.paste_at_pointer", "", true) {
+                    app.paste_at_pointer(at);
+                }
+            }
+        }
         "menu.edit.select_all_objects" => {
             if ci(ui, close, "menu.edit.select_all_objects", "Ctrl+A", true) {
                 app.select_all();

@@ -192,28 +192,6 @@ fn paste_event_modifiers(events: &[egui::Event], fallback: Modifiers) -> Modifie
     pasted
 }
 
-/// Capture the pointer at the shortcut, before later motion in the same frame.
-fn paste_event_pointer(events: &[egui::Event], previous: Option<egui::Pos2>) -> Option<egui::Pos2> {
-    let mut pointer = previous;
-    let mut pasted = None;
-    for event in events {
-        match event {
-            egui::Event::PointerMoved(now) | egui::Event::PointerButton { pos: now, .. } => {
-                pointer = Some(*now);
-            }
-            egui::Event::PointerGone => pointer = None,
-            egui::Event::Paste(_) => {
-                pasted.get_or_insert(pointer);
-            }
-            egui::Event::Key { key, modifiers, .. } if is_paste_key(*key, *modifiers) => {
-                pasted.get_or_insert(pointer);
-            }
-            _ => {}
-        }
-    }
-    pasted.unwrap_or(pointer)
-}
-
 /// The paste shortcuts: Ctrl+V (Cmd+V), Shift+Insert and the Paste key.
 fn is_paste_key(key: egui::Key, mods: Modifiers) -> bool {
     key == Key::Paste || (mods.command && key == Key::V) || (mods.shift && key == Key::Insert)
@@ -5765,8 +5743,10 @@ impl App {
             || pasted_without_text.is_some()
         {
             if pointer_paste {
-                let pointer = paste_event_pointer(&input.events, self.pointer_screen);
-                let at = self.paste_pointer_target(pointer);
+                // Ctrl+Shift+V is Paste in View: the middle of the visible
+                // area, taken at the press so a picture still being read
+                // lands there (Paste at Pointer is in the page's menu).
+                let at = self.view_center();
                 self.paste_with_event_text_at(paste_text, Some(at));
             } else {
                 self.paste_with_event_text(paste_text);
@@ -6544,7 +6524,7 @@ mod paste_shortcut_tests {
     }
 
     #[test]
-    fn pointer_paste_uses_the_event_modifiers_and_pastes_only_once() {
+    fn paste_in_view_uses_the_event_modifiers_and_pastes_only_once() {
         let mods = Modifiers::COMMAND | Modifiers::SHIFT;
         for zoom in [0.75, 3.0, 10.0] {
             for kind in 0..4 {
@@ -6555,8 +6535,8 @@ mod paste_shortcut_tests {
                 app.view.zoom = zoom;
                 app.view.origin = egui::pos2(128.0, 540.0);
                 let pointer = egui::pos2(326.0, 210.0);
-                let target = app.view.to_page(pointer);
-                // The canvas hover of the previous frame must not decide.
+                let target = app.view_center();
+                // Neither the pointer nor the last canvas hover decides.
                 app.pointer_page = Some(Point::new(-100.0, -200.0));
                 let mut events = vec![
                     egui::Event::ModifiersChanged(mods),
@@ -6610,7 +6590,7 @@ mod paste_shortcut_tests {
     }
 
     #[test]
-    fn pointer_paste_without_a_canvas_pointer_uses_the_view_center() {
+    fn paste_in_view_without_a_canvas_pointer_uses_the_view_center() {
         let ctx = egui::Context::default();
         let mut app = App::headless();
         app.canvas_rect =
@@ -6633,13 +6613,13 @@ mod paste_shortcut_tests {
     }
 
     #[test]
-    fn a_browser_picture_ready_before_the_shortcut_frame_keeps_its_pointer() {
+    fn a_browser_picture_ready_before_the_shortcut_frame_keeps_its_place() {
         let ctx = egui::Context::default();
         let mut app = App::headless();
         app.canvas_rect =
             egui::Rect::from_min_max(egui::pos2(50.0, 50.0), egui::pos2(850.0, 650.0));
         let pointer = egui::pos2(530.0, 240.0);
-        let target = app.view.to_page(pointer);
+        let target = app.view_center();
         crate::clipboard::expect_handed();
         crate::clipboard::hand_over(picture());
         frame(
@@ -6680,7 +6660,7 @@ mod paste_shortcut_tests {
                 app.view.origin = egui::pos2(128.0, 540.0);
                 let pointer = egui::pos2(326.0, 210.0);
                 let target = if pointer_paste {
-                    app.view.to_page(pointer)
+                    app.view_center()
                 } else {
                     app.page_rect().center()
                 };

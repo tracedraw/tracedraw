@@ -79,11 +79,10 @@ alone goes there.
   6. other text: artistic text in the middle of the page, one step to
      undo with its fill and outline (`clipboard::tests::pasted_text_is_one_step`).
 
-Ctrl+Shift+V (Edit > Paste at Pointer) centres the pasted objects or
-picture at the pointer's position on the canvas. Without a pointer over
-the canvas it uses the middle of the visible area. Zoom and pan are
-accounted for, and the target is kept when the shortcut is triggered,
-even if the pointer moves while a picture is being read.
+Ctrl+Shift+V (Edit > Paste in View) pastes in the middle of the view,
+taken when the shortcut is pressed, even if the view moves while a
+picture is being read. Paste at Pointer in the page's right-click menu
+pastes the same, centred where the menu was opened.
 Paste on the page's context menu centres what it pastes where the menu
 was opened.
 
