@@ -130,7 +130,10 @@ fn range_output_missing_blends_keep_renderer_effects_and_their_scope() {
             merge: MergeMode::Normal,
             target: 2,
         }],
-        vec![Effect::GaussianBlur { radius: 1.0 }],
+        vec![Effect::GaussianBlur {
+            radius: 1.0,
+            pins: Vec::new(),
+        }],
         vec![Effect::Lens(Lens::Invert)],
         vec![Effect::Glow {
             inner: false,

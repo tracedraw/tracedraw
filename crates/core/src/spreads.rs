@@ -1069,7 +1069,10 @@ mod tests {
                 blur: 2.0,
                 merge: MergeMode::Normal,
             },
-            Effect::GaussianBlur { radius: 1.0 },
+            Effect::GaussianBlur {
+                radius: 1.0,
+                pins: Vec::new(),
+            },
         ];
         doc.master[1].shapes = vec![start.clone()];
         doc.master[3].shapes = vec![end];
