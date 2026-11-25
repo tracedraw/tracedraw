@@ -1410,7 +1410,14 @@ fn docker_page(app: &mut App, ui: &mut Ui, tab: DockerTab) {
     egui::ScrollArea::vertical()
         .id_salt(("docker_scroll", tab.key()))
         .show(ui, |ui| match tab {
-            DockerTab::Properties => properties(app, ui),
+            DockerTab::Properties => {
+                // The editors it shares with other panels look at the
+                // layout while it draws (the classic one: right-aligned
+                // labels, the colour picker laid open).
+                classic::set_active(ui.ctx(), app.settings.properties_classic);
+                properties(app, ui);
+                classic::set_active(ui.ctx(), false);
+            }
             DockerTab::Hints | DockerTab::Objects => {}
             DockerTab::Transformations => crate::ui::transform_docker::transformations(app, ui),
             DockerTab::Undo => undo_docker(app, ui),
@@ -2414,9 +2421,26 @@ fn summary_section(app: &mut App, ui: &mut Ui, shapes: &[tracedraw_core::Shape])
     let Some(info) = summary_info(app) else {
         return;
     };
+    // The classic layout lines the labels up on the right of a column.
+    let column = classic::active(ui.ctx()).then(|| {
+        let keys = [
+            "docker.summary_selection",
+            "docker.summary_layer",
+            "docker.summary_type",
+            "docker.summary_size",
+            "docker.summary_center",
+            "docker.summary_rotation_center",
+        ];
+        classic::label_column(ui, &keys.map(tr))
+    });
     let value = |ui: &mut Ui, key: &str, text: String| {
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(tr(key)).color(Tokens::text_dim()));
+            match column {
+                Some(w) => classic::right_label(ui, &tr(key), w),
+                None => {
+                    ui.label(egui::RichText::new(tr(key)).color(Tokens::text_dim()));
+                }
+            }
             ui.label(text);
         });
     };
@@ -2840,6 +2864,12 @@ fn group_heading(ui: &mut Ui, key: &str) {
     }
 }
 
+/// Whether the Properties docker is drawing in its classic layout (for
+/// the sections drawn by other modules).
+pub(crate) fn classic_active(ctx: &egui::Context) -> bool {
+    classic::active(ctx)
+}
+
 /// The width of the label column in the Properties sections: every row
 /// of a section starts its controls at the same place.
 const PROP_LABEL_W: f32 = 62.0;
@@ -2849,6 +2879,13 @@ const PROP_LABEL_W: f32 = 62.0;
 /// [`PROP_LABEL_W`] wide so the controls after it line up from row to
 /// row. A longer label takes the room it needs.
 fn prop_label(ui: &mut Ui, key: &str) {
+    if classic::active(ui.ctx()) {
+        // The classic layout: plain text, right-aligned before its
+        // control, with a colon.
+        let w = classic::label_column(ui, &[tr(key)]).max(PROP_LABEL_W + 16.0);
+        classic::right_label(ui, &tr(key), w);
+        return;
+    }
     let text = tr(key);
     let text = text.trim_end_matches([':', '\u{ff1a}']).to_owned();
     let before = ui.cursor().min.x;
@@ -3328,6 +3365,10 @@ fn fill_editor_mixed(
     }
     match fill {
         Fill::None => {}
+        Fill::Solid(c) if classic::active(ui.ctx()) && (mix.kind || !mix.has(FillField::All)) => {
+            // The classic layout lays the picker open in the section.
+            changed |= classic::inline_color(ui, c);
+        }
         Fill::Solid(c) => {
             let mixed = !mix.kind && mix.has(FillField::All);
             if color_row_mixed(ui, &tr("docker.colour"), c, mixed) {
@@ -7244,6 +7285,10 @@ pub(crate) mod tests {
         let ctx = crate::theme::ui_context();
         let mut app = App::headless();
         app.settings.autocorrect.enabled = false;
+        // A uniform fill, so the Fill tab shows its colour.
+        app.set_default_properties(tracedraw_core::DefaultKind::Graphic, |p| {
+            p.fill = Fill::Solid(Color::BLACK)
+        });
         let id = app
             .new_shape(ShapeKind::Rect {
                 rect: tracedraw_core::geometry::Rect::new(10.0, 10.0, 60.0, 40.0),
@@ -7308,6 +7353,15 @@ pub(crate) mod tests {
         let texts = painted_texts(&ctx, &mut app);
         assert!(has(&texts, "docker.fill"), "{texts:?}");
         assert!(!has(&texts, "outline_pen.calligraphy"), "{texts:?}");
+        // A uniform fill: the picker laid open, its model on a row.
+        assert!(has(&texts, "docker.model"), "{texts:?}");
+        // The summary: its labels on the right of a column.
+        let summary_tab: egui::Rect = ctx
+            .data(|d| d.get_temp(section_button_id("summary")))
+            .expect("the summary tab is drawn");
+        click(&mut app, summary_tab);
+        let texts = painted_texts(&ctx, &mut app);
+        assert!(has(&texts, "docker.summary_layer"), "{texts:?}");
         // A jump to the outline (from the status bar) picks its tab.
         app.properties_open = Some(1);
         draw(&ctx, &mut app);

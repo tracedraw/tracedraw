@@ -13,9 +13,74 @@ use super::*;
 /// The width of the right-aligned label column of the classic outline.
 const LABEL_W: f32 = 78.0;
 
+/// Where the Properties docker keeps, while it draws, whether it is in
+/// the classic layout: the editors it shares with other panels (the
+/// fill's colour, the row labels) look at it.
+fn active_id() -> egui::Id {
+    egui::Id::new("properties_classic_active")
+}
+
+/// Whether the Properties docker is drawing in the classic layout.
+pub(super) fn active(ctx: &egui::Context) -> bool {
+    ctx.data(|d| d.get_temp::<bool>(active_id()).unwrap_or(false))
+}
+
+/// Set for the Properties docker's drawing, cleared after it.
+pub(super) fn set_active(ctx: &egui::Context, on: bool) {
+    ctx.data_mut(|d| d.insert_temp(active_id(), on));
+}
+
+/// The colour picker laid open in the section, as the classic layout
+/// shows a uniform fill: the colour area and hue strip, the model with
+/// the eyedropper, the model's sliders, the hex code and the colour's
+/// description. True when the colour changed.
+pub(super) fn inline_color(ui: &mut Ui, c: &mut Color) -> bool {
+    use crate::ui::color_picker as cp;
+    let id = ui.id().with("classic_inline_color");
+    let mut changed = false;
+    // The hue kept apart, so a grey keeps the hue it was given; a colour
+    // changed elsewhere (another object picked) starts from its own.
+    let kept = ui.data(|d| d.get_temp::<(f32, Color)>(id.with("hue")));
+    let mut hue = match kept {
+        Some((h, was)) if was == *c => h,
+        _ => cp::viewer_point(*c).0,
+    };
+    let model = cp::edit_model(*c);
+    if let Some((h, s, b)) = crate::ui::color_docker::viewer(ui, hue, *c) {
+        hue = h;
+        *c = cp::from_viewer(h, s, b, model);
+        changed = true;
+    }
+    ui.add_space(4.0);
+    ui.horizontal(|ui| {
+        right_label(ui, &tr("docker.model"), LABEL_W);
+        changed |= cp::model_list(ui, id.with("model"), c);
+        changed |= cp::eyedropper(ui, id, c);
+    });
+    let model = cp::edit_model(*c);
+    let mut m = c.convert_to(model);
+    if !cp::shows_hex(ui.ctx(), id.with("model"), *c)
+        && crate::ui::color_docker::sliders(ui, &mut m)
+    {
+        *c = m;
+        changed = true;
+    }
+    if cp::hex_field(ui, id, c) {
+        hue = cp::viewer_point(*c).0;
+        changed = true;
+    }
+    ui.label(
+        egui::RichText::new(crate::app::color_description(*c))
+            .color(Tokens::text_dim())
+            .size(11.0),
+    );
+    ui.data_mut(|d| d.insert_temp(id.with("hue"), (hue, *c)));
+    changed
+}
+
 /// A label right-aligned in a column `w` wide, so its control starts
 /// at the same place on every row.
-fn right_label(ui: &mut Ui, text: &str, w: f32) {
+pub(super) fn right_label(ui: &mut Ui, text: &str, w: f32) {
     let text = label_text(text);
     ui.allocate_ui_with_layout(
         egui::vec2(w, 22.0),
@@ -33,7 +98,7 @@ fn label_text(text: &str) -> String {
 
 /// The width of the label column for `labels`: at least [`LABEL_W`],
 /// and wide enough for the longest one, so none runs off the left.
-fn label_column(ui: &Ui, labels: &[String]) -> f32 {
+pub(super) fn label_column(ui: &Ui, labels: &[String]) -> f32 {
     let font = egui::TextStyle::Body.resolve(ui.style());
     labels
         .iter()
