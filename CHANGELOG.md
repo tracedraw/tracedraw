@@ -11,6 +11,7 @@ full, row-by-row status.
 - The Macro Manager deletes the chosen macro or a whole module, after asking first (#4409).
 - Fit page box on the property bar: the margin box has focus when the box opens and Enter fits the page; a number box with focus steps its value with the Up and Down arrows (#4407).
 - Save As with a long folder name keeps the dialog on screen: long names are cut and show in full in their tip (#4404).
+- Ctrl+Shift+V (Paste in View) works on Windows when the clipboard holds no text, and can be captured in Options > Customization > Commands: the key's own press can be dropped there, so the command also fires from its release (#4380; PR #4382 by SnakyWarrior).
 - The eyedropper reads a CMYK gradient as a CMYK colour (#4403).
 - Rotate lines: holding the constrain key snaps a line's angle to the constrain angle (#4373).
 - Image editor: Apply in the Effects panel runs the effect once and leaves no preview over the result (#4376); a layer moved past the canvas edge and back comes back whole (#4374).
