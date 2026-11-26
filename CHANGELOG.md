@@ -4,6 +4,9 @@ Versions follow the tags of this repository; every push to `main` also
 publishes a nightly build. [`docs/features.md`](docs/features.md) has the
 full, row-by-row status.
 
+## Unreleased
+
+- Opening a .cdr or .cmx no longer freezes the window: it is read on a worker thread with a progress window and Cancel, large pictures are sampled to the free memory and decoded on several cores (PR #3247 by ratmanz0000).
 ## 0.53.0 (2026-11-26)
 
 - VBA macros read and write text files and folders: Open, Print #, Write #, Input #, Line Input #, Close, Kill, MkDir, RmDir, ChDir, FileCopy and Name, with FreeFile, EOF, LOF, Input, FileLen, FileDateTime, GetAttr, CurDir, Environ and Dir going through a folder, and the FileSystemObject (text streams, files, folders, copy, move, delete), WScript.Shell's special folders and WScript.Network; these stopped with error 445, so macros that read a list of names or numbers to make labels and ID cards could not run. Macros also keep going past what TraceDraw cannot do (a member it does not have, another program's object, a Windows function): that step is skipped, the macro runs to the end, and a list of the skipped steps opens at their line in the Macro Editor; the Macro Manager's Keep going box turns this off. Macros can also centre a range on the page, place it by a corner, read its bounding box, find and replace text on a page, add and remove guidelines (the master page's too), export at a size in pixels, and ask for a file with the system's file box (#4315).
