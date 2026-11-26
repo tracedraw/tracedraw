@@ -79,6 +79,7 @@ pub fn frame(app: &mut App, ctx: &Context) {
     confirm(app, ctx);
     run_dialog(app, ctx);
     error_dialog(app, ctx);
+    skipped_dialog(app, ctx);
     running_notice(app, ctx);
     editor(app, ctx);
 }
@@ -326,6 +327,86 @@ fn error_dialog(app: &mut App, ctx: &Context) {
         }
         Some(_) => app.macros.error = None,
         None => {}
+    }
+}
+
+/// The most steps the skipped list shows.
+const SKIPPED_SHOWN: usize = 12;
+
+/// After a run that kept going: what was skipped, each step opening the
+/// Macro Editor at its line (#4315).
+fn skipped_dialog(app: &mut App, ctx: &Context) {
+    if app.macros.error.is_some() || app.macros.run.is_some() {
+        return;
+    }
+    let Some((name, steps, project)) = app.macros.skipped.clone() else {
+        return;
+    };
+    let mut close = false;
+    let mut open: Option<(String, u32)> = None;
+    crate::ui::chrome::window(tr("macros.skipped_title")).show(ctx, |ui| {
+        ui.set_max_width(520.0);
+        ui.horizontal_top(|ui| {
+            let (r, _) = ui.allocate_exact_size(Vec2::splat(32.0), Sense::hover());
+            paint_icon(ui, r, 48);
+            ui.add_space(8.0);
+            ui.vertical(|ui| {
+                ui.add(egui::Label::new(trf("macros.skipped_heading", &[("name", &name)])).wrap());
+                ui.add_space(4.0);
+                let can_open = project < app.macros.projects.len();
+                for (e, times) in steps.iter().take(SKIPPED_SHOWN) {
+                    let mut text = e.description.clone();
+                    if *times > 1 {
+                        text.push_str(&format!(
+                            " ({})",
+                            trf("macros.skipped_times", &[("n", &times.to_string())])
+                        ));
+                    }
+                    let place = trf(
+                        "macros.error_where",
+                        &[
+                            ("m", &e.module),
+                            ("p", if e.procedure.is_empty() { "-" } else { &e.procedure }),
+                            ("l", &e.line.to_string()),
+                        ],
+                    );
+                    let r = ui.add(
+                        egui::Label::new(format!("• {text}\n   {place}"))
+                            .wrap()
+                            .sense(if can_open && !e.module.is_empty() {
+                                Sense::click()
+                            } else {
+                                Sense::hover()
+                            }),
+                    );
+                    if r.clicked() {
+                        open = Some((e.module.clone(), e.line));
+                    }
+                }
+                if steps.len() > SKIPPED_SHOWN {
+                    ui.label(
+                        RichText::new(trf(
+                            "macros.skipped_more",
+                            &[("n", &(steps.len() - SKIPPED_SHOWN).to_string())],
+                        ))
+                        .color(Tokens::text_dim()),
+                    );
+                }
+            });
+        });
+        if buttons(ui, &[tr("dialog.close")], 0).is_some() {
+            close = true;
+        }
+    });
+    let esc = ctx.input(|i| i.key_pressed(egui::Key::Escape));
+    if esc || crate::ui::chrome::take_close_request(ctx) {
+        close = true;
+    }
+    if let Some((module, line)) = open {
+        app.macros.skipped = None;
+        app.edit_macro(project, &module, Some(line));
+    } else if close {
+        app.macros.skipped = None;
     }
 }
 
@@ -1495,6 +1576,14 @@ pub fn manager(app: &mut App, ui: &mut Ui) {
             Some(false) => app.macros.renaming = None,
             None => {}
         }
+    }
+    // Keep going past what TraceDraw cannot do (#4315).
+    if ui
+        .checkbox(&mut app.settings.macros_keep_going, tr("macros.keep_going"))
+        .rich_tip(tr("macros.keep_going_hint"))
+        .changed()
+    {
+        app.save_settings();
     }
     ui.separator();
     if app.macros.projects.is_empty() {

@@ -65,6 +65,17 @@ pub enum Request {
     },
     /// Open a web or mail address with the system (ShellExecute, #2165).
     Open(String),
+    /// The system's file dialog (`ScriptTools.GetFileBox`, #4315): `mode`
+    /// 0 opens a file, 1 saves one, 2 picks a folder; `filter` is
+    /// "Name (*.csv)|*.csv|...". The answer is [`Input::Text`] with the
+    /// path, empty for Cancel.
+    FileBox {
+        filter: String,
+        title: String,
+        mode: u8,
+        file: String,
+        folder: String,
+    },
 }
 
 /// A control's (or the form's) event, from the app to the macro.
@@ -136,6 +147,9 @@ pub struct Finished {
     pub changes: Changes,
     pub error: Option<RunError>,
     pub stopped: bool,
+    /// What the run skipped because TraceDraw cannot do it (keep going,
+    /// `tracedraw_vba::Options::keep_going`), each with how many times.
+    pub skipped: Vec<(RunError, u32)>,
 }
 
 /// A macro running on its thread.
@@ -162,6 +176,7 @@ impl MacroRun {
                 changes: Changes::default(),
                 error: Some(RunError::parse("the macro's thread failed")),
                 stopped: false,
+                skipped: Vec::new(),
             },
         }
     }
@@ -340,6 +355,33 @@ fn native_inputbox(_this: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsRe
     }
 }
 
+/// `__filebox(filter, title, mode, file, folder)`: the system's file
+/// dialog (#4315); the path chosen, "" for Cancel.
+fn native_filebox(_this: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<JsValue> {
+    let filter = arg_str(args, 0, ctx)?;
+    let title = arg_str(args, 1, ctx)?;
+    let mode = arg_str(args, 2, ctx)?.trim().parse::<u8>().unwrap_or(0);
+    let file = arg_str(args, 3, ctx)?;
+    let folder = arg_str(args, 4, ctx)?;
+    flush(ctx);
+    if let Some(st) = ctx.get_data::<RunState>() {
+        let _ = st.requests.send(Request::FileBox {
+            filter,
+            title,
+            mode,
+            file,
+            folder,
+        });
+    }
+    loop {
+        match wait_input(ctx) {
+            None => return Ok(stop_value()),
+            Some(Input::Text(t)) => return Ok(text(t.unwrap_or_default())),
+            Some(_) => continue,
+        }
+    }
+}
+
 /// `__ask(prompt, title, default)`: the app's input box for a JavaScript
 /// script or plugin (#4139); the text, or null for Cancel. A stopped run
 /// ends with an error.
@@ -487,6 +529,7 @@ fn script_thread(
             line: 0,
         }),
         stopped,
+        skipped: Vec::new(),
     }
 }
 
@@ -1023,8 +1066,10 @@ fn run_thread(
             &str,
             usize,
             boa_engine::native_function::NativeFunctionPointer,
-        ); 17] = [
+        ); 19] = [
             ("__open", 1, native_open),
+            ("__filebox", 5, native_filebox),
+            ("__fs", 4, super::vba_files::native_fs),
             ("__download", 2, native_download),
             ("__setting", 5, native_setting),
             ("__dir", 1, native_dir),
@@ -1072,6 +1117,7 @@ fn run_thread(
         }
     }
     let changes = take_changes(&mut ctx, true);
+    let skipped = skipped_steps(&mut ctx);
     Finished {
         changes,
         error: result
@@ -1079,7 +1125,37 @@ fn run_thread(
             .filter(|_| !stopped)
             .map(|e| RunError::parse(&e)),
         stopped,
+        skipped,
     }
+}
+
+/// The steps a run kept going past (`__v.skipped`).
+fn skipped_steps(ctx: &mut Context) -> Vec<(RunError, u32)> {
+    let Ok(v) = ctx.eval(Source::from_bytes(
+        "JSON.stringify(typeof __v === 'object' && __v && __v.skipped ? __v.skipped : [])",
+    )) else {
+        return Vec::new();
+    };
+    let Ok(text) = v.to_string(ctx).map(|s| s.to_std_string_escaped()) else {
+        return Vec::new();
+    };
+    let list: Vec<serde_json::Value> = serde_json::from_str(&text).unwrap_or_default();
+    list.iter()
+        .map(|s| {
+            let st = |k: &str| s.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let num = |k: &str| s.get(k).and_then(|v| v.as_f64()).unwrap_or(0.0);
+            (
+                RunError {
+                    number: num("n") as i32,
+                    description: st("d"),
+                    module: st("m"),
+                    procedure: st("p"),
+                    line: num("l") as u32,
+                },
+                num("c").max(1.0) as u32,
+            )
+        })
+        .collect()
 }
 
 #[cfg(test)]

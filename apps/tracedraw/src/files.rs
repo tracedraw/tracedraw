@@ -1956,6 +1956,36 @@ impl Dialog {
         }
     }
 
+    /// A file to open (`mode` 0), where to save (1) or a folder (2), and
+    /// `then` with it, or with `None` when the user cancels: on a later
+    /// frame on the desktop; elsewhere at once with `None` (a macro's file
+    /// box, #4315; macros run on the desktop only).
+    pub fn choose(
+        self,
+        app: &mut App,
+        mode: u8,
+        then: impl FnOnce(&mut App, Option<PathBuf>) + 'static,
+    ) {
+        #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+        {
+            let _ = app;
+            let job = move |app: &mut App, paths: Vec<PathBuf>| then(app, paths.into_iter().next());
+            match mode {
+                1 => schedule_native_dialog(self.native_save(), job),
+                2 => {
+                    let start = self.directory.clone();
+                    schedule_native_dialog(native_folder_pick(FolderToken(()), start.as_deref()), job)
+                }
+                _ => schedule_native_dialog(self.native_pick(false), job),
+            }
+        }
+        #[cfg(any(target_arch = "wasm32", target_os = "android"))]
+        {
+            let _ = mode;
+            then(app, None);
+        }
+    }
+
     /// Pick one or more files and run `then` with their paths: at once
     /// natively, on a later frame in a browser and on Android.
     /// Choose a folder where only files can be picked otherwise, and run
@@ -2293,7 +2323,7 @@ fn download(_name: &str, _bytes: &[u8]) -> std::io::Result<()> {
 }
 
 #[cfg(all(test, not(any(target_arch = "wasm32", target_os = "android"))))]
-mod test_pick {
+pub(crate) mod test_pick {
     use super::*;
     thread_local! {
         static ANSWERS: RefCell<std::collections::VecDeque<Vec<PathBuf>>> = const { RefCell::new(std::collections::VecDeque::new()) };

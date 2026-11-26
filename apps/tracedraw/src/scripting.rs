@@ -17,6 +17,7 @@
 //! ([`run_untrusted`]): without file access, with limits, all or nothing.
 
 mod extra;
+pub mod vba_files;
 pub mod vba_run;
 mod vg;
 pub mod vg_catalog;

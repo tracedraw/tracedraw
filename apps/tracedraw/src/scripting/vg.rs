@@ -1120,9 +1120,13 @@ impl HostInner {
             "vg_guides" => {
                 use tracedraw_core::document::GuideLine;
                 let page = PageId(id_arg(a, "page")?);
-                let p = self.doc.page(page).map_err(|e| e.to_string())?;
-                let list: Vec<Value> = p
-                    .guides
+                // Page 0: the master page's guidelines, on every page (#4315).
+                let guides = if page.0 == 0 {
+                    &self.doc.master_guides
+                } else {
+                    &self.doc.page(page).map_err(|e| e.to_string())?.guides
+                };
+                let list: Vec<Value> = guides
                     .iter()
                     .map(|g| match g.line {
                         GuideLine::Horizontal { y } => json!({"x": 0.0, "y": y, "angle": 0.0}),
@@ -1146,7 +1150,20 @@ impl HostInner {
                 } else {
                     GuideLine::Angled { x, y, angle }
                 };
-                if method == "vg_add_guide" {
+                if page.0 == 0 {
+                    let mut guides = self.doc.master_guides.clone();
+                    let index = if method == "vg_add_guide" {
+                        guides.push(line.into());
+                        guides.len() - 1
+                    } else {
+                        let index = id_arg(a, "index")? as usize;
+                        let g = guides.get_mut(index).ok_or("no such guideline")?;
+                        g.line = line;
+                        index
+                    };
+                    self.run(Command::SetMasterGuides { guides })?;
+                    json!({"index": index})
+                } else if method == "vg_add_guide" {
                     self.run(Command::AddGuide {
                         page,
                         guide: line.into(),
@@ -1165,6 +1182,24 @@ impl HostInner {
                     self.run(Command::MoveGuide { page, index, guide })?;
                     json!({})
                 }
+            }
+            "vg_delete_guide" => {
+                let page = PageId(id_arg(a, "page")?);
+                let index = id_arg(a, "index")? as usize;
+                if page.0 == 0 {
+                    let mut guides = self.doc.master_guides.clone();
+                    if index < guides.len() {
+                        guides.remove(index);
+                        self.run(Command::SetMasterGuides { guides })?;
+                    }
+                } else if self
+                    .doc
+                    .page(page)
+                    .is_ok_and(|p| index < p.guides.len())
+                {
+                    self.run(Command::DeleteGuide { page, index })?;
+                }
+                json!({})
             }
             "vg_unlock_all" => {
                 let page = id_arg(a, "page")?;

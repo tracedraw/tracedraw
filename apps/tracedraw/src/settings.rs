@@ -319,6 +319,10 @@ pub const SPLASH_MAX_SECONDS: f32 = 10.0;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
+    /// Macros keep going past what TraceDraw cannot do (the step is
+    /// skipped and listed when the macro ends) instead of stopping with an
+    /// error (#4315).
+    pub macros_keep_going: bool,
     /// Edit > Select Similar > Close Look: how far apart colours, outline
     /// widths and opacity may be, 0 to 100 %.
     pub similar_tolerance: u32,
@@ -2678,6 +2682,7 @@ impl PageLook {
 impl Default for Settings {
     fn default() -> Self {
         Settings {
+            macros_keep_going: true,
             similar_tolerance: 10,
             language: String::new(),
             recent_files: Vec::new(),
