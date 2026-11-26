@@ -224,6 +224,7 @@ pub fn draw_canvas(app: &App, painter: &Painter, rect: ERect) {
     draw_drop_colour(app, painter);
     draw_symmetry_lines(app, painter, rect);
     draw_grid_handles(app, painter);
+    draw_grid_axis_controls(app, painter);
     draw_anchors(app, painter);
     draw_fountain_handles(app, painter);
     draw_pattern_handles(app, painter);
@@ -2112,6 +2113,56 @@ fn draw_grid_handles(app: &App, painter: &Painter) {
     }
 }
 
+/// The document grid's axis controls (#4395): a round handle at the
+/// origin, a red arrow along the first axis and a green one along the
+/// second, each ending in a square handle; the one held filled.
+fn draw_grid_axis_controls(app: &App, painter: &Painter) {
+    use crate::grid_axis::AxisPart;
+    let handles = app.grid_axis_handles();
+    let Some(&(_, origin, _)) = handles.first() else {
+        return;
+    };
+    let view = &app.view;
+    let o = view.to_screen(origin);
+    let held = |part: AxisPart| matches!(&app.drag, Drag::GridAxis { part: p, .. } if *p == part);
+    for &(part, at, _) in &handles[1..] {
+        let color = if part == AxisPart::First {
+            Color32::from_rgb(0xE0, 0x3C, 0x3C)
+        } else {
+            Color32::from_rgb(0x2E, 0xA0, 0x44)
+        };
+        let q = view.to_screen(at);
+        let d = q - o;
+        let len = d.length();
+        if len < 1.0 {
+            continue;
+        }
+        let u = d / len;
+        let n = egui::vec2(-u.y, u.x);
+        let halo = EStroke::new(3.5, Color32::from_white_alpha(200));
+        painter.line_segment([o, q - u * 9.0], halo);
+        painter.line_segment([o, q - u * 9.0], EStroke::new(1.6, color));
+        let tip = q - u * 5.0;
+        painter.add(egui::Shape::convex_polygon(
+            vec![tip + u * 1.0, tip - u * 8.0 + n * 4.5, tip - u * 8.0 - n * 4.5],
+            color,
+            EStroke::new(1.0, Color32::WHITE),
+        ));
+        let r = ERect::from_center_size(q, egui::vec2(8.0, 8.0));
+        let fill = if held(part) { color } else { Color32::WHITE };
+        painter.rect_filled(r, 0.0, fill);
+        painter.rect_stroke(r, 0.0, EStroke::new(1.5, color), egui::StrokeKind::Outside);
+    }
+    let fill = if held(AxisPart::Origin) {
+        Tokens::SELECTION
+    } else {
+        Color32::WHITE
+    };
+    painter.circle_filled(o, 5.5, fill);
+    painter.circle_stroke(o, 5.5, EStroke::new(1.5, Tokens::SELECTION));
+    painter.circle_filled(o, 1.5, Tokens::SELECTION);
+}
+
 fn draw_offset_shadow_handle(app: &App, painter: &Painter) {
     let Some(h) = app.offset_shadow_handle() else {
         return;
@@ -3360,22 +3411,29 @@ pub fn grid_positions(a: f64, b: f64, origin: f64, step: f64) -> Vec<f64> {
 /// is faint rather than a shimmering pattern (#2313). Each line or dot
 /// lands on one whole device pixel, also when the interface is scaled
 /// by a fraction (a line one point wide there covers one or two device
-/// pixels by turns, which drew the grid as moire).
+/// pixels by turns, which drew the grid as moire). Subdivisions, gutters
+/// and angled axes (#4395) go through [`draw_grid_general`].
 fn draw_grid(app: &App, painter: &Painter, rect: ERect) {
     let view = &app.view;
-    let meta = &app.doc().metadata;
-    let grid = meta.grid;
-    let origin = app.grid_origin();
+    let grid = app.grid_settings();
+    let geom = app.grid_geom();
+    let origin = geom.origin;
     let zoom = view.zoom as f64;
     let ppp = painter.ctx().pixels_per_point();
     let dots = grid.display == tracedraw_core::document::GridDisplay::Dots;
+    let (major, minor) = grid_colors(&grid, dots);
+    if !geom.plain() {
+        draw_grid_general(app, painter, rect, &geom, dots, major, minor);
+        return;
+    }
     let min_px = if dots { GRID_MIN_DOTS } else { GRID_MIN_LINES };
+    let (spacing_x, spacing_y) = (geom.axes[0].spacing, geom.axes[1].spacing);
     let (fx, fy) = (
-        grid_thinning(grid.spacing_x * zoom, min_px),
-        grid_thinning(grid.spacing_y * zoom, min_px),
+        grid_thinning(spacing_x * zoom, min_px),
+        grid_thinning(spacing_y * zoom, min_px),
     );
-    let sx = grid.spacing_x.max(1e-6) * fx;
-    let sy = grid.spacing_y.max(1e-6) * fy;
+    let sx = spacing_x.max(1e-6) * fx;
+    let sy = spacing_y.max(1e-6) * fy;
     let tl = view.to_page(rect.left_top());
     let br = view.to_page(rect.right_bottom());
     let xs: Vec<f32> = grid_positions(tl.x, br.x, origin.x, sx)
@@ -3395,7 +3453,7 @@ fn draw_grid(app: &App, painter: &Painter, rect: ERect) {
             return;
         }
         let fade = grid_fade((sx * zoom).min(sy * zoom), min_px);
-        let c = GRID_DOT.gamma_multiply(fade);
+        let c = major.gamma_multiply(fade);
         for x in &xs {
             for y in &ys {
                 px.rect(
@@ -3405,8 +3463,8 @@ fn draw_grid(app: &App, painter: &Painter, rect: ERect) {
             }
         }
     } else {
-        let cx = GRID_LINE.gamma_multiply(grid_fade(sx * zoom, min_px));
-        let cy = GRID_LINE.gamma_multiply(grid_fade(sy * zoom, min_px));
+        let cx = major.gamma_multiply(grid_fade(sx * zoom, min_px));
+        let cy = major.gamma_multiply(grid_fade(sy * zoom, min_px));
         for x in &xs {
             px.rect(
                 ERect::from_min_max(Pos2::new(*x, rect.top()), Pos2::new(x + one, rect.bottom())),
@@ -3418,6 +3476,181 @@ fn draw_grid(app: &App, painter: &Painter, rect: ERect) {
                 ERect::from_min_max(Pos2::new(rect.left(), *y), Pos2::new(rect.right(), y + one)),
                 cy,
             );
+        }
+    }
+    px.paint(painter);
+}
+
+/// The grid lines' and subdivision lines' colours (#4395): the colours
+/// chosen in the Grid panel, the usual grey by default (darker for dots),
+/// each with its opacity; subdivisions take the lines' colour while the
+/// two are linked.
+pub fn grid_colors(
+    grid: &tracedraw_core::document::GridSettings,
+    dots: bool,
+) -> (Color32, Color32) {
+    let base = grid
+        .line_color
+        .map(to_color32)
+        .unwrap_or(if dots { GRID_DOT } else { GRID_LINE });
+    let sub = if grid.link_colors {
+        base
+    } else {
+        grid.sub_color.map(to_color32).unwrap_or(base)
+    };
+    let alpha = |v: f64| (if v.is_finite() { v } else { 1.0 }).clamp(0.0, 1.0) as f32;
+    (
+        base.gamma_multiply(alpha(grid.line_opacity)),
+        sub.gamma_multiply(alpha(grid.sub_opacity)),
+    )
+}
+
+/// Most lines of one family drawn, and most dots.
+const GRID_MAX_LINES: usize = 4000;
+const GRID_MAX_DOTS: usize = 200_000;
+/// Fewest screen points between two subdivision lines drawn.
+const GRID_MIN_SUB: f64 = 5.0;
+
+/// A grid with subdivisions, gutters or angled axes (#4395): each family
+/// of lines from one edge of the window to the other, thinned out and
+/// faded like the plain grid; subdivisions in their own colour once they
+/// are far enough apart; an angled grid's third direction when on. Lines
+/// along the window's axes land on whole device pixels.
+fn draw_grid_general(
+    app: &App,
+    painter: &Painter,
+    rect: ERect,
+    geom: &crate::grid_geom::GridGeom,
+    dots: bool,
+    major: Color32,
+    minor: Color32,
+) {
+    let view = &app.view;
+    let zoom = view.zoom as f64;
+    let ppp = painter.ctx().pixels_per_point();
+    let one = 1.0 / ppp;
+    let min_px = if dots { GRID_MIN_DOTS } else { GRID_MIN_LINES };
+    let sin = geom.skew_sine();
+    // The window's corners in grid coordinates: the ranges to cover.
+    let corners: Vec<(f64, f64)> = [
+        rect.left_top(),
+        rect.right_top(),
+        rect.left_bottom(),
+        rect.right_bottom(),
+    ]
+    .into_iter()
+    .map(|c| geom.to_uv(view.to_page(c)))
+    .collect();
+    let lo = |f: fn(&(f64, f64)) -> f64| corners.iter().map(f).fold(f64::INFINITY, f64::min);
+    let hi = |f: fn(&(f64, f64)) -> f64| corners.iter().map(f).fold(f64::NEG_INFINITY, f64::max);
+    let (u0, u1) = (lo(|c| c.0), hi(|c| c.0));
+    let (v0, v1) = (lo(|c| c.1), hi(|c| c.1));
+    // Each family: the line coordinates, thinned to the zoom.
+    let family = |k: usize| {
+        let axis = geom.axes[k];
+        let cell_px = axis.pitch() * sin * zoom;
+        let every = grid_thinning(cell_px, min_px);
+        let sub_px = axis.spacing / f64::from(axis.divisions.max(1)) * sin * zoom;
+        let show_sub = every <= 1.0 && axis.divisions > 1 && sub_px >= GRID_MIN_SUB;
+        let (a, b) = if k == 0 { (u0, u1) } else { (v0, v1) };
+        let lines = axis.lines_between(a, b, every, show_sub, GRID_MAX_LINES);
+        let fade = grid_fade(cell_px * every, min_px);
+        let sub_fade = grid_fade(sub_px, GRID_MIN_SUB * 2.0);
+        (lines, fade, sub_fade)
+    };
+    let fams = [family(0), family(1)];
+    let mut px = crate::ui::rulers::Pixels::default();
+    if dots {
+        // A dot at each crossing of two cell edges.
+        let us: Vec<f64> = fams[0].0.iter().filter(|l| !l.1).map(|l| l.0).collect();
+        let vs: Vec<f64> = fams[1].0.iter().filter(|l| !l.1).map(|l| l.0).collect();
+        if us.len() * vs.len() > GRID_MAX_DOTS {
+            return;
+        }
+        let c = major.gamma_multiply(fams[0].1.min(fams[1].1));
+        for u in &us {
+            for v in &vs {
+                let q = view.to_screen(geom.from_uv(*u, *v));
+                if rect.contains(q) {
+                    let q = Pos2::new(device_pixel(q.x, ppp), device_pixel(q.y, ppp));
+                    px.rect(ERect::from_min_size(q, egui::vec2(one, one)), c);
+                }
+            }
+        }
+        px.paint(painter);
+        return;
+    }
+    let mut seg = |a: Point, b: Point, c: Color32| {
+        let (sa, sb) = (view.to_screen(a), view.to_screen(b));
+        let Some((sa, sb)) = clip_segment(sa, sb, rect) else {
+            return;
+        };
+        if (sa.x - sb.x).abs() < 0.01 {
+            let x = device_pixel(sa.x, ppp);
+            px.rect(
+                ERect::from_min_max(
+                    Pos2::new(x, sa.y.min(sb.y)),
+                    Pos2::new(x + one, sa.y.max(sb.y)),
+                ),
+                c,
+            );
+        } else if (sa.y - sb.y).abs() < 0.01 {
+            let y = device_pixel(sa.y, ppp);
+            px.rect(
+                ERect::from_min_max(
+                    Pos2::new(sa.x.min(sb.x), y),
+                    Pos2::new(sa.x.max(sb.x), y + one),
+                ),
+                c,
+            );
+        } else {
+            painter.line_segment([sa, sb], EStroke::new(one.max(0.8), c));
+        }
+    };
+    // Subdivisions first, under the cell edges.
+    for pass_sub in [true, false] {
+        for (k, (lines, fade, sub_fade)) in fams.iter().enumerate() {
+            let c = if pass_sub {
+                minor.gamma_multiply(*sub_fade)
+            } else {
+                major.gamma_multiply(*fade)
+            };
+            for (t, sub) in lines {
+                if *sub != pass_sub {
+                    continue;
+                }
+                let (a, b) = if k == 0 {
+                    (geom.from_uv(*t, v0), geom.from_uv(*t, v1))
+                } else {
+                    (geom.from_uv(u0, *t), geom.from_uv(u1, *t))
+                };
+                seg(a, b, c);
+            }
+        }
+    }
+    if geom.third {
+        // Lines u/s0 - v/s1 = k through the cell corners.
+        let (s0, s1) = (geom.axes[0].spacing, geom.axes[1].spacing);
+        let ks: Vec<f64> = corners.iter().map(|(u, v)| u / s0 - v / s1).collect();
+        let k0 = ks.iter().copied().fold(f64::INFINITY, f64::min).floor();
+        let k1 = ks.iter().copied().fold(f64::NEG_INFINITY, f64::max).ceil();
+        let dir = geom.axes[0].dir * s0 + geom.axes[1].dir * s1;
+        let len = dir.hypot().max(1e-9);
+        // Distance between two such lines on screen.
+        let gap_px = (s0 * s1 * sin / len) * zoom;
+        let every = grid_thinning(gap_px, min_px);
+        if every.is_finite() && (k1 - k0) / every < GRID_MAX_LINES as f64 {
+            let c = major.gamma_multiply(grid_fade(gap_px * every, min_px));
+            let t0 = (v0 / s1).min(u0 / s0) - (k1 - k0).abs() - 1.0;
+            let t1 = (v1 / s1).max(u1 / s0) + (k1 - k0).abs() + 1.0;
+            let step = every.max(1.0);
+            let mut k = (k0 / step).floor() * step;
+            while k <= k1 {
+                let a = geom.from_uv((k + t0) * s0, t0 * s1);
+                let b = geom.from_uv((k + t1) * s0, t1 * s1);
+                seg(a, b, c);
+                k += step;
+            }
         }
     }
     px.paint(painter);

@@ -563,6 +563,10 @@ pub struct Settings {
     /// do not fit (#2902).
     #[serde(default)]
     pub docker_tabs_icons_only: bool,
+    /// Grid settings saved under a name in the Grid panel (#4395), for
+    /// any document.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub grid_presets: Vec<GridPreset>,
     /// Customization > Appearance > Theme: "light", "medium_light",
     /// "medium_dark" or "dark".
     #[serde(default)]
@@ -1160,6 +1164,14 @@ pub struct DockerSetup {
     pub floating: Vec<FloatingSetup>,
 }
 
+/// A grid saved under a name in the Grid panel (#4395).
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct GridPreset {
+    pub name: String,
+    pub grid: tracedraw_core::document::GridSettings,
+}
+
 /// A docker stacked under the front one of a column: the column ("right",
 /// "left", "inner", "left_inner"), the docker's name key and the upper
 /// docker's share of the height.
@@ -1169,6 +1181,10 @@ pub struct StackSetup {
     pub column: String,
     pub tab: String,
     pub split: f32,
+    /// The name keys of the lower group's tabs in order, `tab` among
+    /// them (#4372); empty when the lower part holds `tab` alone.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub group: Vec<String>,
 }
 
 /// A floating docker as it was left: its name key, the window's top left
@@ -2832,6 +2848,7 @@ impl Default for Settings {
             menu_opacity: default_menu_opacity(),
             colored_icons: false,
             docker_tabs_icons_only: false,
+            grid_presets: Vec::new(),
             theme: String::new(),
             bars: crate::ui::bars::BarLayout::default(),
             bar_items: Default::default(),

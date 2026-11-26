@@ -129,13 +129,6 @@ fn even_spread(boxes: &[(ShapeId, Rect)], room: Rect, horizontal: bool) -> Vec<C
     cmds
 }
 
-/// The nearest multiple of `step` from `origin` to `v`.
-fn nearest_line(v: f64, origin: f64, step: f64) -> f64 {
-    if !(step.is_finite() && step > 1e-9) {
-        return v;
-    }
-    origin + ((v - origin) / step).round() * step
-}
 
 /// How Object > Align and Distribute > Arrange in Grid lays the selected
 /// objects out.
@@ -233,11 +226,12 @@ impl App {
             AlignTo::ActiveObject | AlignTo::PageEdge | AlignTo::Grid => page,
             AlignTo::PageCenter => Rect::new(c.x, c.y, c.x, c.y),
         };
-        let grid = self.doc().metadata.grid;
-        let origin = self.grid_origin();
+        let geom = self.grid_geom();
         let on_grid = to == AlignTo::Grid && how != Align::CenterPage;
-        let gx = |v: f64| nearest_line(v, origin.x, grid.spacing_x);
-        let gy = |v: f64| nearest_line(v, origin.y, grid.spacing_y);
+        // Cell edges of the grid (#4395); an angled grid lines objects up
+        // on the crossings' rows and columns through its origin.
+        let gx = |v: f64| geom.nearest_edge(v, true);
+        let gy = |v: f64| geom.nearest_edge(v, false);
         let mut cmds = Vec::new();
         for s in &shapes {
             let b = self.align_box(s);

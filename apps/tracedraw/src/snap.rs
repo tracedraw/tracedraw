@@ -373,17 +373,10 @@ impl App {
             }
         }
         if best.is_none() && self.snap.grid {
-            // Grid lines pass through the grid origin (#2990).
-            let grid = self.doc().metadata.grid;
-            let o = self.grid_origin();
-            let (step, origin) = if horizontal {
-                (grid.spacing_x, o.x)
-            } else {
-                (grid.spacing_y, o.y)
-            };
-            let step = step.max(0.001);
-            let g = origin + ((v - origin) / step).round() * step;
-            if (g - v).abs() <= tol {
+            // Grid lines pass through the grid origin (#2990); their
+            // subdivisions and gutters count too (#4395). An angled grid
+            // is snapped to point by point instead.
+            if let Some(g) = self.grid_geom().snap_axis_value(v, horizontal, tol) {
                 return Some(g);
             }
         }
@@ -909,6 +902,10 @@ impl App {
             self.mark_axis_snap(p, axis);
             return axis;
         }
+        // An angled grid (#4395): its crossings first, then its lines.
+        if let Some(q) = self.angled_grid_snap(p) {
+            return q;
+        }
         if !self.snap.guides {
             return self.edge_snap(p, exclude, own);
         }
@@ -936,6 +933,28 @@ impl App {
             }
         }
         self.edge_snap(p, exclude, own)
+    }
+
+    /// `p` snapped to an angled document grid (#4395): onto the crossing
+    /// of its lines nearest it, or square onto its nearest line, within
+    /// the snap tolerance; marked as a grid snap. None for a grid of
+    /// horizontal and vertical lines, which the axes take.
+    pub(crate) fn angled_grid_snap(&self, p: Point) -> Option<Point> {
+        if !self.snap.grid {
+            return None;
+        }
+        let geom = self.grid_geom();
+        if geom.rectilinear() {
+            return None;
+        }
+        let tol = self.snap_tolerance();
+        let q = geom.snap_node(p, tol).or_else(|| geom.snap_line(p, tol))?;
+        self.snap_mark.set(Some(crate::snap_points::Target {
+            point: q,
+            mode: crate::snap_points::SnapMode::Grid,
+            edge: None,
+        }));
+        Some(q)
     }
 
     /// The crossing nearest `p`, within the snap tolerance, of an angled
@@ -998,14 +1017,8 @@ impl App {
             if !self.snap.grid {
                 return false;
             }
-            let grid = self.doc().metadata.grid;
-            let o = self.grid_origin();
-            let on = |v: f64, step: f64, origin: f64| {
-                let step = step.max(0.001);
-                let k = (v - origin) / step;
-                (k - k.round()).abs() * step < 1e-9
-            };
-            (moved_x && on(q.x, grid.spacing_x, o.x)) || (moved_y && on(q.y, grid.spacing_y, o.y))
+            let geom = self.grid_geom();
+            (moved_x && geom.on_line(q.x, true)) || (moved_y && geom.on_line(q.y, false))
         };
         let on_baseline = || {
             self.snap.baseline_grid
@@ -1634,6 +1647,32 @@ impl App {
             };
             if n.hypot() < axis {
                 return (d + n, true);
+            }
+        }
+        if best_dx.is_none() && best_dy.is_none() && self.snap.grid {
+            // An angled grid (#4395): a corner or the centre of the moved
+            // box onto the crossing nearest it.
+            let geom = self.grid_geom();
+            if !geom.rectilinear() {
+                let tol = self.snap_tolerance();
+                let mut best: Option<(f64, Vec2)> = None;
+                for c in [
+                    Point::new(moved.x0, moved.y0),
+                    Point::new(moved.x1, moved.y0),
+                    Point::new(moved.x0, moved.y1),
+                    Point::new(moved.x1, moved.y1),
+                    moved.center(),
+                ] {
+                    if let Some(q) = geom.snap_node(c, tol) {
+                        let off = q - c;
+                        if best.is_none_or(|b| off.hypot() < b.0) {
+                            best = Some((off.hypot(), off));
+                        }
+                    }
+                }
+                if let Some((_, off)) = best {
+                    return (d + off, true);
+                }
             }
         }
         (

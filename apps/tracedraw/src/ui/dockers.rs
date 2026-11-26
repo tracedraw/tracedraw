@@ -86,7 +86,13 @@ pub fn tab_strip(app: &mut App, ui: &mut Ui, place: DockerPlace) {
     crate::ui::overflow::column(ui, &salt, |ui| {
         ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
         let (tabs, front, shown) = app.docker_column(place);
-        let tabs = strip_order(tabs, app.docker_below(place));
+        let lower_group = app.docker_lower_group(place).to_vec();
+        let tabs = strip_order(tabs, &lower_group);
+        let lower_from = tabs.len() - lower_group.iter().filter(|t| tabs.contains(t)).count();
+        // Where the lower part of a split column starts this frame or the
+        // last: the lower group's tabs start there too (#4372).
+        let lower_top = ui.ctx().data(|d| d.get_temp::<(u64, f32)>(lower_top_id(place)));
+        let nr_now = ui.ctx().cumulative_frame_nr();
         let mut laid = Vec::with_capacity(tabs.len());
         let galleys: Vec<_> = tabs
             .iter()
@@ -99,7 +105,23 @@ pub fn tab_strip(app: &mut App, ui: &mut Ui, place: DockerPlace) {
             })
             .collect();
         let compact = icons_only(&tabs, app.settings.docker_tabs_icons_only);
-        for (tab, galley) in tabs.into_iter().zip(galleys) {
+        for (k, (tab, galley)) in tabs.into_iter().zip(galleys).enumerate() {
+            if k == lower_from && !lower_group.is_empty() {
+                // The lower group of a split column (#4372): a line across
+                // the strip, its tabs from the height of the lower docker
+                // when there is room above.
+                let gap = match lower_top {
+                    Some((f, y)) if f + 1 >= nr_now => (y - ui.cursor().top()).max(6.0),
+                    _ => 6.0,
+                };
+                let (g, _) =
+                    ui.allocate_exact_size(egui::vec2(full.width(), gap), egui::Sense::hover());
+                ui.painter().hline(
+                    g.x_range().shrink(4.0),
+                    g.bottom() - 3.0,
+                    egui::Stroke::new(1.0, crate::theme::Tokens::window_border()),
+                );
+            }
             let name = tr(tab.key());
             let below = app.docker_below(place) == Some(tab);
             let active = shown && (front == tab || below);
@@ -224,6 +246,7 @@ pub fn tab_strip(app: &mut App, ui: &mut Ui, place: DockerPlace) {
                     frame: nr,
                     strip,
                     tabs: laid,
+                    lower_from,
                 },
             )
         });
@@ -314,6 +337,28 @@ struct StripLayout {
     frame: u64,
     strip: egui::Rect,
     tabs: Vec<(DockerTab, egui::Rect)>,
+    /// The first of `tabs` in the lower group of a split column (#4372);
+    /// `tabs.len()` when the column shows one docker.
+    lower_from: usize,
+}
+
+/// Where the lower part of the split column at `place` starts (#4372),
+/// with the frame it was drawn in.
+fn lower_top_id(place: DockerPlace) -> egui::Id {
+    egui::Id::new(("docker_lower_top", place as u8))
+}
+
+/// Where a docker dragged over a column's tab strip goes.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum StripDrop {
+    /// Among the column's tabs (the upper group of a split column),
+    /// before this tab (last of them when none).
+    Upper(Option<DockerTab>),
+    /// Into the lower group of a split column, at this place among its
+    /// tabs (#4372).
+    Lower(usize),
+    /// At this place among the tabs of a column shown whole.
+    At(usize),
 }
 
 fn strip_id(place: DockerPlace) -> egui::Id {
@@ -327,7 +372,7 @@ fn strip_drop(
     ctx: &egui::Context,
     p: egui::Pos2,
     dragged: DockerTab,
-) -> Option<(DockerPlace, usize, egui::Rect)> {
+) -> Option<(DockerPlace, StripDrop, egui::Rect)> {
     let nr = ctx.cumulative_frame_nr();
     [
         DockerPlace::Right,
@@ -341,25 +386,38 @@ fn strip_drop(
         if l.frame + 1 < nr || !l.strip.contains(p) {
             return None;
         }
-        let others: Vec<egui::Rect> = l
+        let split = l.lower_from < l.tabs.len();
+        let others: Vec<(DockerTab, egui::Rect, bool)> = l
             .tabs
             .iter()
-            .filter(|(t, _)| *t != dragged)
-            .map(|(_, r)| *r)
+            .enumerate()
+            .filter(|(_, (t, _))| *t != dragged)
+            .map(|(k, (t, r))| (*t, *r, k >= l.lower_from))
             .collect();
-        let index = others.iter().filter(|r| r.center().y < p.y).count();
+        let index = others.iter().filter(|o| o.1.center().y < p.y).count();
         let y = match (
             index.checked_sub(1).and_then(|i| others.get(i)),
             others.get(index),
         ) {
-            (_, Some(next)) => next.top(),
-            (Some(last), None) => last.bottom(),
+            (_, Some(next)) => next.1.top(),
+            (Some(last), None) => last.1.bottom(),
             (None, None) => l.strip.top(),
         };
         // A tab slid out of view: the line stays at the strip's end.
         let y = y.clamp(l.strip.top() + 1.5, l.strip.bottom() - 1.5);
         let line = egui::Rect::from_x_y_ranges(l.strip.x_range(), (y - 1.5)..=(y + 1.5));
-        Some((place, index, line))
+        let upper_n = others.iter().filter(|o| !o.2).count();
+        // Past the line between the groups of a split column: the lower
+        // group (#4372).
+        let first_lower = others.iter().find(|o| o.2).map(|o| o.1.top());
+        let drop = if !split {
+            StripDrop::At(index)
+        } else if first_lower.is_some_and(|t| p.y >= t - 4.0) || index > upper_n {
+            StripDrop::Lower(index.saturating_sub(upper_n))
+        } else {
+            StripDrop::Upper(others.get(index).filter(|o| !o.2).map(|o| o.0))
+        };
+        Some((place, drop, line))
     })
 }
 
@@ -430,10 +488,10 @@ fn docker_context_menu(app: &mut App, ui: &mut Ui, tab: DockerTab) {
     }
 }
 
-/// Show Below in a docker's menus: ticked while `tab` is shown under the
-/// front docker of its column; ticking stacks it there, unticking puts it
-/// back among the tabs (#2312). Offered for a docker of a column that
-/// holds another docker.
+/// Show Below in a docker's menus: ticked while `tab` is in the lower
+/// group of its column (#4372), under the front docker; ticking stacks it
+/// there, unticking puts it back among the upper tabs (#2312). Offered
+/// for a docker of a column that holds another docker.
 fn stack_item(app: &mut App, ui: &mut Ui, tab: DockerTab) {
     let Some(place) = app
         .docker_place(tab)
@@ -441,12 +499,12 @@ fn stack_item(app: &mut App, ui: &mut Ui, tab: DockerTab) {
     else {
         return;
     };
-    let below = app.docker_below(place) == Some(tab);
+    let below = app.docker_in_lower(place, tab);
     let enabled = app.docker_column(place).0.len() > 1;
     crate::ui::menus::sep(ui);
     if crate::ui::menus::check_if(ui, "docker.stack_below", below, enabled) {
         if below {
-            app.unstack_docker(place);
+            app.unstack_tab(place, tab);
         } else {
             app.stack_docker(tab, place);
         }
@@ -623,7 +681,7 @@ fn stack_drop(
         }
         let top = b.rect.bottom() - b.rect.height() * STACK_ZONE;
         if p.y < top
-            || app.docker_below(place) == Some(dragged)
+            || app.docker_in_lower(place, dragged)
             || (front == dragged && tabs.len() < 2)
         {
             return None;
@@ -665,11 +723,15 @@ pub fn drag_overlay(app: &mut App, ctx: &egui::Context, menu_h: f32) {
     // Over a column's tabs: a line between the two tabs it would go
     // between, and the release puts it there, so the tabs of a column
     // can be put in any order (#1051).
-    if let Some((place, index, line)) = strip_drop(ctx, p, drag.tab) {
+    if let Some((place, drop, line)) = strip_drop(ctx, p, drag.tab) {
         painter.rect_filled(line, 0.0, edge.color);
         if !down {
             app.docker_drag = None;
-            app.insert_docker(drag.tab, place, index);
+            match drop {
+                StripDrop::At(index) => app.insert_docker(drag.tab, place, index),
+                StripDrop::Upper(before) => app.insert_docker_upper(drag.tab, place, before),
+                StripDrop::Lower(at) => app.stack_docker_at(drag.tab, place, at),
+            }
         }
         return;
     }
@@ -1063,6 +1125,7 @@ pub(crate) fn tab_icon(tab: DockerTab) -> Option<TabIcon> {
         DockerTab::Guidelines => {
             Some(|p, r| action_pic(p, r, crate::ui::icons::Action::ShowGuidelines))
         }
+        DockerTab::Grid => Some(|p, r| action_pic(p, r, crate::ui::icons::Action::ShowGrid)),
         DockerTab::Fonts => Some(|p, r| glyph_pic(p, r, Glyph::FontManager)),
         DockerTab::FontSampler => Some(|p, r| letters(p, r, "Aa", 11.0)),
         DockerTab::Corners => Some(|p, r| {
@@ -1217,6 +1280,10 @@ pub(crate) fn click_tab(app: &mut App, place: DockerPlace, tab: DockerTab) {
     let below = app.docker_below(place) == Some(tab);
     if shown && (front == tab || below) {
         app.set_docker_column(place, false, None);
+    } else if app.docker_in_lower(place, tab) {
+        // Another docker of the lower group comes into sight there, the
+        // upper docker staying (#4372).
+        app.show_lower_docker(place, tab);
     } else if below {
         app.set_docker_column(place, true, None);
     } else if !app.open_beside_locked(tab, place) {
@@ -1226,14 +1293,12 @@ pub(crate) fn click_tab(app: &mut App, place: DockerPlace, tab: DockerTab) {
     }
 }
 
-/// A column's tabs in the order its strip shows them: the docker shown
-/// in the lower part of a split column last, at the bottom of the strip
-/// as its docker is at the bottom of the column (#3524).
-pub(crate) fn strip_order(tabs: &[DockerTab], below: Option<DockerTab>) -> Vec<DockerTab> {
-    let mut v: Vec<DockerTab> = tabs.iter().copied().filter(|t| Some(*t) != below).collect();
-    if let Some(b) = below.filter(|b| tabs.contains(b)) {
-        v.push(b);
-    }
+/// A column's tabs in the order its strip shows them: the dockers of the
+/// lower group of a split column last, at the bottom of the strip as
+/// their docker is at the bottom of the column (#3524, #4372).
+pub(crate) fn strip_order(tabs: &[DockerTab], lower: &[DockerTab]) -> Vec<DockerTab> {
+    let mut v: Vec<DockerTab> = tabs.iter().copied().filter(|t| !lower.contains(t)).collect();
+    v.extend(lower.iter().copied().filter(|b| tabs.contains(b)));
     v
 }
 
@@ -1278,6 +1343,8 @@ pub fn dockers(app: &mut App, ui: &mut Ui, place: DockerPlace) {
         return;
     };
     let (upper, divider, lower) = stack_rects(full, app.docker_stacks[i].split);
+    ui.ctx()
+        .data_mut(|d| d.insert_temp(lower_top_id(place), (nr, lower.top())));
     let mut up = ui.new_child(egui::UiBuilder::new().max_rect(upper));
     up.set_clip_rect(upper.intersect(ui.clip_rect()));
     docker_part(app, &mut up, front, place);
@@ -5501,7 +5568,7 @@ pub(crate) mod tests {
         // click again opens it split as it was; another tab comes to the
         // front with the lower one still under it.
         let (tabs, _, _) = app.docker_column(DockerPlace::Right);
-        let order = strip_order(tabs, app.docker_below(DockerPlace::Right));
+        let order = strip_order(tabs, app.docker_lower_group(DockerPlace::Right));
         assert_eq!(order.last(), Some(&DockerTab::Properties));
         assert_eq!(order.len(), tabs.len());
         click_tab(&mut app, DockerPlace::Right, DockerTab::Properties);

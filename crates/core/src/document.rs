@@ -6936,6 +6936,164 @@ pub struct GridSettings {
     pub pixel_color: crate::Color,
     /// Opacity of the pixel grid, 0 to 1.
     pub pixel_opacity: f64,
+    /// How the document grid finds its spacing (#4395): fixed (Basic, as
+    /// before), from the zoom (Automatic) or per axis (Advanced).
+    #[serde(skip_serializing_if = "GridMode::is_basic")]
+    pub mode: GridMode,
+    /// Subdivisions of each cell along the first and second axis (1:
+    /// none). Basic mode uses `divisions_x` for both.
+    #[serde(skip_serializing_if = "is_one")]
+    pub divisions_x: u32,
+    #[serde(skip_serializing_if = "is_one")]
+    pub divisions_y: u32,
+    /// The grid's geometry in Advanced mode (#4395).
+    #[serde(skip_serializing_if = "GridKind::is_standard")]
+    pub kind: GridKind,
+    /// The two axes' angles in degrees from the horizontal, counter
+    /// clockwise, for the angled kinds (#4395).
+    #[serde(skip_serializing_if = "is_zero")]
+    pub angle_x: f64,
+    #[serde(skip_serializing_if = "is_ninety")]
+    pub angle_y: f64,
+    /// Empty room between two cells along each axis, in mm (#4395).
+    #[serde(skip_serializing_if = "is_zero")]
+    pub gutter_x: f64,
+    #[serde(skip_serializing_if = "is_zero")]
+    pub gutter_y: f64,
+    /// Both axes take the first axis's spacing, divisions and gutter.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub uniform: bool,
+    /// Changing one axis's spacing scales the other in proportion.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub fixed_ratio: bool,
+    /// Angled grids: lines along the third direction (the two axes
+    /// added), for the top, front and side faces (#4395).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub third_axis: bool,
+    /// Where the grid starts, in mm from the ruler origin (#4395).
+    #[serde(skip_serializing_if = "is_zero")]
+    pub offset_x: f64,
+    #[serde(skip_serializing_if = "is_zero")]
+    pub offset_y: f64,
+    /// The colour of the grid lines (dots); none: the usual grey.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub line_color: Option<crate::Color>,
+    /// Opacity of the grid lines, 0 to 1.
+    #[serde(skip_serializing_if = "is_one_f")]
+    pub line_opacity: f64,
+    /// The colour of the subdivision lines when not linked to the grid
+    /// lines' colour; none: the grid lines' colour.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sub_color: Option<crate::Color>,
+    /// Opacity of the subdivision lines, 0 to 1.
+    #[serde(skip_serializing_if = "is_half")]
+    pub sub_opacity: f64,
+    /// Subdivision lines take the grid lines' colour (their own opacity).
+    #[serde(skip_serializing_if = "is_true")]
+    pub link_colors: bool,
+}
+
+fn is_true(v: &bool) -> bool {
+    *v
+}
+
+fn is_one(v: &u32) -> bool {
+    *v == 1
+}
+
+fn is_one_f(v: &f64) -> bool {
+    *v == 1.0
+}
+
+fn is_half(v: &f64) -> bool {
+    *v == 0.5
+}
+
+fn is_ninety(v: &f64) -> bool {
+    *v == 90.0
+}
+
+/// How the document grid finds its spacing (#4395).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum GridMode {
+    /// Fixed spacing per axis, as typed (the grid as it was).
+    #[default]
+    Basic,
+    /// Spacing that follows the zoom: large cells zoomed out, finer ones
+    /// zoomed in, in round document units.
+    Automatic,
+    /// Each axis its own spacing, divisions, gutter and angle.
+    Advanced,
+}
+
+impl GridMode {
+    pub const ALL: [GridMode; 3] = [GridMode::Automatic, GridMode::Basic, GridMode::Advanced];
+
+    pub fn is_basic(&self) -> bool {
+        *self == GridMode::Basic
+    }
+}
+
+/// The geometry of a grid in Advanced mode (#4395).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum GridKind {
+    /// Horizontal and vertical lines; rectangular cells.
+    #[default]
+    Standard,
+    /// Axes at 30 and 150 degrees.
+    Isometric,
+    /// Axes at about 26.57 degrees each side (2:1, as pixel art draws).
+    Dimetric,
+    /// Axes at 15 and 135 degrees.
+    Trimetric,
+    /// A horizontal axis and one at 45 degrees.
+    Oblique,
+    /// Two axes at angles of one's own.
+    Custom,
+}
+
+impl GridKind {
+    pub const ALL: [GridKind; 6] = [
+        GridKind::Standard,
+        GridKind::Isometric,
+        GridKind::Dimetric,
+        GridKind::Trimetric,
+        GridKind::Oblique,
+        GridKind::Custom,
+    ];
+
+    pub fn is_standard(&self) -> bool {
+        *self == GridKind::Standard
+    }
+
+    /// The two axes' angles (degrees) of the kind; none for Custom, whose
+    /// angles are the grid's own.
+    pub fn angles(&self) -> Option<(f64, f64)> {
+        match self {
+            GridKind::Standard => Some((0.0, 90.0)),
+            GridKind::Isometric => Some((30.0, 150.0)),
+            GridKind::Dimetric => {
+                let a = 0.5f64.atan().to_degrees();
+                Some((a, 180.0 - a))
+            }
+            GridKind::Trimetric => Some((15.0, 135.0)),
+            GridKind::Oblique => Some((0.0, 45.0)),
+            GridKind::Custom => None,
+        }
+    }
+}
+
+impl GridSettings {
+    /// The first and second axis's angles (degrees) the grid draws with:
+    /// horizontal and vertical outside Advanced mode.
+    pub fn axis_angles(&self) -> (f64, f64) {
+        if self.mode != GridMode::Advanced {
+            return (0.0, 90.0);
+        }
+        self.kind.angles().unwrap_or((self.angle_x, self.angle_y))
+    }
 }
 
 impl Default for GridSettings {
@@ -6949,6 +7107,24 @@ impl Default for GridSettings {
             baseline_color: crate::Color::rgb8(0x8F, 0xC7, 0xF0),
             pixel_color: crate::Color::rgb8(0xD9, 0xD9, 0xD9),
             pixel_opacity: 1.0,
+            mode: GridMode::Basic,
+            divisions_x: 1,
+            divisions_y: 1,
+            kind: GridKind::Standard,
+            angle_x: 0.0,
+            angle_y: 90.0,
+            gutter_x: 0.0,
+            gutter_y: 0.0,
+            uniform: false,
+            fixed_ratio: false,
+            third_axis: false,
+            offset_x: 0.0,
+            offset_y: 0.0,
+            line_color: None,
+            line_opacity: 1.0,
+            sub_color: None,
+            sub_opacity: 0.5,
+            link_colors: true,
         }
     }
 }

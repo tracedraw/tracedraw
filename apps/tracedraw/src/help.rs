@@ -262,6 +262,7 @@ pub fn docker_topic(t: DockerTab) -> &'static str {
         DockerTab::Symbols => "objects/symbols",
         DockerTab::Pages => "pages-layout/pages#pages-docker",
         DockerTab::Guidelines => "pages-layout/guidelines-and-grid#guidelines-docker",
+        DockerTab::Grid => "pages-layout/guidelines-and-grid#grid-panel",
         DockerTab::Fonts => "text/fonts",
         DockerTab::FontSampler => "text/fonts#font-sampler",
         DockerTab::Corners => "lines-shapes/rectangles-and-ellipses#corners",

@@ -796,6 +796,17 @@ pub fn grid_page(app: &mut App, ui: &mut Ui) {
                 "options.snap_to_grid_tip",
             ));
     });
+    // Modes, presets, subdivisions, angled grids and colours (#4395).
+    if ui
+        .add(crate::ui::btn_icons::Ib::new("options.open_grid_panel"))
+        .rich_tip(crate::ui::tips::pair(
+            "options.open_grid_panel",
+            "options.open_grid_panel_tip",
+        ))
+        .clicked()
+    {
+        app.open_docker(crate::app::DockerTab::Grid);
+    }
     egui::Grid::new("grid_spacing")
         .num_columns(3)
         .spacing([8.0, 6.0])

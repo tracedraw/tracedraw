@@ -164,6 +164,7 @@ pub mod transform_docker;
 pub mod transform_each;
 pub mod transparency_docker;
 pub mod shape_gen_docker;
+pub mod grid_docker;
 pub mod math_shapes_docker;
 pub mod symbol_scatter_docker;
 pub mod frame_gen_docker;

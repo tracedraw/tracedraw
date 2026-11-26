@@ -672,6 +672,15 @@ pub enum Drag {
     /// The mirror lines of the symmetry being edited, dragged with the
     /// Pick tool: moved (the centre follows the pointer) or, from a
     /// turning handle, turned about the centre.
+    /// One of the document grid's axis controls dragged with the Pick
+    /// tool from `from` (page space), the grid as it was, an arrow
+    /// spanning `cells` cells (#4395).
+    GridAxis {
+        part: crate::grid_axis::AxisPart,
+        from: Point,
+        start: tracedraw_core::document::GridSettings,
+        cells: f64,
+    },
     /// A handle of the selected object's Grid effect dragged with the
     /// Pick tool, from `from` (page space), the grid as it was.
     GridHandle {
@@ -1288,6 +1297,15 @@ pub struct App {
     pub nudge_mm: f64,
     pub show_rulers: bool,
     pub show_grid: bool,
+    /// The grid's axis controls on the canvas: its origin and the ends of
+    /// its two axes drag with the Pick tool (Grid panel, #4395).
+    pub grid_axis_controls: bool,
+    /// The grid while its axis controls are dragged (#4395): drawn and
+    /// snapped to in place of the document's, which takes it at the
+    /// release in one step.
+    pub grid_live: Option<tracedraw_core::document::GridSettings>,
+    /// The Grid panel's name field for a new preset (#4395).
+    pub grid_preset_name: String,
     pub show_status_bar: bool,
     pub show_dockers: bool,
     /// Shift, Ctrl and Alt held from the keys on the drawing, for a
@@ -2752,6 +2770,7 @@ pub enum DockerTab {
     Symbols,
     Pages,
     Guidelines,
+    Grid,
     Fonts,
     FontSampler,
     Corners,
@@ -2798,7 +2817,7 @@ impl DockerTab {
         DockerTab::PixelHistogram,
     ];
 
-    pub const ALL: [DockerTab; 51] = [
+    pub const ALL: [DockerTab; 52] = [
         DockerTab::Properties,
         DockerTab::Objects,
         DockerTab::Hints,
@@ -2832,6 +2851,7 @@ impl DockerTab {
         DockerTab::Symbols,
         DockerTab::Pages,
         DockerTab::Guidelines,
+        DockerTab::Grid,
         DockerTab::Fonts,
         DockerTab::FontSampler,
         DockerTab::Corners,
@@ -2871,7 +2891,7 @@ impl DockerTab {
             DockerTab::AiGenerate,
         ],
         &[DockerTab::Transformations, DockerTab::Coordinates],
-        &[DockerTab::Guidelines],
+        &[DockerTab::Guidelines, DockerTab::Grid],
         &[
             DockerTab::AlignDistribute,
             DockerTab::StepAndRepeat,
@@ -2956,6 +2976,7 @@ impl DockerTab {
             DockerTab::Symbols => "docker.symbols",
             DockerTab::Pages => "docker.pages",
             DockerTab::Guidelines => "docker.guidelines",
+            DockerTab::Grid => "docker.grid",
             DockerTab::Fonts => "docker.fonts",
             DockerTab::FontSampler => "docker.font_sampler",
             DockerTab::Corners => "docker.corners_docker",
@@ -3145,14 +3166,38 @@ impl DockerPlace {
 
 /// A docker shown in the lower part of a column, under the docker in
 /// front, and the share of the column's height the upper docker takes
-/// (#2312). The lower docker is one of the column's tabs.
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// (#2312). The lower docker is one of the column's tabs. The lower part
+/// holds a group of its own (#4372): `group` lists the column's tabs
+/// that belong to it, in the order the strip shows them, and `below` is
+/// the one in sight there; the other tabs make the upper group.
+#[derive(Debug, Clone, PartialEq)]
 pub struct DockerStack {
     pub below: Option<DockerTab>,
     pub split: f32,
+    pub group: Vec<DockerTab>,
 }
 
 impl DockerStack {
+    /// Show `tab` in the lower part, joining the lower group (#4372).
+    pub fn show_in_lower(&mut self, tab: DockerTab) {
+        if !self.group.contains(&tab) {
+            self.group.push(tab);
+        }
+        self.below = Some(tab);
+    }
+
+    /// Take `tab` out of the lower group, the next one of the group in
+    /// sight when it was (#4372).
+    pub fn leave_lower(&mut self, tab: DockerTab) {
+        let at = self.group.iter().position(|t| *t == tab);
+        self.group.retain(|t| *t != tab);
+        if self.below == Some(tab) {
+            self.below = at
+                .and_then(|i| self.group.get(i.min(self.group.len().saturating_sub(1))))
+                .copied();
+        }
+    }
+
     /// The upper docker's share at first: 60 %.
     pub const DEFAULT_SPLIT: f32 = 0.6;
     /// The least share either docker keeps when the divider is dragged.
@@ -3173,6 +3218,7 @@ impl Default for DockerStack {
         DockerStack {
             below: None,
             split: Self::DEFAULT_SPLIT,
+            group: Vec::new(),
         }
     }
 }
@@ -3455,6 +3501,9 @@ impl App {
             nudge_mm: 2.54,
             show_rulers: true,
             show_grid: false,
+            grid_axis_controls: false,
+            grid_live: None,
+            grid_preset_name: String::new(),
             show_status_bar: true,
             show_dockers: true,
             touch_mods: Default::default(),
@@ -5008,6 +5057,11 @@ impl App {
                         column: column_key(*place).to_string(),
                         tab: st.below?.key().to_string(),
                         split: st.split,
+                        group: if st.group.len() > 1 {
+                            keys(&st.group)
+                        } else {
+                            Vec::new()
+                        },
                     })
                 })
                 .collect(),
@@ -5141,9 +5195,16 @@ impl App {
                 .find(|p| column_key(*p) == st.column);
             if let (Some(place), Some(tab)) = (place, by_key(&st.tab)) {
                 if let Some(i) = place.column_index() {
+                    let mut group: Vec<DockerTab> =
+                        st.group.iter().filter_map(|k| by_key(k)).collect();
+                    group.dedup();
+                    if !group.contains(&tab) {
+                        group.push(tab);
+                    }
                     self.docker_stacks[i] = DockerStack {
                         below: Some(tab),
                         split: DockerStack::clamp_split(st.split),
+                        group,
                     };
                 }
             }
@@ -5232,7 +5293,7 @@ impl App {
         let Some(i) = place.column_index() else {
             return false;
         };
-        self.docker_stacks[i].below = Some(tab);
+        self.docker_stacks[i].show_in_lower(tab);
         self.set_docker_column(place, true, None);
         true
     }
@@ -5243,6 +5304,71 @@ impl App {
         place
             .column_index()
             .and_then(|i| self.docker_stacks[i].below)
+    }
+
+    /// The tabs of the lower group of the column at `place`, in order
+    /// (#4372): empty while the column shows one docker.
+    pub fn docker_lower_group(&self, place: DockerPlace) -> &[DockerTab] {
+        place
+            .column_index()
+            .map_or(&[][..], |i| &self.docker_stacks[i].group[..])
+    }
+
+    /// `tab` belongs to the lower group of the column at `place` (#4372).
+    pub fn docker_in_lower(&self, place: DockerPlace, tab: DockerTab) -> bool {
+        self.docker_lower_group(place).contains(&tab)
+    }
+
+    /// Show `tab`, one of the lower group of the column at `place`, in
+    /// the lower part, the column open (#4372).
+    pub fn show_lower_docker(&mut self, place: DockerPlace, tab: DockerTab) {
+        if let Some(i) = place.column_index() {
+            if self.docker_stacks[i].group.contains(&tab) {
+                self.docker_stacks[i].below = Some(tab);
+            }
+        }
+        self.set_docker_column(place, true, None);
+    }
+
+    /// Put `tab` in the lower group of the column at `place` at `at`
+    /// among its tabs, shown there (#4372): a tab dropped between two
+    /// tabs of the lower group in the column's strip.
+    pub fn stack_docker_at(&mut self, tab: DockerTab, place: DockerPlace, at: usize) {
+        self.stack_docker(tab, place);
+        let Some(place) = self.docker_place(tab) else {
+            return;
+        };
+        if let Some(i) = place.column_index() {
+            let g = &mut self.docker_stacks[i].group;
+            if let Some(from) = g.iter().position(|t| *t == tab) {
+                g.remove(from);
+                g.insert(at.min(g.len()), tab);
+            }
+        }
+    }
+
+    /// Put `tab` in the upper group of the column at `place`, before the
+    /// upper tab `before` (at the end of the upper group when none)
+    /// (#4372): a tab dropped among the upper tabs of the strip.
+    pub fn insert_docker_upper(
+        &mut self,
+        tab: DockerTab,
+        place: DockerPlace,
+        before: Option<DockerTab>,
+    ) {
+        if let Some(i) = place.column_index() {
+            self.docker_stacks[i].leave_lower(tab);
+        }
+        let (tabs, _, _) = self.docker_column(place);
+        let lower = self.docker_lower_group(place).to_vec();
+        let rest: Vec<DockerTab> = tabs.iter().copied().filter(|t| *t != tab).collect();
+        let at = match before {
+            Some(b) => rest.iter().position(|t| *t == b),
+            None => rest.iter().rposition(|t| !lower.contains(t)).map(|i| i + 1),
+        }
+        .unwrap_or(rest.len());
+        self.insert_docker(tab, place, at);
+        self.settle_stacks();
     }
 
     /// Show `tab` in the lower part of the column at `place`, under the
@@ -5264,8 +5390,14 @@ impl App {
         let mut place = place;
         let mut front = front;
         if front == tab {
-            // The front docker goes below: the tab next to it comes up.
-            let next = tabs.iter().copied().find(|t| *t != tab);
+            // The front docker goes below: the tab next to it comes up,
+            // one of the upper group where there is one (#4372).
+            let lower = self.docker_lower_group(place);
+            let next = tabs
+                .iter()
+                .copied()
+                .find(|t| *t != tab && !lower.contains(t))
+                .or_else(|| tabs.iter().copied().find(|t| *t != tab));
             if let Some(n) = next {
                 front = n;
             }
@@ -5283,17 +5415,31 @@ impl App {
                 tabs.insert(at, tab);
             }
         }
+        if let Some(i) = place.column_index() {
+            self.docker_stacks[i].show_in_lower(tab);
+        }
         self.set_docker_column(place, true, Some(front));
         if let Some(i) = place.column_index() {
-            self.docker_stacks[i].below = Some(tab);
+            self.docker_stacks[i].show_in_lower(tab);
         }
     }
 
     /// Take the lower docker of the column at `place` out of the lower
-    /// part: it stays among the column's tabs (#2312).
+    /// part: it stays among the column's tabs (#2312), the next tab of
+    /// the lower group shown there instead (#4372).
     pub fn unstack_docker(&mut self, place: DockerPlace) {
         if let Some(i) = place.column_index() {
-            self.docker_stacks[i].below = None;
+            if let Some(b) = self.docker_stacks[i].below {
+                self.docker_stacks[i].leave_lower(b);
+            }
+        }
+    }
+
+    /// Take `tab` out of the lower group of the column at `place`
+    /// (#4372); it stays among the column's tabs.
+    pub fn unstack_tab(&mut self, place: DockerPlace, tab: DockerTab) {
+        if let Some(i) = place.column_index() {
+            self.docker_stacks[i].leave_lower(tab);
         }
     }
 
@@ -5304,13 +5450,27 @@ impl App {
             let Some(i) = place.column_index() else {
                 continue;
             };
-            let Some(below) = self.docker_stacks[i].below else {
-                continue;
-            };
             let (tabs, front, _) = self.docker_column(place);
-            if front == below || !tabs.contains(&below) {
-                self.docker_stacks[i].below = None;
+            let tabs = tabs.to_vec();
+            let st = &mut self.docker_stacks[i];
+            // The lower group keeps the column's tabs other than the one
+            // in front (#4372); a docker brought to the front leaves it.
+            if let Some(b) = st.below {
+                if !st.group.contains(&b) {
+                    st.group.push(b);
+                }
             }
+            st.group.retain(|t| *t != front && tabs.contains(t));
+            let mut seen = Vec::with_capacity(st.group.len());
+            st.group.retain(|t| {
+                let new = !seen.contains(t);
+                seen.push(*t);
+                new
+            });
+            if st.below.is_none_or(|b| !st.group.contains(&b)) {
+                st.below = st.group.first().copied();
+            }
+
         }
     }
 
@@ -5391,6 +5551,11 @@ impl App {
     /// `tab` is on screen: in front of an open column, or floating.
     pub fn docker_shown(&self, tab: DockerTab) -> bool {
         if let Some(place) = self.docker_place(tab) {
+            if self.docker_in_lower(place, tab) && self.docker_below(place) != Some(tab) {
+                return false;
+            }
+        }
+        if let Some(place) = self.docker_place(tab) {
             if self.docker_below(place) == Some(tab) {
                 return self.docker_column(place).2;
             }
@@ -5456,10 +5621,11 @@ impl App {
     /// Bring `tab` to the front where it lies; a docker open nowhere
     /// joins the default column.
     pub fn open_docker(&mut self, tab: DockerTab) {
-        // Shown under the front docker: its column opens, both stay.
+        // Shown under the front docker: its column opens, both stay; one
+        // of the lower group comes into sight there (#4372).
         if let Some(place) = self.docker_place(tab) {
-            if self.docker_below(place) == Some(tab) {
-                self.set_docker_column(place, true, None);
+            if self.docker_in_lower(place, tab) {
+                self.show_lower_docker(place, tab);
                 return;
             }
         }
@@ -6289,6 +6455,25 @@ impl App {
 
     pub fn page_rect(&self) -> Rect {
         Rect::from_origin_size((0.0, 0.0), self.page_size())
+    }
+
+    /// The document grid's settings in use: the ones being dragged on
+    /// the canvas, else the document's (#4395).
+    pub fn grid_settings(&self) -> tracedraw_core::document::GridSettings {
+        match self.grid_live {
+            Some(g) if matches!(self.drag, Drag::GridAxis { .. }) => g,
+            _ => self.doc().metadata.grid,
+        }
+    }
+
+    /// The document grid laid out at the current zoom (#4395).
+    pub fn grid_geom(&self) -> crate::grid_geom::GridGeom {
+        crate::grid_geom::GridGeom::of(
+            &self.grid_settings(),
+            self.grid_origin(),
+            f64::from(self.view.zoom),
+            self.units.world_mm(),
+        )
     }
 
     /// What the drawing drawn small behind the view covers while it
@@ -14251,6 +14436,72 @@ mod tests {
         assert_eq!(side.docker_tab, DockerTab::Undo);
         assert_eq!(side.docker_below(DockerPlace::Right), Some(DockerTab::Properties));
         assert_eq!(side.docker_below(DockerPlace::RightInner), None);
+    }
+
+    /// #4372: a column split in two holds a group of tabs in each part:
+    /// a click on a lower tab shows it below, the upper docker staying;
+    /// the groups come back with the workspace, and a tab moves from one
+    /// group to the other.
+    #[test]
+    fn a_split_column_keeps_a_group_of_tabs_in_each_part() {
+        let mut app = App::headless();
+        for t in [
+            DockerTab::Properties,
+            DockerTab::Objects,
+            DockerTab::Hints,
+            DockerTab::Undo,
+        ] {
+            app.open_docker(t);
+        }
+        app.set_docker_column(DockerPlace::Right, true, Some(DockerTab::Objects));
+        app.stack_docker(DockerTab::Hints, DockerPlace::Right);
+        app.stack_docker(DockerTab::Undo, DockerPlace::Right);
+        let place = DockerPlace::Right;
+        assert_eq!(app.docker_lower_group(place), [DockerTab::Hints, DockerTab::Undo]);
+        assert_eq!(app.docker_below(place), Some(DockerTab::Undo));
+        assert_eq!(app.docker_tab, DockerTab::Objects);
+        assert!(!app.docker_shown(DockerTab::Hints));
+        // The strip: the upper tabs, then the lower group.
+        let (tabs, _, _) = app.docker_column(place);
+        let order = crate::ui::dockers::strip_order(tabs, app.docker_lower_group(place));
+        assert_eq!(&order[order.len() - 2..], [DockerTab::Hints, DockerTab::Undo]);
+        // A lower tab clicked: shown below, the upper one stays.
+        crate::ui::dockers::click_tab(&mut app, place, DockerTab::Hints);
+        assert_eq!(app.docker_below(place), Some(DockerTab::Hints));
+        assert_eq!(app.docker_tab, DockerTab::Objects);
+        assert!(app.docker_shown(DockerTab::Hints) && app.docker_shown(DockerTab::Objects));
+        // An upper tab clicked: the lower part keeps its docker.
+        crate::ui::dockers::click_tab(&mut app, place, DockerTab::Properties);
+        assert_eq!(app.docker_tab, DockerTab::Properties);
+        assert_eq!(app.docker_below(place), Some(DockerTab::Hints));
+        // Opened by its shortcut, a lower docker shows below.
+        app.open_docker(DockerTab::Undo);
+        assert_eq!(app.docker_below(place), Some(DockerTab::Undo));
+        assert_eq!(app.docker_tab, DockerTab::Properties);
+        // Saved and read back.
+        let setup = app.docker_setup();
+        let mut next = App::headless();
+        next.set_docker_setup(&setup);
+        assert_eq!(next.docker_lower_group(place), [DockerTab::Hints, DockerTab::Undo]);
+        assert_eq!(next.docker_below(place), Some(DockerTab::Undo));
+        // Dropped among the upper tabs: it leaves the lower group.
+        app.insert_docker_upper(DockerTab::Undo, place, Some(DockerTab::Properties));
+        assert_eq!(app.docker_lower_group(place), [DockerTab::Hints]);
+        assert_eq!(app.docker_below(place), Some(DockerTab::Hints));
+        let (tabs, _, _) = app.docker_column(place);
+        let at = |t| tabs.iter().position(|x| *x == t);
+        assert!(at(DockerTab::Undo) < at(DockerTab::Properties));
+        // Dropped into the lower group at its start.
+        app.stack_docker_at(DockerTab::Objects, place, 0);
+        assert_eq!(app.docker_lower_group(place), [DockerTab::Objects, DockerTab::Hints]);
+        // Show Below unticked for one tab: only that one leaves.
+        app.unstack_tab(place, DockerTab::Hints);
+        assert_eq!(app.docker_lower_group(place), [DockerTab::Objects]);
+        assert_eq!(app.docker_below(place), Some(DockerTab::Objects));
+        // Its last tab closed: the column shows one docker again.
+        app.close_docker(DockerTab::Objects);
+        assert!(app.docker_lower_group(place).is_empty());
+        assert_eq!(app.docker_below(place), None);
     }
 
     /// #3953: a locked docker stays in front of its column; a docker

@@ -78,6 +78,8 @@ mod drop_files;
 mod draw_inside;
 mod outline_presets;
 mod rotate_lines;
+mod grid_axis;
+mod grid_geom;
 mod grid_handles;
 mod drag_copies;
 mod drop_menu;

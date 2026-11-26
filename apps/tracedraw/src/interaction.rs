@@ -2670,6 +2670,10 @@ impl App {
             if self.grid_press(p) {
                 return;
             }
+            // The document grid's axis controls (#4395).
+            if self.grid_axis_press(p) {
+                return;
+            }
             // Rotate mode: the centre of rotation moves.
             if self.pivot_at(screen) {
                 self.drag = Drag::Pivot;
@@ -3070,6 +3074,10 @@ impl App {
         }
         if matches!(self.drag, Drag::GridHandle { .. }) {
             self.grid_drag_to(p);
+            return;
+        }
+        if matches!(self.drag, Drag::GridAxis { .. }) {
+            self.grid_axis_drag_to(p, mods.shift);
             return;
         }
         if matches!(
@@ -4769,6 +4777,7 @@ impl App {
             | Drag::TextChars { .. }
             | Drag::TextSpacing { .. } => {}
             Drag::NewGuide { .. } => self.finish_guide_drag(),
+            Drag::GridAxis { .. } => self.finish_grid_axis(),
             d @ (Drag::MoveGuide { .. } | Drag::RotateGuide { .. } | Drag::GuidePivot) => {
                 // Released outside the window (no pointer): dropped off.
                 let at = self
