@@ -16,7 +16,9 @@ use crate::shape_gen::{
 };
 use crate::shape_gen_bg::WaveSide;
 use crate::shape_gen_cells::{Gradient, HtShape, PointMode};
-use crate::shape_gen_curves::{FractalType, SpiroType, TilingType};
+use crate::shape_gen_curves::{FractalType, GuilLayout, SpiroType, TilingType};
+use crate::shape_gen_knots::KnotType;
+use crate::shape_gen_rd::RdPreset;
 use crate::shape_gen_fill::{ContourMode, HatchMode, MazeStyle, SpaceCurve};
 use crate::shape_gen_growth::GrowthStart;
 use crate::shape_gen_slice::{SliceLayout, SlicePattern};
@@ -31,6 +33,9 @@ use tracedraw_core::geometry::PathEl;
 /// The preview's curves, flattened and fitted into a unit box.
 struct PreviewData {
     curves: Vec<(Vec<Pos2>, bool, Paint)>,
+    /// The generated curve each preview run came from (a curve with
+    /// holes gives several runs, filled together).
+    owner: Vec<usize>,
     count: usize,
     cut: bool,
     /// Width over height of the drawing.
@@ -170,6 +175,7 @@ fn build_preview(g: &Generated) -> PreviewData {
     let Some(b) = g.frame.or_else(|| g.bounds()) else {
         return PreviewData {
             curves: Vec::new(),
+            owner: Vec::new(),
             count: 0,
             cut: g.cut,
             aspect: 1.0,
@@ -182,12 +188,14 @@ fn build_preview(g: &Generated) -> PreviewData {
     let side = b.width().max(b.height()).max(1e-9);
     let tol = side / 500.0;
     let mut curves = Vec::new();
-    for it in g.items.iter().take(PREVIEW_MAX) {
+    let mut owner = Vec::new();
+    for (index, it) in g.items.iter().take(PREVIEW_MAX).enumerate() {
         let mut cur: Vec<Pos2> = Vec::new();
         let mut closed = false;
         let mut push = |cur: &mut Vec<Pos2>, closed: bool| {
             if cur.len() > 1 {
                 curves.push((std::mem::take(cur), closed, it.paint));
+                owner.push(index);
             }
             cur.clear();
         };
@@ -213,6 +221,7 @@ fn build_preview(g: &Generated) -> PreviewData {
     }
     PreviewData {
         curves,
+        owner,
         count: g.items.len(),
         cut: g.cut,
         aspect: (b.width() / b.height().max(1e-9)) as f32,
@@ -322,7 +331,37 @@ fn draw_preview(ui: &mut Ui, data: &PreviewData, sense: Sense) -> (egui::Respons
     let map = |p: Pos2| o + Vec2::new(p.x * side, p.y * side);
     let ink = Color32::from_gray(0x20);
     let line = Stroke::new(1.0, ink);
-    for (pts, closed, paint) in &data.curves {
+    let mut skip_to = 0usize;
+    for (ci, (pts, closed, paint)) in data.curves.iter().enumerate() {
+        if ci < skip_to {
+            continue;
+        }
+        // The runs of one filled curve with holes, filled even-odd.
+        let who = data.owner.get(ci).copied();
+        let mut last = ci;
+        while who.is_some()
+            && data.owner.get(last + 1).copied() == who
+            && data.curves[last + 1].1
+        {
+            last += 1;
+        }
+        if last > ci && *closed && matches!(paint, Paint::Solid | Paint::Tone(_)) {
+            let color = match paint {
+                Paint::Tone(t) => {
+                    let [r, g, b] =
+                        crate::shape_gen_bg::palette_color(&data.palette, *t as f64 / 255.0);
+                    Color32::from_rgb(r, g, b)
+                }
+                _ => ink,
+            };
+            let rings: Vec<Vec<Pos2>> = data.curves[ci..=last]
+                .iter()
+                .map(|(p, _, _)| p.iter().map(|q| map(*q)).collect())
+                .collect();
+            painter.add(egui::Shape::mesh(fill_rings(&rings, color)));
+            skip_to = last + 1;
+            continue;
+        }
         let pts: Vec<Pos2> = pts.iter().map(|p| map(*p)).collect();
         let fill = match paint {
             Paint::Line | Paint::Accent | Paint::Mesh => None,
@@ -349,7 +388,7 @@ fn draw_preview(ui: &mut Ui, data: &PreviewData, sense: Sense) -> (egui::Respons
                 };
                 painter.add(egui::Shape::convex_polygon(pts, f, edge));
             }
-            Some(f) if *closed && matches!(paint, Paint::Tone(_)) => {
+            Some(f) if *closed && matches!(paint, Paint::Tone(_) | Paint::Solid) => {
                 painter.add(egui::Shape::mesh(fill_spans(&pts, f)));
             }
             _ if *paint == Paint::Mesh => {
@@ -373,8 +412,14 @@ fn draw_preview(ui: &mut Ui, data: &PreviewData, sense: Sense) -> (egui::Respons
 
 /// A filled polygon of any shape, as thin rows of its spans (even-odd).
 fn fill_spans(pts: &[Pos2], color: Color32) -> egui::Mesh {
+    fill_rings(std::slice::from_ref(&pts.to_vec()), color)
+}
+
+/// Polygons filled together even-odd (holes stay open), as thin rows of
+/// their spans.
+fn fill_rings(rings: &[Vec<Pos2>], color: Color32) -> egui::Mesh {
     let mut mesh = egui::Mesh::default();
-    let (lo, hi) = pts.iter().fold((f32::MAX, f32::MIN), |(lo, hi), p| {
+    let (lo, hi) = rings.iter().flatten().fold((f32::MAX, f32::MIN), |(lo, hi), p| {
         (lo.min(p.y), hi.max(p.y))
     });
     let step = 1.0f32;
@@ -382,10 +427,12 @@ fn fill_spans(pts: &[Pos2], color: Color32) -> egui::Mesh {
     let mut xs: Vec<f32> = Vec::new();
     while y < hi {
         xs.clear();
-        for i in 0..pts.len() {
-            let (a, b) = (pts[i], pts[(i + 1) % pts.len()]);
-            if (a.y <= y) != (b.y <= y) {
-                xs.push(a.x + (y - a.y) / (b.y - a.y) * (b.x - a.x));
+        for pts in rings {
+            for i in 0..pts.len() {
+                let (a, b) = (pts[i], pts[(i + 1) % pts.len()]);
+                if (a.y <= y) != (b.y <= y) {
+                    xs.push(a.x + (y - a.y) / (b.y - a.y) * (b.x - a.x));
+                }
             }
         }
         xs.sort_by(f32::total_cmp);
@@ -786,14 +833,14 @@ fn combo<T: Copy + PartialEq>(
 }
 
 /// The palette: a colour button for each colour, Add and Remove.
-fn palette_row(ui: &mut Ui, s: &mut ShapeGenSettings) {
+fn palette_row(ui: &mut Ui, colors: &mut Vec<[u8; 3]>, least: usize) {
     row(ui, &tr("shapegen.bg_colors"), |ui| {
         ui.horizontal_wrapped(|ui| {
-            for c in s.bg_colors.iter_mut() {
+            for c in colors.iter_mut() {
                 ui.color_edit_button_srgb(c)
                     .rich_tip(crate::ui::tips::keyed("shapegen.bg_colors"));
             }
-            let n = s.bg_colors.len();
+            let n = colors.len();
             if ui
                 .add_enabled(
                     n < crate::shape_gen_bg::MAX_COLORS,
@@ -802,15 +849,15 @@ fn palette_row(ui: &mut Ui, s: &mut ShapeGenSettings) {
                 .rich_tip(crate::ui::tips::keyed("shapegen.bg_add_color"))
                 .clicked()
             {
-                let last = s.bg_colors.last().copied().unwrap_or([128, 128, 128]);
-                s.bg_colors.push(last);
+                let last = colors.last().copied().unwrap_or([128, 128, 128]);
+                colors.push(last);
             }
             if ui
-                .add_enabled(n > 1, egui::Button::new("\u{2212}").small())
+                .add_enabled(n > least, egui::Button::new("\u{2212}").small())
                 .rich_tip(crate::ui::tips::keyed("shapegen.bg_remove_color"))
                 .clicked()
             {
-                s.bg_colors.pop();
+                colors.pop();
             }
         });
     });
@@ -1679,9 +1726,80 @@ pub fn shape_generator(app: &mut App, ui: &mut Ui) {
                 }
             }
             GenKind::Guilloche => {
+                row(ui, &tr("shapegen.guil_layout"), |ui| {
+                    combo(
+                        ui,
+                        "shapegen_guil_layout",
+                        &mut s.guil_layout,
+                        &GuilLayout::ALL,
+                        GuilLayout::key,
+                        "shapegen.guil_layout",
+                    );
+                });
                 row(ui, &tr("shapegen.guil_lines"), |ui| {
                     count(ui, &mut s.guil_lines, 1..=500, "shapegen.guil_lines")
                 });
+                let rosette = s.guil_layout == GuilLayout::Rosette;
+                if s.guil_layout == GuilLayout::Frame {
+                    row(ui, &tr("shapegen.guil_band"), |ui| {
+                        length(
+                            ui,
+                            units,
+                            precision,
+                            &mut s.guil_band,
+                            0.5,
+                            2500.0,
+                            "shapegen.guil_band",
+                        )
+                    });
+                }
+                if !rosette {
+                    row(ui, &tr("shapegen.guil_period"), |ui| {
+                        length(
+                            ui,
+                            units,
+                            precision,
+                            &mut s.guil_period,
+                            0.1,
+                            5000.0,
+                            "shapegen.guil_period",
+                        )
+                    });
+                    row(ui, &tr("shapegen.amplitude"), |ui| {
+                        length(
+                            ui,
+                            units,
+                            precision,
+                            &mut s.guil_amp,
+                            0.0,
+                            500.0,
+                            "shapegen.amplitude",
+                        )
+                    });
+                    row(ui, &tr("shapegen.guil_period2"), |ui| {
+                        length(
+                            ui,
+                            units,
+                            precision,
+                            &mut s.guil_period2,
+                            0.1,
+                            5000.0,
+                            "shapegen.guil_period2",
+                        )
+                    });
+                    row(ui, &tr("shapegen.guil_amp2"), |ui| {
+                        length(
+                            ui,
+                            units,
+                            precision,
+                            &mut s.guil_amp2,
+                            0.0,
+                            500.0,
+                            "shapegen.guil_amp2",
+                        )
+                    });
+                }
+                if rosette {
                 row(ui, &tr("shapegen.min_radius"), |ui| {
                     length(
                         ui,
@@ -1732,6 +1850,7 @@ pub fn shape_generator(app: &mut App, ui: &mut Ui) {
                         "shapegen.guil_amp2",
                     )
                 });
+                }
                 row(ui, &tr("shapegen.guil_twist"), |ui| {
                     slider(
                         ui,
@@ -2190,7 +2309,7 @@ pub fn shape_generator(app: &mut App, ui: &mut Ui) {
                 seed_row(ui, s);
             }
             GenKind::LayerWaves => {
-                palette_row(ui, s);
+                palette_row(ui, &mut s.bg_colors, 1);
                 row(ui, &tr("shapegen.bg_layers"), |ui| {
                     count(ui, &mut s.bg_layers, 1..=40, "shapegen.bg_layers")
                 });
@@ -2230,7 +2349,7 @@ pub fn shape_generator(app: &mut App, ui: &mut Ui) {
                 seed_row(ui, s);
             }
             GenKind::Blobs => {
-                palette_row(ui, s);
+                palette_row(ui, &mut s.bg_colors, 1);
                 row(ui, &tr("shapegen.bg_blob_count"), |ui| {
                     count(ui, &mut s.bg_blob_count, 1..=200, "shapegen.bg_blob_count")
                 });
@@ -2260,7 +2379,7 @@ pub fn shape_generator(app: &mut App, ui: &mut Ui) {
                 seed_row(ui, s);
             }
             GenKind::SoftGradient => {
-                palette_row(ui, s);
+                palette_row(ui, &mut s.bg_colors, 1);
                 row(ui, &tr("shapegen.bg_mesh_size"), |ui| {
                     count(ui, &mut s.bg_mesh_size, 1..=8, "shapegen.bg_mesh_size")
                 });
@@ -2276,6 +2395,229 @@ pub fn shape_generator(app: &mut App, ui: &mut Ui) {
                 });
                 seed_row(ui, s);
             }
+            GenKind::CirclePacking => {
+                row(ui, &tr("shapegen.pack_min"), |ui| {
+                    length(
+                        ui,
+                        units,
+                        precision,
+                        &mut s.pack_min,
+                        0.05,
+                        1000.0,
+                        "shapegen.pack_min",
+                    )
+                });
+                row(ui, &tr("shapegen.pack_max"), |ui| {
+                    length(
+                        ui,
+                        units,
+                        precision,
+                        &mut s.pack_max,
+                        0.05,
+                        5000.0,
+                        "shapegen.pack_max",
+                    )
+                });
+                row(ui, &tr("shapegen.gap"), |ui| {
+                    length(ui, units, precision, &mut s.pack_gap, 0.0, 100.0, "shapegen.gap")
+                });
+                row(ui, &tr("shapegen.pack_count"), |ui| {
+                    count(ui, &mut s.pack_count, 1..=20_000, "shapegen.pack_count")
+                });
+                indented(ui, |ui| {
+                    ui.checkbox(&mut s.pack_filled, tr("shapegen.filled"))
+                        .rich_tip(crate::ui::tips::keyed("shapegen.filled"));
+                });
+                seed_row(ui, s);
+            }
+            GenKind::Phyllotaxis => {
+                row(ui, &tr("shapegen.phy_count"), |ui| {
+                    count(ui, &mut s.phy_count, 1..=20_000, "shapegen.phy_count")
+                });
+                row(ui, &tr("shapegen.phy_angle"), |ui| {
+                    slider(
+                        ui,
+                        &mut s.phy_angle,
+                        0.0..=360.0,
+                        3,
+                        "\u{b0}",
+                        "shapegen.phy_angle",
+                    )
+                });
+                row(ui, &tr("shapegen.cell_shape"), |ui| {
+                    combo(
+                        ui,
+                        "shapegen_phy_shape",
+                        &mut s.phy_shape,
+                        &CellShape::ALL,
+                        CellShape::key,
+                        "shapegen.cell_shape",
+                    );
+                });
+                row(ui, &tr("shapegen.cell_size"), |ui| {
+                    slider(
+                        ui,
+                        &mut s.phy_size,
+                        1.0..=300.0,
+                        0,
+                        " %",
+                        "shapegen.phy_size",
+                    )
+                });
+                row(ui, &tr("shapegen.scale_ratio"), |ui| {
+                    slider(
+                        ui,
+                        &mut s.phy_grow,
+                        10.0..=400.0,
+                        0,
+                        " %",
+                        "shapegen.phy_grow",
+                    )
+                });
+                indented(ui, |ui| {
+                    ui.checkbox(&mut s.phy_filled, tr("shapegen.filled"))
+                        .rich_tip(crate::ui::tips::keyed("shapegen.filled"));
+                });
+            }
+            GenKind::Quadtree => {
+                palette_row(ui, &mut s.qt_colors, 2);
+                row(ui, &tr("shapegen.qt_depth"), |ui| {
+                    count(ui, &mut s.qt_depth, 1..=8, "shapegen.qt_depth")
+                });
+                row(ui, &tr("shapegen.qt_split"), |ui| {
+                    slider(
+                        ui,
+                        &mut s.qt_split,
+                        0.0..=100.0,
+                        0,
+                        " %",
+                        "shapegen.qt_split",
+                    )
+                });
+                row(ui, &tr("shapegen.gap"), |ui| {
+                    length(ui, units, precision, &mut s.qt_gap, 0.0, 100.0, "shapegen.gap")
+                });
+                seed_row(ui, s);
+            }
+            GenKind::ReactionDiffusion => {
+                row(ui, &tr("shapegen.rd_preset"), |ui| {
+                    combo(
+                        ui,
+                        "shapegen_rd_preset",
+                        &mut s.rd_preset,
+                        &RdPreset::ALL,
+                        RdPreset::key,
+                        "shapegen.rd_preset",
+                    );
+                });
+                if s.rd_preset == RdPreset::Custom {
+                    row(ui, &tr("shapegen.rd_feed"), |ui| {
+                        slider(ui, &mut s.rd_feed, 0.0..=0.12, 4, "", "shapegen.rd_feed")
+                    });
+                    row(ui, &tr("shapegen.rd_kill"), |ui| {
+                        slider(ui, &mut s.rd_kill, 0.0..=0.08, 4, "", "shapegen.rd_kill")
+                    });
+                }
+                row(ui, &tr("shapegen.rd_cells"), |ui| {
+                    count(ui, &mut s.rd_cells, 32..=400, "shapegen.rd_cells")
+                });
+                row(ui, &tr("shapegen.rd_steps"), |ui| {
+                    count(ui, &mut s.rd_steps, 50..=20_000, "shapegen.rd_steps")
+                });
+                row(ui, &tr("shapegen.rd_level"), |ui| {
+                    slider(
+                        ui,
+                        &mut s.rd_level,
+                        1.0..=99.0,
+                        0,
+                        " %",
+                        "shapegen.rd_level",
+                    )
+                });
+                indented(ui, |ui| {
+                    ui.checkbox(&mut s.rd_filled, tr("shapegen.filled"))
+                        .rich_tip(crate::ui::tips::keyed("shapegen.filled"));
+                });
+                indented(ui, |ui| {
+                    ui.checkbox(&mut s.rd_invert, tr("shapegen.rd_invert"))
+                        .rich_tip(crate::ui::tips::keyed("shapegen.rd_invert"));
+                });
+                seed_row(ui, s);
+            }
+            GenKind::Interlace => {
+                row(ui, &tr("shapegen.knot_type"), |ui| {
+                    combo(
+                        ui,
+                        "shapegen_knot_type",
+                        &mut s.knot_type,
+                        &KnotType::ALL,
+                        KnotType::key,
+                        "shapegen.knot_type",
+                    );
+                });
+                row(ui, &tr("shapegen.tile"), |ui| {
+                    length(
+                        ui,
+                        units,
+                        precision,
+                        &mut s.knot_size,
+                        0.2,
+                        1000.0,
+                        "shapegen.tile",
+                    )
+                });
+                if s.knot_type.uses_angle() {
+                    row(ui, &tr("shapegen.tile_angle"), |ui| {
+                        slider(
+                            ui,
+                            &mut s.knot_angle,
+                            20.0..=85.0,
+                            1,
+                            "\u{b0}",
+                            "shapegen.tile_angle",
+                        )
+                    });
+                }
+                if s.knot_type == KnotType::Knotwork {
+                    row(ui, &tr("shapegen.knot_breaks"), |ui| {
+                        slider(
+                            ui,
+                            &mut s.knot_breaks,
+                            0.0..=100.0,
+                            0,
+                            " %",
+                            "shapegen.knot_breaks",
+                        )
+                    });
+                    indented(ui, |ui| {
+                        ui.checkbox(&mut s.knot_symmetric, tr("shapegen.knot_symmetric"))
+                            .rich_tip(crate::ui::tips::keyed("shapegen.knot_symmetric"));
+                    });
+                }
+                indented(ui, |ui| {
+                    ui.checkbox(&mut s.knot_ribbon, tr("shapegen.knot_ribbon"))
+                        .rich_tip(crate::ui::tips::keyed("shapegen.knot_ribbon"));
+                });
+                if s.knot_ribbon {
+                    row(ui, &tr("shapegen.knot_width"), |ui| {
+                        length(
+                            ui,
+                            units,
+                            precision,
+                            &mut s.knot_width,
+                            0.0,
+                            600.0,
+                            "shapegen.knot_width",
+                        )
+                    });
+                }
+                row(ui, &tr("shapegen.knot_gap"), |ui| {
+                    length(ui, units, precision, &mut s.knot_gap, 0.0, 100.0, "shapegen.knot_gap")
+                });
+                if s.knot_type == KnotType::Knotwork {
+                    seed_row(ui, s);
+                }
+            }
         }
         if !matches!(
             s.kind,
@@ -2286,9 +2628,13 @@ pub fn shape_generator(app: &mut App, ui: &mut Ui) {
                 | GenKind::LayerWaves
                 | GenKind::Blobs
                 | GenKind::SoftGradient
+                | GenKind::Quadtree
         ) && !(s.kind == GenKind::Tiling && s.tile_fill && s.tile_type == TilingType::Penrose)
             && !(s.kind == GenKind::Truchet && s.truchet_style == TruchetStyle::Filled)
             && !(s.kind == GenKind::DotGrid && s.filled)
+            && !(s.kind == GenKind::CirclePacking && s.pack_filled)
+            && !(s.kind == GenKind::Phyllotaxis && s.phy_filled)
+            && !(s.kind == GenKind::ReactionDiffusion && s.rd_filled)
         {
             row(ui, &tr("shapegen.line_width"), |ui| {
                 length(

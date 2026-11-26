@@ -59,7 +59,9 @@ pub fn tool_settings(panel: &ShapeGenSettings, w: f64, h: f64) -> ShapeGenSettin
             s.ring_amplitude *= k;
         }
     }
-    if s.kind == GenKind::Guilloche {
+    if s.kind == GenKind::Guilloche
+        && s.guil_layout == crate::shape_gen_curves::GuilLayout::Rosette
+    {
         // A rosette's radii are in mm too.
         let reach = s.guil_inner.max(s.guil_outer) + s.guil_amp.abs() + s.guil_amp2.abs();
         if reach > 1e-9 {
