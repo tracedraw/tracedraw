@@ -5391,6 +5391,19 @@ impl App {
         // Command+Q, the system's Quit), and such a Command key does
         // nothing here should it arrive.
         let web_keys = crate::shortcuts::web_keys();
+        // Ctrl is missing from C, X and V's own key event on Windows (their
+        // copy/cut/paste translation strips it, #4284): the frame's own
+        // modifiers, kept from the separate ModifiersChanged event their
+        // Ctrl key-down still sends, has it, so a combination that adds
+        // Shift or Alt to Ctrl+C/X/V (Ctrl+Shift+V for Paste in View) is
+        // not silently seen as missing Ctrl.
+        let real_mods = |key: Key, modifiers: Modifiers| {
+            if matches!(key, Key::C | Key::X | Key::V) {
+                input.modifiers
+            } else {
+                modifiers
+            }
+        };
         let presses: Vec<(Key, Modifiers)> = input
             .events
             .iter()
@@ -5402,15 +5415,16 @@ impl App {
                     modifiers,
                     ..
                 } => {
-                    if crate::shortcuts::mac_kept_press(*key, *modifiers) {
+                    let modifiers = real_mods(*key, *modifiers);
+                    if crate::shortcuts::mac_kept_press(*key, modifiers) {
                         return [None, None];
                     }
                     let kept = web_keys
-                        .then(|| crate::shortcuts::browser_key_for(*key, *physical_key, *modifiers))
+                        .then(|| crate::shortcuts::browser_key_for(*key, *physical_key, modifiers))
                         .flatten()
-                        .or_else(|| crate::shortcuts::mac_key_for(*key, *modifiers))
+                        .or_else(|| crate::shortcuts::mac_key_for(*key, modifiers))
                         .map(|(m, k)| (k, m));
-                    [Some((*key, *modifiers)), kept]
+                    [Some((*key, modifiers)), kept]
                 }
                 _ => [None, None],
             })
@@ -5426,7 +5440,7 @@ impl App {
                     repeat: false,
                     modifiers,
                     ..
-                } => Some((*key, *modifiers)),
+                } => Some((*key, real_mods(*key, *modifiers))),
                 _ => None,
             })
             .collect();
