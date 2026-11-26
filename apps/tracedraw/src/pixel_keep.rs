@@ -126,6 +126,10 @@ struct SavedLayer {
     img: String,
     #[serde(default)]
     mask: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    style: Option<crate::pixel_style::LayerStyle>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    text: Option<crate::pixel_text::PixelText>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -175,6 +179,8 @@ pub fn save(pi: &PixelImage, png: &[u8]) -> Option<String> {
                     Some(m) => Some(png_gray(m)?),
                     None => None,
                 },
+                style: l.style,
+                text: l.text.clone(),
             })
         })
         .collect::<Option<Vec<_>>>()?;
@@ -216,6 +222,8 @@ pub fn load(text: &str, png: &[u8]) -> Option<(Vec<PixelLayer>, usize)> {
                 mask,
                 clip: s.clip,
                 adjust: s.adjust,
+                style: s.style,
+                text: s.text,
             })
         })
         .collect::<Option<Vec<_>>>()?;

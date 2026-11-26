@@ -49,11 +49,13 @@ pub enum LayerIcon {
     Adjustment,
     FitSurface,
     Rename,
+    Style,
+    TextLayer,
 }
 
 #[cfg(test)]
 impl LayerIcon {
-    pub const ALL: [LayerIcon; 23] = [
+    pub const ALL: [LayerIcon; 25] = [
         LayerIcon::Shown,
         LayerIcon::Hidden,
         LayerIcon::Locked,
@@ -77,6 +79,8 @@ impl LayerIcon {
         LayerIcon::Adjustment,
         LayerIcon::FitSurface,
         LayerIcon::Rename,
+        LayerIcon::Style,
+        LayerIcon::TextLayer,
     ];
 }
 
@@ -218,6 +222,16 @@ pub fn draw_icon(p: &egui::Painter, r: Rect, icon: LayerIcon, ink: Color32) {
             pen.line("M3 20h9", ink);
             pen.body("M16 3.5l4.5 4.5L10 18.5 5 19.5l1-5z");
             pen.thin("M14 5.5l4.5 4.5", acc);
+        }
+        LayerIcon::Style => {
+            // A sheet with its shadow and a spark of light.
+            sheet(&pen, 11.0, false, Pen::alpha(ink, 0.45));
+            sheet(&pen, 7.0, true, ink);
+            pen.thin("M19 2v5M16.5 4.5h5", acc);
+        }
+        LayerIcon::TextLayer => {
+            pen.line("M5 5h14M12 5v14", ink);
+            pen.thin("M8 21h8", acc);
         }
     }
 }
@@ -403,6 +417,8 @@ pub enum RowCmd {
     Clip,
     Shown,
     Locked,
+    ClearStyle,
+    TextToPixels,
 }
 
 /// Run `c` on the layer in use.
@@ -443,6 +459,21 @@ fn run_cmd(pe: &mut PixelEdit, c: RowCmd) {
         RowCmd::DeleteMask => {
             pe.apply_all(true, |pi| pi.delete_layer_mask().then(|| full(pi)).flatten());
             pe.set_edit_layer_mask(false);
+        }
+        RowCmd::ClearStyle => {
+            pe.apply_all(true, |pi| {
+                let l = pi.layers.get_mut(i)?;
+                l.style.take()?;
+                full(pi)
+            });
+        }
+        RowCmd::TextToPixels => {
+            pe.end_text();
+            pe.apply_all(true, |pi| {
+                let l = pi.layers.get_mut(i)?;
+                l.text.take()?;
+                Some([0, 0, 0, 0])
+            });
         }
         RowCmd::Clip | RowCmd::Shown | RowCmd::Locked => {
             pe.apply_all(true, |pi| {
@@ -499,6 +530,15 @@ fn row_menu(ui: &mut Ui, pe: &PixelEdit, i: usize) -> Option<RowCmd> {
         entry(ui, "pixel.mask.delete", LayerIcon::DeleteMask, true, RowCmd::DeleteMask);
     } else {
         entry(ui, "pixel.mask.add", LayerIcon::AddMask, true, RowCmd::AddMask);
+    }
+    if l.style.is_some() || l.text.is_some() {
+        crate::ui::menus::sep(ui);
+    }
+    if l.style.is_some() {
+        entry(ui, "pixel.style.clear", LayerIcon::Style, true, RowCmd::ClearStyle);
+    }
+    if l.text.is_some() {
+        entry(ui, "pixel.text.to_pixels", LayerIcon::TextLayer, true, RowCmd::TextToPixels);
     }
     picked
 }
@@ -582,6 +622,8 @@ pub(crate) fn layers_section(ui: &mut Ui, pe: &mut PixelEdit) {
     ui.add_space(4.0);
     layer_buttons(ui, pe);
     mask_buttons(ui, pe);
+    ui.add_space(4.0);
+    crate::ui::pixel_styles::style_section(ui, pe);
 }
 
 fn use_layer(pe: &mut PixelEdit, i: usize) {
@@ -678,6 +720,16 @@ fn layer_row(
             ask = Some(a);
         }
         x += 22.0;
+    }
+    // A text layer and a styled one say so with a small picture.
+    if l.text.is_some() || l.shown_style().is_some() {
+        let icon = if l.text.is_some() { LayerIcon::TextLayer } else { LayerIcon::Style };
+        let r = Rect::from_min_size(egui::pos2(row.max.x - 20.0, row.min.y + 3.0), Vec2::splat(16.0));
+        draw_icon(ui.painter(), r, icon, Tokens::text_dim());
+        if l.text.is_some() && l.shown_style().is_some() {
+            let r2 = r.translate(Vec2::new(0.0, 18.0));
+            draw_icon(ui.painter(), r2, LayerIcon::Style, Tokens::text_dim());
+        }
     }
     // A clipped layer is set in, under a bent arrow.
     if l.clip {

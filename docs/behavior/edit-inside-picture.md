@@ -430,6 +430,84 @@ lights back in one step. Choosing another tool, any command that changes
 the picture, Redo, or Finish keeps the lit pixels; the lights keep their
 settings with nothing painted.
 
+## Layer styles
+
+The Layers panel has a **Layer style** part for the layer in use (not an
+adjustment layer): effects worked out from the layer's see-through edge
+each time the layers are put together, so they stay changeable until
+Merge Down, Flatten or Finish make them pixels (#4369).
+
+- **Drop shadow** and **Outer glow** go behind the layer; **Colour
+  overlay**, **Gradient overlay**, **Inner glow**, **Inner shadow**,
+  **Bevel and emboss** (inner, outer, emboss, pillow; raised or sunk) and
+  **Stroke** (outside, inside, centred) go on it. Each has its colour,
+  merge mode, opacity and sizes; the shadows and the bevel the angle the
+  light comes from.
+- **Fill** sets how much of the layer's own pixels show, its effects
+  staying (0 % leaves only the effects). **Show effects** hides them all,
+  keeping their settings. Copy, Paste and Clear work on the whole style.
+- A drag of a setting is one undo step. The style is copied with the
+  layer and kept with the layers after Finish and in the file.
+- The layer's row shows a small picture when it has a style; its
+  right-click menu has Clear layer style.
+
+## Text tool
+
+The **Text** tool (T) puts text on a layer of its own (#4370). A click
+starts a new text layer whose first baseline starts there and opens a
+box under it to type into (Enter a new line; Ctrl+Enter or Esc ends). A
+click on a text layer's letters types into it again, a drag moves it.
+The property bar has the font, the size in pixels, bold, italic,
+underline, strikethrough, the alignment, the colour, the line spacing
+and the letter spacing: changes go to the text layer in use at once,
+and are what the next text layer starts with.
+
+- The layer stays text, drawn by the drawing's own text engine, until it
+  is painted on (it becomes pixels, one undo step brings the text back),
+  scaled or turned with the Pick tool, merged down, flattened, or made
+  pixels with **Make pixels** (property bar, or the row's right-click
+  menu). Moved as a whole with the Pick tool it stays text.
+- A text layer left empty goes when the typing ends. One still named
+  "Text" takes its first words as its name.
+- Layer styles work on text layers (a shadow or an outline round text).
+
+## Right-click menu
+
+A right click on the picture (#4391 #4393 #4394):
+
+- with a brush (paint, eraser, clone, heal, the retouch brushes, the
+  liquify brushes, the mask brush, Remove, the sprayer): the brush's size,
+  hardness, opacity, flow, angle and roundness, and for the clone and
+  heal brushes the source options below; Deselect and Select Inverse
+  when there is a selection.
+- with the other tools: Deselect, Select All, Select Inverse; Feather…;
+  Modify > Border…, Smooth…, Expand…, Contract…; Transform selection (the
+  Pick tool); Copy to layer, Cut to layer, Cut, Copy, Paste; Fill…,
+  Stroke…, Content-aware fill, Delete; Crop to selection, Save selection,
+  Quick Mask.
+
+The commands with "…" ask their pixels in a small box first (Enter or OK
+runs, Esc cancels), the fill and the stroke also the colour and the
+opacity, the stroke its position (outside, inside, centred). The box
+remembers what each was last given. Expand and Contract round the
+corners as a circle rolled round them. The image menus open the same
+boxes.
+
+The selection tools' property bar has **Feather** (new selections get a
+soft edge that many pixels wide), Deselect, Select Inverse and a
+**Modify** menu of the boxed commands.
+
+## Clone source options
+
+The clone and heal brushes' **Source** menu on the property bar (and
+their right-click menu) has (#4394): the **angle** the copy is turned
+by round the source, its **scale**, **Mirror across** and **Mirror
+down**, **Copy from** (this layer, this layer and below, all layers) and
+**Aligned** (the source follows the brush from stroke to stroke; off,
+each stroke starts again at the source). **New layer for cloning** adds
+a clear layer and copies from all layers onto it, keeping the picture
+beneath as it is.
+
 ## Checks
 
 - Given a picture, when a page point is mapped to pixels and back, then

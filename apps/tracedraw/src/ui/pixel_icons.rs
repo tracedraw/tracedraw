@@ -20,6 +20,7 @@ pub fn draw(painter: &Painter, r: Rect, tool: PixelTool, color: Color32) {
         PixelTool::Liquify | PixelTool::Twirl => Some(Tool::Twirl),
         PixelTool::Smear => Some(Tool::Smear),
         PixelTool::LayerFade => Some(Tool::Transparency),
+        PixelTool::Text => Some(Tool::Text),
         _ => None,
     };
     if let Some(t) = drawing {
@@ -277,7 +278,8 @@ pub fn draw(painter: &Painter, r: Rect, tool: PixelTool, color: Color32) {
         | PixelTool::Liquify
         | PixelTool::Twirl
         | PixelTool::Smear
-        | PixelTool::LayerFade => {}
+        | PixelTool::LayerFade
+        | PixelTool::Text => {}
     }
 }
 

@@ -59,6 +59,34 @@ pub(crate) fn tool_options(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app::Pi
         placement_options(ui, pe);
         return;
     }
+    if t == PixelTool::Text {
+        text_options(ui, pe);
+        return;
+    }
+    if matches!(t, PixelTool::Clone | PixelTool::Heal) {
+        // Where the source comes from and how it is turned (#4394).
+        let mut new_layer = false;
+        ui.imenu_button("pixel.opt.clone_source", |ui| {
+            ui.set_min_width(260.0);
+            crate::ui::pixel_canvas::clone_source_options(ui, &mut pe.opts);
+            ui.separator();
+            if ui
+                .ibutton("pixel.opt.clone_layer")
+                .rich_tip(tr("pixel.opt.clone_layer_tip"))
+                .clicked()
+            {
+                new_layer = true;
+            }
+        });
+        if new_layer {
+            let name = new_layer_name(pe);
+            pe.apply_all(true, |pi| {
+                pi.add_layer(name);
+                Some([0, 0, pi.img.width(), pi.img.height()])
+            });
+            pe.opts.clone_sample = pixel_edit::CloneSample::All;
+        }
+    }
     if t.is_selection() {
         selection_options(ui, pe);
     }
@@ -294,6 +322,51 @@ fn selection_options(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app::PixelEdi
         }
     }
     ui.separator();
+    // The feather new selections take, and the selection's commands
+    // (#4393).
+    ui.label(tr("pixel.opt.feather"));
+    ui.add(
+        egui::DragValue::new(&mut o.sel_feather)
+            .range(0.0..=250.0)
+            .speed(0.25)
+            .max_decimals(1)
+            .suffix(" px"),
+    )
+    .rich_tip(tr("pixel.opt.feather_tip"));
+    let has = pe.pi.sel.is_some();
+    let (w, h) = pe.pi.img.dimensions();
+    if ui
+        .add_enabled(has, crate::ui::btn_icons::Ib::new("pixel.sel.none"))
+        .rich_tip(tr("pixel.sel.none_tip"))
+        .clicked()
+    {
+        pe.set_selection(None);
+    }
+    if ui
+        .ibutton("pixel.sel.invert")
+        .rich_tip(tr("pixel.sel.invert_tip"))
+        .clicked()
+    {
+        let inv = pixel_edit::invert(pe.pi.sel.as_ref(), w, h);
+        pe.set_selection(Some(inv));
+    }
+    let mut open: Option<crate::ui::pixel_cmds::PixelCmd> = None;
+    ui.add_enabled_ui(has, |ui| {
+        ui.imenu_button("pixel.sel.modify", |ui| {
+            use crate::ui::pixel_cmds::PixelCmd as C;
+            for c in [C::Feather, C::Border, C::Smooth, C::Expand, C::Contract, C::StrokeSelection, C::Fill] {
+                if crate::ui::menus::item_label_keyed(ui, c.key(), &format!("{}\u{2026}", tr(c.key())), "", true) {
+                    open = Some(c);
+                    ui.close();
+                }
+            }
+        });
+    });
+    if let Some(c) = open {
+        c.open_box(pe, None);
+    }
+    ui.separator();
+    let o = &mut pe.opts;
     let t = pe.tool;
     if matches!(t, PixelTool::RectSelect | PixelTool::EllipseSelect) {
         ui.checkbox(&mut o.sel_fixed, tr("pixel.opt.fixed_size"))
@@ -334,6 +407,108 @@ fn selection_options(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app::PixelEdi
         );
         ui.separator();
     }
+}
+
+/// The Text tool's settings: those of the text layer in use when it is
+/// one (changed at once), else those a new text layer starts with
+/// (#4370).
+fn text_options(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app::PixelEdit) {
+    use crate::pixel_text::Align;
+    use crate::ui::pixel_canvas::{align_picture, drawn_button, letter_picture};
+    let mut t = pe.active_text().cloned().unwrap_or_else(|| pe.text_opts.clone());
+    let before = t.clone();
+    egui::ComboBox::from_id_salt("pixel_text_font")
+        .width(170.0)
+        .selected_text(t.font.clone())
+        .show_ui(ui, |ui| {
+            for f in tracedraw_text::fonts().available_families() {
+                let on = f == t.font;
+                if ui.selectable_label(on, &f).clicked() {
+                    t.font = f;
+                }
+            }
+        })
+        .response
+        .rich_tip(tr("pixel.text.font"));
+    ui.add(
+        egui::DragValue::new(&mut t.size)
+            .range(1.0..=2000.0)
+            .speed(0.5)
+            .max_decimals(1)
+            .suffix(" px"),
+    )
+    .rich_tip(tr("pixel.text.size"));
+    for (which, key) in [('B', "pixel.text.bold"), ('I', "pixel.text.italic"), ('U', "pixel.text.underline"), ('S', "pixel.text.strike")] {
+        let on = match which {
+            'B' => t.bold,
+            'I' => t.italic,
+            'U' => t.underline,
+            _ => t.strike,
+        };
+        if drawn_button(ui, on, &tr(key), |p, r, ink| letter_picture(p, r, ink, which)).clicked() {
+            match which {
+                'B' => t.bold = !t.bold,
+                'I' => t.italic = !t.italic,
+                'U' => t.underline = !t.underline,
+                _ => t.strike = !t.strike,
+            }
+        }
+    }
+    ui.separator();
+    for a in Align::ALL {
+        if drawn_button(ui, t.align == a, &tr(a.key()), |p, r, ink| align_picture(p, r, ink, a)).clicked() {
+            t.align = a;
+        }
+    }
+    ui.separator();
+    let mut c = Color32::from_rgba_unmultiplied(t.color[0], t.color[1], t.color[2], t.color[3]);
+    ui.label(tr("pixel.opt.color"));
+    if egui::color_picker::color_edit_button_srgba(ui, &mut c, egui::color_picker::Alpha::OnlyBlend).changed() {
+        t.color = c.to_srgba_unmultiplied();
+    }
+    ui.label(tr("pixel.text.leading"));
+    ui.add(egui::DragValue::new(&mut t.leading).range(10.0..=1000.0).speed(1.0).suffix(" %"))
+        .rich_tip(tr("pixel.text.leading_tip"));
+    ui.label(tr("pixel.text.tracking"));
+    ui.add(egui::DragValue::new(&mut t.tracking).range(-50.0..=500.0).speed(0.5).suffix(" %"))
+        .rich_tip(tr("pixel.text.tracking_tip"));
+    let is_text = pe.active_text().is_some();
+    if is_text {
+        ui.separator();
+        if ui
+            .ibutton("pixel.text.to_pixels")
+            .rich_tip(tr("pixel.text.to_pixels_tip"))
+            .clicked()
+        {
+            pe.end_text();
+            pe.remember();
+            let i = pe.pi.active;
+            if let Some(l) = pe.pi.layers.get_mut(i) {
+                l.text = None;
+            }
+            return;
+        }
+    }
+    if t != before {
+        // The look (not the text or its place) is what a new text layer
+        // starts with next.
+        pe.text_opts = crate::pixel_text::PixelText {
+            text: String::new(),
+            at: (0.0, 0.0),
+            ..t.clone()
+        };
+        if is_text {
+            pe.change_text(|x| {
+                let (text, at) = (std::mem::take(&mut x.text), x.at);
+                *x = crate::pixel_text::PixelText { text, at, ..t };
+            });
+        }
+    }
+    ui.label(
+        RichText::new(tr("pixel.tool.text_hint"))
+            .color(Tokens::text_dim())
+            .small(),
+    );
 }
 
 /// The picture on a selection mode's button: two squares joined as the

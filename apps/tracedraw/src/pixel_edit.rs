@@ -87,10 +87,13 @@ pub enum PixelTool {
     ColorToClear,
     /// Paints see-through into the layer, to the level chosen.
     TransparencyBrush,
+    /// A click puts a text layer there (or edits the text clicked): its
+    /// text, font, size and colour stay changeable (#4370).
+    Text,
 }
 
 impl PixelTool {
-    pub const ALL: [PixelTool; 42] = [
+    pub const ALL: [PixelTool; 43] = [
         PixelTool::RectSelect,
         PixelTool::EllipseSelect,
         PixelTool::Lasso,
@@ -133,6 +136,7 @@ impl PixelTool {
         PixelTool::LayerFade,
         PixelTool::ColorToClear,
         PixelTool::TransparencyBrush,
+        PixelTool::Text,
     ];
 
     /// The tool's i18n key (`pixel.tool.<name>`).
@@ -180,6 +184,7 @@ impl PixelTool {
             PixelTool::LayerFade => "pixel.tool.layer_fade",
             PixelTool::ColorToClear => "pixel.tool.color_to_clear",
             PixelTool::TransparencyBrush => "pixel.tool.transparency_brush",
+            PixelTool::Text => "pixel.tool.text",
         }
     }
 
@@ -342,6 +347,77 @@ pub struct BrushOpts {
     pub fade_to: f32,
     /// The sprayer.
     pub spray: crate::pixel_spray::SprayOpts,
+    /// The clone and heal brushes (#4394): the source turned by
+    /// `clone_angle` degrees, scaled by `clone_scale` (1 as it is),
+    /// mirrored across and down, taken from the layer in use, the layers
+    /// from it down or every layer, and following the brush from stroke
+    /// to stroke (`clone_aligned`) or starting at the source each stroke.
+    pub clone_angle: f32,
+    pub clone_scale: f32,
+    pub clone_flip_h: bool,
+    pub clone_flip_v: bool,
+    pub clone_sample: CloneSample,
+    pub clone_aligned: bool,
+    /// The selection tools: new selections are feathered by this many
+    /// pixels (#4393).
+    pub sel_feather: f32,
+}
+
+/// What the clone and heal brushes copy from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CloneSample {
+    /// The layer being painted.
+    #[default]
+    Layer,
+    /// The layer being painted and those beneath it.
+    Below,
+    /// Everything seen: paint on a new clear layer and keep the picture
+    /// beneath as it is.
+    All,
+}
+
+impl CloneSample {
+    pub const ALL: [CloneSample; 3] = [CloneSample::Layer, CloneSample::Below, CloneSample::All];
+
+    pub fn key(self) -> &'static str {
+        match self {
+            CloneSample::Layer => "pixel.opt.sample_layer",
+            CloneSample::Below => "pixel.opt.sample_below",
+            CloneSample::All => "pixel.opt.sample_all",
+        }
+    }
+}
+
+/// Where the clone and heal brushes take each pixel from: the press that
+/// started copying (`anchor`) lies over the source (`src`); the rest
+/// turned, scaled and mirrored about them.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CloneXform {
+    pub anchor: (f32, f32),
+    pub src: (f32, f32),
+    pub angle: f32,
+    pub scale: f32,
+    pub flip_h: bool,
+    pub flip_v: bool,
+}
+
+impl CloneXform {
+    /// The source point for the pixel centre (x, y).
+    pub fn source(&self, x: f32, y: f32) -> (f32, f32) {
+        let (mut dx, mut dy) = (x - self.anchor.0, y - self.anchor.1);
+        if self.flip_h {
+            dx = -dx;
+        }
+        if self.flip_v {
+            dy = -dy;
+        }
+        let k = 1.0 / self.scale.clamp(0.05, 20.0);
+        let (s, c) = (-self.angle).to_radians().sin_cos();
+        (
+            self.src.0 + (dx * c - dy * s) * k,
+            self.src.1 + (dx * s + dy * c) * k,
+        )
+    }
 }
 
 impl Default for BrushOpts {
@@ -381,6 +457,13 @@ impl Default for BrushOpts {
             fade_from: 1.0,
             fade_to: 0.0,
             spray: crate::pixel_spray::SprayOpts::default(),
+            clone_angle: 0.0,
+            clone_scale: 1.0,
+            clone_flip_h: false,
+            clone_flip_v: false,
+            clone_sample: CloneSample::Layer,
+            clone_aligned: true,
+            sel_feather: 0.0,
         }
     }
 }
@@ -409,6 +492,12 @@ pub struct PixelLayer {
     /// everything beneath it (through its mask and opacity), changeable
     /// at any time.
     pub adjust: Option<tracedraw_core::BitmapEffect>,
+    /// Its styles (shadow, glow, bevel, outline, overlays), worked out
+    /// from its see-through each time the layers are put together
+    /// (#4369).
+    pub style: Option<crate::pixel_style::LayerStyle>,
+    /// A text layer: its pixels are drawn from this text (#4370).
+    pub text: Option<crate::pixel_text::PixelText>,
 }
 
 impl PixelLayer {
@@ -423,7 +512,14 @@ impl PixelLayer {
             mask: None,
             clip: false,
             adjust: None,
+            style: None,
+            text: None,
         }
+    }
+
+    /// Its styles, when any shows.
+    pub fn shown_style(&self) -> Option<&crate::pixel_style::LayerStyle> {
+        self.style.as_ref().filter(|s| s.shows())
     }
 }
 
@@ -982,7 +1078,11 @@ impl PixelImage {
     pub fn is_layered(&self) -> bool {
         self.layers.len() > 1
             || self.layers.first().is_some_and(|l| {
-                !l.visible || l.opacity < 1.0 || l.merge != MergeMode::Normal || l.mask.is_some()
+                !l.visible
+                    || l.opacity < 1.0
+                    || l.merge != MergeMode::Normal
+                    || l.mask.is_some()
+                    || l.shown_style().is_some()
             })
     }
 
@@ -1062,6 +1162,8 @@ impl PixelImage {
             n.visible = f.visible;
             n.mask = f.mask;
             n.clip = f.clip;
+            n.style = f.style;
+            n.text = f.text;
         }
     }
 
@@ -1130,6 +1232,10 @@ impl PixelImage {
                 apply_mask_to(&mut top_pixels, m);
             }
         }
+        // Its styles become pixels.
+        if let Some(st) = top.shown_style() {
+            top_pixels = crate::pixel_style::render(&top_pixels, st);
+        }
         if top.visible {
             let (w, h) = self.img.dimensions();
             let mut base = rgba_to_pixmap(&self.img, 1.0);
@@ -1195,6 +1301,13 @@ impl PixelImage {
         self.img = offset_image(&self.img, dx, dy);
     }
 
+    /// What is seen of the layer in use and those beneath it.
+    pub fn composite_below(&self) -> RgbaImage {
+        let mut below = self.clone();
+        below.layers.truncate(self.active + 1);
+        below.composite()
+    }
+
     /// Everything seen: the layers put together, bottom first.
     pub fn composite(&self) -> RgbaImage {
         let (w, h) = self.img.dimensions();
@@ -1237,6 +1350,7 @@ impl PixelImage {
                     e,
                 ))
             });
+            let style = l.shown_style().filter(|_| l.adjust.is_none());
             let mut part = match adjusted {
                 Some(a) => a,
                 None => image::imageops::crop_imm(px, x0, y0, bw, bh).to_image(),
@@ -1245,6 +1359,20 @@ impl PixelImage {
                 let mp = image::imageops::crop_imm(m, x0, y0, bw, bh).to_image();
                 apply_mask_to(&mut part, &mp);
             }
+            // The styles, worked out on the box with room round it for
+            // what they reach, cut back to the box.
+            let styled = style.map(|st| {
+                let pad = st.reach();
+                let (px0, py0) = (x0.saturating_sub(pad), y0.saturating_sub(pad));
+                let (px1, py1) = ((x1 + pad).min(w), (y1 + pad).min(h));
+                let mut big = image::imageops::crop_imm(px, px0, py0, px1 - px0, py1 - py0).to_image();
+                if let Some(m) = &l.mask {
+                    let mp = image::imageops::crop_imm(m, px0, py0, px1 - px0, py1 - py0).to_image();
+                    apply_mask_to(&mut big, &mp);
+                }
+                let out = crate::pixel_style::render(&big, st);
+                image::imageops::crop_imm(&out, x0 - px0, y0 - py0, bw, bh).to_image()
+            });
             if clipped {
                 if let Some(b) = &base {
                     for (q, a) in part.pixels_mut().zip(b.iter()) {
@@ -1253,6 +1381,17 @@ impl PixelImage {
                 }
             } else if l.adjust.is_none() {
                 base = Some(part.pixels().map(|q| q[3]).collect());
+            }
+            if let Some(mut st) = styled {
+                // A clipped layer's styles are clipped as its pixels are.
+                if clipped {
+                    if let Some(b) = &base {
+                        for (q, a) in st.pixels_mut().zip(b.iter()) {
+                            q[3] = ((q[3] as u16 * *a as u16 + 127) / 255) as u8;
+                        }
+                    }
+                }
+                part = st;
             }
             if let Some(layer) = rgba_to_pixmap(&part, l.opacity) {
                 tracedraw_render::composite_layer(&mut target, &layer, (0, 0), l.merge);
@@ -1437,6 +1576,69 @@ pub fn border(m: &GrayImage, r: u32) -> GrayImage {
     })
 }
 
+/// The selection grown (`by` > 0) or shrunk (`by` < 0) by `by` pixels
+/// all round: its corners rounded as a circle rolled round them, the new
+/// edge smooth (Expand and Contract, #4393).
+pub fn expand(m: &GrayImage, by: f32) -> GrayImage {
+    let (w, h) = m.dimensions();
+    let (wu, hu) = (w as usize, h as usize);
+    let raw = m.as_raw();
+    if by.abs() < 0.01 || wu == 0 || hu == 0 {
+        return m.clone();
+    }
+    if by > 0.0 {
+        let d = crate::pixel_style::distance_to(wu, hu, |i| raw[i] >= 128);
+        GrayImage::from_fn(w, h, |x, y| {
+            let i = y as usize * wu + x as usize;
+            let v = ((by + 1.0 - d[i]).clamp(0.0, 1.0) * 255.0).round() as u8;
+            Luma([raw[i].max(v)])
+        })
+    } else {
+        // Shrinking eats in from the picture's edges too.
+        let by = -by;
+        let d = crate::pixel_style::distance_to(wu + 2, hu + 2, |i| {
+            let (x, y) = (i % (wu + 2), i / (wu + 2));
+            x == 0 || y == 0 || x > wu || y > hu || raw[(y - 1) * wu + x - 1] < 128
+        });
+        GrayImage::from_fn(w, h, |x, y| {
+            let i = y as usize * wu + x as usize;
+            let j = (y as usize + 1) * (wu + 2) + x as usize + 1;
+            let v = ((d[j] - by).clamp(0.0, 1.0) * 255.0).round() as u8;
+            Luma([raw[i].min(v)])
+        })
+    }
+}
+
+/// An outline `width` pixels wide drawn on the layer in use along the
+/// selection's edge, inside, centred on or outside it, in `color` at
+/// `opacity` (Edit > Stroke, #4393). Nothing without a selection.
+pub fn stroke_selection(
+    pi: &mut PixelImage,
+    color: [u8; 4],
+    width: f32,
+    at: crate::pixel_style::StrokeAt,
+    opacity: f32,
+) -> Option<Dirty> {
+    let sel = pi.sel.as_ref()?;
+    let (w, h) = sel.dimensions();
+    if (w, h) != pi.img.dimensions() || width <= 0.0 {
+        return None;
+    }
+    let alpha: Vec<f32> = sel.pixels().map(|v| v[0] as f32 / 255.0).collect();
+    let cover = crate::pixel_style::stroke_cover(&alpha, w as usize, h as usize, width, at);
+    let mut b: Option<Dirty> = None;
+    for (i, c) in cover.iter().enumerate() {
+        if *c <= 0.0 {
+            continue;
+        }
+        let (x, y) = ((i % w as usize) as u32, (i / w as usize) as u32);
+        let p = *pi.img.get_pixel(x, y);
+        pi.img.put_pixel(x, y, over(&p, color, c * opacity.clamp(0.0, 1.0)));
+        b = Some(union(b, [x, y, x + 1, y + 1]));
+    }
+    b
+}
+
 /// The selection's edge smoothed: corners rounded and specks gone, a
 /// hard edge kept.
 pub fn smooth_selection(m: &GrayImage, r: u32) -> GrayImage {
@@ -1580,7 +1782,7 @@ pub fn offset_image(img: &RgbaImage, dx: i64, dy: i64) -> RgbaImage {
 
 /// A straight-alpha picture as a premultiplied pixmap, its alpha scaled
 /// by `opacity`.
-fn rgba_to_pixmap(img: &RgbaImage, opacity: f32) -> Option<tiny_skia::Pixmap> {
+pub(crate) fn rgba_to_pixmap(img: &RgbaImage, opacity: f32) -> Option<tiny_skia::Pixmap> {
     let (w, h) = img.dimensions();
     let mut pm = tiny_skia::Pixmap::new(w, h)?;
     let k = opacity.clamp(0.0, 1.0);
@@ -1591,8 +1793,27 @@ fn rgba_to_pixmap(img: &RgbaImage, opacity: f32) -> Option<tiny_skia::Pixmap> {
     Some(pm)
 }
 
+/// The colour at (x, y) (pixel centres at whole numbers) blended from the
+/// four pixels round it, premultiplied; `None` outside the picture.
+pub fn sample_bilinear(img: &RgbaImage, x: f32, y: f32) -> Option<Rgba<u8>> {
+    let (w, h) = img.dimensions();
+    if w == 0 || h == 0 || x < -0.5 || y < -0.5 || x > w as f32 - 0.5 || y > h as f32 - 0.5 {
+        return None;
+    }
+    let (x0, y0) = (x.floor(), y.floor());
+    let (tx, ty) = (x - x0, y - y0);
+    let px = |xi: f32, yi: f32| {
+        let xi = xi.clamp(0.0, w as f32 - 1.0) as u32;
+        let yi = yi.clamp(0.0, h as f32 - 1.0) as u32;
+        *img.get_pixel(xi, yi)
+    };
+    let top = mix(&px(x0, y0), &px(x0 + 1.0, y0), tx);
+    let bottom = mix(&px(x0, y0 + 1.0), &px(x0 + 1.0, y0 + 1.0), tx);
+    Some(mix(&top, &bottom, ty))
+}
+
 /// A premultiplied pixmap back to straight alpha.
-fn pixmap_to_rgba(pm: &tiny_skia::Pixmap, w: u32, h: u32) -> Option<RgbaImage> {
+pub(crate) fn pixmap_to_rgba(pm: &tiny_skia::Pixmap, w: u32, h: u32) -> Option<RgbaImage> {
     let data: Vec<u8> = pm
         .pixels()
         .iter()
@@ -1648,6 +1869,10 @@ pub struct Stroke {
     seed: u32,
     /// Follow surface: the relief of the photo.
     surface: Option<std::rc::Rc<crate::pixel_surface::SurfaceMap>>,
+    /// Clone and heal: the source turned, scaled and mirrored, and the
+    /// picture copied from when it is not the layer (#4394).
+    xform: Option<CloneXform>,
+    sample: Option<std::rc::Rc<RgbaImage>>,
 }
 
 impl Stroke {
@@ -1667,6 +1892,27 @@ impl Stroke {
             target: None,
             seed: 0x9E37_79B9,
             surface: None,
+            xform: None,
+            sample: None,
+        }
+    }
+
+    /// The clone and heal brushes' source turned, scaled and mirrored,
+    /// copied from `sample` (else the layer).
+    pub fn with_clone(mut self, xform: CloneXform, sample: Option<std::rc::Rc<RgbaImage>>) -> Self {
+        self.xform = Some(xform);
+        self.sample = sample;
+        self
+    }
+
+    /// Where the source of pixel (x, y) lies.
+    fn source_point(&self, x: u32, y: u32) -> (f32, f32) {
+        match &self.xform {
+            Some(t) => {
+                let (sx, sy) = t.source(x as f32 + 0.5, y as f32 + 0.5);
+                (sx - 0.5, sy - 0.5)
+            }
+            None => (x as f32 + self.offset.0, y as f32 + self.offset.1),
         }
     }
 
@@ -1864,10 +2110,11 @@ impl Stroke {
                 let (Some(src), Some(lb)) = (self.source(x, y), local) else {
                     return *base;
                 };
-                let sx = (x as f32 + self.offset.0).round() as i64;
-                let sy = (y as f32 + self.offset.1).round() as i64;
+                let (fx, fy) = self.source_point(x, y);
+                let (sx, sy) = (fx.round() as i64, fy.round() as i64);
                 let here = lb.at(x as i64, y as i64);
-                let there = blur_at(&self.base, sx, sy, (self.opts.size * 0.25).max(1.0) as i64);
+                let from = self.sample.as_deref().unwrap_or(&self.base);
+                let there = blur_at(from, sx, sy, (self.opts.size * 0.25).max(1.0) as i64);
                 let ch = |i: usize| {
                     (src[i] as f32 - there[i] + here[i])
                         .round()
@@ -1967,12 +2214,16 @@ impl Stroke {
     }
 
     fn source(&self, x: u32, y: u32) -> Option<Rgba<u8>> {
-        let sx = (x as f32 + self.offset.0).round();
-        let sy = (y as f32 + self.offset.1).round();
-        if sx < 0.0 || sy < 0.0 {
-            return None;
+        let from = self.sample.as_deref().unwrap_or(&self.base);
+        let (sx, sy) = self.source_point(x, y);
+        if self.xform.is_none_or(|t| t.angle % 360.0 == 0.0 && (t.scale - 1.0).abs() < 1e-4) {
+            let (sx, sy) = (sx.round(), sy.round());
+            if sx < 0.0 || sy < 0.0 {
+                return None;
+            }
+            return from.get_pixel_checked(sx as u32, sy as u32).copied();
         }
-        self.base.get_pixel_checked(sx as u32, sy as u32).copied()
+        sample_bilinear(from, sx, sy)
     }
 
     /// Smudge: the colours carried from the last dab mixed into the

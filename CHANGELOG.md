@@ -6,6 +6,10 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Image editor: layer styles in the Layers panel (drop shadow, outer and inner glow, colour and gradient overlays, inner shadow, bevel and emboss, stroke, fill opacity), shown live and changeable until the layers are merged, flattened or finished; copy, paste and clear a whole style (#4369).
+- Image editor: Text tool (T) puts text on its own layer with font, size, bold, italic, underline, strikethrough, alignment, colour, line and letter spacing; a click on the text changes it, a drag moves it, and it stays text until it is painted on or made pixels (#4370).
+- Image editor: a right click on the picture lists the selection's commands (Deselect, Select All, Select Inverse, Feather, Modify > Border, Smooth, Expand, Contract, Transform selection, copy or cut to a layer, Cut, Copy, Paste, Fill, Stroke, Content-aware fill, Delete, Crop); those that need pixels ask them in a small box. The selection tools get a Feather box, Deselect, Select Inverse and a Modify menu on the property bar (#4391, #4393).
+- Image editor: the brushes' right-click menu sets the size, hardness, opacity, flow, angle and roundness; the clone and heal brushes' source can be turned, scaled and mirrored across or down, copied from this layer, the layers below or all layers, aligned or not, and New layer for cloning keeps the picture beneath as it is (#4394).
 - Starting on older graphics cards under Windows that offer the hardware renderer only through OpenGL (such as Intel HD 4400) no longer crashes: those cards go straight to the OpenGL renderer (#4368).
 - File > Open Recent lists a document once when it was opened two ways, with different letter case, slashes or a long path prefix (#4408).
 - The Macro Manager deletes the chosen macro or a whole module, after asking first (#4409).

@@ -6,7 +6,7 @@
 use crate::app::App;
 use crate::pixel_edit::{self, Tones};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PixelCmd {
     Finish,
     Cancel,
@@ -58,11 +58,14 @@ pub enum PixelCmd {
     SmartResize,
     Histogram,
     Hints,
+    Expand,
+    Contract,
+    StrokeSelection,
 }
 
 impl PixelCmd {
     /// Every command (the image bar's customize menu lists them).
-    pub const ALL: [PixelCmd; 50] = [
+    pub const ALL: [PixelCmd; 53] = [
         PixelCmd::Finish,
         PixelCmd::Cancel,
         PixelCmd::Undo,
@@ -113,6 +116,9 @@ impl PixelCmd {
         PixelCmd::SmartResize,
         PixelCmd::Histogram,
         PixelCmd::Hints,
+        PixelCmd::Expand,
+        PixelCmd::Contract,
+        PixelCmd::StrokeSelection,
     ];
 
     /// Its button's id on the image bar ("pixel:" and its name).
@@ -193,6 +199,9 @@ impl PixelCmd {
             PixelCmd::SmartResize => "pixel.smart_resize_cmd",
             PixelCmd::Histogram => "pixel.section.histogram",
             PixelCmd::Hints => "pixel.section.hints",
+            PixelCmd::Expand => "pixel.sel.expand",
+            PixelCmd::Contract => "pixel.sel.contract",
+            PixelCmd::StrokeSelection => "pixel.sel.stroke",
         }
     }
 
@@ -257,6 +266,9 @@ impl PixelCmd {
             | PixelCmd::Smooth
             | PixelCmd::SaveSelection
             | PixelCmd::Crop
+            | PixelCmd::Expand
+            | PixelCmd::Contract
+            | PixelCmd::StrokeSelection
             | PixelCmd::ContentFill => has,
             PixelCmd::LayerDelete => n > 1,
             PixelCmd::LayerUp => i + 1 < n,
@@ -264,6 +276,63 @@ impl PixelCmd {
             PixelCmd::Flatten => pe.pi.is_layered(),
             _ => true,
         }
+    }
+
+    /// Run from a menu, it first asks for its pixels (and the fill and
+    /// the stroke for their colour) in a small box (#4393).
+    pub fn asks(self) -> bool {
+        matches!(
+            self,
+            PixelCmd::Feather
+                | PixelCmd::Grow
+                | PixelCmd::Border
+                | PixelCmd::Smooth
+                | PixelCmd::Expand
+                | PixelCmd::Contract
+                | PixelCmd::StrokeSelection
+                | PixelCmd::Fill
+        )
+    }
+
+    /// The pixels it runs with when it is not asked: what it was last
+    /// given.
+    pub fn last_px(self, pe: &crate::pixel_edit_app::PixelEdit) -> f32 {
+        match self {
+            PixelCmd::Feather => pe.feather_px as f32,
+            PixelCmd::Grow => pe.grow_px as f32,
+            _ => pe.ask_px.get(&self).copied().unwrap_or(match self {
+                PixelCmd::StrokeSelection => 3.0,
+                PixelCmd::Expand | PixelCmd::Contract => 5.0,
+                _ => pe.feather_px as f32,
+            }),
+        }
+    }
+
+    /// Open its box (`asks`), else run it.
+    pub fn ask_or_run(self, app: &mut App, pos: Option<egui::Pos2>) {
+        if !self.enabled(app) {
+            return;
+        }
+        if !self.asks() {
+            self.run(app);
+            return;
+        }
+        if let Some(pe) = app.pixel_edit.as_mut() {
+            self.open_box(pe, pos);
+        }
+    }
+
+    /// Open its box (`asks`) with what it was last given.
+    pub fn open_box(self, pe: &mut crate::pixel_edit_app::PixelEdit, pos: Option<egui::Pos2>) {
+        let px = self.last_px(pe);
+        pe.px_ask = Some(crate::pixel_edit_app::PxAsk {
+            cmd: self,
+            px,
+            color: pe.opts.color,
+            opacity: pe.opts.opacity,
+            at: pe.stroke_at,
+            pos,
+        });
     }
 
     /// Whether it is on (the quick mask).
@@ -367,12 +436,22 @@ impl PixelCmd {
                 sel_by(pe, &|m| pixel_edit::grow(m, r));
             }
             PixelCmd::Border => {
-                let r = pe.feather_px;
+                let r = self.last_px(pe).round().max(1.0) as u32;
                 sel_by(pe, &|m| pixel_edit::border(m, r));
             }
             PixelCmd::Smooth => {
-                let r = pe.feather_px;
+                let r = self.last_px(pe).round().max(1.0) as u32;
                 sel_by(pe, &|m| pixel_edit::smooth_selection(m, r));
+            }
+            PixelCmd::Expand | PixelCmd::Contract => {
+                let r = self.last_px(pe).max(0.0);
+                let by = if self == PixelCmd::Expand { r } else { -r };
+                sel_by(pe, &|m| pixel_edit::expand(m, by));
+            }
+            PixelCmd::StrokeSelection => {
+                let (c, o, at) = (pe.opts.color, pe.opts.opacity, pe.stroke_at);
+                let width = self.last_px(pe);
+                pe.apply(false, |pi| pixel_edit::stroke_selection(pi, c, width, at, o));
             }
             PixelCmd::Shadows | PixelCmd::Midtones | PixelCmd::Highlights => {
                 let t = match self {

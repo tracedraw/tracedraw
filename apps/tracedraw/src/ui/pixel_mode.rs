@@ -24,7 +24,7 @@ use egui::{Color32, Rect, Sense, Stroke, Ui, Vec2};
 /// another is picked from its flyout. Pick first, then the selections,
 /// the view, the retouching, the distortions, the paint, the
 /// transparency and the colours.
-pub const GROUPS: [&[PixelTool]; 13] = [
+pub const GROUPS: [&[PixelTool]; 14] = [
     &[PixelTool::Move],
     &[
         PixelTool::RectSelect,
@@ -69,6 +69,7 @@ pub const GROUPS: [&[PixelTool]; 13] = [
     ],
     &[PixelTool::Eraser],
     &[PixelTool::Shape],
+    &[PixelTool::Text],
     &[
         PixelTool::LayerFade,
         PixelTool::ColorToClear,
@@ -80,11 +81,11 @@ pub const GROUPS: [&[PixelTool]; 13] = [
 ];
 
 /// A line after these groups.
-const BREAKS: [usize; 4] = [1, 2, 5, 8];
+const BREAKS: [usize; 4] = [1, 2, 5, 9];
 
 /// Each tool's key (with Shift when the flag is on), shown in its
 /// flyout and its tip.
-pub const SHORTCUTS: [(PixelTool, egui::Key, bool); 42] = {
+pub const SHORTCUTS: [(PixelTool, egui::Key, bool); 43] = {
     use egui::Key as K;
     use PixelTool as T;
     [
@@ -130,6 +131,7 @@ pub const SHORTCUTS: [(PixelTool, egui::Key, bool); 42] = {
         (T::Eyedropper, K::E, false),
         (T::Fill, K::F, false),
         (T::Gradient, K::G, false),
+        (T::Text, K::T, false),
     ]
 };
 
@@ -387,7 +389,7 @@ fn cmd(app: &mut App, ui: &mut Ui, c: PixelCmd) {
         (None, None, None) => item(ui, c.key(), c.shortcut(), c.enabled(app)),
     };
     if hit {
-        c.run(app);
+        c.ask_or_run(app, None);
     }
 }
 
@@ -1009,6 +1011,9 @@ pub fn canvas(app: &mut App, ui: &mut Ui, full: Rect) {
         };
         app.pixel_px_input(&resp, px, mods, ws.zoom);
     }
+    // The right-click menu, the Text tool's typing box and the box a
+    // selection command asks its pixels in.
+    crate::ui::pixel_canvas::extras(app, ui, &resp, area);
     let Some(pe) = app.pixel_edit.as_ref() else {
         return;
     };
@@ -1254,6 +1259,7 @@ fn hints(ui: &mut Ui, pe: &mut crate::pixel_edit_app::PixelEdit) {
     if matches!(t, PixelTool::Clone | PixelTool::Heal) {
         bullet(ui, tr("pixel.status.need_source"));
     }
+    bullet(ui, tr("pixel.hints.right_click"));
     ui.add_space(8.0);
     ui.separator();
     ui.label(egui::RichText::new(tr("pixel.hints.window")).strong());
