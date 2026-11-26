@@ -547,6 +547,13 @@ pub enum Command {
         layer: LayerId,
         index: usize,
     },
+    /// Move a whole layer between document pages, retaining its identity and
+    /// properties. An emptied source page receives a fresh empty layer.
+    MoveLayerToPage {
+        layer: LayerId,
+        page: PageId,
+        index: usize,
+    },
     AddGuide {
         page: PageId,
         guide: Guide,
@@ -782,6 +789,7 @@ impl Command {
             Command::DuplicatePage { .. } => "Duplicate Page",
             Command::RenameLayer { .. } => "Rename Layer",
             Command::ReorderLayer { .. } => "Reorder Layer",
+            Command::MoveLayerToPage { .. } => "Move Layer to Page",
             Command::SetShadow {
                 shadow: Some(_), ..
             } => "Drop Shadow",
@@ -2072,6 +2080,44 @@ impl Command {
                 let l = layers.remove(i);
                 let index = (*index).min(layers.len());
                 layers.insert(index, l);
+            }
+            Command::MoveLayerToPage { layer, page, index } => {
+                // Validate both ends before touching the source, including malformed
+                // requests naming a master layer or a missing destination page.
+                doc.page(*page)?;
+                let source = doc
+                    .pages
+                    .iter()
+                    .find(|p| p.layers.iter().any(|l| l.id == *layer))
+                    .map(|p| p.id)
+                    .ok_or(Error::LayerNotFound(*layer))?;
+                if source == *page {
+                    Command::ReorderLayer {
+                        layer: *layer,
+                        index: *index,
+                    }
+                    .apply(doc)?;
+                } else {
+                    let replacement = if doc.page(source)?.layers.len() == 1 {
+                        Some(Layer::new(
+                            doc.ids_mut().layer(),
+                            doc.layer(*layer)?.name.clone(),
+                        ))
+                    } else {
+                        None
+                    };
+                    let layers = &mut doc.page_mut(source)?.layers;
+                    let at = layers
+                        .iter()
+                        .position(|l| l.id == *layer)
+                        .ok_or(Error::LayerNotFound(*layer))?;
+                    let moved = layers.remove(at);
+                    if let Some(empty) = replacement {
+                        layers.push(empty);
+                    }
+                    let layers = &mut doc.page_mut(*page)?.layers;
+                    layers.insert((*index).min(layers.len()), moved);
+                }
             }
             Command::SetShadow { shapes, shadow } => {
                 for id in shapes {

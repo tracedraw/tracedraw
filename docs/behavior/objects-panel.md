@@ -194,6 +194,41 @@ the right.
 - Which layers are closed, which groups are open and which page nodes
   and the Master Page node are closed lasts for the session.
 
+## Dragging whole layers
+
+Drag a layer's name or icon onto another layer row. The upper half places
+it above the target, the lower half below; an accent line marks the insertion
+edge. Expanded and collapsed layers behave alike. Contents travel with their
+layer, preserving object and layer identities, properties and coordinates.
+The eye, printer, padlock and collapse arrow keep their existing click actions.
+
+A selected layer carries the selected layers of the same source list, in their
+stacking order rather than selection-click order. An unselected layer moves
+alone. Hidden, locked and output-excluded layers can be rearranged without
+changing those flags. A self-drop, an already satisfied order, Escape, losing
+the pointer button, switching drawings or releasing outside a visible layer
+row changes nothing. Search-filtered rows still use the document's full order.
+
+Document-page layers can move to another document page by dropping above or
+below one of its layers. The destination becomes current and the moved layers
+stay selected. Moving a page's final layer leaves a fresh empty layer there.
+Temporary text, curve, clip and other editing finishes through its normal
+history path before a cross-page move; the move itself is one undo step.
+Undo restores the layers to their source, and redo moves them again.
+
+Master layers reorder under Master Page; range layers reorder under Range
+Pages. Dragging keeps their scope, ranges, Desktop status and In front flags.
+Selections spanning different source lists or these display groups are
+rejected. A layer cannot be nested in another layer or dropped onto an object,
+Guides, Grid or a page heading. Moving into or out of master scope remains an
+explicit context-menu action. Master rows remain in their own section; their
+position relative to document-page artwork is controlled by In front.
+
+Checks: `ui::objects_docker::drag_tests::layer_drag_` covers pointer events,
+selection order, undo/redo, flags, filtered rows, cancellation, page transfers,
+clip editing and native persistence. `layer_moves::move_layer_to_page_`
+covers command validation, last-layer replacement and identity preservation.
+
 ## Range pages
 
 The **Range Pages** group contains shared layers limited to named page

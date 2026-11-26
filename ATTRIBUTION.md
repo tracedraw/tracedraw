@@ -18,6 +18,12 @@ libwebp (Copyright Google Inc., BSD 3-Clause licence, through the
 `libwebp-sys` crate) for lossy WebP export; the browser build uses the
 pure-Rust `vaam-image-webp` crate (MIT OR Apache-2.0) for it instead.
 
+The layer-drag review drawing (`docs/examples/layer-drag/layer-drag.tdraw`)
+and its generator (`scripts/samples/layer_drag.py`) are original synthetic
+rectangles and empty layers by TraceDraw contributors (@awd-studio),
+licensed MIT OR Apache-2.0. Regenerate from the repository root with
+`python3 scripts/samples/layer_drag.py`.
+
 | Asset | Path | Author and source | License |
 |---|---|---|---|
 | Selawik Regular and Bold (interface font) | `apps/tracedraw/assets/fonts/` | Copyright 2015 Microsoft Corporation, the open-source Selawik project | SIL Open Font License 1.1, see `Selawik-OFL.txt` next to the fonts |

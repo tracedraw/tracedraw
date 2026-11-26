@@ -1763,6 +1763,21 @@ impl App {
             return;
         }
         if mark.begins != undone {
+            // A layer move may have changed the current page since the edit
+            // finished. Restore its page before finding extracted contents.
+            if mark.symbol.is_none() {
+                if let Some(top) = self.doc().top_level_of(mark.frame) {
+                    if let Some(index) = self.doc().pages.iter().position(|page| {
+                        page.layers
+                            .iter()
+                            .any(|layer| layer.shapes.iter().any(|s| s.id == top))
+                    }) {
+                        if self.page_index() != index {
+                            self.goto_page(index);
+                        }
+                    }
+                }
+            }
             // Back into a clip frame inside the one being edited (#4110).
             if mark.symbol.is_none() && self.editing_clip_contents() {
                 if let Some((f, o)) = self.clip_frame_edit.take().filter(|(f, _)| *f != mark.frame) {

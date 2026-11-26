@@ -91,6 +91,8 @@ struct Actions {
     /// took most of a second a frame.
     selected: std::collections::HashSet<ShapeId>,
     layer_drop_rows: Vec<(LayerId, Rect)>,
+    /// Layer reorder targets, including layers that cannot take objects.
+    layer_reorder_rows: Vec<(LayerId, Rect)>,
     collapse: Option<LayerId>,
     expand_group: Option<ShapeId>,
     toggle_page: Option<PageId>,
@@ -1111,6 +1113,15 @@ fn layer_rows(
             egui::FontId::proportional(11.0),
             Tokens::text_dim(),
         );
+    }
+    act.layer_reorder_rows.push((layer.id, rect));
+    if resp.drag_started() {
+        ui.ctx().data_mut(|d| {
+            d.insert_temp(
+                egui::Id::new(ROW_DRAG),
+                RowDrag::Layer(layer.id, app.engine.instance()),
+            );
+        });
     }
     // An object row let go here goes to the top of this layer.
     if !layer.locked {
@@ -2466,7 +2477,7 @@ fn object_row(
     act.object_rows.push((s.id, rect));
     if resp.drag_started() && !s.locked {
         ui.ctx()
-            .data_mut(|d| d.insert_temp(egui::Id::new(ROW_DRAG), s.id));
+            .data_mut(|d| d.insert_temp(egui::Id::new(ROW_DRAG), RowDrag::Object(s.id)));
     }
     if resp.double_clicked() {
         act.inline_rename = Some((
@@ -2488,7 +2499,7 @@ fn object_row(
             ui.ctx().data_mut(|d| {
                 d.insert_temp(egui::Id::new(ROW_HOLD), (s.id, pos, page));
                 if !s.locked {
-                    d.insert_temp(egui::Id::new(ROW_DRAG), s.id);
+                    d.insert_temp(egui::Id::new(ROW_DRAG), RowDrag::Object(s.id));
                 }
             });
         }
@@ -3792,6 +3803,191 @@ fn layer_holding(app: &App, id: ShapeId) -> Option<LayerId> {
 /// The object row being dragged, kept in the context's memory.
 const ROW_DRAG: &str = "objects_row_drag";
 
+#[derive(Clone, Copy)]
+enum RowDrag {
+    Object(ShapeId),
+    /// The drawing instance prevents a drag crossing document tabs.
+    Layer(LayerId, u64),
+}
+
+/// Validate the source selection and destination without allocating per frame.
+/// Returns the source list and a different destination page, when transferring.
+fn layer_drop_list(
+    app: &App,
+    source: LayerId,
+    target: LayerId,
+) -> Option<(&[Layer], Option<PageId>)> {
+    let doc = app.doc();
+    let source_page = doc
+        .pages
+        .iter()
+        .find(|p| p.layers.iter().any(|l| l.id == source));
+    let list = source_page.map(|p| p.layers.as_slice()).or_else(|| {
+        doc.master
+            .iter()
+            .any(|l| l.id == source)
+            .then_some(doc.master.as_slice())
+    })?;
+    let ranged = list.iter().find(|l| l.id == source)?.page_range.is_some();
+    let selected = app.selected_layers.contains(&source);
+    if source == target || (selected && app.selected_layers.contains(&target)) {
+        return None;
+    }
+    if selected
+        && app.selected_layers.iter().any(|id| {
+            !list
+                .iter()
+                .any(|l| l.id == *id && l.page_range.is_some() == ranged)
+        })
+    {
+        return None;
+    }
+    if list
+        .iter()
+        .any(|l| l.id == target && l.page_range.is_some() == ranged)
+    {
+        return Some((list, None));
+    }
+    source_page?;
+    let destination = doc
+        .pages
+        .iter()
+        .find(|p| p.layers.iter().any(|l| l.id == target))?;
+    Some((list, Some(destination.id)))
+}
+
+/// Plan a layer move in bottom-first model order. Display groups stay separate;
+/// filtering never changes the indices used by the command engine.
+fn layer_drop_commands(
+    app: &App,
+    source: LayerId,
+    target: LayerId,
+    in_front: bool,
+) -> Vec<Command> {
+    let Some((list, destination)) = layer_drop_list(app, source, target) else {
+        return Vec::new();
+    };
+    let selected = target_layers(app, source);
+    if let Some(page) = destination {
+        let Ok(destination) = app.doc().page(page) else {
+            return Vec::new();
+        };
+        let Some(at) = destination.layers.iter().position(|l| l.id == target) else {
+            return Vec::new();
+        };
+        return list
+            .iter()
+            .filter(|l| selected.contains(&l.id))
+            .enumerate()
+            .map(|(offset, l)| Command::MoveLayerToPage {
+                layer: l.id,
+                page,
+                index: at + usize::from(in_front) + offset,
+            })
+            .collect();
+    }
+    let carried: Vec<_> = list
+        .iter()
+        .filter(|l| selected.contains(&l.id))
+        .map(|l| l.id)
+        .collect();
+    if carried.contains(&target) {
+        return Vec::new();
+    }
+    let mut desired: Vec<_> = list
+        .iter()
+        .filter(|l| !carried.contains(&l.id))
+        .map(|l| l.id)
+        .collect();
+    let Some(at) = desired.iter().position(|id| *id == target) else {
+        return Vec::new();
+    };
+    desired.splice(
+        at + usize::from(in_front)..at + usize::from(in_front),
+        carried,
+    );
+    let mut current: Vec<_> = list.iter().map(|l| l.id).collect();
+    let mut commands = Vec::new();
+    for (index, layer) in desired.into_iter().enumerate() {
+        let Some(from) = current.iter().position(|id| *id == layer) else {
+            return Vec::new();
+        };
+        if from != index {
+            current.remove(from);
+            current.insert(index, layer);
+            commands.push(Command::ReorderLayer { layer, index });
+        }
+    }
+    commands
+}
+
+/// Finish temporary editing on the old page before changing layer ownership.
+/// Editors finish through their normal history paths; the move is one undo step.
+fn drop_layer_rows(app: &mut App, source: LayerId, target: LayerId, front: bool) {
+    let commands = layer_drop_commands(app, source, target, front);
+    if commands.is_empty() {
+        return;
+    }
+    let destination = commands.iter().find_map(|c| match c {
+        Command::MoveLayerToPage { page, .. } => Some(*page),
+        _ => None,
+    });
+    let selected = target_layers(app, source);
+    if destination.is_some() {
+        app.finish_curve();
+        app.finish_text();
+        // A nested clip editor restores its parent when finished.
+        while let Some((frame, _)) = app.clip_frame_edit.as_ref() {
+            let frame = *frame;
+            app.finish_clip_frame_edit();
+            if app
+                .clip_frame_edit
+                .as_ref()
+                .is_some_and(|(id, _)| *id == frame)
+            {
+                return;
+            }
+        }
+        let ids: Vec<_> = app
+            .doc()
+            .all_layers()
+            .flat_map(|l| l.shapes.iter().map(|s| s.id))
+            .collect();
+        app.prepare_shapes_for_range_move(&ids);
+        app.exit_focus();
+        app.selection.clear();
+        app.return_spread_adopted();
+        // Finishing an editor selects its object, clearing layer selection.
+        // Replan the captured block after normalization, not just its source.
+        app.selected_layers = selected.clone();
+    }
+    let commands = layer_drop_commands(app, source, target, front);
+    let result = app.engine.run_batch(
+        if destination.is_some() {
+            "Move Layer to Page"
+        } else {
+            "Reorder Layer"
+        },
+        &commands,
+    );
+    if let Err(e) = result {
+        app.status = e.to_string();
+    } else if let Some(page) = destination {
+        if let Some(index) = app.doc().pages.iter().position(|p| p.id == page) {
+            app.goto_page(index);
+        }
+        app.picked_layer = Some(source);
+        app.selected_layers = selected;
+    }
+}
+
+fn paint_drop_line(ui: &Ui, rect: Rect, y: f32) {
+    ui.painter().line_segment(
+        [Pos2::new(rect.left(), y), Pos2::new(rect.right(), y)],
+        Stroke::new(2.0, Tokens::ACCENT),
+    );
+}
+
 /// The guideline row being dragged (#3599): its set (`None` the master
 /// page's) and its index, kept in the context's memory.
 const GUIDE_DRAG: &str = "objects_guide_drag";
@@ -4160,11 +4356,15 @@ fn drag_rows(
     ui: &Ui,
     rows: &[(ShapeId, Rect)],
     layers: &[(LayerId, Rect)],
+    reorder_layers: &[(LayerId, Rect)],
 ) -> Option<(ShapeId, Pos2, Option<PageId>)> {
     #[cfg(test)]
     ui.ctx().data_mut(|d| {
         d.insert_temp(egui::Id::new("objects_rows_drawn"), rows.to_vec());
-        d.insert_temp(egui::Id::new("objects_layer_rows_drawn"), layers.to_vec());
+        d.insert_temp(
+            egui::Id::new("objects_layer_rows_drawn"),
+            reorder_layers.to_vec(),
+        );
     });
     let id = egui::Id::new(ROW_DRAG);
     let hold_id = egui::Id::new(ROW_HOLD);
@@ -4179,7 +4379,7 @@ fn drag_rows(
     let held = ui
         .ctx()
         .data(|d| d.get_temp::<(ShapeId, Pos2, Option<PageId>)>(hold_id));
-    let Some(dragged) = ui.ctx().data(|d| d.get_temp::<ShapeId>(id)) else {
+    let Some(dragged) = ui.ctx().data(|d| d.get_temp::<RowDrag>(id)) else {
         if !down {
             ui.ctx()
                 .data_mut(|d| d.remove::<(ShapeId, Pos2, Option<PageId>)>(hold_id));
@@ -4193,6 +4393,48 @@ fn drag_rows(
     // A finger lifted leaves no position on its last frame: where it was
     // last stands for it (#2948).
     let pos = latest.or_else(|| ui.ctx().data(|d| d.get_temp::<Pos2>(pos_id)));
+    let cancelled = ui.input(|i| i.key_pressed(egui::Key::Escape));
+    if let RowDrag::Layer(source, instance) = dragged {
+        // Only the visible portion of a row is a drop target.
+        let target = pos.filter(|p| ui.clip_rect().contains(*p)).and_then(|p| {
+            reorder_layers
+                .iter()
+                .find(|(_, r)| r.contains(p))
+                .map(|(target, r)| {
+                    let front = p.y < r.center().y;
+                    (*target, front, *r, if front { r.top() } else { r.bottom() })
+                })
+        });
+        if down && !cancelled && instance == app.engine.instance() {
+            if let Some((target, _, r, y)) = target {
+                if layer_drop_list(app, source, target).is_some() {
+                    paint_drop_line(ui, r, y);
+                }
+            }
+            return None;
+        }
+        ui.ctx().data_mut(|d| {
+            d.remove::<RowDrag>(id);
+            d.remove::<Pos2>(pos_id);
+        });
+        if released && !cancelled && instance == app.engine.instance() {
+            if let Some((target, front, _, _)) = target {
+                drop_layer_rows(app, source, target, front);
+            }
+        }
+        return None;
+    }
+    let RowDrag::Object(dragged) = dragged else {
+        return None;
+    };
+    if cancelled {
+        ui.ctx().data_mut(|d| {
+            d.remove::<RowDrag>(id);
+            d.remove::<Pos2>(pos_id);
+            d.remove::<(ShapeId, Pos2, Option<PageId>)>(hold_id);
+        });
+        return None;
+    }
     // Held and lifted where it was: the row's menu, not a drop.
     let hold_menu = held.filter(|(_, at, _)| pos.is_none_or(|p| p.distance(*at) <= HOLD_SLOP));
     let target = pos.and_then(|p| {
@@ -4244,10 +4486,7 @@ fn drag_rows(
                 );
             }
             Some((_, y, r)) => {
-                ui.painter().line_segment(
-                    [Pos2::new(r.left(), y), Pos2::new(r.right(), y)],
-                    Stroke::new(2.0, Tokens::ACCENT),
-                );
+                paint_drop_line(ui, r, y);
             }
             None => {}
         }
@@ -4256,7 +4495,7 @@ fn drag_rows(
     // The button is up: the drag ends, and moves the objects only when it
     // was let go over a row this frame (not when the list was away).
     ui.ctx().data_mut(|d| {
-        d.remove::<ShapeId>(id);
+        d.remove::<RowDrag>(id);
         d.remove::<Pos2>(pos_id);
         d.remove::<(ShapeId, Pos2, Option<PageId>)>(hold_id);
     });
@@ -4306,7 +4545,13 @@ fn apply_layer_switch(
 }
 
 fn apply(app: &mut App, ui: &Ui, mut act: Actions) {
-    if let Some((id, pos, page)) = drag_rows(app, ui, &act.object_rows, &act.layer_drop_rows) {
+    if let Some((id, pos, page)) = drag_rows(
+        app,
+        ui,
+        &act.object_rows,
+        &act.layer_drop_rows,
+        &act.layer_reorder_rows,
+    ) {
         act.goto = act.goto.or(page);
         act.object_menu = Some((id, pos));
     }
@@ -6617,6 +6862,368 @@ mod drag_tests {
             .iter()
             .map(|s| s.id)
             .collect()
+    }
+
+    #[test]
+    fn layer_drag_between_pages_keeps_identity_and_last_source_layer() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        let source = app.active_layer().unwrap();
+        let shape = app.new_shape(rect_kind()).unwrap();
+        app.run(Command::AddPage {
+            name: Some("Destination".into()),
+            size: tracedraw_core::Size::new(50.0, 70.0),
+            layer: None,
+        });
+        let destination = app.doc().pages[1].id;
+        let target = app.doc().pages[1].layers[0].id;
+        let before = app.doc().layer(source).unwrap().clone();
+        frame(&ctx, &mut app, Vec::new());
+        let from = layer_name_pos(layer_row(&ctx, source), true);
+        let to = layer_name_pos(layer_row(&ctx, target), true);
+        drag(&ctx, &mut app, from, to);
+        assert_eq!(app.page, destination);
+        assert_eq!(app.picked_layer, Some(source));
+        assert_eq!(app.doc().layer(source).unwrap(), &before);
+        assert_eq!(
+            app.doc().pages[1]
+                .layers
+                .iter()
+                .map(|l| l.id)
+                .collect::<Vec<_>>(),
+            [target, source]
+        );
+        let replacement = app.doc().pages[0].layers[0].id;
+        assert_ne!(replacement, source);
+        assert!(app.doc().pages[0].layers[0].shapes.is_empty());
+        assert_eq!(app.doc().find_shape(shape).unwrap(), &before.shapes[0]);
+        app.undo();
+        assert_eq!(app.doc().pages[0].layers[0], before);
+        assert!(app.doc().layer(replacement).is_err());
+        app.redo();
+        assert_eq!(app.doc().layer(source).unwrap(), &before);
+        let saved = app.doc().to_json().unwrap();
+        let reopened = tracedraw_core::Document::from_json(&saved).unwrap();
+        assert_eq!(reopened.layer(source).unwrap(), &before);
+    }
+
+    #[test]
+    fn layer_drag_between_pages_finishes_clip_edit_before_moving() {
+        let mut app = App::headless();
+        let source = app.active_layer().unwrap();
+        let clip = app.new_shape(rect_kind()).unwrap();
+        let content = app.new_shape(rect_kind()).unwrap();
+        clip_rows(&mut app, &[content], clip);
+        app.run(Command::AddLayer {
+            page: app.page,
+            name: "Also moved".into(),
+        });
+        let second = app.doc().pages[0].layers[1].id;
+        app.run(Command::AddPage {
+            name: None,
+            size: tracedraw_core::Size::new(100.0, 100.0),
+            layer: None,
+        });
+        let target = app.doc().pages[1].layers[0].id;
+        let destination_shape = Shape::new(app.engine.new_shape_id(), rect_kind());
+        let destination_id = destination_shape.id;
+        app.run(Command::AddShape {
+            layer: target,
+            shape: destination_shape,
+        });
+        app.select(vec![clip]);
+        app.edit_clip_frame();
+        assert!(app.clip_frame_edit.is_some());
+        app.selected_layers = vec![second, source];
+        drop_layer_rows(&mut app, source, target, true);
+        assert!(app.clip_frame_edit.is_none());
+        assert_eq!(
+            app.doc().pages[1]
+                .layers
+                .iter()
+                .map(|l| l.id)
+                .collect::<Vec<_>>(),
+            [target, source, second]
+        );
+        assert_eq!(app.selected_layers, [second, source]);
+        let moved = app.doc().layer(source).unwrap().clone();
+        assert_eq!(moved.shapes.len(), 1);
+        assert!(
+            matches!(&moved.shapes[0].kind, ShapeKind::ClipFrame { contents, .. } if contents.len() == 1 && contents[0].id == content)
+        );
+        app.undo();
+        assert_eq!(app.doc().pages[0].layers[0], moved);
+        assert_eq!(app.doc().pages[1].layers.len(), 1);
+        assert!(app.clip_frame_edit.is_none());
+        app.undo();
+        assert!(app.clip_frame_edit.is_some());
+        assert_eq!(
+            app.page,
+            app.doc().pages[0].id,
+            "clip undo restores its source page"
+        );
+        assert_eq!(
+            app.clip_edit_contents(),
+            [content]
+        );
+        app.redo();
+        assert!(app.clip_frame_edit.is_none());
+        assert_eq!(app.doc().pages[0].layers[0], moved);
+        app.redo();
+        assert_eq!(app.doc().pages[1].layers[1], moved);
+        assert_eq!(
+            app.doc().layer(target).unwrap().shapes[0].id,
+            destination_id
+        );
+    }
+
+    #[test]
+    fn layer_drag_filtered_rows_use_backing_indices_and_controls_still_click() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        let ids = three_layers(&mut app);
+        for id in [ids[0], ids[2]] {
+            app.run(Command::RenameLayer {
+                layer: id,
+                name: "Match".into(),
+            });
+        }
+        ctx.data_mut(|d| d.insert_temp(egui::Id::new(LAYER_FILTER), "match".to_string()));
+        frame(&ctx, &mut app, Vec::new());
+        let from = layer_name_pos(layer_row(&ctx, ids[0]), true);
+        let to = layer_name_pos(layer_row(&ctx, ids[2]), true);
+        drag(&ctx, &mut app, from, to);
+        assert_eq!(layer_ids(&app), [ids[1], ids[2], ids[0]]);
+        frame(&ctx, &mut app, Vec::new());
+        let rect = layer_row(&ctx, ids[0]);
+        let eye = Pos2::new(rect.left() + 44.0, rect.center().y);
+        drag(&ctx, &mut app, eye, eye);
+        assert!(!app.doc().layer(ids[0]).unwrap().visible);
+        assert_eq!(layer_ids(&app), [ids[1], ids[2], ids[0]]);
+    }
+
+    #[test]
+    fn layer_drag_returns_borrowed_spread_objects_before_transferring() {
+        for moving_home in [false, true] {
+            let mut app = App::headless();
+            for _ in 0..3 {
+                app.add_page();
+            }
+            app.set_facing_pages(true, tracedraw_core::spreads::PageSide::Right);
+            let (host_page, home_page) = (app.doc().pages[1].id, app.doc().pages[2].id);
+            app.page = home_page;
+            let borrowed = app.new_shape(rect_kind()).unwrap();
+            let original = app.doc().find_shape(borrowed).unwrap().clone();
+            let home = app.doc().page(home_page).unwrap().layers[0].id;
+            app.page = host_page;
+            let own = app.new_shape(rect_kind()).unwrap();
+            let host = app.doc().page(host_page).unwrap().layers[0].id;
+            assert_eq!(app.adopt_spread_objects(&[borrowed]), [borrowed]);
+            app.select(vec![own, borrowed]);
+            let source = if moving_home { home } else { host };
+            let target = app.doc().pages[3].layers[0].id;
+            app.selected_layers = vec![source];
+            drop_layer_rows(&mut app, source, target, true);
+            assert!(app.spread_adopted.is_empty());
+            assert_eq!(app.doc().find_shape(borrowed).unwrap(), &original);
+            let moved = app.doc().layer(source).unwrap();
+            assert_eq!(
+                moved.shapes.iter().map(|s| s.id).collect::<Vec<_>>(),
+                if moving_home {
+                    vec![borrowed]
+                } else {
+                    vec![own]
+                }
+            );
+            app.undo();
+            assert_eq!(
+                app.doc().page(home_page).unwrap().layers[0].shapes[0].id,
+                borrowed
+            );
+            assert_eq!(
+                app.doc().page(host_page).unwrap().layers[0].shapes[0].id,
+                own
+            );
+        }
+    }
+
+    fn layer_ids(app: &App) -> Vec<LayerId> {
+        app.doc().pages[0].layers.iter().map(|l| l.id).collect()
+    }
+
+    fn three_layers(app: &mut App) -> Vec<LayerId> {
+        for name in ["Middle", "Top"] {
+            app.run(Command::AddLayer {
+                page: app.page,
+                name: name.into(),
+            });
+        }
+        layer_ids(app)
+    }
+
+    fn layer_name_pos(rect: Rect, front: bool) -> Pos2 {
+        Pos2::new(
+            rect.right() - 35.0,
+            if front {
+                rect.top() + 3.0
+            } else {
+                rect.bottom() - 3.0
+            },
+        )
+    }
+
+    #[test]
+    fn layer_drag_reorders_both_directions_with_undo_and_redo() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        let ids = three_layers(&mut app);
+        let layer = ids[0];
+        let shape = Shape::new(app.engine.new_shape_id(), rect_kind());
+        app.run(Command::AddShape { layer, shape });
+        app.run(Command::SetLayerVisible {
+            layer,
+            visible: false,
+        });
+        app.run(Command::SetLayerLocked {
+            layer,
+            locked: true,
+        });
+        app.run(Command::SetLayerPrintable {
+            layer,
+            printable: false,
+        });
+        let original = app.doc().layer(layer).unwrap().clone();
+        frame(&ctx, &mut app, Vec::new());
+        let from = layer_name_pos(layer_row(&ctx, layer), true);
+        let to = layer_name_pos(layer_row(&ctx, ids[2]), true);
+        drag(&ctx, &mut app, from, to);
+        assert_eq!(layer_ids(&app), [ids[1], ids[2], ids[0]]);
+        assert_eq!(app.doc().layer(layer).unwrap(), &original);
+        app.undo();
+        assert_eq!(layer_ids(&app), ids);
+        app.redo();
+        assert_eq!(layer_ids(&app), [ids[1], ids[2], ids[0]]);
+        frame(&ctx, &mut app, Vec::new());
+        let from = layer_name_pos(layer_row(&ctx, layer), true);
+        let to = layer_name_pos(layer_row(&ctx, ids[1]), false);
+        drag(&ctx, &mut app, from, to);
+        assert_eq!(layer_ids(&app), ids);
+    }
+
+    #[test]
+    fn layer_drag_keeps_selected_block_order_and_ignores_noops() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        let ids = three_layers(&mut app);
+        app.selected_layers = vec![ids[2], ids[0]];
+        frame(&ctx, &mut app, Vec::new());
+        let from = layer_name_pos(layer_row(&ctx, ids[0]), true);
+        let to = layer_name_pos(layer_row(&ctx, ids[1]), true);
+        drag(&ctx, &mut app, from, to);
+        assert_eq!(layer_ids(&app), [ids[1], ids[0], ids[2]]);
+        assert_eq!(app.selected_layers, [ids[2], ids[0]]);
+        app.undo();
+        assert_eq!(layer_ids(&app), ids, "whole block is one undo step");
+        app.selected_layers.clear();
+        assert!(layer_drop_commands(&app, ids[0], ids[1], false).is_empty());
+        assert!(layer_drop_commands(&app, ids[0], ids[0], true).is_empty());
+        frame(&ctx, &mut app, Vec::new());
+        let revision = app.engine.revision();
+        let from = layer_name_pos(layer_row(&ctx, ids[0]), true);
+        let to = layer_name_pos(layer_row(&ctx, ids[1]), false);
+        drag(&ctx, &mut app, from, to);
+        assert_eq!(app.engine.revision(), revision);
+        drag(&ctx, &mut app, from, Pos2::new(200.0, 750.0));
+        assert_eq!(app.engine.revision(), revision);
+    }
+
+    #[test]
+    fn layer_drag_master_and_ranges_preserve_scope_and_reject_other_lists() {
+        let mut app = App::headless();
+        let own = three_layers(&mut app);
+        for name in ["Shared A", "Shared B"] {
+            app.run(Command::AddMasterLayer {
+                name: name.into(),
+                scope: MasterScope::Odd,
+            });
+        }
+        let shared: Vec<_> = app
+            .doc()
+            .master
+            .iter()
+            .filter(|l| !l.desktop)
+            .map(|l| l.id)
+            .collect();
+        app.run(Command::SetLayerInFront {
+            layer: shared[0],
+            in_front: true,
+        });
+        let before = app.doc().layer(shared[0]).unwrap().clone();
+        let cmds = layer_drop_commands(&app, shared[0], shared[1], true);
+        app.engine.run_batch("Reorder Layer", &cmds).unwrap();
+        assert_eq!(app.doc().layer(shared[0]).unwrap(), &before);
+        assert!(layer_drop_commands(&app, own[0], shared[1], true).is_empty());
+        for id in &shared {
+            app.run(Command::SetLayerPageRange {
+                layer: *id,
+                page_range: PageRanges::parse("1-3"),
+            });
+        }
+        let desktop = app.doc().master.iter().find(|l| l.desktop).unwrap().id;
+        assert!(layer_drop_commands(&app, shared[0], desktop, true).is_empty());
+        let before = app.doc().layer(shared[1]).unwrap().clone();
+        let cmds = layer_drop_commands(&app, shared[1], shared[0], true);
+        assert!(!cmds.is_empty());
+        app.engine.run_batch("Reorder Layer", &cmds).unwrap();
+        assert_eq!(app.doc().layer(shared[1]).unwrap(), &before);
+        app.selected_layers = vec![own[0], shared[0]];
+        assert!(layer_drop_commands(&app, own[0], own[1], true).is_empty());
+    }
+
+    #[test]
+    fn layer_drag_escape_and_document_switch_cancel() {
+        for switch in [false, true] {
+            let ctx = crate::theme::ui_context();
+            let mut app = App::headless();
+            let ids = three_layers(&mut app);
+            frame(&ctx, &mut app, Vec::new());
+            let to = layer_name_pos(layer_row(&ctx, ids[2]), true);
+            ctx.data_mut(|d| {
+                d.insert_temp(
+                    egui::Id::new(ROW_DRAG),
+                    RowDrag::Layer(
+                        ids[0],
+                        if switch {
+                            u64::MAX
+                        } else {
+                            app.engine.instance()
+                        },
+                    ),
+                )
+            });
+            let revision = app.engine.revision();
+            let mut events = vec![egui::Event::PointerButton {
+                pos: to,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: Default::default(),
+            }];
+            if !switch {
+                events.push(egui::Event::Key {
+                    key: egui::Key::Escape,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: Default::default(),
+                });
+            }
+            frame(&ctx, &mut app, events);
+            assert_eq!(layer_ids(&app), ids);
+            assert_eq!(app.engine.revision(), revision);
+            assert!(ctx
+                .data(|d| d.get_temp::<RowDrag>(egui::Id::new(ROW_DRAG)))
+                .is_none());
+        }
     }
 
     /// Live test of 0.41: an object's row dragged along the Objects
