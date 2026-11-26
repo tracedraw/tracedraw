@@ -7,6 +7,8 @@ full, row-by-row status.
 ## Unreleased
 
 - Toolbox "+" menu (quick customize) reorganized: a section per flyout with a check box, picture and name, then a row per tool with its own check box, picture, name and shortcut, so single tools can be left out of a flyout (the last one stays); no more long comma lists that wrapped, the list scrolls and Reset / Customize... stay below it. The Outline flyout stays unticked at first, as the toolbox hides it until it is ticked.
+- Shape Builder: with Use Guidelines on, a place off the objects that two or more guidelines close in together with an object's edge is a part (#4456).
+- Shape Builder: outlines are drawn as one joined line, so an ellipse shows no notches at the joins of its arcs when zoomed in (#4457).
 - Shape Builder: Delete Segment with the selection only (Alt) reaches an object picked inside a group, without its siblings (#4412).
 - Shape tool: Ctrl+click picks an object inside a group, one level further in at each click, so its nodes can be edited without ungrouping (#4417).
 - Guidelines panel: Alt+A and Alt+M add and modify from the position typed, instead of typing the letter into the box, and the box keeps the focus with its value selected for the next one (#4418).

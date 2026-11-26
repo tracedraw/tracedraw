@@ -469,7 +469,12 @@ impl App {
                 // Off the selection, the rooms of the guidelines are
                 // parts as well, at once, with no click to drop the
                 // selection first (#4223).
-                None => self.builder_free_room(&areas, &lines, p)?,
+                None => match self.builder_free_room(&areas, &lines, p) {
+                    Some(room) => room,
+                    // A place off the objects that the guidelines and
+                    // the objects' edges close in together (#4456).
+                    None => self.builder_walled_room(&areas, &lines, p)?,
+                },
             }
         };
         *self.builder.hover.borrow_mut() = Some(Hover {
@@ -499,6 +504,38 @@ impl App {
                     .all(|q| tracedraw_core::shaping::filled_area(q, Default::default()) < 1e-6)
         });
         clear.then_some(room)
+    }
+
+    /// With Use Guidelines on, the place around `p`, off every selected
+    /// object `areas`, that the guidelines and the objects' edges close in
+    /// on every side together: the room of the guidelines with the objects
+    /// cut out of it, kept when it does not run out to the far bounds
+    /// (#4456: two guidelines across a circle close in its corner).
+    fn builder_walled_room(
+        &self,
+        areas: &[BezPath],
+        lines: &[tracedraw_core::document::GuideLine],
+        p: Point,
+    ) -> Option<BezPath> {
+        if lines.is_empty() || areas.is_empty() || areas.iter().any(|a| inside(a, p)) {
+            return None;
+        }
+        let bounds = self.builder_guide_bounds();
+        let mut piece = cell_at(bounds, lines, p)?;
+        for a in areas {
+            if a.bounding_box().intersect(piece.bounding_box()).area() <= 0.0 {
+                continue;
+            }
+            piece = overlay_parts(&piece, a, Op::Trim)
+                .into_iter()
+                .find(|q| inside(q, p))?;
+        }
+        let pb = piece.bounding_box();
+        let open = pb.x0 <= bounds.x0 + 1e-6
+            || pb.y0 <= bounds.y0 + 1e-6
+            || pb.x1 >= bounds.x1 - 1e-6
+            || pb.y1 >= bounds.y1 - 1e-6;
+        (!open).then_some(piece)
     }
 
     /// `p` is in a room of the guidelines off the selected objects: the
@@ -1048,16 +1085,17 @@ pub fn draw(app: &App, painter: &Painter) {
     };
     // The objects the tool works on are edged in grey, apart from the
     // usual selection colour, so the ones taking part show (#3220).
+    // Each outline is drawn as one joined line, not a line per segment:
+    // separate pieces left notches and doubled halo dots at the joins of
+    // an ellipse's arcs when zoomed in (#4457).
     for q in app.builder_pieces() {
-        for seg in q.area.segments() {
-            let pts: Vec<egui::Pos2> = (0..=8)
-                .map(|i| app.view.to_screen(seg.eval(i as f64 / 8.0)))
-                .collect();
-            painter.add(egui::Shape::line(
+        for (pts, closed) in screen_runs(app, &q.area) {
+            painter.add(run_shape(
                 pts.clone(),
+                closed,
                 egui::Stroke::new(3.0, Color32::from_white_alpha(200)),
             ));
-            painter.add(egui::Shape::line(pts, egui::Stroke::new(1.5, Color32::from_gray(96))));
+            painter.add(run_shape(pts, closed, egui::Stroke::new(1.5, Color32::from_gray(96))));
         }
     }
     let mut shown: Vec<BezPath> = app.builder.parts.clone();
@@ -1092,16 +1130,79 @@ pub fn draw(app: &App, painter: &Painter) {
         _ => Vec::new(),
     };
     for path in &doomed {
-        for seg in path.segments() {
-            let pts: Vec<egui::Pos2> = (0..=8)
-                .map(|i| app.view.to_screen(seg.eval(i as f64 / 8.0)))
-                .collect();
-            painter.add(egui::Shape::line(
+        for (pts, closed) in screen_runs(app, path) {
+            painter.add(run_shape(
                 pts.clone(),
+                closed,
                 egui::Stroke::new(4.0, Color32::from_white_alpha(200)),
             ));
-            painter.add(egui::Shape::line(pts, egui::Stroke::new(2.5, REMOVE_RED)));
+            painter.add(run_shape(pts, closed, egui::Stroke::new(2.5, REMOVE_RED)));
         }
+    }
+}
+
+/// Each subpath of `path` as one run of screen points, its curves cut
+/// into short straight steps, and whether it closes.
+fn screen_runs(app: &App, path: &BezPath) -> Vec<(Vec<egui::Pos2>, bool)> {
+    use tracedraw_core::geometry::PathEl;
+    let zoom = app.view.zoom.max(1e-6) as f64;
+    let mut runs = Vec::new();
+    let mut pts: Vec<egui::Pos2> = Vec::new();
+    let mut last = Point::ZERO;
+    let mut start = Point::ZERO;
+    let steps = |len: f64| ((len * zoom / 4.0).ceil() as usize).clamp(1, 256);
+    let flush = |pts: &mut Vec<egui::Pos2>, runs: &mut Vec<(Vec<egui::Pos2>, bool)>, closed: bool| {
+        if pts.len() >= 2 {
+            runs.push((std::mem::take(pts), closed));
+        } else {
+            pts.clear();
+        }
+    };
+    for el in path.elements() {
+        match *el {
+            PathEl::MoveTo(p) => {
+                flush(&mut pts, &mut runs, false);
+                pts.push(app.view.to_screen(p));
+                last = p;
+                start = p;
+            }
+            PathEl::LineTo(p) => {
+                pts.push(app.view.to_screen(p));
+                last = p;
+            }
+            PathEl::QuadTo(a, b) => {
+                let q = kurbo::QuadBez::new(last, a, b);
+                let n = steps(q.perimeter(0.1));
+                pts.extend((1..=n).map(|i| app.view.to_screen(q.eval(i as f64 / n as f64))));
+                last = b;
+            }
+            PathEl::CurveTo(a, b, c) => {
+                let cb = kurbo::CubicBez::new(last, a, b, c);
+                let n = steps(cb.perimeter(0.1));
+                pts.extend((1..=n).map(|i| app.view.to_screen(cb.eval(i as f64 / n as f64))));
+                last = c;
+            }
+            PathEl::ClosePath => {
+                // The closing point is the start again: dropped, the
+                // closed line joins it back.
+                if pts.len() > 1 && (last - start).hypot() * zoom < 0.01 {
+                    pts.pop();
+                }
+                flush(&mut pts, &mut runs, true);
+                last = start;
+            }
+        }
+    }
+    flush(&mut pts, &mut runs, false);
+    runs
+}
+
+/// A run of points as one joined line, closed when it closes.
+fn run_shape(pts: Vec<egui::Pos2>, closed: bool, stroke: egui::Stroke) -> egui::Shape {
+    if closed {
+        egui::Shape::closed_line(pts, stroke)
+    } else {
+        egui::Shape::line(pts, stroke)
     }
 }
 
@@ -1129,11 +1230,8 @@ fn hatch(app: &App, painter: &Painter, part: &BezPath, color: Color32) {
         k += gap;
         lines += 1;
     }
-    for seg in part.segments() {
-        let pts: Vec<egui::Pos2> = (0..=8)
-            .map(|i| app.view.to_screen(seg.eval(i as f64 / 8.0)))
-            .collect();
-        painter.add(egui::Shape::line(pts, egui::Stroke::new(1.5, color)));
+    for (pts, closed) in screen_runs(app, part) {
+        painter.add(run_shape(pts, closed, egui::Stroke::new(1.5, color)));
     }
 }
 
@@ -1570,6 +1668,44 @@ mod tests {
         assert_ne!(made, a);
         assert!((page_area(&app, made) - 100.0).abs() < 1e-6);
         assert!((page_area(&app, a) - 100.0).abs() < 1e-6, "the object is untouched");
+    }
+
+    /// With Use Guidelines on, two guidelines crossing beside a diamond
+    /// close in, with its edge, the corner between them: that corner is a
+    /// part, and taking it makes an object of it (#4456).
+    #[test]
+    fn two_guidelines_and_an_edge_close_in_a_part() {
+        use tracedraw_core::document::GuideLine;
+        let mut app = App::headless();
+        let layer = app.active_layer().unwrap();
+        let mut path = BezPath::new();
+        path.move_to((10.0, 0.0));
+        path.line_to((20.0, 10.0));
+        path.line_to((10.0, 20.0));
+        path.line_to((0.0, 10.0));
+        path.close_path();
+        let a = app.engine.new_shape_id();
+        app.run(Command::AddShape {
+            layer,
+            shape: Shape::new(a, ShapeKind::Path { path, closed: true }),
+        });
+        let page = app.page;
+        for line in [GuideLine::Vertical { x: 18.0 }, GuideLine::Horizontal { y: 18.0 }] {
+            app.run(Command::AddGuide { page, guide: line.into() });
+        }
+        app.select(vec![a]);
+        app.set_tool(Tool::ShapeBuilder);
+        app.builder.use_guides = true;
+        let p = Point::new(17.0, 17.0);
+        let corner = app.builder_part_at(p).expect("the corner is a part");
+        assert!((area(&corner) - 18.0).abs() < 1e-3, "{}", area(&corner));
+        assert!(app.builder_part_at(Point::new(30.0, 30.0)).is_none(), "open beyond the crossing");
+        assert!(app.builder_part_at(Point::new(17.0, 25.0)).is_none(), "open above the line");
+        app.builder_take(p);
+        app.builder_finish(false);
+        let made = *app.selection.iter().find(|&&id| id != a).expect("a new object");
+        assert!((page_area(&app, made) - 18.0).abs() < 1e-3);
+        assert!((page_area(&app, a) - 200.0).abs() < 1e-3, "the diamond is untouched");
     }
 
     /// An Alt drag over lines shows, before it ends, the stretches it
