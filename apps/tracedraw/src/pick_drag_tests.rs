@@ -4186,6 +4186,31 @@ fn copy_cut_and_paste_events_work_on_objects() {
     assert!((b.center() - view).hypot() < 1e-6);
 }
 
+/// Ctrl is missing from V's own key event on Windows (its paste
+/// translation strips it, #4284): when that translation does not also
+/// make an `Event::Paste` (no text or picture on the clipboard yet, so
+/// only the key itself arrives), Ctrl+Shift+V still reads as held, from
+/// the separate `ModifiersChanged` event its Ctrl key-down still sends,
+/// and still pastes into the view instead of being dropped as a bare
+/// Shift+V.
+#[test]
+fn ctrl_shift_v_pastes_into_view_even_with_ctrl_missing_from_the_key_itself() {
+    let (ctx, mut app, _) = setup();
+    let n = shape_count(&app);
+    frame(&ctx, &mut app, vec![Event::Copy], Modifiers::COMMAND);
+    assert!(app.clipboard.is_some());
+    frame(
+        &ctx,
+        &mut app,
+        vec![key(egui::Key::V, Modifiers::SHIFT)],
+        Modifiers::COMMAND | Modifiers::SHIFT,
+    );
+    assert_eq!(shape_count(&app), n + 1);
+    let view = app.view.visible_page_rect(app.canvas_rect).center();
+    let b = app.selection_bounds().expect("bounds");
+    assert!((b.center() - view).hypot() < 1e-6);
+}
+
 /// With only a picture or files on the system clipboard the windowing
 /// layer drops the Ctrl+V press and sends no paste event: the release of
 /// V with Ctrl still pastes, once; a release after a paste event does not.

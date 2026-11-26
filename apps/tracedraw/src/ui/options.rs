@@ -4621,26 +4621,44 @@ fn capture_keys(app: &mut App, ui: &mut Ui) {
         return;
     };
     let pressed = ui.input(|i| {
-        i.events.iter().find_map(|e| match e {
-            egui::Event::Key {
-                key,
-                pressed: true,
-                modifiers,
-                ..
-            } if !crate::shortcuts::is_modifier(*key) => {
-                // Ctrl is missing from C, X and V's own key event (their
-                // copy/cut/paste translation strips it): `i.modifiers`,
-                // kept from the separate `ModifiersChanged` event their
-                // own Ctrl key-down still sends, has it.
-                let mods = if matches!(key, egui::Key::C | egui::Key::X | egui::Key::V) {
-                    i.modifiers
-                } else {
-                    *modifiers
-                };
-                Some((*key, mods))
-            }
-            _ => None,
-        })
+        i.events
+            .iter()
+            .find_map(|e| match e {
+                egui::Event::Key {
+                    key,
+                    pressed: true,
+                    modifiers,
+                    ..
+                } if !crate::shortcuts::is_modifier(*key) => {
+                    // Ctrl is missing from C, X and V's own key event (their
+                    // copy/cut/paste translation strips it): `i.modifiers`,
+                    // kept from the separate `ModifiersChanged` event their
+                    // own Ctrl key-down still sends, has it.
+                    let mods = if matches!(key, egui::Key::C | egui::Key::X | egui::Key::V) {
+                        i.modifiers
+                    } else {
+                        *modifiers
+                    };
+                    Some((*key, mods))
+                }
+                _ => None,
+            })
+            .or_else(|| {
+                // With Ctrl (and often Shift) held, Windows' copy/cut/paste
+                // translation can drop C, X and V's own press and deliver
+                // only its release (`ctrl_v_pastes_when_only_its_release_comes_through`
+                // in interaction.rs has the same shape for Paste): take
+                // that release as the capture, with the modifiers really
+                // held, not whatever is left on the release event.
+                i.events.iter().find_map(|e| match e {
+                    egui::Event::Key {
+                        key: key @ (egui::Key::C | egui::Key::X | egui::Key::V),
+                        pressed: false,
+                        ..
+                    } => Some((*key, i.modifiers)),
+                    _ => None,
+                })
+            })
     });
     let Some((key, mods)) = pressed else {
         return;
@@ -8031,6 +8049,38 @@ mod tests {
                 "{letter:?}: {export_keys:?}"
             );
         }
+    }
+
+    /// With Ctrl (and Shift) held, Windows' copy/cut/paste translation can
+    /// drop C, X and V's own press and deliver only its release: that
+    /// release still captures Ctrl+Shift+V, with the modifiers really
+    /// held, not a bare V.
+    #[test]
+    fn a_shortcut_with_c_x_or_v_is_captured_from_its_release_when_the_press_never_comes() {
+        use crate::ui::dialogs::Dialog;
+        use egui::{Event, Key, Modifiers};
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        app.show_welcome = false;
+        app.dialog = Dialog::Options;
+        app.options_page = OptionsPage::Commands;
+        frame(&ctx, &mut app, vec![]);
+        app.shortcut_editor.capture = Some("menu.file.export".into());
+        let mods = Modifiers::COMMAND | Modifiers::SHIFT;
+        let v_up = Event::Key {
+            key: Key::V,
+            physical_key: None,
+            pressed: false,
+            repeat: false,
+            modifiers: mods,
+        };
+        frame(&ctx, &mut app, vec![Event::ModifiersChanged(mods), v_up]);
+        let export_keys =
+            crate::shortcuts::keys_for(&app.settings.shortcuts, "menu.file.export", None);
+        assert!(
+            export_keys.contains(&"Ctrl+Shift+V".to_string()),
+            "{export_keys:?}"
+        );
     }
 
     /// A tool takes a second key without losing its first; either picks
