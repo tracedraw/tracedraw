@@ -963,6 +963,7 @@ docker.colour_a = "色 A"
 docker.colour_b = "色 B"
 docker.column_offset_tip = "タイルの各列を左の列に対してずらします" # mt
 docker.contour = "輪郭"
+docker.contour_alignment = "輪郭の配置" # mt
 docker.coordinates = "座標"
 docker.copies = "コピー数:"
 docker.corners = "角"

@@ -963,6 +963,7 @@ docker.colour_a = "اللون أ"
 docker.colour_b = "اللون ب"
 docker.column_offset_tip = "إزاحة كل عمود من البلاطات عن العمود الذي على يساره" # mt
 docker.contour = "حد"
+docker.contour_alignment = "محاذاة المحيط" # mt
 docker.coordinates = "الإحداثيات"
 docker.copies = "عدد النسخ:"
 docker.corners = "الزوايا"

@@ -963,6 +963,7 @@ docker.colour_a = "रंग A"
 docker.colour_b = "रंग B"
 docker.column_offset_tip = "टाइलों के हर स्तंभ को बाएँ वाले स्तंभ के सापेक्ष खिसकाएँ" # mt
 docker.contour = "कंटूर"
+docker.contour_alignment = "कंटूर संरेखण" # mt
 docker.coordinates = "निर्देशांक"
 docker.copies = "प्रतियों की संख्या:"
 docker.corners = "कोने"

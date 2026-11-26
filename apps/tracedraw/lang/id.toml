@@ -963,6 +963,7 @@ docker.colour_a = "Warna A"
 docker.colour_b = "Warna B"
 docker.column_offset_tip = "Geser setiap kolom ubin terhadap kolom di kirinya" # mt
 docker.contour = "Kontur"
+docker.contour_alignment = "Penyelarasan kontur" # mt
 docker.coordinates = "Koordinat"
 docker.copies = "Jumlah salinan:"
 docker.corners = "Sudut"

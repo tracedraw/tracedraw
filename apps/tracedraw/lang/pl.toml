@@ -963,6 +963,7 @@ docker.colour_a = "Kolor A"
 docker.colour_b = "Kolor B"
 docker.column_offset_tip = "Przesuń każdą kolumnę kafelek względem kolumny po lewej" # mt
 docker.contour = "Obrys"
+docker.contour_alignment = "Wyrównanie konturu" # mt
 docker.coordinates = "Współrzędne"
 docker.copies = "Liczba kopii:"
 docker.corners = "Narożniki"

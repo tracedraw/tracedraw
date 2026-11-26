@@ -4,11 +4,11 @@
 //! colours; the object and colour accelerations. They show the selected
 //! contour and edit the selected contours live.
 
-use crate::ui::btn_icons::IconUi;
 use crate::app::App;
-use crate::contour_tool::{blend_key, join_key, ContourDirection};
+use crate::contour_tool::{ContourDirection, ContourSettings, blend_key, join_key};
 use crate::i18n::tr;
 use crate::theme::Tokens;
+use crate::ui::btn_icons::IconUi;
 use crate::ui::field::NumField;
 use crate::ui::fill_tool_bars::color_pick;
 use crate::ui::propbar::sep;
@@ -62,120 +62,46 @@ pub fn contour_controls_in(app: &mut App, ui: &mut Ui, wrap: bool) {
     let palette = app.palette.clone();
     let mut s = app.contour;
     let mut changed = false;
-    group_row(ui, wrap, |ui| {
-        for d in ContourDirection::ALL {
-            if ui
-                .iselectable(s.direction == d, d.key())
-                .rich_tip(crate::ui::tips::keyed(d.key()))
-                .clicked()
-                && s.direction != d
-            {
-                s.direction = d;
-                changed = true;
-            }
-        }
-    });
-    group_row(ui, wrap, |ui| {
-        crate::ui::toolbar::dim_labelled_as(ui, "docker.steps", "contour.steps_desc", |ui| {
-            // A slider (with its number box), stepped on a logarithmic
-            // scale so the first steps are easy to pick (#1265).
-            ui.add_enabled_ui(s.direction != ContourDirection::ToCenter, |ui| {
-                changed |= ui
-                    .add(
-                        crate::ui::Slider::new(&mut s.steps, 1..=999)
-                            .logarithmic(true)
-                            .width(120.0),
-                    )
-                    .changed();
-            });
+    if wrap {
+        use crate::ui::docker_form::section;
+
+        section(ui, Some(&tr("docker.contour_alignment")));
+        group_row(ui, true, |ui| changed |= direction_controls(ui, &mut s));
+        group_row(ui, true, |ui| changed |= steps_control(ui, &mut s));
+        group_row(ui, true, |ui| changed |= offset_control(app, ui, &mut s));
+
+        section(ui, Some(&tr("contour.corners")));
+        group_row(ui, true, |ui| changed |= corner_control(ui, &mut s));
+
+        section(ui, Some(&tr("docker.color_blend")));
+        group_row(ui, true, |ui| changed |= blend_control(ui, &mut s));
+        group_row(ui, true, |ui| {
+            changed |= color_controls(ui, &palette, &mut s)
         });
-        let mut o = app.units.world_from_mm(s.offset);
-        if crate::ui::toolbar::dim_labelled_as(ui, "docker.offset", "contour.offset_desc", |ui| {
-            ui.add(
-                NumField::new(&mut o)
-                    .range(0.0..=app.units.world_from_mm(1000.0))
-                    .length_decimals(app.settings.precision.min(10) as usize)
-                    .unit_mm(app.units.world_to_mm(1.0))
-                    .suffix(format!(" {}", app.units.short()))
-                    .width(76.0),
-            )
-        })
-        .changed()
-        {
-            s.offset = app.units.world_to_mm(o);
-            changed = true;
-        }
-        crate::ui::keynav::ComboBox::from_id_salt("contour_corners")
-            .selected_text(tr(join_key(s.corners)))
-            .width(80.0)
-            .show_ui(ui, |ui| {
-                for j in [Join::Miter, Join::Round, Join::Bevel] {
-                    if ui
-                        .selectable_label(s.corners == j, tr(join_key(j)))
-                        .clicked()
-                        && s.corners != j
-                    {
-                        s.corners = j;
-                        changed = true;
-                    }
-                }
-            })
-            .response
-            .rich_tip(tr("contour.corners"));
-    });
-    group_row(ui, wrap, |ui| {
-        crate::ui::keynav::ComboBox::from_id_salt("contour_blend")
-            .selected_text(tr(blend_key(s.color_blend)))
-            .width(110.0)
-            .show_ui(ui, |ui| {
-                for b in 0..3u8 {
-                    if ui
-                        .selectable_label(s.color_blend == b, tr(blend_key(b)))
-                        .clicked()
-                        && s.color_blend != b
-                    {
-                        s.color_blend = b;
-                        changed = true;
-                    }
-                }
-            })
-            .response
-            .rich_tip(tr("docker.color_blend"));
-        changed |= color_pick(
-            ui,
-            &palette,
-            "contour_fill_to",
-            &mut s.fill_to,
-            &tr("docker.fill_color"),
-            true,
-        );
-        changed |= color_pick(
-            ui,
-            &palette,
-            "contour_outline_to",
-            &mut s.outline_to,
-            &tr("docker.outline_color"),
-            true,
-        );
-        // The end of a fountain fill (#1265): only fountain-filled
-        // objects use it, their steps keeping the fountain.
-        changed |= color_pick(
-            ui,
-            &palette,
-            "contour_fill_end_to",
-            &mut s.fill_end_to,
-            &format!(
-                "{}\n{}",
-                tr("contour.last_fill_color"),
-                tr("contour.last_fill_color_desc")
-            ),
-            true,
-        );
-    });
-    group_row(ui, wrap, |ui| {
-        changed |= accel(ui, "docker.object_acceleration", &mut s.accel_objects);
-        changed |= accel(ui, "docker.color_acceleration", &mut s.accel_colors);
-    });
+
+        section(ui, Some(&tr("docker.blend_acceleration")));
+        group_row(ui, true, |ui| {
+            changed |= accel(ui, "docker.object_acceleration", &mut s.accel_objects);
+        });
+        group_row(ui, true, |ui| {
+            changed |= accel(ui, "docker.color_acceleration", &mut s.accel_colors);
+        });
+    } else {
+        group_row(ui, false, |ui| changed |= direction_controls(ui, &mut s));
+        group_row(ui, false, |ui| {
+            changed |= steps_control(ui, &mut s);
+            changed |= offset_control(app, ui, &mut s);
+            changed |= corner_control(ui, &mut s);
+        });
+        group_row(ui, false, |ui| {
+            changed |= blend_control(ui, &mut s);
+            changed |= color_controls(ui, &palette, &mut s);
+        });
+        group_row(ui, false, |ui| {
+            changed |= accel(ui, "docker.object_acceleration", &mut s.accel_objects);
+            changed |= accel(ui, "docker.color_acceleration", &mut s.accel_colors);
+        });
+    }
     if changed {
         app.contour = s;
         app.apply_contour_settings();
@@ -186,6 +112,143 @@ pub fn contour_controls_in(app: &mut App, ui: &mut Ui, wrap: bool) {
     if entered {
         apply_on_enter(app);
     }
+}
+
+fn direction_controls(ui: &mut Ui, s: &mut ContourSettings) -> bool {
+    let mut changed = false;
+    for d in ContourDirection::ALL {
+        if ui
+            .iselectable(s.direction == d, d.key())
+            .rich_tip(crate::ui::tips::keyed(d.key()))
+            .clicked()
+            && s.direction != d
+        {
+            s.direction = d;
+            changed = true;
+        }
+    }
+    changed
+}
+
+fn steps_control(ui: &mut Ui, s: &mut ContourSettings) -> bool {
+    let mut changed = false;
+    crate::ui::toolbar::dim_labelled_as(ui, "docker.steps", "contour.steps_desc", |ui| {
+        // A slider (with its number box), stepped on a logarithmic
+        // scale so the first steps are easy to pick (#1265).
+        ui.add_enabled_ui(s.direction != ContourDirection::ToCenter, |ui| {
+            changed |= ui
+                .add(
+                    crate::ui::Slider::new(&mut s.steps, 1..=999)
+                        .logarithmic(true)
+                        .width(120.0),
+                )
+                .changed();
+        });
+    });
+    changed
+}
+
+fn offset_control(app: &App, ui: &mut Ui, s: &mut ContourSettings) -> bool {
+    let mut o = app.units.world_from_mm(s.offset);
+    if crate::ui::toolbar::dim_labelled_as(ui, "docker.offset", "contour.offset_desc", |ui| {
+        ui.add(
+            NumField::new(&mut o)
+                .range(0.0..=app.units.world_from_mm(1000.0))
+                .length_decimals(app.settings.precision.min(10) as usize)
+                .unit_mm(app.units.world_to_mm(1.0))
+                .suffix(format!(" {}", app.units.short()))
+                .width(76.0),
+        )
+    })
+    .changed()
+    {
+        s.offset = app.units.world_to_mm(o);
+        true
+    } else {
+        false
+    }
+}
+
+fn corner_control(ui: &mut Ui, s: &mut ContourSettings) -> bool {
+    let mut changed = false;
+    crate::ui::keynav::ComboBox::from_id_salt("contour_corners")
+        .selected_text(tr(join_key(s.corners)))
+        .width(80.0)
+        .show_ui(ui, |ui| {
+            for j in [Join::Miter, Join::Round, Join::Bevel] {
+                if ui
+                    .selectable_label(s.corners == j, tr(join_key(j)))
+                    .clicked()
+                    && s.corners != j
+                {
+                    s.corners = j;
+                    changed = true;
+                }
+            }
+        })
+        .response
+        .rich_tip(tr("contour.corners"));
+    changed
+}
+
+fn blend_control(ui: &mut Ui, s: &mut ContourSettings) -> bool {
+    let mut changed = false;
+    crate::ui::keynav::ComboBox::from_id_salt("contour_blend")
+        .selected_text(tr(blend_key(s.color_blend)))
+        .width(110.0)
+        .show_ui(ui, |ui| {
+            for b in 0..3u8 {
+                if ui
+                    .selectable_label(s.color_blend == b, tr(blend_key(b)))
+                    .clicked()
+                    && s.color_blend != b
+                {
+                    s.color_blend = b;
+                    changed = true;
+                }
+            }
+        })
+        .response
+        .rich_tip(tr("docker.color_blend"));
+    changed
+}
+
+fn color_controls(
+    ui: &mut Ui,
+    palette: &[(String, tracedraw_core::Color)],
+    s: &mut ContourSettings,
+) -> bool {
+    let mut changed = color_pick(
+        ui,
+        palette,
+        "contour_fill_to",
+        &mut s.fill_to,
+        &tr("docker.fill_color"),
+        true,
+    );
+    changed |= color_pick(
+        ui,
+        palette,
+        "contour_outline_to",
+        &mut s.outline_to,
+        &tr("docker.outline_color"),
+        true,
+    );
+    // The end of a fountain fill (#1265): only fountain-filled
+    // objects use it, their steps keeping the fountain.
+    changed |= color_pick(
+        ui,
+        palette,
+        "contour_fill_end_to",
+        &mut s.fill_end_to,
+        &format!(
+            "{}\n{}",
+            tr("contour.last_fill_color"),
+            tr("contour.last_fill_color_desc")
+        ),
+        true,
+    );
+    changed
 }
 
 /// Enter in a box of the controls applies them as the Apply button does:

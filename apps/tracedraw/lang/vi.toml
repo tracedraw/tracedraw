@@ -1059,6 +1059,7 @@ docker.colour_a = "Màu A"
 docker.colour_b = "Màu B"
 docker.column_offset_tip = "Di chuyển từng cột ô sang bên trái của nó"
 docker.contour = "đường viền"
+docker.contour_alignment = "Căn chỉnh đường bao" # mt
 docker.coordinates = "tọa độ"
 docker.copies = "Số lượng bản sao:"
 docker.corners = "Góc"

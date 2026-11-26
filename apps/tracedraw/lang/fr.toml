@@ -963,6 +963,7 @@ docker.colour_a = "Couleur A"
 docker.colour_b = "Couleur B"
 docker.column_offset_tip = "Décaler chaque colonne de tuiles par rapport à celle de gauche" # mt
 docker.contour = "Projection"
+docker.contour_alignment = "Alignement du contour" # mt
 docker.coordinates = "Coordonnées"
 docker.copies = "Nombre de copies :"
 docker.corners = "Angles"

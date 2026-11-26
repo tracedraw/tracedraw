@@ -963,6 +963,7 @@ docker.colour_a = "颜色 A"
 docker.colour_b = "颜色 B"
 docker.column_offset_tip = "每列拼贴相对左一列错开" # mt
 docker.contour = "轮廓图"
+docker.contour_alignment = "轮廓对齐" # mt
 docker.coordinates = "坐标"
 docker.copies = "副本数:"
 docker.corners = "角"

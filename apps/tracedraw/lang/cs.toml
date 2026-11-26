@@ -963,6 +963,7 @@ docker.colour_a = "Barva A"
 docker.colour_b = "Barva B"
 docker.column_offset_tip = "Posunout každý sloupec dlaždic vůči sloupci vlevo" # mt
 docker.contour = "Kontura"
+docker.contour_alignment = "Zarovnání obrysu" # mt
 docker.coordinates = "Souřadnice"
 docker.copies = "Počet kopií:"
 docker.corners = "Rohy"

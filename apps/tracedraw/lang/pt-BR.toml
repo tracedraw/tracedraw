@@ -963,6 +963,7 @@ docker.colour_a = "Cor A"
 docker.colour_b = "Cor B"
 docker.column_offset_tip = "Deslocar cada coluna de ladrilhos em relação à da esquerda" # mt
 docker.contour = "Contorno"
+docker.contour_alignment = "Alinhamento do contorno" # mt
 docker.coordinates = "Coordenadas"
 docker.copies = "Número de cópias:"
 docker.corners = "Cantos"
