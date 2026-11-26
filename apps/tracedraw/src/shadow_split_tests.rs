@@ -309,6 +309,7 @@ fn every_kind_of_shadow_breaks_off_its_object() {
             offset: Vec2::new(4.0, -4.0),
             color: Color::rgb8(20, 20, 120),
             gap: 0.0,
+            expand: 0.0,
         },
         true,
     );
@@ -397,6 +398,7 @@ fn a_shadow_breaks_off_an_object_inside_a_group() {
             offset: Vec2::new(3.0, -3.0),
             color: Color::BLACK,
             gap: 0.0,
+            expand: 0.0,
         },
         true,
     );
@@ -468,6 +470,7 @@ fn a_block_shadow_survives_break_apart_of_a_curve_of_pieces() {
             offset: Vec2::new(4.0, -4.0),
             color: Color::rgb8(120, 120, 120),
             gap: 0.0,
+            expand: 0.0,
         },
         true,
     );

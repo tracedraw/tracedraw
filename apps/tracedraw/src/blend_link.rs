@@ -456,6 +456,32 @@ mod tests {
         tracedraw_core::live::evaluate(&s).above
     }
 
+    /// #4389: three objects picked blend one into the next, in the order
+    /// picked, in one undo step.
+    #[test]
+    fn three_objects_blend_as_a_chain() {
+        let mut app = App::headless();
+        let a = square(&mut app, 0.0, Color::BLACK);
+        let b = square(&mut app, 100.0, Color::WHITE);
+        let c = square(&mut app, 200.0, Color::BLACK);
+        app.selection = vec![a, b, c];
+        let depth = app.engine.history_labels().0.len();
+        app.blend_selection(4, 0.0, 0.0, 0.0);
+        assert_eq!(app.engine.history_labels().0.len(), depth + 1);
+        let end_of = |app: &App, id| {
+            app.doc().find_shape(id).and_then(|s| {
+                s.effects.iter().find_map(|e| match e {
+                    Effect::Blend { end_id, .. } => *end_id,
+                    _ => None,
+                })
+            })
+        };
+        assert_eq!(end_of(&app, a), Some(b));
+        assert_eq!(end_of(&app, b), Some(c));
+        assert_eq!(end_of(&app, c), None);
+        assert_eq!(app.selection, vec![a]);
+    }
+
     /// A double click on a blend grouped and bent by the group's
     /// envelope opens the blend's options: the group in focus, the start
     /// object selected, the Blend panel shown; a change of the blend

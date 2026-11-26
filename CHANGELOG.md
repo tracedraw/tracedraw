@@ -6,6 +6,17 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Contour tool: dragging an object that already has a contour goes on from that contour instead of starting again; hold Shift for fine steps (#4364).
+- Block shadow: a new Expand box on the property bar grows the shadow all round (#4378).
+- Shape Builder: Use grid on the property bar cuts the pieces by the grid lines, as Use guidelines does with guides (#4390).
+- Moving objects snaps their edges and middle onto slanted guidelines, and slanted guidelines draw thinner (#4383).
+- Tabs dialog: when the text has no Tab yet, a hint says that leaders fill the space a Tab leaves (#4366).
+- Data Merge: a QR code object named after a QR field keeps its background, colours, outline and size on every merged page, instead of turning into a plain black code (#4396).
+- Editing a clip frame's contents fades the frame with the rest of the drawing (only its dashed outline at 0 % visibility), so the contents show over it (#4375).
+- Objects panel: an object picked inside groups or clip frames (Ctrl+click, Preflight's Locate object) shows with the groups holding it opened (#4400).
+- Dimensions: dragging a dimension's label and letting go as a copy (right click during the drag) leaves only the label, as plain text with its font and background; also Copy Label as Text in the right-click menu (#4405).
+- Blend: with three or more objects selected, Apply blends each into the next in the order they were picked (#4389).
+- A text's outline runs round the letters as they are filled, without crossing inside the joins of script fonts (#4379).
 - Image editor: layer styles in the Layers panel (drop shadow, outer and inner glow, colour and gradient overlays, inner shadow, bevel and emboss, stroke, fill opacity), shown live and changeable until the layers are merged, flattened or finished; copy, paste and clear a whole style (#4369).
 - Image editor: Text tool (T) puts text on its own layer with font, size, bold, italic, underline, strikethrough, alignment, colour, line and letter spacing; a click on the text changes it, a drag moves it, and it stays text until it is painted on or made pixels (#4370).
 - Image editor: a right click on the picture lists the selection's commands (Deselect, Select All, Select Inverse, Feather, Modify > Border, Smooth, Expand, Contract, Transform selection, copy or cut to a layer, Cut, Copy, Paste, Fill, Stroke, Content-aware fill, Delete, Crop); those that need pixels ask them in a small box. The selection tools get a Feather box, Deselect, Select Inverse and a Modify menu on the property bar (#4391, #4393).

@@ -356,6 +356,17 @@ fn shape_fill_rule(shape: &Shape, text_outline: bool) -> FillRule {
     }
 }
 
+/// The outline a text's stroke runs along: its letters' contours merged
+/// as they are filled (nonzero), so contours that overlap (the joins of
+/// script fonts) get no outline inside the letters (#4379). `None` for
+/// other kinds, and for a text too large to merge on every render.
+fn text_stroke_outline(kind: &ShapeKind, page_path: &BezPath) -> Option<BezPath> {
+    if !matches!(kind, ShapeKind::Text { .. }) || page_path.elements().len() > 60_000 {
+        return None;
+    }
+    Some(tracedraw_core::shaping::simplify(page_path)).filter(|m| !m.elements().is_empty())
+}
+
 /// The subpaths of `path` that are closed: ended with a close command, or
 /// ending where they start. Open curves are not filled unless the
 /// document asks for it.
@@ -2170,6 +2181,18 @@ impl Renderer<'_> {
             }
         }
         if let Some(stroke) = &shape.stroke {
+            // A text's outline runs round its letters as they are filled
+            // (nonzero), not round each contour: script fonts draw their
+            // joins as overlapping contours, whose outlines crossed inside
+            // the letters (#4379).
+            let merged = (!self.flags.wireframe)
+                .then(|| text_stroke_outline(&shape.kind, &page_path))
+                .flatten()
+                .and_then(|m| to_sk_path(&(self.screen * m.clone())).map(|k| (m, k)));
+            let (page_path, sk) = match merged {
+                Some((m, k)) => (m, k),
+                None => (page_path.clone(), sk.clone()),
+            };
             let (mut paint, sk_stroke) = self.stroke_paint(stroke, transform);
             paint.blend_mode = self.blend_for(shape.overprint_outline);
             if let Some(brush) = stroke.painterly.as_ref().filter(|_| !self.flags.wireframe) {
@@ -7548,6 +7571,39 @@ mod tests {
         assert_eq!(at(&warped, 60.0, 66.0), (0, 0, 255));
         assert_eq!(at(&warped, 8.0, 23.0), (255, 0, 0));
         assert_eq!(at(&warped, 92.0, 23.0), (0, 0, 255));
+    }
+
+    /// #4379: a text's letters drawn as overlapping contours (a script
+    /// font's joins) get one outline round them, none inside.
+    #[test]
+    fn a_text_outline_runs_round_overlapping_contours() {
+        let mut path = BezPath::new();
+        for (x0, x1) in [(10.0, 60.0), (40.0, 90.0)] {
+            path.move_to((x0, 10.0));
+            path.line_to((x1, 10.0));
+            path.line_to((x1, 90.0));
+            path.line_to((x0, 90.0));
+            path.close_path();
+        }
+        let text = ShapeKind::Text {
+            spans: vec![tracedraw_core::TextSpan::new("a", "Any", 12.0)],
+            origin: tracedraw_core::Point::ZERO,
+            frame: None,
+            align: Default::default(),
+            para: Default::default(),
+            on_path: None,
+        };
+        let merged = text_stroke_outline(&text, &path).expect("merged");
+        let starts = merged.elements().iter().filter(|e| matches!(e, PathEl::MoveTo(_))).count();
+        assert_eq!(starts, 1, "one contour round both");
+        use tracedraw_core::geometry::Shape as _;
+        let b = merged.bounding_box();
+        assert!((b.x0 - 10.0).abs() < 1e-6 && (b.x1 - 90.0).abs() < 1e-6, "{b:?}");
+        let curve = ShapeKind::Path {
+            path: path.clone(),
+            closed: true,
+        };
+        assert!(text_stroke_outline(&curve, &path).is_none(), "curves keep their contours");
     }
 
     /// Two squares overlapping in one curve, both drawn the same way

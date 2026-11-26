@@ -1671,6 +1671,20 @@ impl App {
             || (matches!(self.drag, Drag::Scale { .. }) && self.tool.resizes_by_handles())
     }
 
+    /// [`App::copy_dimension_label`] when a move from `start` by `total`
+    /// is let go as a copy and began on the selected dimension's label.
+    fn label_copy_on_release(&mut self, start: Point, total: Vec2) -> bool {
+        if !(self.drag_copy || self.ctrl_copy) || total.hypot() <= 1e-6 {
+            return false;
+        }
+        let Some(g) = self.selected_dimension_label_at(start) else {
+            return false;
+        };
+        self.drag_copy = false;
+        self.ctrl_copy = false;
+        self.copy_dimension_label(g, Affine::translate(total))
+    }
+
     /// The end of a move, scale, rotation or skew: on the selection, or on
     /// copies of it (which become the selection) after a right click
     /// during the drag.
@@ -4544,6 +4558,14 @@ impl App {
                 if let (Some(action), Some(target)) = (action, target) {
                     self.copy_style_onto(target, action);
                 }
+                self.end_page_drag_group();
+            }
+            // A move that began on a selected dimension's label, let go
+            // as a copy (a right click during it, or Ctrl): only the
+            // label is copied, as plain text (#4405).
+            Drag::Move { total, start, .. } if self.label_copy_on_release(start, total) => {
+                self.drop_frame = None;
+                self.drop_new_frame = false;
                 self.end_page_drag_group();
             }
             Drag::Move { total, .. } => {

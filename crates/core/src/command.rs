@@ -3626,11 +3626,13 @@ mod tests {
             offset: crate::geometry::Vec2::new(1.0, 1.0),
             color: Color::BLACK,
             gap: 0.0,
+            expand: 0.0,
         };
         let c = Effect::BlockShadow {
             offset: crate::geometry::Vec2::new(2.0, 2.0),
             color: Color::BLACK,
             gap: 0.0,
+            expand: 0.0,
         };
         let stack = vec![(a.clone(), true), (b.clone(), false), (c.clone(), true)];
         let (effects, parked) = Shape::split_stack(stack.clone());

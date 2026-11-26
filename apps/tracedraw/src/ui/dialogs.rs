@@ -9297,6 +9297,22 @@ fn paragraph_dialog(app: &mut App, ctx: &Context, which: &Dialog, close: &mut bo
                     p.tabs.remove(i);
                     changed = true;
                 }
+                // A leader fills the gap a Tab typed in the text leaves:
+                // with none typed there is nothing to fill (#4366).
+                let no_tab_typed = target
+                    .and_then(|id| app.doc().find_shape(id))
+                    .is_some_and(|s| match &s.kind {
+                        tracedraw_core::ShapeKind::Text { spans, .. } => {
+                            !tracedraw_core::document::spans_text(spans).contains('\t')
+                        }
+                        _ => false,
+                    });
+                if no_tab_typed && p.tabs.iter().any(|t| t.leader.is_some()) {
+                    ui.label(
+                        egui::RichText::new(tr("dialog.tab_leader_needs_tab"))
+                            .color(Tokens::text_dim()),
+                    );
+                }
                 if ui
                     .ibutton("dialog.add_tab")
                     .rich_tip(crate::ui::tips::keyed("dialog.add_tab"))

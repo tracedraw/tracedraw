@@ -173,6 +173,11 @@ pub enum Effect {
         color: Color,
         /// Keep a gap between the object and the shadow (overprint trick).
         gap: f64,
+        /// The shadow grown this far, millimetres, all round: it shows
+        /// round the object as well as behind it (#4378); not in older
+        /// files.
+        #[serde(default, skip_serializing_if = "is_zero")]
+        expand: f64,
     },
     /// Inner shadow: a soft shadow cast inside the object, as if the
     /// object were a hole in the page lit from the other side of
@@ -2388,11 +2393,16 @@ fn evaluate_now(shape: &Shape) -> Evaluated {
             e @ Effect::Bevel { .. } => {
                 above.extend(bevel(&main, e));
             }
-            Effect::BlockShadow { offset, color, gap } => {
+            Effect::BlockShadow {
+                offset,
+                color,
+                gap,
+                expand,
+            } => {
                 // Cast by all the object draws, and beneath all of it
                 // (#2218).
                 let cast = cast_area(&main, area_rule(shape), below.iter().chain(&above));
-                let shadow = block_shadow(&main, cast, *offset, *color, *gap);
+                let shadow = block_shadow(&main, cast, *offset, *color, *gap, *expand);
                 below.splice(0..0, shadow);
             }
             // Mirrored last, whatever its place in the list: the copies
@@ -4527,10 +4537,23 @@ fn block_shadow(
     offset: Vec2,
     color: Color,
     gap: f64,
+    expand: f64,
 ) -> Vec<Shape> {
     let mut solid = crate::shaping::sweep(&front, offset, rule);
     if solid.elements().is_empty() {
         return Vec::new();
+    }
+    // Expanded: the whole block grown round, rounded at its corners.
+    if expand.is_finite() && expand > 1e-6 {
+        let grown = crate::shaping::offset_filled(
+            &solid,
+            expand.min(500.0),
+            crate::shaping::Join::Round,
+            crate::shaping::FillRule::NonZero,
+        );
+        if !grown.elements().is_empty() {
+            solid = grown;
+        }
     }
     if gap > 0.0 {
         let grown = crate::shaping::offset_filled(&front, gap, crate::shaping::Join::Round, rule);
@@ -5978,6 +6001,7 @@ mod tests {
             offset: Vec2::new(4.0, -4.0),
             color: Color::BLACK,
             gap: 0.0,
+            expand: 0.0,
         };
         let square = |id: u64, x: f64| {
             let mut s = Shape::new(
@@ -6044,6 +6068,41 @@ mod tests {
         assert!((cast.area().abs() - 1040.0).abs() < 1e-3, "{}", cast.area());
     }
 
+    /// #4378: Expand grows the block shadow all round, so it shows round
+    /// the object too; old files without it read as 0.
+    #[test]
+    fn block_shadow_expands_all_round() {
+        let mut s = rect_shape();
+        s.effects.push(Effect::BlockShadow {
+            offset: Vec2::new(5.0, -5.0),
+            color: Color::BLACK,
+            gap: 0.0,
+            expand: 2.0,
+        });
+        let ev = evaluate(&s);
+        assert_eq!(ev.below.len(), 1);
+        let b = ev.below[0].bounds();
+        assert!(
+            (b.x0 + 2.0).abs() < 0.05 && (b.x1 - 27.0).abs() < 0.05,
+            "{b:?}"
+        );
+        assert!(
+            (b.y0 + 7.0).abs() < 0.05 && (b.y1 - 22.0).abs() < 0.05,
+            "{b:?}"
+        );
+        // Written without it when 0, and read back as 0 when missing.
+        let plain = Effect::BlockShadow {
+            offset: Vec2::new(1.0, 1.0),
+            color: Color::BLACK,
+            gap: 0.0,
+            expand: 0.0,
+        };
+        let json = serde_json::to_string(&plain).unwrap();
+        assert!(!json.contains("expand"), "{json}");
+        let old: Effect = serde_json::from_str(&json).unwrap();
+        assert!(matches!(old, Effect::BlockShadow { expand, .. } if expand == 0.0));
+    }
+
     #[test]
     fn block_shadow_keeps_corners_sharp() {
         let mut s = rect_shape();
@@ -6051,6 +6110,7 @@ mod tests {
             offset: Vec2::new(5.0, -5.0),
             color: Color::BLACK,
             gap: 0.0,
+            expand: 0.0,
         });
         let ev = evaluate(&s);
         assert_eq!(ev.below.len(), 1);
@@ -6096,6 +6156,7 @@ mod tests {
             offset,
             color: Color::BLACK,
             gap: 0.0,
+            expand: 0.0,
         });
         let ev = evaluate(&s);
         assert_eq!(ev.below.len(), 1);
@@ -6223,6 +6284,7 @@ mod tests {
             offset: Vec2::new(1.0, 0.0),
             color: Color::BLACK,
             gap: 0.0,
+            expand: 0.0,
         }];
         let shadow = evaluate(&s).below[0].page_path();
         assert_eq!(parts(&shadow), 1);
@@ -7192,6 +7254,7 @@ mod tests {
             offset: Vec2::new(2.0, -2.0),
             color: Color::BLACK,
             gap: 0.0,
+            expand: 0.0,
         }
     }
 

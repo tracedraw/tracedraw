@@ -6193,6 +6193,7 @@ mod tests {
                     offset: tracedraw_core::geometry::Vec2::new(2.0, -2.0),
                     color: Color::cmyk_pct(100.0, 0.0, 0.0, 0.0),
                     gap: 0.0,
+                    expand: 0.0,
                 });
             },
         )

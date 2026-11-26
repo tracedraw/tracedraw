@@ -10349,6 +10349,7 @@ mod tests {
             offset: crate::geometry::Vec2::new(2.0, -2.0),
             color: crate::Color::BLACK,
             gap: 0.0,
+            expand: 0.0,
         }];
         let clip = Shape::new(
             ShapeId(5),

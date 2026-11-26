@@ -282,6 +282,10 @@ impl ContourSettings {
 pub struct ContourDrag {
     pub id: ShapeId,
     pub start: Point,
+    /// The contour the object had when the drag began, as a distance
+    /// from its outline: out positive, in negative (0 with none). A drag
+    /// goes on from it instead of starting the contour again (#4364).
+    pub base: f64,
 }
 
 fn is_contour(e: &Effect) -> bool {
@@ -448,7 +452,21 @@ impl App {
         }
         self.select(vec![id]);
         self.sync_contour_settings();
-        self.contour_drag = Some(ContourDrag { id, start: at });
+        let base = self
+            .doc()
+            .find_shape(id)
+            .and_then(|s| s.effects.iter().find(|e| is_contour(e)).cloned())
+            .map_or(0.0, |e| {
+                let mut st = self.contour;
+                st.take(&e);
+                let d = st.offset * f64::from(st.steps.max(1));
+                if st.direction == ContourDirection::Inside {
+                    -d
+                } else {
+                    d
+                }
+            });
+        self.contour_drag = Some(ContourDrag { id, start: at, base });
         true
     }
 
@@ -502,6 +520,13 @@ impl App {
 
     /// The pointer moved to `p` during a drag.
     pub fn drag_contour(&mut self, p: Point) {
+        self.drag_contour_with(p, false);
+    }
+
+    /// The pointer moved to `p` during a drag; `fine` (Shift held) moves
+    /// the contour a tenth as far as the pointer, for an exact distance
+    /// (#4364).
+    pub fn drag_contour_with(&mut self, p: Point, fine: bool) {
         let Some(dd) = self.contour_drag else {
             return;
         };
@@ -511,16 +536,24 @@ impl App {
         };
         let b = s.bounds();
         let c = b.center();
-        // Away from the middle: outside; toward it: inside.
-        let away = (p - c).hypot() > (dd.start - c).hypot();
+        // The distance the pointer went away from the middle (toward it,
+        // negative), added to the contour there was: a second drag moves
+        // the contour on from where the first left it (#4364).
+        let moved = (p - c).hypot() - (dd.start - c).hypot();
+        let mut signed = dd.base + moved * if fine { 0.1 } else { 1.0 };
         // Near the edge of another object the contour reaches exactly to
         // it, as far from the object's outline as that edge lies (#4084:
         // it ran past a neighbour's edge, so two pieces could not be made
         // to meet).
-        let d = match self.contour_edge_near(dd.id, p) {
-            Some(q) => crate::canvas::distance_to_path(&s.page_path(), q),
-            None => (p - dd.start).hypot(),
-        };
+        if !fine {
+            if let Some(q) = self.contour_edge_near(dd.id, p) {
+                let d = crate::canvas::distance_to_path(&s.page_path(), q);
+                signed = if signed < 0.0 { -d } else { d };
+            }
+        }
+        // Away from the middle: outside; toward it: inside.
+        let away = signed > 0.0;
+        let d = signed.abs();
         if d < 1e-6 {
             return;
         }
@@ -567,7 +600,8 @@ impl App {
                 self.drag_contour_handle(h, p, begun);
                 self.contour_handle_drag = Some((h, true));
             } else if self.contour_drag.is_some() {
-                self.drag_contour(p);
+                let fine = response.ctx.input(|i| i.modifiers.shift);
+                self.drag_contour_with(p, fine);
             }
         }
         if response.drag_stopped() {
@@ -669,9 +703,10 @@ mod tests {
             panic!("an outside contour");
         };
         assert!((offset - 6.0).abs() < 0.05, "reaches the edge 6 mm away: {offset}");
-        // Off any edge: as far as the pointer moved.
-        assert!(app.begin_contour(Point::new(19.5, 10.0)));
-        app.drag_contour(Point::new(19.5, 10.0 - tol * 3.0 - 2.0));
+        // Off any edge: as far as the pointer moved away from the middle.
+        app.clear_contour();
+        assert!(app.begin_contour(Point::new(10.0, 19.5)));
+        app.drag_contour(Point::new(10.0, 19.5 + tol * 3.0 + 2.0));
         app.contour_drag = None;
         let Some(Effect::Contour { offset, .. }) = contour_of(&app, id) else {
             panic!("a contour");
@@ -772,15 +807,46 @@ mod tests {
         assert_eq!(n, 3);
         assert!((offset - 2.0).abs() < 1e-9);
         assert_eq!(corners, Some(Join::Miter));
-        // Toward the middle: inside.
+        // Toward the middle, past where the contour was: inside.
         assert!(app.begin_contour(Point::new(19.0, 10.0)));
-        app.drag_contour(Point::new(13.0, 10.0));
+        app.drag_contour(Point::new(10.5, 10.0));
         app.contour_drag = None;
         assert!(matches!(
             contour_of(&app, id),
             Some(Effect::Contour { outside: false, .. })
         ));
         assert!(!app.begin_contour(Point::new(500.0, 500.0)));
+    }
+
+    /// #4364: a second drag moves the contour on from where the first
+    /// left it, and Shift moves it a tenth as far as the pointer.
+    #[test]
+    fn a_second_drag_goes_on_from_the_contour() {
+        let mut app = App::headless();
+        let id = square(&mut app);
+        let total = |app: &App| match contour_of(app, id) {
+            Some(Effect::Contour {
+                offset,
+                steps,
+                outside,
+                ..
+            }) => offset * f64::from(steps) * if outside { 1.0 } else { -1.0 },
+            _ => f64::NAN,
+        };
+        assert!(app.begin_contour(Point::new(19.0, 10.0)));
+        app.drag_contour(Point::new(25.0, 10.0));
+        app.contour_drag = None;
+        assert!((total(&app) - 6.0).abs() < 1e-9, "{}", total(&app));
+        // One more millimetre out, from anywhere on the object.
+        assert!(app.begin_contour(Point::new(15.0, 10.0)));
+        app.drag_contour(Point::new(16.0, 10.0));
+        app.contour_drag = None;
+        assert!((total(&app) - 7.0).abs() < 1e-9, "{}", total(&app));
+        // Back in by 2 mm with Shift: a fifth of a millimetre.
+        assert!(app.begin_contour(Point::new(15.0, 10.0)));
+        app.drag_contour_with(Point::new(13.0, 10.0), true);
+        app.contour_drag = None;
+        assert!((total(&app) - 6.8).abs() < 1e-9, "{}", total(&app));
     }
 
     /// Break Apart (Ctrl+K, the context menu) on a contour: Break Contour

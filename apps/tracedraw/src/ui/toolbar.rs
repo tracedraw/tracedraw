@@ -1269,6 +1269,9 @@ fn shape_builder_bar(app: &mut App, ui: &mut Ui) {
     // The guidelines cut the objects too (#3558), off by default.
     ui.checkbox(&mut app.builder.use_guides, tr("toolbar.builder_guides"))
         .rich_tip(crate::ui::tips::keyed("toolbar.builder_guides"));
+    // The grid's lines cut them too, its cells are parts (#4390).
+    ui.checkbox(&mut app.builder.use_grid, tr("toolbar.builder_grid"))
+        .rich_tip(crate::ui::tips::keyed("toolbar.builder_grid"));
     // Accept deletes what is left of the objects the merges used (#4123),
     // off by default.
     ui.checkbox(&mut app.builder.remove_leftovers, tr("toolbar.builder_leftovers"))
@@ -2128,14 +2131,20 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
                 // The selected object's block shadow, else the defaults.
                 let current = shapes.first().and_then(|s| {
                     s.effects.iter().find_map(|e| match e {
-                        Effect::BlockShadow { offset, color, gap } => Some((*offset, *color, *gap)),
+                        Effect::BlockShadow {
+                            offset,
+                            color,
+                            gap,
+                            expand,
+                        } => Some((*offset, *color, *gap, *expand)),
                         _ => None,
                     })
                 });
-                let (mut offset, mut color, mut gap) = current.unwrap_or((
+                let (mut offset, mut color, mut gap, mut expand) = current.unwrap_or((
                     CVec2::new(5.0, -5.0),
                     app.block_shadow_color,
                     app.block_shadow_gap,
+                    app.block_shadow_expand,
                 ));
                 let mut changed = false;
                 let mut depth = offset.hypot();
@@ -2182,11 +2191,36 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
                     )
                 })
                 .changed();
+                // Expand: the shadow grown all round (#4378).
+                changed |= dim_labelled_as(
+                    ui,
+                    "toolbar.block_expand",
+                    "toolbar.block_expand_desc",
+                    |ui| {
+                        ui.add(
+                            crate::ui::field::NumField::new(&mut expand)
+                                .speed(0.05)
+                                .range(0.0..=100.0)
+                                .fixed_decimals(2)
+                                .suffix(" mm"),
+                        )
+                    },
+                )
+                .changed();
                 if changed {
                     app.block_shadow_color = color;
                     app.block_shadow_gap = gap;
+                    app.block_shadow_expand = expand;
                     if current.is_some() {
-                        app.push_effect(Effect::BlockShadow { offset, color, gap }, true);
+                        app.push_effect(
+                            Effect::BlockShadow {
+                                offset,
+                                color,
+                                gap,
+                                expand,
+                            },
+                            true,
+                        );
                     }
                 }
                 vsep(ui);
@@ -2202,6 +2236,7 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
                         offset: CVec2::ZERO,
                         color,
                         gap,
+                        expand: 0.0,
                     });
                 }
                 if current.is_none() {

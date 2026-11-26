@@ -216,6 +216,7 @@ macro_rules! object_items {
             "context.create_symbol",
             "menu.object.add_dimensions",
             "menu.object.add_dimensions_each",
+            "context.dimension_label_text",
             "menu.object.symbol_edit",
             "context.internet_links",
             "docker.hyperlink",

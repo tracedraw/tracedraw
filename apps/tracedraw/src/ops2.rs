@@ -2057,17 +2057,19 @@ impl App {
     }
 
     /// What the renderer draws in full while the rest fades: the object
-    /// in focus (focus mode), the frame and contents of a clip frame
-    /// edit, or a symbol's objects alone on a clean sheet (visibility 0
-    /// skips the page background and every other object, #981).
+    /// in focus (focus mode), the contents of a clip frame edit (the
+    /// frame fades with the rest), or a symbol's objects alone on a
+    /// clean sheet (visibility 0 skips the page background and every
+    /// other object, #981).
     pub fn render_focus(&self) -> Option<(Vec<ShapeId>, f32)> {
-        if let Some((frame, _)) = &self.clip_frame_edit {
+        if self.clip_frame_edit.is_some() {
             if self.symbol_edit_index().is_some() {
                 return Some((self.clip_edit_contents(), 0.0));
             }
-            let mut all = vec![*frame];
-            all.extend(self.clip_edit_contents());
-            return Some((all, self.focus_visibility()));
+            // The frame fades with everything else (at 0 % visibility
+            // only its dashed outline shows), so the contents show over
+            // it whole (#4375).
+            return Some((self.clip_edit_contents(), self.focus_visibility()));
         }
         self.focus_target()
             .map(|id| (vec![id], self.focus_visibility()))
@@ -6173,7 +6175,9 @@ impl App {
 
     /// Blend the two selected objects: the first becomes the start with a
     /// live Blend effect, the second stays an object of its own, the
-    /// blend's end (see `blend_link`).
+    /// blend's end (see `blend_link`). Three or more objects blend one
+    /// into the next in the order they were picked, a chain of blends in
+    /// one undo step, each with the same settings (#4389).
     pub fn blend_selection(
         &mut self,
         steps: u32,
@@ -6182,37 +6186,40 @@ impl App {
         rotation: f64,
     ) {
         let shapes = self.selected_shapes();
-        if shapes.len() != 2 {
+        if shapes.len() < 2 {
             return;
         }
-        let start = &shapes[0];
-        let Some(end) = self.doc().shape_on_page(shapes[1].id) else {
-            return;
-        };
-        let mut effects = start.effects.clone();
-        effects.retain(|e| !matches!(e, Effect::Blend { .. }));
-        // The steps lie between the two objects in the stacking order.
-        let mut options = self.blend_options;
-        options.steps_below = self.stacked_below(end.id, start.id);
-        effects.push(Effect::Blend {
-            end: Box::new(crate::blend_link::end_copy(&end)),
-            steps,
-            accel_objects,
-            accel_colors,
-            rotation,
-            path: None,
-            rotate_on_path: false,
-            end_id: Some(end.id),
-            options,
-        });
-        let cmds = vec![Command::SetEffects {
-            shape: start.id,
-            effects,
-        }];
+        let mut cmds = Vec::new();
+        for pair in shapes.windows(2) {
+            let start = &pair[0];
+            let Some(end) = self.doc().shape_on_page(pair[1].id) else {
+                return;
+            };
+            let mut effects = start.effects.clone();
+            effects.retain(|e| !matches!(e, Effect::Blend { .. }));
+            // The steps lie between the two objects in the stacking order.
+            let mut options = self.blend_options;
+            options.steps_below = self.stacked_below(end.id, start.id);
+            effects.push(Effect::Blend {
+                end: Box::new(crate::blend_link::end_copy(&end)),
+                steps,
+                accel_objects,
+                accel_colors,
+                rotation,
+                path: None,
+                rotate_on_path: false,
+                end_id: Some(end.id),
+                options,
+            });
+            cmds.push(Command::SetEffects {
+                shape: start.id,
+                effects,
+            });
+        }
         if let Err(e) = self.engine.run_batch("Blend", &cmds) {
             self.status = e.to_string();
         }
-        self.selection = vec![start.id];
+        self.selection = vec![shapes[0].id];
     }
 
     /// Attach a path to the blend of the selected object (click on a curve).

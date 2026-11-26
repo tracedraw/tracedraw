@@ -212,11 +212,21 @@ pub fn grid_outline(cols: usize, rows: usize, dark: &[bool], pixel: f64, top_lef
 /// `top_left`: the background (light fill, no outline) and the dark pixels
 /// (dark fill and the outline).
 fn children(app: &mut App, qr: &QrCode, top_left: Point) -> Result<Vec<Shape>, String> {
+    code_children(qr, top_left, &mut || app.engine.new_shape_id())
+}
+
+/// [`children`] with the new objects' ids from `new_id` (Print Merge
+/// makes each record's code with them, #4396).
+pub(crate) fn code_children(
+    qr: &QrCode,
+    top_left: Point,
+    new_id: &mut dyn FnMut() -> tracedraw_core::ShapeId,
+) -> Result<Vec<Shape>, String> {
     let g = modules(&qr.payload(), qr.symbol)?;
     let pixel = qr.pixel_mm.max(0.01);
     let (w, h) = size_mm(&g, qr);
     let mut back = Shape::new(
-        app.engine.new_shape_id(),
+        new_id(),
         ShapeKind::Rect {
             rect: Rect::new(top_left.x, top_left.y - h, top_left.x + w, top_left.y),
             radius: 0.0,
@@ -227,7 +237,7 @@ fn children(app: &mut App, qr: &QrCode, top_left: Point) -> Result<Vec<Shape>, S
     back.stroke = None;
     back.name = Some(crate::i18n::tr("qr.background"));
     let mut pixels = Shape::new(
-        app.engine.new_shape_id(),
+        new_id(),
         ShapeKind::Path {
             path: pixels_path(&g, pixel, top_left),
             closed: true,
@@ -240,7 +250,7 @@ fn children(app: &mut App, qr: &QrCode, top_left: Point) -> Result<Vec<Shape>, S
 }
 
 /// Where a QR code object's top-left corner is: its background's.
-fn top_left(s: &Shape) -> Option<Point> {
+pub(crate) fn top_left(s: &Shape) -> Option<Point> {
     match &s.kind {
         ShapeKind::Group { children } => children.iter().find_map(|c| match &c.kind {
             ShapeKind::Rect { rect, .. } => Some(Point::new(rect.x0, rect.y1)),

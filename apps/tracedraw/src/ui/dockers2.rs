@@ -2147,7 +2147,7 @@ fn blend(app: &mut App, ui: &mut Ui) {
     }
     // Apply: two objects selected and no blend yet, a blend between them
     // with these settings (#815).
-    let two = cur.is_none() && app.selection.len() == 2;
+    let two = cur.is_none() && app.selection.len() >= 2;
     let apply = ui
         .allocate_ui_with_layout(
             egui::vec2(ui.available_width(), 28.0),
@@ -2235,7 +2235,7 @@ fn blend(app: &mut App, ui: &mut Ui) {
             }
         });
     } else {
-        let two = app.selection.len() == 2;
+        let two = app.selection.len() >= 2;
         let tip = crate::ui::tips::pair("docker.apply", "docker.blend_apply_desc");
         if crate::ui::docker_form::wide_button(ui, "docker.apply", two, &tip) {
             app.blend_selection(steps, accel_o, accel_c, rot);

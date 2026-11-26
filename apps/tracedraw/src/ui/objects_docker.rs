@@ -683,11 +683,43 @@ fn scroll_target(app: &App, ui: &Ui) -> Option<ShapeId> {
     changed.then(|| app.selection.first().copied()).flatten()
 }
 
+/// A newly picked object inside groups or clip frames (a Ctrl+click on
+/// the page, Preflight's Locate object) shows in the list: the groups and
+/// frames holding it open, and its layer too (#4400).
+pub fn reveal_selection(app: &mut App) {
+    let doc = app.doc();
+    let mut open = Vec::new();
+    let mut layers = Vec::new();
+    for id in &app.selection {
+        let up = doc.ancestors(*id);
+        let Some(top) = up.first().copied() else {
+            continue;
+        };
+        if let Some(l) = doc
+            .pages
+            .iter()
+            .flat_map(|p| &p.layers)
+            .find(|l| l.shapes.iter().any(|s| s.id == top))
+        {
+            layers.push(l.id);
+        }
+        open.extend(up);
+    }
+    app.objects_open_groups.extend(open);
+    for l in layers {
+        app.objects_collapsed.remove(&l);
+    }
+}
+
 /// The tree: the pages and their layers (all of them, or the current
 /// one), then the Master Page.
 pub fn objects(app: &mut App, ui: &mut Ui) {
+    let scroll_to = scroll_target(app, ui);
+    if scroll_to.is_some() {
+        reveal_selection(app);
+    }
     let mut act = Actions {
-        scroll_to: scroll_target(app, ui),
+        scroll_to,
         thumbs: std::mem::take(&mut app.object_thumbs),
         thumb_size: crate::object_thumbs::clamp_size(app.settings.object_thumb_size),
         drawing: (app.engine.instance(), app.engine.revision()),
@@ -5649,6 +5681,37 @@ pub(crate) mod tests {
             draw(&mut app);
         }
         assert_eq!(app.selection, vec![id]);
+    }
+
+    /// #4400: an object picked inside a group in a clip frame opens
+    /// both in the list, and its collapsed layer.
+    #[test]
+    fn a_nested_pick_opens_its_groups_in_the_list() {
+        let mut app = App::headless();
+        let mk = |app: &mut App, x: f64| {
+            app.new_shape(ShapeKind::Rect {
+                rect: tracedraw_core::geometry::Rect::new(x, 0.0, x + 10.0, 10.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect")
+        };
+        let a = mk(&mut app, 0.0);
+        let b = mk(&mut app, 20.0);
+        app.select(vec![a, b]);
+        app.group_selection();
+        let group = app.selection[0];
+        let layer = app.active_layer().expect("layer");
+        app.objects_collapsed.insert(layer);
+        app.select(vec![a]);
+        reveal_selection(&mut app);
+        assert!(app.objects_open_groups.contains(&group));
+        assert!(!app.objects_collapsed.contains(&layer));
+        // A top-level pick opens nothing.
+        app.objects_open_groups.clear();
+        app.select(vec![group]);
+        reveal_selection(&mut app);
+        assert!(app.objects_open_groups.is_empty());
     }
 
     /// A collapsed layer marks that it holds the selection, a group

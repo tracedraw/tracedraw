@@ -4172,7 +4172,6 @@ fn draw_nodes(app: &App, painter: &Painter) {
 /// A line of `pattern` (on and off lengths in pixels; empty for solid).
 /// Horizontal and vertical lines are drawn on whole pixels.
 fn pattern_line(painter: &Painter, a: Pos2, b: Pos2, color: Color32, pattern: &[f32]) {
-    let stroke = EStroke::new(1.0, color);
     let len = a.distance(b);
     let axis = (a.x - b.x).abs() < 0.01 || (a.y - b.y).abs() < 0.01;
     if axis && len > 0.0 {
@@ -4205,6 +4204,10 @@ fn pattern_line(painter: &Painter, a: Pos2, b: Pos2, color: Color32, pattern: &[
         px.paint(painter);
         return;
     }
+    // A slanted line is smoothed over the pixels it crosses, which drew
+    // it wider and darker than the one-pixel straight guidelines: a
+    // thinner stroke gives it their weight (#4383).
+    let stroke = EStroke::new(0.7, color);
     if pattern.is_empty() || len <= 0.0 {
         painter.line_segment([a, b], stroke);
         return;
@@ -4259,7 +4262,11 @@ fn draw_snapped_guide(
                 );
             }
         }
-        GuideLine::Angled { .. } => {}
+        GuideLine::Angled { .. } => {
+            if let Some((a, b)) = angled_guide_on_screen(&app.view, line, rect) {
+                painter.line_segment([a, b], stroke);
+            }
+        }
     }
 }
 

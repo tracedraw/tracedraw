@@ -9664,6 +9664,29 @@ mod tests {
         .unwrap()
     }
 
+    /// #4366: a tab ending a line still draws its leader up to the stop,
+    /// as when text follows it.
+    #[test]
+    fn a_tab_at_the_end_of_a_line_draws_its_leader() {
+        if !has_fonts() {
+            return;
+        }
+        let f = fonts();
+        let plain = ParagraphStyle {
+            tabs: vec![TabStop::new(80.0, TabKind::Left)],
+            ..ParagraphStyle::default()
+        };
+        let mut dotted = plain.clone();
+        dotted.tabs[0].leader = Some('.');
+        for text in ["Mango\t", "Mango\t\nKiwi\t"] {
+            let count = |p: &ParagraphStyle| {
+                let l = frame_layout(f, &[span(text)], p, 100.0);
+                l.path.elements().len()
+            };
+            assert!(count(&dotted) > count(&plain) + 20, "{text:?}");
+        }
+    }
+
     /// Paragraph text with a right and a decimal stop: the prices end at
     /// the right stop, the decimal commas line up on the other, and a
     /// leader fills the gap with dots (#1852).

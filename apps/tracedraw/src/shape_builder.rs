@@ -35,6 +35,10 @@ pub struct Builder {
     /// shown cut the objects into parts too, and stay as they are
     /// (#3558).
     pub use_guides: bool,
+    /// The property bar's Use Grid, off by default: the document grid's
+    /// lines cut the objects into parts as guidelines do, and its cells
+    /// are parts of their own (#4390).
+    pub use_grid: bool,
     /// Alt was held during the drag (not only the Delete mode): a drag
     /// over lines deletes their segments (#4079).
     pub alt: bool,
@@ -53,7 +57,7 @@ pub struct Builder {
 }
 
 struct Hover {
-    key: (u64, Vec<ShapeId>, bool),
+    key: (u64, Vec<ShapeId>, bool, bool),
     part: BezPath,
 }
 
@@ -366,10 +370,54 @@ impl App {
     /// The guidelines that cut the objects with Use Guidelines on: those
     /// the page shows (#3558).
     pub fn builder_lines(&self) -> Vec<tracedraw_core::document::GuideLine> {
-        if !self.builder.use_guides {
-            return Vec::new();
+        let mut lines = Vec::new();
+        if self.builder.use_guides {
+            lines = self.shown_guide_lines();
         }
-        self.shown_guide_lines()
+        if self.builder.use_grid {
+            lines.extend(self.builder_grid_lines());
+        }
+        lines
+    }
+
+    /// The document grid's lines over the page and the selected objects,
+    /// through the grid's origin at its spacing (#4390). None when the
+    /// grid is so fine that more than 400 lines a side would cross them.
+    pub fn builder_grid_lines(&self) -> Vec<tracedraw_core::document::GuideLine> {
+        use tracedraw_core::document::GuideLine;
+        let g = self.doc().metadata.grid;
+        let o = self.grid_origin();
+        let mut r = self.page_rect();
+        for q in self.builder_pieces() {
+            let b = q.area.bounding_box();
+            if [b.x0, b.y0, b.x1, b.y1].iter().all(|v| v.is_finite()) {
+                r = r.union(b);
+            }
+        }
+        for (_, l) in self.builder_open_lines() {
+            let b = l.bounding_box();
+            if [b.x0, b.y0, b.x1, b.y1].iter().all(|v| v.is_finite()) {
+                r = r.union(b);
+            }
+        }
+        let steps = |lo: f64, hi: f64, step: f64, from: f64| -> Option<Vec<f64>> {
+            if !(step.is_finite() && step > 1e-6) {
+                return None;
+            }
+            let a = ((lo - from) / step).floor() as i64;
+            let b = ((hi - from) / step).ceil() as i64;
+            (b - a <= 400).then(|| (a..=b).map(|k| from + k as f64 * step).collect())
+        };
+        let (Some(xs), Some(ys)) = (
+            steps(r.x0, r.x1, g.spacing_x, o.x),
+            steps(r.y0, r.y1, g.spacing_y, o.y),
+        ) else {
+            return Vec::new();
+        };
+        xs.into_iter()
+            .map(|x| GuideLine::Vertical { x })
+            .chain(ys.into_iter().map(|y| GuideLine::Horizontal { y }))
+            .collect()
     }
 
     /// The guidelines the page shows, hidden ones left out: what cuts
@@ -397,6 +445,7 @@ impl App {
             self.engine.revision(),
             self.selection.clone(),
             self.builder.use_guides,
+            self.builder.use_grid,
         );
         if let Some(h) = self.builder.hover.borrow().as_ref() {
             if h.key == key && inside(&h.part, p) {
@@ -1461,6 +1510,31 @@ mod tests {
         let corner = part_at_cut(&areas, &lines, &[], Point::new(15.0, 5.0)).unwrap();
         assert!((area(&corner) - 187.5).abs() < 1e-6, "{}", area(&corner));
         assert!(part_at_cut(&areas, &lines, &[], Point::new(5.0, 10.0)).is_none(), "on a line");
+    }
+
+    /// #4390: with Use Grid on, the grid's lines cut the selected object
+    /// into cells, and with nothing selected a grid cell is a part.
+    #[test]
+    fn use_grid_cuts_by_the_grid_lines() {
+        let mut app = App::headless();
+        let a = square(&mut app, 0.0, 0.0, 20.0, 20.0);
+        app.select(vec![a]);
+        app.set_tool(Tool::ShapeBuilder);
+        let g = app.doc().metadata.grid;
+        let o = app.grid_origin();
+        let p = Point::new(5.0, 5.0);
+        let whole = app.builder_part_at(p).expect("the square");
+        assert!((area(&whole) - 400.0).abs() < 1e-6, "{}", area(&whole));
+        app.builder.use_grid = true;
+        assert!(!app.builder_grid_lines().is_empty());
+        let cell = app.builder_part_at(p).expect("a cell of the square");
+        let b = cell.bounding_box();
+        assert!(b.width() <= g.spacing_x + 1e-6 && b.height() <= g.spacing_y + 1e-6, "{b:?}");
+        // A whole grid cell off the selection, on the page.
+        app.selection.clear();
+        let q = Point::new(o.x + 5.5 * g.spacing_x, o.y - 5.5 * g.spacing_y);
+        let room = app.builder_part_at(q).expect("a grid cell");
+        assert!((area(&room) - g.spacing_x * g.spacing_y).abs() < 1e-6, "{}", area(&room));
     }
 
     /// With Use Guidelines on and an object still selected, a room of

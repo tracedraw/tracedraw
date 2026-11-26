@@ -1034,6 +1034,23 @@ fn object_menu_for(app: &mut App, ui: &mut Ui, close: &mut bool, source: Option<
                 app.add_dimensions(true);
             }
         }
+        "context.dimension_label_text" => {
+            // A copy of a dimension's label as plain text (#4405).
+            let one = match app.selection.as_slice() {
+                [id] => app
+                    .doc()
+                    .find_shape(*id)
+                    .filter(|s| crate::dimensions::is_dimension(s))
+                    .map(|_| *id),
+                _ => None,
+            };
+            if let Some(id) = one {
+                if ci(ui, close, "context.dimension_label_text", "", true) {
+                    let t = tracedraw_core::geometry::Affine::translate(app.duplicate_offset);
+                    app.copy_dimension_label(id, t);
+                }
+            }
+        }
         "menu.object.symbol_edit" => {
             // A symbol instance: its symbol's objects edited in place (#1980).
             if let Some(id) = app.selected_symbol_instance() {

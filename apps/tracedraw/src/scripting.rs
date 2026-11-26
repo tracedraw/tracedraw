@@ -3039,6 +3039,7 @@ mod tests {
                 offset: kurbo::Vec2::new(1.0, -1.0),
                 color: Color::BLACK,
                 gap: 0.0,
+                expand: 0.0,
             };
             2
         ];

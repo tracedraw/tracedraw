@@ -1756,6 +1756,47 @@ impl App {
         (b.is_finite() && b.inflate(tol, tol).contains(p)).then_some((g.id, label.id))
     }
 
+    /// A copy of the label of the dimension `group` as plain text (not a
+    /// dimension: it keeps its font, size, colour and background), moved
+    /// by `t` from where the label is, selected (#4405). False when
+    /// `group` is not a dimension with a label.
+    pub fn copy_dimension_label(&mut self, group: ShapeId, t: Affine) -> bool {
+        let Some(layer) = self.active_layer() else {
+            return false;
+        };
+        let doc = self.doc();
+        let Some(g) = doc.find_shape(group).filter(|g| Dimension::of(g).is_some()) else {
+            return false;
+        };
+        let ShapeKind::Group { children } = &g.kind else {
+            return false;
+        };
+        let Some(label) = children
+            .iter()
+            .find(|c| matches!(c.kind, ShapeKind::Text { .. }))
+            .cloned()
+        else {
+            return false;
+        };
+        let to_page = doc.parent_transform(label.id).unwrap_or(Affine::IDENTITY);
+        let id = self.engine.new_shape_id();
+        let mut text = crate::app::reid_pub(label, id, &mut self.engine);
+        text.transform = t * to_page * text.transform;
+        text.data.retain(|(k, _)| k != DATA_KEY);
+        text.name = None;
+        self.run(Command::AddShape { layer, shape: text });
+        self.select(vec![id]);
+        true
+    }
+
+    /// The selected dimension whose label is under `p` (page space): a
+    /// move that began there and is let go as a copy copies only the
+    /// label (#4405).
+    pub fn selected_dimension_label_at(&self, p: Point) -> Option<ShapeId> {
+        let (g, _) = self.dimension_and_label_at(p)?;
+        (self.selection == [g]).then_some(g)
+    }
+
     /// Edit the label of the dimension at `p` in place with the Text tool,
     /// the caret where the pointer is. False when no label is there.
     pub fn edit_dimension_label_at(&mut self, p: Point) -> bool {
@@ -2470,6 +2511,38 @@ mod tests {
         app.settings.treat_all_filled = false;
         assert_eq!(app.hit_test(p), Some(circle));
         assert_eq!(app.hit_test(Point::new(40.0, 40.0)), Some(dim));
+    }
+
+    /// #4405: a move begun on a dimension's label, let go as a copy,
+    /// copies only the label, as plain text where it was let go; the
+    /// dimension stays as it was.
+    #[test]
+    fn a_label_dragged_as_a_copy_becomes_plain_text() {
+        let mut app = App::headless();
+        app.view.zoom = 1.0;
+        app.create_dimension(
+            Point::new(10.0, 50.0),
+            Point::new(70.0, 50.0),
+            Point::new(40.0, 40.0),
+        );
+        let dim = app.selection[0];
+        let label = app.doc().find_shape(label_id(&app, dim)).cloned().expect("label");
+        let at = app.visual_bounds(&label).center();
+        assert_eq!(app.selected_dimension_label_at(at), Some(dim));
+        assert_eq!(app.selected_dimension_label_at(Point::new(10.0, 45.0)), None);
+        let before = app.doc().find_shape(dim).cloned();
+        assert!(app.copy_dimension_label(dim, Affine::translate((0.0, -30.0))));
+        let copy = app.doc().find_shape(app.selection[0]).cloned().expect("copy");
+        assert!(matches!(copy.kind, ShapeKind::Text { .. }));
+        assert!(!is_dimension(&copy) && Dimension::of(&copy).is_none());
+        let moved = app.visual_bounds(&copy).center();
+        assert!((moved.y - (at.y - 30.0)).abs() < 1e-6 && (moved.x - at.x).abs() < 1e-6);
+        assert_eq!(app.doc().find_shape(dim).cloned(), before, "the dimension stays");
+        let words = |s: &Shape| match &s.kind {
+            ShapeKind::Text { spans, .. } => spans.iter().map(|t| t.text.clone()).collect::<String>(),
+            _ => String::new(),
+        };
+        assert_eq!(words(&copy), words(&label));
     }
 
     /// An object and its dimension duplicated (Ctrl+D) or copied and

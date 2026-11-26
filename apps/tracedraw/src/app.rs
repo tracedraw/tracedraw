@@ -1413,6 +1413,8 @@ pub struct App {
     /// Block shadow colour and gap for the next drag.
     pub block_shadow_color: Color,
     pub block_shadow_gap: f64,
+    /// How far the Block Shadow tool grows a new shadow all round (#4378).
+    pub block_shadow_expand: f64,
     /// Inner shadow colour, opacity (0..1), feathering (mm) and merge
     /// mode for the next drag (#2473).
     pub inner_shadow: InnerShadowStyle,
@@ -1684,6 +1686,10 @@ pub struct App {
     pub docker_preview_point: Option<Point>,
     /// The point the pointer snapped to this frame, for its mark.
     pub snap_mark: std::cell::Cell<Option<crate::snap_points::Target>>,
+    /// The outline points of the selection a move snaps to slanted
+    /// guidelines with, for the drawing revision and selection they were
+    /// taken at (#4383).
+    pub snap_outline: std::cell::RefCell<Option<((u64, Vec<ShapeId>), std::rc::Rc<Vec<Point>>)>>,
     /// The alignment and dynamic guides to draw this frame.
     pub live_guides: std::cell::RefCell<crate::live_guides::Overlay>,
     /// The snap points the pointer acquired, newest first: dynamic guides
@@ -3505,6 +3511,7 @@ impl App {
             table_fill: Fill::None,
             block_shadow_color: Color::cmyk_pct(0.0, 0.0, 0.0, 60.0),
             block_shadow_gap: 0.0,
+            block_shadow_expand: 0.0,
             inner_shadow: InnerShadowStyle::default(),
             table_border: Some(Stroke::hairline(Color::BLACK)),
             graph_rows: 4,
@@ -3618,6 +3625,7 @@ impl App {
             pen_curve_steps: std::collections::HashMap::new(),
             snap: crate::snap::SnapSettings::default(),
             snap_mark: std::cell::Cell::new(None),
+            snap_outline: Default::default(),
             live_guides: Default::default(),
             guide_anchors: Default::default(),
             align_cache: Default::default(),

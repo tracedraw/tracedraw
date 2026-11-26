@@ -10347,7 +10347,8 @@ fn editing_a_clip_frame_fades_the_rest_by_the_focus_setting() {
     for (setting, visibility) in [(0u8, 0.0f32), (20, 0.2), (100, 1.0)] {
         app.settings.focus_visibility = setting;
         let (ids, v) = app.render_focus().expect("editing");
-        assert!(ids.contains(&frame_id) && ids.contains(&inner));
+        // The frame fades with the rest, the contents show whole (#4375).
+        assert!(!ids.contains(&frame_id) && ids.contains(&inner));
         assert!((v - visibility).abs() < 1e-6, "{setting} % gives {v}");
     }
 }
