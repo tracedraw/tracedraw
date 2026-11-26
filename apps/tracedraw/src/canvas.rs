@@ -2683,6 +2683,10 @@ fn draw_text_path_preview(app: &App, painter: &Painter, p: Point) {
 /// line out past the frame too, so where the contents sit inside it can
 /// be seen while the frame is placed or its contents edited (#3804).
 fn draw_clip_contents_outline(app: &App, painter: &Painter, preview: Option<Affine>) {
+    // Options > Display > Dashed outline of clip frame contents.
+    if !app.settings.clip_contents_outline {
+        return;
+    }
     let shapes = app.selected_rc();
     let [s] = shapes.as_slice() else {
         return;
@@ -5561,6 +5565,51 @@ mod tests {
         assert!(shows_transform_outline(&app, false));
         let old: crate::settings::Settings = serde_json::from_str("{}").expect("old settings");
         assert!(old.transform_outline_over_objects, "on for settings saved before");
+    }
+
+    /// Options > Display can hide the dashed outlines a selected clip
+    /// frame draws of what it holds; on by default and for settings saved
+    /// before the box existed.
+    #[test]
+    fn the_dashed_outline_of_clip_frame_contents_can_be_hidden() {
+        let ctx = egui::Context::default();
+        let mut app = App::headless();
+        let frame = tracedraw_core::Shape::new(
+            tracedraw_core::ShapeId(1),
+            ShapeKind::Rect {
+                rect: Rect::new(0.0, 0.0, 100.0, 100.0),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        let content = tracedraw_core::Shape::new(
+            tracedraw_core::ShapeId(2),
+            ShapeKind::Rect {
+                rect: Rect::new(50.0, 50.0, 150.0, 150.0),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        let id = app
+            .new_shape(ShapeKind::ClipFrame {
+                frame: Box::new(frame),
+                contents: vec![content],
+            })
+            .expect("clip frame");
+        app.select(vec![id]);
+        let mut drawn = |app: &App| {
+            let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+                draw_clip_contents_outline(app, ui.painter(), None);
+            });
+            out.textures_delta.clear();
+            out.shapes.len()
+        };
+        assert!(app.settings.clip_contents_outline);
+        assert!(drawn(&app) > 0, "dashes drawn by default");
+        app.settings.clip_contents_outline = false;
+        assert_eq!(drawn(&app), 0, "nothing drawn when off");
+        let old: crate::settings::Settings = serde_json::from_str("{}").expect("old settings");
+        assert!(old.clip_contents_outline, "on for settings saved before");
     }
 
     /// With Show objects while transforming, a scale drag draws the

@@ -1345,6 +1345,14 @@ fn display_page(app: &mut App, ui: &mut Ui) {
                 "options.transform_outline_over_objects_tip",
             ));
         });
+        ui.checkbox(
+            &mut app.settings.clip_contents_outline,
+            tr("options.clip_contents_outline"),
+        )
+        .rich_tip(crate::ui::tips::pair(
+            "options.clip_contents_outline",
+            "options.clip_contents_outline_tip",
+        ));
         ui.checkbox(&mut app.settings.touch_keys, tr("options.touch_keys"))
             .rich_tip(crate::ui::tips::pair(
                 "options.touch_keys",

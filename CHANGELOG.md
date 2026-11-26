@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Options > Display: a new Dashed outline of clip frame contents box (on by default) hides, when off, the dashed outlines a selected clip frame shows of what it holds, the parts hidden outside the frame included.
 - Grid panel (Window > Panels > Grid, or the button in Document options > Grid): Automatic mode (the spacing follows the zoom in round units), Basic mode (spacing with subdivisions in each cell) and Advanced mode (each axis with its own spacing, subdivisions, gutter and angle: isometric, dimetric, trimetric, oblique and custom grids, with optional third-axis lines, uniform axes and fixed aspect ratio); built-in presets and presets of your own saved by name; the grid's origin; colour and opacity of the grid lines and, linked or not, of the subdivisions; axis controls on the canvas that drag the origin and the ends of both axes with the Pick tool. Snapping follows subdivisions, gutters and the crossings of angled grids (#4395).
 - Panel columns split in two keep a group of tabs in each part: tabs dragged onto the lower part, or past the line in the tab strip, join the lower group, whose tabs start at the height of the lower panel; a click on one shows it below while the upper panel stays, and both groups come back with the workspace (#4372).
 - Contour tool: dragging an object that already has a contour goes on from that contour instead of starting again; hold Shift for fine steps (#4364).

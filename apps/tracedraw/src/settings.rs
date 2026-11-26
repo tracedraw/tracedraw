@@ -619,6 +619,10 @@ pub struct Settings {
     /// drag outline is drawn over the objects too (#3704: hide it).
     #[serde(default = "default_true")]
     pub transform_outline_over_objects: bool,
+    /// Options > Display: a selected clip frame shows the dashed outlines
+    /// of what it holds, past its edge too (#3804). Off hides them.
+    #[serde(default = "default_true")]
+    pub clip_contents_outline: bool,
     /// Options > Display: Shift, Ctrl, Alt and Delete on the drawing,
     /// where there is a touch screen (#1996).
     #[serde(default = "default_true")]
@@ -2758,6 +2762,7 @@ impl Default for Settings {
             node_tracking: false,
             live_transform_preview: false,
             transform_outline_over_objects: true,
+            clip_contents_outline: true,
             touch_keys: true,
             touch_selection_bar: true,
             selection_bar_mouse: false,
