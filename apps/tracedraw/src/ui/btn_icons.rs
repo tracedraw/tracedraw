@@ -502,6 +502,7 @@ fn exact(key: &str) -> Option<Src> {
         "convert.check" | "qr.validate" | "flow.choose" => Src::B(B::Check),
         "convert.convert_again" => Src::B(B::Refresh),
         "macros.unload" => Src::B(B::Upload),
+        "macros.delete" => Src::Action(Action::Delete),
         // Time tracking.
         "tracker.new_task" | "tracker.tasks" => Src::B(B::List),
         "tracker.make_active" => Src::B(B::Play),

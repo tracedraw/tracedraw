@@ -117,6 +117,97 @@ pub fn pixels_path(g: &Grid, pixel: f64, top_left: Point) -> BezPath {
     path
 }
 
+/// The outlines of the dark pixels of a `cols` by `rows` grid (row by
+/// row from the top): each patch of touching dark pixels as one outline
+/// with its holes, its corners only where it turns, so a code has a few
+/// nodes per patch instead of four for every pixel (#4398). One pixel is
+/// `pixel` millimetres; the grid's top-left corner is at `top_left`
+/// (y up). Outer outlines and holes run opposite ways, so either fill
+/// rule fills the dark pixels.
+pub fn grid_outline(cols: usize, rows: usize, dark: &[bool], pixel: f64, top_left: Point) -> BezPath {
+    use std::collections::HashMap;
+    let on = |x: i64, y: i64| {
+        x >= 0
+            && y >= 0
+            && (x as usize) < cols
+            && (y as usize) < rows
+            && dark.get(y as usize * cols + x as usize).copied().unwrap_or(false)
+    };
+    // The edges between a dark and a light pixel, each going round its
+    // dark pixel the same way (grid points, y down).
+    let mut out: HashMap<(i64, i64), Vec<(i64, i64)>> = HashMap::new();
+    let mut edges = 0usize;
+    for y in 0..rows as i64 {
+        for x in 0..cols as i64 {
+            if !on(x, y) {
+                continue;
+            }
+            let mut add = |a: (i64, i64), b: (i64, i64)| {
+                out.entry(a).or_default().push(b);
+                edges += 1;
+            };
+            if !on(x - 1, y) {
+                add((x, y), (x, y + 1));
+            }
+            if !on(x, y + 1) {
+                add((x, y + 1), (x + 1, y + 1));
+            }
+            if !on(x + 1, y) {
+                add((x + 1, y + 1), (x + 1, y));
+            }
+            if !on(x, y - 1) {
+                add((x + 1, y), (x, y));
+            }
+        }
+    }
+    let to_page = |(x, y): (i64, i64)| {
+        Point::new(
+            top_left.x + x as f64 * pixel,
+            top_left.y - y as f64 * pixel,
+        )
+    };
+    let mut starts: Vec<(i64, i64)> = out.keys().copied().collect();
+    starts.sort_unstable_by_key(|&(x, y)| (y, x));
+    let mut path = BezPath::new();
+    for start in starts {
+        while let Some(first) = out.get_mut(&start).and_then(|v| v.pop()) {
+            // Walk the loop, taking the edges as they come.
+            let mut pts = vec![start, first];
+            let mut at = first;
+            let mut guard = 0;
+            while at != start && guard <= edges {
+                let Some(next) = out.get_mut(&at).and_then(|v| v.pop()) else {
+                    break;
+                };
+                pts.push(next);
+                at = next;
+                guard += 1;
+            }
+            pts.pop();
+            // Only the corners: points where the outline turns.
+            let n = pts.len();
+            let corners: Vec<(i64, i64)> = (0..n)
+                .filter(|&i| {
+                    let a = pts[(i + n - 1) % n];
+                    let b = pts[i];
+                    let c = pts[(i + 1) % n];
+                    (b.0 - a.0) * (c.1 - b.1) - (b.1 - a.1) * (c.0 - b.0) != 0
+                })
+                .map(|i| pts[i])
+                .collect();
+            if corners.len() < 3 {
+                continue;
+            }
+            path.move_to(to_page(corners[0]));
+            for &q in &corners[1..] {
+                path.line_to(to_page(q));
+            }
+            path.close_path();
+        }
+    }
+    path
+}
+
 /// The children of a QR code object with its top-left corner at
 /// `top_left`: the background (light fill, no outline) and the dark pixels
 /// (dark fill and the outline).
@@ -350,6 +441,40 @@ pub fn validate(qr: &QrCode) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
+    /// #4398: the dark pixels' outlines have a node only where they turn,
+    /// and fill exactly the dark pixels, holes included.
+    #[test]
+    fn the_outline_of_dark_pixels_has_few_nodes_and_keeps_holes() {
+        use tracedraw_core::geometry::Shape as _;
+        // A ring of 3 x 3 with a hole, and a pixel touching it at a corner.
+        let dark = [
+            true, true, true, false, //
+            true, false, true, false, //
+            true, true, true, false, //
+            false, false, false, true,
+        ];
+        let path = grid_outline(4, 4, &dark, 1.0, Point::new(0.0, 4.0));
+        let nodes = path
+            .elements()
+            .iter()
+            .filter(|e| !matches!(e, tracedraw_core::geometry::PathEl::ClosePath))
+            .count();
+        // Ring: 4 outer + 4 hole corners; the lone pixel: 4.
+        assert_eq!(nodes, 12, "{path:?}");
+        for y in 0..4 {
+            for x in 0..4 {
+                let p = Point::new(x as f64 + 0.5, 4.0 - y as f64 - 0.5);
+                assert_eq!(path.winding(p) != 0, dark[y * 4 + x], "pixel {x},{y}");
+                assert_eq!(path.winding(p).rem_euclid(2) == 1, dark[y * 4 + x], "even-odd {x},{y}");
+            }
+        }
+        // A real code: far fewer nodes than four a pixel.
+        let g = modules("https://example.org/tracedraw?id=12345", QrSymbol::Qr).unwrap();
+        let path = grid_outline(g.cols, g.rows, &g.dark, 1.0, Point::ZERO);
+        let dark_px = g.dark.iter().filter(|d| **d).count();
+        assert!(path.elements().len() < dark_px * 2, "{} for {dark_px}", path.elements().len());
+    }
+
     use super::*;
     use tracedraw_core::{Color, QrKind};
 

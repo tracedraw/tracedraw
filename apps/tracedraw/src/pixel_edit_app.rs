@@ -96,6 +96,11 @@ pub struct PixelEdit {
     pub move_drag: Option<MoveDrag>,
     /// The placement the Move tool's preview shows, when it shows one.
     pub placed_for: Option<crate::pixel_ops::Placement>,
+    /// The whole layer's pixels before the Move tool's first placement on
+    /// it, the placements put in since, the layer and the change after
+    /// the last: a later move works from these, so what a move took past
+    /// the picture's edge comes back (#4374). Any other change ends it.
+    pub move_memory: Option<MoveMemory>,
     /// Counts the changes seen on the screen, for what is kept from them
     /// (the Move tool's box, the effect preview).
     pub rev: std::cell::Cell<u64>,
@@ -147,6 +152,10 @@ pub struct PixelEdit {
     /// result shows before Apply.
     pub effect: Option<BitmapEffect>,
     pub preview_on: bool,
+    /// The effect's settings were applied and not changed since: Apply
+    /// waits for a change, so a second click does not apply the effect
+    /// again on its own result (#4376).
+    pub effect_applied: bool,
     pub preview: Option<image::RgbaImage>,
     pub feather_px: u32,
     pub grow_px: i32,
@@ -247,8 +256,10 @@ impl PixelEdit {
         match want {
             Some(p) => {
                 let b = self.move_drag.map(|d| d.b).unwrap_or_else(|| self.move_box());
-                self.preview = crate::pixel_ops::place_image(&self.pi.img, self.pi.sel.as_ref(), b, &p)
-                    .map(|(img, _)| img);
+                self.preview = self.placed_layer(b, &p).or_else(|| {
+                    crate::pixel_ops::place_image(&self.pi.img, self.pi.sel.as_ref(), b, &p)
+                        .map(|(img, _)| img)
+                });
                 self.view.borrow_mut().full = true;
             }
             None if had => {
@@ -257,6 +268,23 @@ impl PixelEdit {
             }
             None => {}
         }
+    }
+
+    /// The Move tool's memory of the layer in use, while nothing else
+    /// changed it since the last placement and nothing is selected.
+    fn live_move_memory(&self) -> Option<&MoveMemory> {
+        self.move_memory.as_ref().filter(|m| {
+            m.layer == self.pi.active && m.rev == self.rev.get() && self.pi.sel.is_none()
+        })
+    }
+
+    /// The layer in use with placement `p` about box `b` put in, from the
+    /// pixels the Move tool remembers when it can (#4374).
+    fn placed_layer(&self, b: Dirty, p: &crate::pixel_ops::Placement) -> Option<image::RgbaImage> {
+        let m = self.live_move_memory()?;
+        let mut steps = m.steps.clone();
+        steps.push((b, *p));
+        crate::pixel_ops::place_chain(&m.source, &steps)
     }
 
     /// The Move tool's placement put in the layer in use, one undo step.
@@ -271,7 +299,28 @@ impl PixelEdit {
         let b = b.unwrap_or_else(|| self.move_box());
         self.preview = None;
         self.placed_for = None;
-        self.apply(true, |pi| crate::pixel_ops::place_in(pi, b, &p));
+        let whole_layer = self.pi.sel.is_none();
+        let (source, mut steps) = match self.live_move_memory() {
+            Some(m) => (m.source.clone(), m.steps.clone()),
+            None => (self.pi.img.clone(), Vec::new()),
+        };
+        let from_memory = self.placed_layer(b, &p);
+        let done = match from_memory {
+            Some(img) => self.apply(true, move |pi| {
+                pi.img = img;
+                Some([0, 0, pi.img.width(), pi.img.height()])
+            }),
+            None => self.apply(true, |pi| crate::pixel_ops::place_in(pi, b, &p)),
+        };
+        self.move_memory = (whole_layer && done).then(|| {
+            steps.push((b, p));
+            MoveMemory {
+                layer: self.pi.active,
+                source,
+                steps,
+                rev: self.rev.get(),
+            }
+        });
         self.view.borrow_mut().full = true;
     }
 
@@ -577,7 +626,10 @@ impl PixelEdit {
     pub fn refresh_preview(&mut self) {
         self.preview = None;
         self.preview_rev = self.rev.get();
-        if !self.preview_on {
+        // Just applied: the picture shows its result, not the effect run
+        // on it once more (#4376).
+        if !self.preview_on || self.effect_applied {
+            self.view.borrow_mut().full = true;
             return;
         }
         if let Some(e) = &self.effect {
@@ -588,6 +640,16 @@ impl PixelEdit {
         }
         self.view.borrow_mut().full = true;
     }
+}
+
+/// What the Move tool keeps of a layer it moved (see
+/// [`PixelEdit::move_memory`]).
+#[derive(Clone)]
+pub struct MoveMemory {
+    pub layer: usize,
+    pub source: image::RgbaImage,
+    pub steps: Vec<(Dirty, crate::pixel_ops::Placement)>,
+    pub rev: u64,
 }
 
 impl App {
@@ -706,6 +768,7 @@ impl App {
             pen_drag: false,
             move_drag: None,
             placed_for: None,
+            move_memory: None,
             rev: Default::default(),
             pick_cache: Default::default(),
             preview_rev: 0,
@@ -722,6 +785,7 @@ impl App {
             changed: false,
             effect: None,
             preview_on: true,
+            effect_applied: false,
             preview: None,
             feather_px: 4,
             grow_px: 2,
@@ -2237,6 +2301,67 @@ mod tests {
             ShapeKind::Bitmap { png, .. } => crate::bitmap_fx::decode(png).unwrap(),
             _ => panic!("not a picture"),
         }
+    }
+
+    /// #4376: Apply in the Effects panel runs the effect once; a second
+    /// click does nothing until a setting changes or another effect is
+    /// picked, and the preview stops showing the effect run once more.
+    #[test]
+    fn apply_in_the_effects_panel_runs_the_effect_once() {
+        let (mut app, id) = app_with_picture();
+        app.edit_bitmap_inside(id);
+        let pe = app.pixel_edit.as_mut().unwrap();
+        let before = pe.pi.img.clone();
+        pe.effect = Some(crate::fx::new_effect("invert_colors"));
+        pe.refresh_preview();
+        assert!(pe.preview.is_some());
+        crate::ui::pixel_bar::apply_panel_effect(pe);
+        let once = pe.pi.img.clone();
+        assert_ne!(once, before, "applied");
+        assert!(pe.effect_applied && pe.preview.is_none());
+        crate::ui::pixel_bar::apply_panel_effect(pe);
+        assert_eq!(pe.pi.img, once, "a second Apply does nothing");
+        // A change of a setting lets Apply work again.
+        pe.effect_applied = false;
+        crate::ui::pixel_bar::apply_panel_effect(pe);
+        assert_eq!(pe.pi.img, before, "inverted back");
+    }
+
+    /// #4374: a layer moved partly past the picture's edge and moved back
+    /// comes back whole; a move of its own pixels in between does not
+    /// lose what went past the edge.
+    #[test]
+    fn a_layer_moved_past_the_edge_and_back_comes_back_whole() {
+        let (mut app, id) = app_with_picture();
+        app.edit_bitmap_inside(id);
+        let pe = app.pixel_edit.as_mut().unwrap();
+        pe.tool = PixelTool::Move;
+        let (w, h) = pe.pi.img.dimensions();
+        // Paint a mark in the top left corner.
+        for y in 0..3 {
+            for x in 0..3 {
+                pe.pi.img.put_pixel(x, y, image::Rgba([255, 0, 0, 255]));
+            }
+        }
+        pe.bump();
+        let before = pe.pi.img.clone();
+        let full = [0, 0, w, h];
+        let mv = |dx: f32, dy: f32| crate::pixel_ops::Placement {
+            dx,
+            dy,
+            ..Default::default()
+        };
+        pe.placement = mv(-5.0, -5.0);
+        pe.apply_placement(Some(full));
+        assert_eq!(pe.pi.img.get_pixel(0, 0)[3], before.get_pixel(5, 5)[3]);
+        pe.placement = mv(2.0, 0.0);
+        pe.apply_placement(Some(full));
+        pe.placement = mv(3.0, 5.0);
+        pe.apply_placement(Some(full));
+        assert_eq!(pe.pi.img, before, "the mark came back from past the edge");
+        // Undo goes back one move at a time.
+        pe.undo();
+        assert_eq!(*pe.pi.img.get_pixel(0, 0), *before.get_pixel(5, 5));
     }
 
     #[test]

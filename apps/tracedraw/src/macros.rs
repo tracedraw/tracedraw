@@ -225,6 +225,39 @@ pub fn sub_line(source: &str, name: &str) -> Option<u32> {
     })
 }
 
+/// `source` without the `Sub` or `Function` called `name`: from its
+/// first line (with the comment lines right above it) to its `End Sub`
+/// or `End Function`. `None` when no procedure has that name.
+pub fn without_procedure(source: &str, name: &str) -> Option<String> {
+    let lines: Vec<&str> = source.lines().collect();
+    let start = lines
+        .iter()
+        .position(|l| proc_name(l).is_some_and(|n| n.eq_ignore_ascii_case(name)))?;
+    let end = (start..lines.len())
+        .find(|&i| {
+            let l = lines[i].trim().to_ascii_lowercase();
+            l.starts_with("end sub") || l.starts_with("end function")
+        })
+        .unwrap_or(lines.len() - 1);
+    let mut from = start;
+    while from > 0 && lines[from - 1].trim_start().starts_with('\'') {
+        from -= 1;
+    }
+    let mut to = end + 1;
+    // One blank line that separated it from the next goes too.
+    if lines.get(to).is_some_and(|l| l.trim().is_empty()) {
+        to += 1;
+    }
+    let mut out: Vec<&str> = lines[..from].to_vec();
+    out.extend_from_slice(&lines[to..]);
+    let eol = if source.contains("\r\n") { "\r\n" } else { "\n" };
+    let mut text = out.join(eol);
+    if source.ends_with('\n') && !text.is_empty() {
+        text.push_str(eol);
+    }
+    Some(text)
+}
+
 /// The procedure a line declares: `[Public|Private] [Static] Sub|Function
 /// Name(`.
 fn proc_name(line: &str) -> Option<String> {
@@ -297,6 +330,9 @@ pub struct MacroState {
     pub chosen: Option<(usize, Option<String>, Option<String>)>,
     /// Renaming a project in the manager: (project, the name typed).
     pub renaming: Option<(usize, String)>,
+    /// The manager asks before deleting its chosen row: (project,
+    /// module, macro) (#4409).
+    pub deleting: Option<(usize, Option<String>, Option<String>)>,
     /// Scripts panel: the snippet is VBA, and the other language's text
     /// (swapped in when the language changes).
     pub scripts_vba: bool,
@@ -436,6 +472,31 @@ impl MacroState {
             let p = self.projects.remove(i);
             let _ = std::fs::remove_file(&p.file);
         }
+    }
+
+    /// Delete a module, or one macro of a module, from project `i` and
+    /// save the project's copy (#4409). A form module takes its form
+    /// along.
+    pub fn delete_part(&mut self, i: usize, module: &str, name: Option<&str>) -> Result<(), String> {
+        let p = self.projects.get_mut(i).ok_or("no project")?;
+        let at = p
+            .project
+            .modules
+            .iter()
+            .position(|m| m.name.eq_ignore_ascii_case(module))
+            .ok_or("no module")?;
+        match name {
+            None => {
+                p.project.modules.remove(at);
+                p.project.forms.retain(|f| !f.name.eq_ignore_ascii_case(module));
+            }
+            Some(n) => {
+                let m = &mut p.project.modules[at];
+                m.source = without_procedure(&m.source, n).ok_or("no macro")?;
+            }
+        }
+        p.warnings = scan(&p.project);
+        p.save()
     }
 
     /// Rename project `i` (its name and its copy's file).
@@ -1186,6 +1247,58 @@ mod tests {
             code_page: 1252,
             ..Default::default()
         }
+    }
+
+    /// The Macro Manager deletes one macro or a whole module, and the
+    /// project's copy keeps the change (#4409).
+    #[test]
+    fn the_manager_deletes_a_macro_and_a_module() {
+        let code = "Attribute VB_Name = \"Main\"\r\n\
+                    ' Says hello.\r\n\
+                    Sub Hello()\r\n\
+                    MsgBox \"hi\"\r\n\
+                    End Sub\r\n\
+                    \r\n\
+                    Public Function Twice(x)\r\n\
+                    Twice = x * 2\r\n\
+                    End Function\r\n";
+        assert_eq!(
+            without_procedure(code, "hello").as_deref(),
+            Some(
+                "Attribute VB_Name = \"Main\"\r\n\
+                 Public Function Twice(x)\r\n\
+                 Twice = x * 2\r\n\
+                 End Function\r\n"
+            )
+        );
+        assert!(without_procedure(code, "Nope").is_none());
+        let dir = temp("delete");
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut p = project("Del", code, Vec::new());
+        p.modules.push(vp::Module {
+            name: "Extra".into(),
+            kind: vp::ModuleKind::Standard,
+            source: "Sub Other()\r\nEnd Sub\r\n".into(),
+            has_source: true,
+            read_only: false,
+            private: false,
+        });
+        let mut state = MacroState::default();
+        state.projects.push(MacroProject::new(dir.join("Del.gms"), p));
+        state.delete_part(0, "Main", Some("Hello")).unwrap();
+        let names: Vec<String> = state.projects[0].macros().into_iter().map(|(_, n)| n).collect();
+        assert!(!names.iter().any(|n| n == "Hello"), "{names:?}");
+        assert!(names.iter().any(|n| n == "Other"), "{names:?}");
+        state.delete_part(0, "extra", None).unwrap();
+        assert_eq!(state.projects[0].project.modules.len(), 1);
+        assert!(state.delete_part(0, "Extra", None).is_err());
+        // The copy on disk has the change.
+        let bytes = std::fs::read(dir.join("Del.gms")).unwrap();
+        let back = read_project(&[dir.join("Del.gms")]).unwrap();
+        assert!(!bytes.is_empty());
+        assert_eq!(back.modules.len(), 1);
+        assert!(!back.modules[0].source.contains("Sub Hello"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     fn temp(name: &str) -> PathBuf {

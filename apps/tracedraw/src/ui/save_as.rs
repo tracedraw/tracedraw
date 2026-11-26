@@ -25,6 +25,8 @@ const ERROR: egui::Color32 = egui::Color32::from_rgb(0xC4, 0x2B, 0x1C);
 const WIDTH: f32 = 760.0;
 const LIST_H: f32 = 250.0;
 const PLACES_W: f32 = 150.0;
+/// What the list's date, type and size columns take beside the names.
+const NAME_REST_W: f32 = 330.0;
 /// The folders used lately shown down the left (#1391).
 const RECENT_DIRS: usize = 6;
 /// Letters typed in the list this many seconds apart start a new search.
@@ -904,6 +906,7 @@ pub fn dialog(app: &mut App, ctx: &Context, st: &mut SaveAsState, close: &mut bo
     }
     window(ctx, tr("dialog.save_drawing")).show(ctx, |ui| {
         ui.set_width(WIDTH);
+        ui.set_max_width(WIDTH);
         // No folders in a browser (a download) or on Android (the
         // system's picker chooses the place when Save is pressed).
         if !files::WEB && !files::ANDROID {
@@ -1177,6 +1180,9 @@ fn listing(
     let mut rename_done: Option<bool> = None;
     let mut bookmark: Option<PathBuf> = None;
     list_keys(ui, st, &mut open, &mut rename);
+    // The name column's share of the list: the rest is the date, type
+    // and size columns (#4404).
+    let name_w = (ui.available_width() - NAME_REST_W).max(140.0);
     ui.vertical(|ui| {
         egui::ScrollArea::vertical()
             .id_salt("save_as_list")
@@ -1250,11 +1256,20 @@ fn listing(
                             } else {
                                 let r = ui
                                     .horizontal(|ui| {
+                                        // A long name is cut with an ellipsis
+                                        // and shown whole in its tip: it
+                                        // widened the dialog past the screen,
+                                        // Save out of reach (#4404).
+                                        ui.set_max_width(name_w);
                                         ui.spacing_mut().item_spacing.x = 4.0;
                                         entry_icon(ui, e.is_dir);
                                         let shown = tracedraw_text::seen_order(&e.name)
                                             .unwrap_or_else(|| e.name.clone());
-                                        ui.selectable_label(selected, shown)
+                                        ui.add(
+                                            egui::Button::selectable(selected, shown.clone())
+                                                .truncate(),
+                                        )
+                                        .rich_tip(shown)
                                     })
                                     .inner;
                                 if selected && st.scroll_to {
@@ -1858,6 +1873,38 @@ mod tests {
             Dialog::SaveAs(st) => st,
             other => panic!("no Save Drawing dialog: {other:?}"),
         }
+    }
+
+    /// #4404: a folder with a very long name in the list does not widen
+    /// the dialog past the screen: the name is cut and Save stays in view.
+    #[test]
+    fn a_long_folder_name_keeps_the_dialog_on_screen() {
+        let dir = temp_dir("save-as-long-name");
+        let long = "a very long folder name that goes on ".repeat(6);
+        let _ = std::fs::create_dir_all(dir.join(long.trim()));
+        let mut app = drawing();
+        app.save_as_dialog();
+        state(&mut app).open_dir(dir.clone());
+        let ctx = crate::theme::ui_context();
+        let mut right = 0.0f32;
+        for _ in 0..3 {
+            let input = egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1366.0, 740.0))),
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(input, |ui| crate::ui::dialogs::show(&mut app, ui.ctx()));
+            out.textures_delta.clear();
+            right = out
+                .shapes
+                .iter()
+                .map(|c| c.shape.visual_bounding_rect())
+                .filter(|r| r.is_finite())
+                .map(|r| r.right())
+                .fold(0.0, f32::max);
+        }
+        assert!(right <= 1366.0, "the dialog reaches x = {right}");
+        assert!(right < WIDTH + 400.0, "the dialog reaches x = {right}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// d#2122: a Hebrew file name shows its words from right to left, in

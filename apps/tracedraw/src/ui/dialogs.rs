@@ -4738,31 +4738,22 @@ pub fn paper_preset_menu(
     pick
 }
 
-/// A QR code as one even-odd path of module squares.
+/// A QR code as one path: the outlines of its dark modules.
 pub(crate) fn qr_path(text: &str, size_mm: f64) -> Result<tracedraw_core::BezPath, String> {
-    use tracedraw_core::geometry::Shape as _;
     if text.trim().is_empty() {
         return Err(tr("dialog.qr_empty"));
     }
-    let code = qrcode::QrCode::new(text.as_bytes()).map_err(|e| e.to_string())?;
-    let n = code.width();
-    let module = size_mm / n as f64;
-    let mut path = tracedraw_core::BezPath::new();
-    for y in 0..n {
-        for x in 0..n {
-            if code[(x, y)] == qrcode::Color::Dark {
-                // Y up: row 0 at the top.
-                let r = Rect::new(
-                    x as f64 * module,
-                    size_mm - (y as f64 + 1.0) * module,
-                    (x as f64 + 1.0) * module,
-                    size_mm - y as f64 * module,
-                );
-                path.extend(r.to_path(0.01));
-            }
-        }
-    }
-    Ok(path)
+    let g = crate::qr::modules(text, tracedraw_core::QrSymbol::Qr)?;
+    let module = size_mm / g.cols.max(1) as f64;
+    // The dark pixels as outlines with a node only where they turn, not
+    // a square of four nodes for each pixel (#4398).
+    Ok(crate::qr::grid_outline(
+        g.cols,
+        g.rows,
+        &g.dark,
+        module,
+        tracedraw_core::geometry::Point::new(0.0, size_mm),
+    ))
 }
 
 // ----- Options ---------------------------------------------------------------

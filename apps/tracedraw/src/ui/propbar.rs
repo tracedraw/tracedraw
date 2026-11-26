@@ -1668,8 +1668,12 @@ pub fn page_bar(app: &mut App, ui: &mut Ui) {
         false,
     );
     let popup_id = autofit_popup_id();
+    // Just opened: the margin field takes the keys, its value selected,
+    // so a number typed replaces it and Enter fits the page (#4407).
+    let mut focus_margin = false;
     if fit.clicked() {
         egui::Popup::toggle_id(ui.ctx(), popup_id);
+        focus_margin = egui::Popup::is_id_open(ui.ctx(), popup_id);
     }
     let ctx = ui.ctx().clone();
     let mut fitted = false;
@@ -1684,9 +1688,23 @@ pub fn page_bar(app: &mut App, ui: &mut Ui) {
             ui.horizontal(|ui| {
                 ui.label(tr("toolbar.fit_margin"));
                 ui.add_space(8.0);
-                let margin = app.settings.fit_page_margin.max(0.0);
-                if let Some(m) = paper_distance(ui, app, margin, 88.0, Some(1.0)) {
-                    app.settings.fit_page_margin = m.max(0.0);
+                let unit = app.units.mm();
+                let mut v = app.settings.fit_page_margin.max(0.0) / unit;
+                let r = ui.add_sized(
+                    [88.0, ROW],
+                    crate::ui::field::NumField::new(&mut v)
+                        .length_decimals(app.settings.precision.min(6) as usize)
+                        .suffix(format!(" {}", app.units.short()))
+                        .unit_mm(unit)
+                        .step(1.0)
+                        .focus(focus_margin),
+                );
+                if r.changed() {
+                    app.settings.fit_page_margin = (v * unit).max(0.0);
+                }
+                // Enter in the field applies the margin and fits the page.
+                if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    fitted = true;
                 }
                 ui.add_space(6.0);
                 ui.checkbox(
@@ -1694,6 +1712,12 @@ pub fn page_bar(app: &mut App, ui: &mut Ui) {
                     tr("toolbar.autofit_live_preview"),
                 );
             });
+            // Enter with nothing in the popup holding the keys fits too.
+            if ui.memory(|m| m.focused().is_none())
+                && ui.input(|i| i.key_pressed(egui::Key::Enter))
+            {
+                fitted = true;
+            }
             ui.add_space(4.0);
             if ui
                 .add_sized(

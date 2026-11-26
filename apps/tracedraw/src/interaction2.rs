@@ -57,7 +57,8 @@ impl App {
         }
         if self.pending_rotate_lines.is_some() {
             // Rotate by Two Lines: each click snaps as a drawing click.
-            let q = self.snap_point(p);
+            let constrain = response.ctx.input(|i| self.constrain_held(&i.modifiers));
+            let q = self.rotate_lines_point(self.snap_point(p), constrain);
             self.rotate_lines_click(q);
             return true;
         }

@@ -239,7 +239,8 @@ pub fn draw_canvas(app: &App, painter: &Painter, rect: ERect) {
     if let Some(pts) = &app.pending_rotate_lines {
         let mut pts = pts.clone();
         if let Some(p) = app.pointer_page {
-            pts.push(app.snap_point(p));
+            let constrain = painter.ctx().input(|i| app.constrain_held(&i.modifiers));
+            pts.push(app.rotate_lines_point(app.snap_point(p), constrain));
         }
         for line in pts.chunks(2) {
             let screen: Vec<Pos2> = line.iter().map(|q| view.to_screen(*q)).collect();

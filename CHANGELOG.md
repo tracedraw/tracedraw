@@ -6,6 +6,17 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Starting on older graphics cards under Windows that offer the hardware renderer only through OpenGL (such as Intel HD 4400) no longer crashes: those cards go straight to the OpenGL renderer (#4368).
+- File > Open Recent lists a document once when it was opened two ways, with different letter case, slashes or a long path prefix (#4408).
+- The Macro Manager deletes the chosen macro or a whole module, after asking first (#4409).
+- Fit page box on the property bar: the margin box has focus when the box opens and Enter fits the page; a number box with focus steps its value with the Up and Down arrows (#4407).
+- Save As with a long folder name keeps the dialog on screen: long names are cut and show in full in their tip (#4404).
+- The eyedropper reads a CMYK gradient as a CMYK colour (#4403).
+- Rotate lines: holding the constrain key snaps a line's angle to the constrain angle (#4373).
+- Image editor: Apply in the Effects panel runs the effect once and leaves no preview over the result (#4376); a layer moved past the canvas edge and back comes back whole (#4374).
+- Changing the Brush Strokes bar restyles the selected brush strokes (#4385).
+- QR codes made as curves have far fewer nodes: one outline round each area of dark squares, holes kept (#4398).
+- WMF export keeps the right side of pages wider than 578 mm (#4410).
 - Shape Generator: five new generators, each with its live preview: Circle packing (circles of many sizes filling the box or a picked shape or text without touching), Sunflower spiral (dots spread by the golden angle), Squares and motifs (the box split into squares at random, each with a geometric motif in a palette), Reaction-diffusion (spots, maze, coral, holes or stripe patterns grown on a grid and traced as filled curves) and Interlace (Celtic knotwork with breaks and woven ten-, eight- and six-point star straps whose bands pass over and under in turn). Guilloche runs as a band or a frame round the box besides the rosette, and Tessellation adds masonry and the aperiodic pinwheel tiling.
 - Frame Generator: a Guilloche style, fine waved lines weaving along the band for certificates, diplomas and vouchers, with the number of lines.
 - Math Shapes panel (Object > Create, or Window > Panels): draws a Cartesian plane with axes, arrows, ticks, numbers (also in multiples of π), grid and fine grid, ranges and units, each with its own colour and width, and on it up to 12 curves typed as formulas: functions, parametric and polar curves, any equation in x and y, and points; parameters a, b, c, d and k on sliders, roots and turning points marked, the formula written beside its curve, fills, and 23 ready graphs from parabolas to roses, spirals and the superformula. It also makes circles, triangles, regular polygons and stars, ellipses and arcs from their measures, with names, lengths, angles, heights, medians, bisectors and inscribed and circumscribed circles drawn and every measure listed. Live preview, editable curves and text in one undo step, and a selected graph comes back into the panel for Update.

@@ -1405,6 +1405,29 @@ fn action_lines_bar(app: &mut App, ui: &mut Ui) {
 /// bar held the calligraphic fields only, with no way to another mode
 /// (#1681).
 fn brush_strokes_bar(app: &mut App, ui: &mut Ui) {
+    let before = media_settings(app);
+    brush_strokes_fields(app, ui);
+    // Selected brush strokes take what was changed (#4385).
+    if media_settings(app) != before && !app.selection.is_empty() {
+        app.restyle_selected_media();
+    }
+}
+
+/// What the Brush Strokes bar sets, to tell a change.
+fn media_settings(app: &App) -> (crate::media::MediaMode, usize, [u64; 4]) {
+    (
+        app.media_mode,
+        app.media_preset,
+        [
+            app.media_width.to_bits(),
+            app.media_angle.to_bits(),
+            app.media_spacing.to_bits(),
+            app.media_pressure.to_bits(),
+        ],
+    )
+}
+
+fn brush_strokes_fields(app: &mut App, ui: &mut Ui) {
     use crate::media::MediaMode;
     dim_labelled_as(ui, "toolbar.brush_mode", "toolbar.brush_mode_desc", |ui| {
         crate::ui::keynav::ComboBox::from_id_salt("brush_mode")

@@ -146,8 +146,14 @@ fn choose_on(
 ) -> (Option<usize>, Vec<&'static str>) {
     let api = |c: &Candidate| backend_rank(c.backend, windows);
     let software = |c: &Candidate| c.kind == eframe::wgpu::DeviceType::Cpu;
+    // On Windows wgpu's own OpenGL path stops the program inside the
+    // graphics driver when it cannot make its context current (#4368,
+    // Intel HD 4400): a card only OpenGL reaches is left to the OpenGL
+    // renderer, the next one tried, which reports that as an error.
+    let gl_on_windows = |c: &Candidate| windows && c.backend == eframe::wgpu::Backend::Gl;
     let fits = |c: &Candidate| {
         c.surface
+            && !gl_on_windows(c)
             && match mode {
                 Mode::Software => software(c),
                 _ => !software(c),
@@ -175,6 +181,8 @@ fn choose_on(
         .map(|(i, c)| {
             if !c.surface {
                 "rejected: cannot draw on the window"
+            } else if gl_on_windows(c) {
+                "rejected: OpenGL on Windows is left to the OpenGL renderer"
             } else if mode == Mode::Software && !software(c) {
                 "rejected: not a software adapter (hardware acceleration is off)"
             } else if mode != Mode::Software && software(c) {
@@ -1453,6 +1461,27 @@ mod tests {
         no_surface[2].surface = false;
         assert_eq!(choose_on(Mode::Hardware, "", &no_surface, true).0, Some(0));
         assert_eq!(choose_on(Mode::Software, "", &list, true).0, Some(5));
+    }
+
+    /// The reporter's adapters of #4368: on Windows the built-in Intel HD
+    /// 4400 is offered only through OpenGL, and wgpu's OpenGL path there
+    /// stopped the program inside the driver. Hardware mode then finds no
+    /// card, so the start goes on with the OpenGL renderer; elsewhere the
+    /// card is still taken through wgpu's OpenGL.
+    #[test]
+    fn windows_leaves_opengl_only_cards_to_the_opengl_renderer() {
+        use eframe::wgpu::Backend::{Dx12, Gl};
+        use eframe::wgpu::DeviceType::*;
+        let list = [
+            on(adapter("Microsoft Basic Render Driver", Cpu, true), Dx12),
+            on(adapter("Intel(R) HD Graphics 4400", IntegratedGpu, true), Gl),
+        ];
+        let (pick, notes) = choose_on(Mode::Hardware, "", &list, true);
+        assert_eq!(pick, None);
+        assert!(notes[1].starts_with("rejected: OpenGL on Windows"));
+        assert_eq!(Mode::Hardware.next(Mode::Hardware), Some(Mode::Gl));
+        assert_eq!(choose_on(Mode::Hardware, "", &list, false).0, Some(1));
+        assert_eq!(choose_on(Mode::Software, "", &list, true).0, Some(0));
     }
 
     /// Hardware mode takes the card named in Options, else the fastest

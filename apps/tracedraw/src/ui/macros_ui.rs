@@ -1533,6 +1533,17 @@ pub fn manager(app: &mut App, ui: &mut Ui) {
             act = Some("unload");
         }
         if ui
+            .add_enabled(
+                chosen.is_some() && !running,
+                crate::ui::btn_icons::Ib::new("macros.delete"),
+            )
+            .rich_tip(crate::ui::tips::keyed("macros.delete"))
+            .rich_disabled_tip(crate::ui::tips::keyed("macros.delete"))
+            .clicked()
+        {
+            act = Some("delete");
+        }
+        if ui
             .add_enabled(chosen.is_some(), crate::ui::btn_icons::Ib::new("macros.export"))
             .rich_tip(crate::ui::tips::keyed("macros.export"))
             .rich_disabled_tip(crate::ui::tips::keyed("macros.export"))
@@ -1574,6 +1585,45 @@ pub fn manager(app: &mut App, ui: &mut Ui) {
                 app.shortcut_editor.entries.clear();
             }
             Some(false) => app.macros.renaming = None,
+            None => {}
+        }
+    }
+    // Delete the chosen project, module or macro, once confirmed (#4409).
+    if let Some((p, m, n)) = app.macros.deleting.clone() {
+        let what = match (&m, &n) {
+            (_, Some(n)) => n.clone(),
+            (Some(m), None) => m.clone(),
+            _ => app
+                .macros
+                .projects
+                .get(p)
+                .map(|x| x.name().to_string())
+                .unwrap_or_default(),
+        };
+        let mut done = None;
+        ui.horizontal_wrapped(|ui| {
+            ui.label(trf("macros.delete_confirm", &[("n", &what)]));
+            if ui
+                .add(crate::ui::btn_icons::Ib::new("macros.delete"))
+                .rich_tip(crate::ui::tips::keyed("macros.delete"))
+                .clicked()
+            {
+                done = Some(true);
+            }
+            if ui
+                .button(tr("dialog.cancel"))
+                .rich_tip(crate::ui::tips::keyed("macros.rename_cancel"))
+                .clicked()
+            {
+                done = Some(false);
+            }
+        });
+        match done {
+            Some(true) => {
+                app.macros.deleting = None;
+                delete_chosen(app, p, m, n);
+            }
+            Some(false) => app.macros.deleting = None,
             None => {}
         }
     }
@@ -1753,12 +1803,43 @@ pub fn manager(app: &mut App, ui: &mut Ui) {
                 app.shortcut_editor.entries.clear();
             }
         }
+        "delete" => app.macros.deleting = chosen,
         "export" => {
             if let Some((p, m, _)) = chosen {
                 app.export_macros(p, m.as_deref());
             }
         }
         _ => {}
+    }
+}
+
+/// Delete what the manager has chosen: a whole project (as Unload does),
+/// a module, or one macro (#4409).
+pub(crate) fn delete_chosen(app: &mut App, p: usize, m: Option<String>, n: Option<String>) {
+    let Some(m) = m else {
+        app.macros.remove(p);
+        app.macros.chosen = None;
+        if app.macros.editor.as_ref().is_some_and(|e| e.project == p) {
+            app.macros.editor = None;
+        }
+        app.shortcut_editor.entries.clear();
+        return;
+    };
+    match app.macros.delete_part(p, &m, n.as_deref()) {
+        Ok(()) => {
+            app.macros.chosen = Some((p, Some(m.clone()), None)).filter(|_| n.is_some());
+            if app
+                .macros
+                .editor
+                .as_ref()
+                .is_some_and(|e| e.project == p && e.module.eq_ignore_ascii_case(&m))
+            {
+                app.macros.editor = None;
+            }
+            app.shortcut_editor.entries.clear();
+            app.status = trf("macros.deleted", &[("n", n.as_deref().unwrap_or(&m))]);
+        }
+        Err(e) => app.status = e,
     }
 }
 

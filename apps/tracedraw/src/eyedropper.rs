@@ -62,6 +62,17 @@ fn shows_other_than_its_fill(s: &tracedraw_core::Shape) -> bool {
     (several && !matches!(s.kind, ShapeKind::Bitmap { .. })) || s.opacity < 1.0 || effects
 }
 
+/// Whether every colour of a gradient fill is a CMYK one: what it shows
+/// is read back in CMYK (#4403).
+fn fill_is_cmyk(f: &Fill) -> bool {
+    match f {
+        Fill::Fountain(g) => {
+            !g.stops.is_empty() && g.stops.iter().all(|s| matches!(s.color, Color::Cmyk { .. }))
+        }
+        _ => false,
+    }
+}
+
 /// The CMYK inks of the pixels around (`fx`, `fy`) of a `w` x `h` picture
 /// in `planes` (its cyan, magenta, yellow and black channels one under
 /// the other, 255 full ink), averaged over a box of `n` x `n` pixels.
@@ -484,7 +495,14 @@ impl App {
             // colour is read as the drawing shows it there, with what
             // shows through, not as the object's first colour (#4051).
             if let Some(c) = self.shown_color_at(p) {
-                return Some(c);
+                return Some(if fill_is_cmyk(&s.fill) {
+                    // A gradient of CMYK colours reads in CMYK, the
+                    // model it was made in, not as the screen's RGB
+                    // (#4403).
+                    c.convert_to("CMYK")
+                } else {
+                    c
+                });
             }
         }
         if let ShapeKind::Bitmap {
@@ -1015,6 +1033,28 @@ mod tests {
         });
         app.select(Vec::new());
         assert_eq!(app.sample_color_at(Point::new(80.0, 45.0), false), Some(c));
+        // #4403: a gradient of CMYK colours reads in CMYK, its cyan end
+        // mostly cyan ink.
+        let ramp = rect(&mut app, Rect::new(0.0, 70.0, 100.0, 90.0));
+        app.run(Command::SetFill {
+            shapes: vec![ramp],
+            fill: Fill::Fountain(Fountain::two(
+                FountainKind::Linear,
+                c,
+                Color::Cmyk {
+                    c: 0.0,
+                    m: 0.0,
+                    y: 1.0,
+                    k: 0.0,
+                },
+                0.0,
+            )),
+        });
+        app.select(Vec::new());
+        match app.sample_color_at(Point::new(5.0, 80.0), false) {
+            Some(Color::Cmyk { c, y, .. }) => assert!(c > 0.6 && y < 0.4, "{c} {y}"),
+            other => panic!("not CMYK: {other:?}"),
+        }
     }
 
     /// An object with a Hue/Saturation/Lightness effect gives the colour

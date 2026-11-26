@@ -3177,9 +3177,50 @@ impl Settings {
         if crate::files::WEB {
             return;
         }
-        self.recent_files.retain(|p| p != path);
+        self.recent_files.retain(|p| !same_document(p, path));
         self.recent_files.insert(0, path.to_path_buf());
         self.recent_files.truncate(10);
+    }
+}
+
+/// Whether two paths name the same document: the system's file manager
+/// and the open dialog can spell one file differently (letter case, a
+/// `\\?\` prefix, `/` for `\`, `.` or `..` steps), which listed it twice
+/// in the recent documents (#4408).
+pub fn same_document(a: &std::path::Path, b: &std::path::Path) -> bool {
+    if a == b || path_key(a, cfg!(windows)) == path_key(b, cfg!(windows)) {
+        return true;
+    }
+    matches!(
+        (std::fs::canonicalize(a), std::fs::canonicalize(b)),
+        (Ok(ca), Ok(cb)) if ca == cb
+    )
+}
+
+/// `path` spelled one way: `\\?\` dropped, `\` as `/`, `.` and `..`
+/// steps resolved, and on Windows (`fold`) in lower case.
+fn path_key(path: &std::path::Path, fold: bool) -> String {
+    let s = path.to_string_lossy();
+    let s = s.strip_prefix(r"\\?\UNC\").map(|r| format!(r"\\{r}")).unwrap_or_else(|| {
+        s.strip_prefix(r"\\?\").unwrap_or(&s).to_string()
+    });
+    let s = if fold { s.replace('\\', "/") } else { s };
+    let mut parts: Vec<&str> = Vec::new();
+    let absolute = s.starts_with('/');
+    for part in s.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                parts.pop();
+            }
+            p => parts.push(p),
+        }
+    }
+    let joined = format!("{}{}", if absolute { "/" } else { "" }, parts.join("/"));
+    if fold {
+        joined.to_lowercase()
+    } else {
+        joined
     }
 }
 
@@ -3323,6 +3364,32 @@ fn default_focus_visibility() -> u8 {
 
 #[cfg(test)]
 mod tests {
+    /// The same drawing opened from the file manager and from File >
+    /// Open, spelled differently, is listed once (#4408).
+    #[test]
+    fn a_document_opened_two_ways_is_listed_once() {
+        use std::path::Path;
+        let key = |p: &str| super::path_key(Path::new(p), true);
+        assert_eq!(key(r"C:\Users\Ann\Logo.tdraw"), key(r"c:\users\ann\logo.tdraw"));
+        assert_eq!(key(r"\\?\C:\Users\Ann\Logo.tdraw"), key("C:/Users/Ann/Logo.tdraw"));
+        assert_eq!(key(r"C:\Users\Ann\.\x\..\Logo.tdraw"), key(r"C:\Users\Ann\Logo.tdraw"));
+        assert_ne!(key(r"C:\Users\Ann\Logo.tdraw"), key(r"C:\Users\Ann\Logo2.tdraw"));
+        // Elsewhere letter case tells files apart.
+        let plain = |p: &str| super::path_key(Path::new(p), false);
+        assert_ne!(plain("/home/ann/Logo.tdraw"), plain("/home/ann/logo.tdraw"));
+        assert_eq!(plain("/home/ann/./Logo.tdraw"), plain("/home/ann/Logo.tdraw"));
+        let dir = std::env::temp_dir().join(format!("td-recent-4408-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let file = dir.join("a.tdraw");
+        let _ = std::fs::write(&file, b"x");
+        let mut s = super::Settings::default();
+        s.recent_files.clear();
+        s.touch_recent(&file);
+        s.touch_recent(&dir.join(".").join("a.tdraw"));
+        assert_eq!(s.recent_files.len(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// Stored defaults from an earlier version (RGB black text, and any
     /// other field of their time) give a CMYK drawing CMYK black text and
     /// an RGB drawing RGB black text; a colour of the user's own stays.

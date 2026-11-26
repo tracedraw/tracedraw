@@ -472,6 +472,54 @@ pub fn place_image(
     Some((out, new_sel))
 }
 
+/// Where the pixel at (`x`, `y`) after placement `p` about box `b` came
+/// from (see [`place_image`]).
+fn placed_from(b: Dirty, p: &Placement, x: f32, y: f32) -> (f32, f32) {
+    let c = ((b[0] + b[2]) as f32 / 2.0, (b[1] + b[3]) as f32 / 2.0);
+    let (sin, cos) = p.angle.to_radians().sin_cos();
+    let sx = if p.flip_h { -p.sx } else { p.sx };
+    let sy = if p.flip_v { -p.sy } else { p.sy };
+    let (u, v) = (x - c.0 - p.dx, y - c.1 - p.dy);
+    let (u, v) = (u * cos + v * sin, -u * sin + v * cos);
+    (c.0 + u / sx, c.1 + v / sy)
+}
+
+/// A whole layer `src` with the Move tool's placements `steps` applied
+/// one after another, each pixel read once from `src`: what one step
+/// took past the picture's edge comes back when a later step brings it
+/// in again (#4374), instead of the pixels cut at every step.
+pub fn place_chain(src: &RgbaImage, steps: &[(Dirty, Placement)]) -> Option<RgbaImage> {
+    if steps
+        .iter()
+        .any(|(_, p)| p.sx.abs() < 1e-3 || p.sy.abs() < 1e-3)
+    {
+        return None;
+    }
+    let (w, h) = src.dimensions();
+    let whole = steps.iter().all(|(_, p)| whole_pixel_move(p));
+    let mut out = RgbaImage::new(w, h);
+    for y in 0..h {
+        for x in 0..w {
+            let (mut u, mut v) = (x as f32 + 0.5, y as f32 + 0.5);
+            for (b, p) in steps.iter().rev() {
+                (u, v) = placed_from(*b, p, u, v);
+            }
+            let q = if whole {
+                let (mx, my) = ((u - 0.5).round(), (v - 0.5).round());
+                if mx >= 0.0 && my >= 0.0 && (mx as u32) < w && (my as u32) < h {
+                    *src.get_pixel(mx as u32, my as u32)
+                } else {
+                    Rgba([0, 0, 0, 0])
+                }
+            } else {
+                bilinear(src, u - 0.5, v - 0.5, true)
+            };
+            out.put_pixel(x, y, q);
+        }
+    }
+    Some(out)
+}
+
 /// A handle of the box the Move tool shows round what it moves.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BoxHandle {

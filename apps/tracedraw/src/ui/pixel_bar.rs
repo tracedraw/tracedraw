@@ -826,6 +826,7 @@ pub(crate) fn effects_section(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app:
                 .clicked()
             {
                 pe.effect = Some(crate::fx::new_effect(spec.id));
+                pe.effect_applied = false;
                 pe.refresh_preview();
             }
         }
@@ -857,6 +858,7 @@ pub(crate) fn effects_section(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app:
         });
     if let Some(id) = chosen {
         pe.effect = Some(crate::fx::new_effect(id));
+        pe.effect_applied = false;
         pe.refresh_preview();
     }
     let Some(spec) = pe.effect.as_ref().and_then(|e| crate::fx::spec(&e.id)) else {
@@ -875,15 +877,34 @@ pub(crate) fn effects_section(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app:
         {
             changed = true;
         }
-        if ui.ibutton("pixel.apply").clicked() {
-            if let Some(e) = pe.effect.clone() {
-                pe.apply(true, |pi| pixel_edit::apply_effect(pi, &e));
-            }
+        if ui
+            .add_enabled(!pe.effect_applied, crate::ui::btn_icons::Ib::new("pixel.apply"))
+            .clicked()
+        {
+            apply_panel_effect(pe);
         }
     });
     if changed {
+        pe.effect_applied = false;
         pe.refresh_preview();
     }
+}
+
+/// Apply the Effects panel's effect once; its settings go back to the
+/// effect's own and Apply waits for a change, so clicking it again does
+/// not run the effect on its own result, turning or shrinking the
+/// picture a little more each time (#4376).
+pub(crate) fn apply_panel_effect(pe: &mut crate::pixel_edit_app::PixelEdit) {
+    let Some(e) = pe.effect.clone() else {
+        return;
+    };
+    if pe.effect_applied {
+        return;
+    }
+    pe.apply(true, |pi| pixel_edit::apply_effect(pi, &e));
+    pe.effect = Some(crate::fx::new_effect(&e.id));
+    pe.effect_applied = true;
+    pe.refresh_preview();
 }
 
 /// The histogram of what is seen inside the selection: lightness filled,
