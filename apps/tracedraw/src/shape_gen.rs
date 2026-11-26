@@ -10,8 +10,10 @@
 //! - Truchet: square tiles of quarter arcs (one or more bands), filled
 //!   quarter discs or diagonals, each turned at random by the seed; any
 //!   layout repeats with no seam.
-//! - Tessellation: triangles, hexagons, scales, chevrons, with a gap and
-//!   a rotation.
+//! - Tessellation: triangles, hexagons, scales, chevrons, bricks laid in
+//!   a running bond, and the aperiodic pinwheel tiling of 1 x 2 right
+//!   triangles (each split into five smaller copies, turned by an angle
+//!   that never repeats), with a gap and a rotation.
 //! - Line waves: horizontal lines bent by a smooth noise inside a bump
 //!   (its width, sharpness, amplitude, spread and fade).
 //! - Rings: closed rings between two radii, each wobbled by a noise that
@@ -23,6 +25,9 @@
 //! - Cone template: the flat pattern of a cone or tapered cylinder
 //!   (ring segment, rectangle or sector) with a glue tab and bleed, in
 //!   one or more pieces; [`wrap_point`] bends a flat strip onto it.
+//! - Circle packing, sunflower spiral, squares and motifs: see
+//!   `shape_gen_pack`. Reaction-diffusion: `shape_gen_rd`. Interlace
+//!   (knotwork and woven star straps): `shape_gen_knots`.
 //!
 //! Model space: millimetres, y up. See docs/behavior/shape-generator.md.
 
@@ -60,10 +65,15 @@ pub enum GenKind {
     LayerWaves,
     Blobs,
     SoftGradient,
+    CirclePacking,
+    Phyllotaxis,
+    Quadtree,
+    ReactionDiffusion,
+    Interlace,
 }
 
 impl GenKind {
-    pub const ALL: [GenKind; 24] = [
+    pub const ALL: [GenKind; 29] = [
         GenKind::DotGrid,
         GenKind::Truchet,
         GenKind::Tessellation,
@@ -88,6 +98,11 @@ impl GenKind {
         GenKind::LayerWaves,
         GenKind::Blobs,
         GenKind::SoftGradient,
+        GenKind::CirclePacking,
+        GenKind::Phyllotaxis,
+        GenKind::Quadtree,
+        GenKind::ReactionDiffusion,
+        GenKind::Interlace,
     ];
     pub fn key(self) -> &'static str {
         match self {
@@ -115,6 +130,11 @@ impl GenKind {
             GenKind::LayerWaves => "shapegen.kind_layer_waves",
             GenKind::Blobs => "shapegen.kind_blobs",
             GenKind::SoftGradient => "shapegen.kind_soft_gradient",
+            GenKind::CirclePacking => "shapegen.kind_circle_packing",
+            GenKind::Phyllotaxis => "shapegen.kind_phyllotaxis",
+            GenKind::Quadtree => "shapegen.kind_quadtree",
+            GenKind::ReactionDiffusion => "shapegen.kind_reaction_diffusion",
+            GenKind::Interlace => "shapegen.kind_interlace",
         }
     }
     /// Whether the generator works from the panel's picked selection (an
@@ -130,6 +150,7 @@ impl GenKind {
                 | GenKind::Maze
                 | GenKind::SpaceCurve
                 | GenKind::Growth
+                | GenKind::CirclePacking
         )
     }
     /// Whether it reads the picked picture's tones.
@@ -220,14 +241,18 @@ pub enum Tess {
     Hexagons,
     Scales,
     Chevrons,
+    Masonry,
+    Pinwheel,
 }
 
 impl Tess {
-    pub const ALL: [Tess; 4] = [
+    pub const ALL: [Tess; 6] = [
         Tess::Triangles,
         Tess::Hexagons,
         Tess::Scales,
         Tess::Chevrons,
+        Tess::Masonry,
+        Tess::Pinwheel,
     ];
     pub fn key(self) -> &'static str {
         match self {
@@ -235,6 +260,8 @@ impl Tess {
             Tess::Hexagons => "shapegen.tess_hexagons",
             Tess::Scales => "shapegen.tess_scales",
             Tess::Chevrons => "shapegen.tess_chevrons",
+            Tess::Masonry => "shapegen.tess_masonry",
+            Tess::Pinwheel => "shapegen.tess_pinwheel",
         }
     }
 }
@@ -477,6 +504,13 @@ pub struct ShapeGenSettings {
     pub guil_amp2: f64,
     /// Degrees each ring's waves are turned from the last.
     pub guil_twist: f64,
+    /// Rings round the middle, a band across the box or a frame round it.
+    pub guil_layout: crate::shape_gen_curves::GuilLayout,
+    /// Band and frame: the length of one wave and of one slow wave, mm.
+    pub guil_period: f64,
+    pub guil_period2: f64,
+    /// Frame: the band's width, mm.
+    pub guil_band: f64,
 
     // Fractal.
     pub frac_type: crate::shape_gen_curves::FractalType,
@@ -603,6 +637,65 @@ pub struct ShapeGenSettings {
     /// (% of a cell).
     pub bg_mesh_size: u32,
     pub bg_jitter: f64,
+
+    // Circle packing.
+    /// The smallest and largest circle, diameters in mm, and the space
+    /// left between circles.
+    pub pack_min: f64,
+    pub pack_max: f64,
+    pub pack_gap: f64,
+    /// The most circles, 1 to 20,000.
+    pub pack_count: u32,
+    pub pack_filled: bool,
+
+    // Sunflower spiral.
+    pub phy_count: u32,
+    /// The turn from one dot to the next, degrees.
+    pub phy_angle: f64,
+    /// Dot size, % of the space between dots, and the outer dots' size
+    /// against the middle ones', %.
+    pub phy_size: f64,
+    pub phy_grow: f64,
+    pub phy_shape: CellShape,
+    pub phy_filled: bool,
+
+    // Squares and motifs.
+    /// Levels of splitting, 1 to 8, and the chance a square splits, %.
+    pub qt_depth: u32,
+    pub qt_split: f64,
+    /// Space between squares, mm.
+    pub qt_gap: f64,
+    /// The colours squares and motifs take, 2 to 6.
+    pub qt_colors: Vec<[u8; 3]>,
+
+    // Reaction-diffusion.
+    pub rd_preset: crate::shape_gen_rd::RdPreset,
+    /// Feed and kill rates of the custom pattern.
+    pub rd_feed: f64,
+    pub rd_kill: f64,
+    /// Grid cells across the longer side, 32 to 400, and steps grown.
+    pub rd_cells: u32,
+    pub rd_steps: u32,
+    /// Where the shapes' edges are traced, % of the strongest place.
+    pub rd_level: f64,
+    pub rd_filled: bool,
+    pub rd_invert: bool,
+
+    // Interlace.
+    pub knot_type: crate::shape_gen_knots::KnotType,
+    /// Tile size, mm.
+    pub knot_size: f64,
+    /// Star straps: angle between a strap and its edge, degrees.
+    pub knot_angle: f64,
+    /// Knotwork: the share of crossings turned into breaks, %, mirrored
+    /// left to right and top to bottom when symmetric.
+    pub knot_breaks: f64,
+    pub knot_symmetric: bool,
+    /// Bands of two lines (the width apart) or single lines.
+    pub knot_ribbon: bool,
+    pub knot_width: f64,
+    /// Space left on each side of the strand on top, mm.
+    pub knot_gap: f64,
 }
 
 impl Default for ShapeGenSettings {
@@ -715,6 +808,10 @@ impl Default for ShapeGenSettings {
             guil_waves2: 5,
             guil_amp2: 2.0,
             guil_twist: 4.0,
+            guil_layout: crate::shape_gen_curves::GuilLayout::Rosette,
+            guil_period: 8.0,
+            guil_period2: 40.0,
+            guil_band: 15.0,
             frac_type: crate::shape_gen_curves::FractalType::Tree,
             frac_depth: 6,
             frac_angle: 25.0,
@@ -779,6 +876,37 @@ impl Default for ShapeGenSettings {
             bg_blob_size: 80.0,
             bg_mesh_size: 3,
             bg_jitter: 40.0,
+            pack_min: 1.0,
+            pack_max: 16.0,
+            pack_gap: 0.5,
+            pack_count: 1500,
+            pack_filled: false,
+            phy_count: 600,
+            phy_angle: 137.508,
+            phy_size: 80.0,
+            phy_grow: 100.0,
+            phy_shape: CellShape::Circle,
+            phy_filled: true,
+            qt_depth: 4,
+            qt_split: 55.0,
+            qt_gap: 0.0,
+            qt_colors: crate::shape_gen_pack::default_motif_palette(),
+            rd_preset: crate::shape_gen_rd::RdPreset::Spots,
+            rd_feed: 0.03,
+            rd_kill: 0.055,
+            rd_cells: 100,
+            rd_steps: 2000,
+            rd_level: 40.0,
+            rd_filled: true,
+            rd_invert: false,
+            knot_type: crate::shape_gen_knots::KnotType::Knotwork,
+            knot_size: 15.0,
+            knot_angle: 67.5,
+            knot_breaks: 30.0,
+            knot_symmetric: true,
+            knot_ribbon: true,
+            knot_width: 2.0,
+            knot_gap: 0.5,
         }
     }
 }
@@ -999,6 +1127,10 @@ impl ShapeGenSettings {
         s.guil_waves2 = s.guil_waves2.min(200);
         s.guil_amp2 = clampf(s.guil_amp2, 0.0, 500.0, d.guil_amp2);
         s.guil_twist = clampf(s.guil_twist, -90.0, 90.0, d.guil_twist);
+        let wave = (side / 2000.0).max(0.1);
+        s.guil_period = clampf(s.guil_period, wave, 5000.0, d.guil_period).max(wave);
+        s.guil_period2 = clampf(s.guil_period2, wave, 5000.0, d.guil_period2).max(wave);
+        s.guil_band = clampf(s.guil_band, 0.5, 2500.0, d.guil_band);
         s.frac_depth = s.frac_depth.min(14);
         s.frac_angle = clampf(s.frac_angle, -180.0, 180.0, d.frac_angle);
         s.frac_ratio = clampf(s.frac_ratio, 0.3, 0.95, d.frac_ratio);
@@ -1064,6 +1196,33 @@ impl ShapeGenSettings {
         s.bg_blob_size = clampf(s.bg_blob_size, 1.0, 300.0, d.bg_blob_size);
         s.bg_mesh_size = s.bg_mesh_size.clamp(1, 8);
         s.bg_jitter = clampf(s.bg_jitter, 0.0, 100.0, d.bg_jitter);
+        let smallest = (side / 2000.0).max(0.05);
+        s.pack_min = clampf(s.pack_min, smallest, 1000.0, d.pack_min).max(smallest);
+        s.pack_max = clampf(s.pack_max, smallest, 5000.0, d.pack_max).max(s.pack_min);
+        s.pack_gap = clampf(s.pack_gap, 0.0, 100.0, d.pack_gap);
+        s.pack_count = s.pack_count.clamp(1, 20_000);
+        s.phy_count = s.phy_count.clamp(1, 20_000);
+        s.phy_angle = clampf(s.phy_angle, 0.0, 360.0, d.phy_angle);
+        s.phy_size = clampf(s.phy_size, 1.0, 300.0, d.phy_size);
+        s.phy_grow = clampf(s.phy_grow, 10.0, 400.0, d.phy_grow);
+        s.qt_depth = s.qt_depth.clamp(1, 8);
+        s.qt_split = clampf(s.qt_split, 0.0, 100.0, d.qt_split);
+        s.qt_gap = clampf(s.qt_gap, 0.0, 100.0, 0.0);
+        s.qt_colors.truncate(crate::shape_gen_bg::MAX_COLORS);
+        if s.qt_colors.len() < 2 {
+            s.qt_colors = d.qt_colors.clone();
+        }
+        s.rd_feed = clampf(s.rd_feed, 0.0, 0.12, d.rd_feed);
+        s.rd_kill = clampf(s.rd_kill, 0.0, 0.08, d.rd_kill);
+        s.rd_cells = s.rd_cells.clamp(32, 400);
+        s.rd_steps = s.rd_steps.clamp(50, 20_000);
+        s.rd_level = clampf(s.rd_level, 1.0, 99.0, d.rd_level);
+        let tile = (side / 200.0).max(0.2);
+        s.knot_size = clampf(s.knot_size, tile, 1000.0, d.knot_size).max(tile);
+        s.knot_angle = clampf(s.knot_angle, 20.0, 85.0, d.knot_angle);
+        s.knot_breaks = clampf(s.knot_breaks, 0.0, 100.0, d.knot_breaks);
+        s.knot_width = clampf(s.knot_width, 0.0, s.knot_size * 0.6, d.knot_width.min(s.knot_size * 0.6));
+        s.knot_gap = clampf(s.knot_gap, 0.0, 100.0, d.knot_gap);
         s.split_shape = s
             .split_shape
             .take()
@@ -1101,6 +1260,11 @@ pub fn generate(settings: &ShapeGenSettings) -> Generated {
         GenKind::LayerWaves => crate::shape_gen_bg::waves(&s, &mut out),
         GenKind::Blobs => crate::shape_gen_bg::blobs(&s, &mut out),
         GenKind::SoftGradient => crate::shape_gen_bg::soft_gradient(&s, &mut out),
+        GenKind::CirclePacking => crate::shape_gen_pack::circle_packing(&s, &mut out),
+        GenKind::Phyllotaxis => crate::shape_gen_pack::phyllotaxis(&s, &mut out),
+        GenKind::Quadtree => crate::shape_gen_pack::quadtree(&s, &mut out),
+        GenKind::ReactionDiffusion => crate::shape_gen_rd::reaction_diffusion(&s, &mut out),
+        GenKind::Interlace => crate::shape_gen_knots::interlace(&s, &mut out),
     }
     crate::shape_gen_warp::post(&s, &mut out);
     out
@@ -1144,6 +1308,11 @@ fn hash3(seed: u32, x: i64, y: i64, z: i64) -> u64 {
         h = (h ^ (h >> 29)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
     }
     h ^ (h >> 32)
+}
+
+/// A number from 0 to 1 fixed by the seed and three whole numbers.
+pub(crate) fn hash_unit(seed: u32, x: i64, y: i64, z: i64) -> f64 {
+    (hash3(seed, x, y, z) >> 11) as f64 / (1u64 << 53) as f64
 }
 
 /// A gradient at a lattice corner: a unit-ish vector from the hash.
@@ -1603,7 +1772,86 @@ fn tessellation(s: &ShapeGenSettings, out: &mut Generated) {
                 }
             }
         }
+        Tess::Masonry => {
+            // Bricks twice as long as high, each row moved half a brick.
+            let bh = t / 2.0;
+            let nj = (reach / bh).ceil() as i64;
+            let ni = (reach / t).ceil() as i64 + 1;
+            for j in -nj..nj {
+                for i in -ni..ni {
+                    if out.full() {
+                        out.cut = true;
+                        return;
+                    }
+                    let shift = if j.rem_euclid(2) == 0 { 0.0 } else { t / 2.0 };
+                    let (x0, y0) = (c.x + i as f64 * t + shift, c.y + j as f64 * bh);
+                    emit(
+                        vec![
+                            Point::new(x0, y0),
+                            Point::new(x0 + t, y0),
+                            Point::new(x0 + t, y0 + bh),
+                            Point::new(x0, y0 + bh),
+                        ],
+                        out,
+                    );
+                }
+            }
+        }
+        Tess::Pinwheel => {
+            for tri in pinwheel_triangles(c, reach, t) {
+                if out.full() {
+                    out.cut = true;
+                    return;
+                }
+                emit(tri.to_vec(), out);
+            }
+        }
     }
+}
+
+/// The pinwheel tiling round `c` covering `reach` in every direction:
+/// right triangles with legs `t` and `2 t` (the right angle first, then
+/// the short leg's end, then the long leg's). Each split makes five
+/// copies a square root of five smaller: one on the short leg, cut off by
+/// the right angle's drop onto the long side, and the rest of the
+/// triangle halved both ways into four.
+pub fn pinwheel_triangles(c: Point, reach: f64, t: f64) -> Vec<[Point; 3]> {
+    // Two triangles make a 2a x a rectangle covering the circle of reach.
+    let a = (reach * 2.0).max(t);
+    let (x0, y0) = (c.x - a, c.y - a / 2.0);
+    let r = |x: f64, y: f64| Point::new(x0 + x, y0 + y);
+    let mut tris = vec![
+        [r(2.0 * a, 0.0), r(2.0 * a, a), r(0.0, 0.0)],
+        [r(0.0, a), r(0.0, 0.0), r(2.0 * a, a)],
+    ];
+    let mut short = a;
+    while short > t * 1.1 && tris.len() * 5 <= MAX_ITEMS * 8 {
+        let mut next = Vec::with_capacity(tris.len() * 5);
+        for [rt, sh, lg] in tris {
+            // The foot of the right angle's drop onto the long side.
+            let hyp = lg - sh;
+            let k = (rt - sh).dot(hyp) / hyp.hypot2().max(1e-18);
+            let h = sh + hyp * k;
+            next.push([h, sh, rt]);
+            // The rest: right angle at h, short leg to rt, long leg to lg.
+            let (m_rs, m_sl, m_rl) = (h.midpoint(rt), rt.midpoint(lg), h.midpoint(lg));
+            next.push([h, m_rs, m_rl]);
+            next.push([m_rs, rt, m_sl]);
+            next.push([m_rl, m_sl, lg]);
+            next.push([m_sl, m_rl, m_rs]);
+        }
+        tris = next;
+        short /= 5f64.sqrt();
+    }
+    // Keep those near the area.
+    tris.retain(|tr| {
+        let m = Point::new(
+            (tr[0].x + tr[1].x + tr[2].x) / 3.0,
+            (tr[0].y + tr[1].y + tr[2].y) / 3.0,
+        );
+        (m - c).hypot() <= reach + short * 2.0
+    });
+    tris
 }
 
 fn transform_el(

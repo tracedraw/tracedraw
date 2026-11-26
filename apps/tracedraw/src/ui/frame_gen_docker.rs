@@ -88,7 +88,10 @@ pub fn frame_generator(app: &mut App, ui: &mut Ui) {
             .rich_tip(crate::ui::tips::keyed("docker.frame_style"));
     });
     indented(ui, |ui| preview(ui, s));
-    if !matches!(s.style, Style::ArtDeco | Style::GreekKey | Style::Waves) {
+    if !matches!(
+        s.style,
+        Style::ArtDeco | Style::GreekKey | Style::Waves | Style::Guilloche
+    ) {
         row(ui, &tr("docker.frame_corner"), |ui| {
             crate::ui::keynav::ComboBox::from_id_salt("frame_gen_corner")
                 .selected_text(tr(s.corner.key()))
@@ -125,10 +128,16 @@ pub fn frame_generator(app: &mut App, ui: &mut Ui) {
     });
     if matches!(
         s.style,
-        Style::Beads | Style::GreekKey | Style::Scallops | Style::Waves
+        Style::Beads | Style::GreekKey | Style::Scallops | Style::Waves | Style::Guilloche
     ) {
         row(ui, &tr("docker.frame_repeat"), |ui| {
             mm(ui, &mut s.repeat, 1.0, 200.0, "docker.frame_repeat")
+        });
+    }
+    if s.style == Style::Guilloche {
+        row(ui, &tr("docker.frame_strands"), |ui| {
+            ui.add(crate::ui::field::NumField::new(&mut s.strands).range(2..=60))
+                .rich_tip(crate::ui::tips::keyed("docker.frame_strands"));
         });
     }
     indented(ui, |ui| {
