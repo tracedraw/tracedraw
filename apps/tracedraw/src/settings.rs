@@ -468,6 +468,10 @@ pub struct Settings {
     /// each flyout's first tool).
     #[serde(default)]
     pub toolbox_hidden: Vec<String>,
+    /// Tools left out of their flyout with the toolbox's "+" menu (tool
+    /// ids); a flyout always keeps at least one tool.
+    #[serde(default)]
+    pub toolbox_hidden_tools: Vec<String>,
     /// The bars' menu > Customize > Default Button Size: how large the
     /// buttons of every bar are (Small at first, as in the reference
     /// program; a size already saved stays).
@@ -2832,6 +2836,7 @@ impl Default for Settings {
             desktop_custom: false,
             status_info: crate::ui::status::StatusInfo::default(),
             toolbox_hidden: Vec::new(),
+            toolbox_hidden_tools: Vec::new(),
             button_size: ButtonSize::Small,
             fit_page_margin: 0.0,
             fit_page_preview: true,

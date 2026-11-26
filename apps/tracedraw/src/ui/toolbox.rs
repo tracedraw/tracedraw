@@ -52,6 +52,56 @@ pub fn group_visible(app: &App, gi: usize) -> bool {
         .any(|id| id == group.tools[0].id())
 }
 
+/// Whether `tool` was left out of its flyout with the "+" menu.
+pub fn tool_hidden(app: &App, tool: Tool) -> bool {
+    app.settings
+        .toolbox_hidden_tools
+        .iter()
+        .any(|id| id == tool.id())
+}
+
+/// The tools group `gi`'s flyout lists, in order: those not left out
+/// with the "+" menu (every one of them, should all be left out).
+pub fn shown_tools(app: &App, gi: usize) -> Vec<Tool> {
+    let Some(group) = GROUPS.get(gi) else {
+        return Vec::new();
+    };
+    let shown: Vec<Tool> = group
+        .tools
+        .iter()
+        .copied()
+        .filter(|t| !tool_hidden(app, *t))
+        .collect();
+    if shown.is_empty() {
+        group.tools.to_vec()
+    } else {
+        shown
+    }
+}
+
+/// Shows `tool` in its flyout again, or leaves it out. The last tool a
+/// flyout shows stays.
+fn set_tool_shown(app: &mut App, tool: Tool, on: bool) {
+    app.settings.toolbox_hidden_tools.retain(|id| id != tool.id());
+    if on {
+        return;
+    }
+    let Some(gi) = GROUPS.iter().position(|g| g.tools.contains(&tool)) else {
+        return;
+    };
+    if shown_tools(app, gi).len() > 1 {
+        app.settings.toolbox_hidden_tools.push(tool.id().to_string());
+    }
+}
+
+/// The name of group `gi` in the "+" menu.
+pub fn group_name(gi: usize) -> String {
+    GROUPS
+        .get(gi)
+        .map(|g| tr(&format!("toolbox.group.{}", g.tools[0].id())))
+        .unwrap_or_default()
+}
+
 /// The keys that pick `tool` now, joined: the user's from Options >
 /// Customization > Commands, else its built-in one. The toolbox showed
 /// the built-in key alone, so a key given to another tool still showed
@@ -691,18 +741,19 @@ fn tool_button(
     let size = Vec2::new(button_width(app), side);
     // The button shows the tool last used in this group, even while a
     // tool of another group is active.
+    let listed = shown_tools(app, gi);
     let shown = if group.tools.contains(&app.tool) {
         app.tool
     } else {
         app.toolbox_last
             .get(gi)
             .copied()
-            .filter(|t| group.tools.contains(t))
-            .unwrap_or(group.tools[0])
+            .filter(|t| listed.contains(t))
+            .unwrap_or(listed[0])
     };
     let active = group.tools.contains(&app.tool);
     let (rect, resp) = ui.allocate_exact_size(size, Sense::click_and_drag());
-    let has_flyout = group.tools.len() > 1;
+    let has_flyout = listed.len() > 1;
     let arrow_zone = Rect::from_min_max(rect.right_bottom() - Vec2::splat(10.0), rect.max);
     // The active tool's button stands out with an accent frame;
     // hovering tints a button blue.
@@ -894,7 +945,13 @@ fn flyout(app: &mut App, ui: &mut Ui, gi: usize, button: Rect, dock: crate::ui::
             egui::Align2::LEFT_TOP,
         ),
     };
-    let shown = app.toolbox_last.get(gi).copied().unwrap_or(group.tools[0]);
+    let listed = shown_tools(app, gi);
+    let shown = app
+        .toolbox_last
+        .get(gi)
+        .copied()
+        .filter(|t| listed.contains(t))
+        .unwrap_or(listed[0]);
     let (fly_icon, fly_row) = flyout_metrics();
     let mut close = false;
     let area = egui::Area::new(egui::Id::new(("flyout", gi)))
@@ -907,8 +964,7 @@ fn flyout(app: &mut App, ui: &mut Ui, gi: usize, button: Rect, dock: crate::ui::
                 .inner_margin(egui::Margin::symmetric(2, 3))
                 .show(ui, |ui| {
                     ui.spacing_mut().item_spacing = Vec2::new(0.0, 0.0);
-                    let row_w = group
-                        .tools
+                    let row_w = listed
                         .iter()
                         .map(|t| {
                             let name = ui.painter().layout_no_wrap(
@@ -921,7 +977,7 @@ fn flyout(app: &mut App, ui: &mut Ui, gi: usize, button: Rect, dock: crate::ui::
                         .fold(0.0_f32, f32::max)
                         + 98.0
                         + fly_icon;
-                    for t in group.tools {
+                    for (i, t) in listed.iter().enumerate() {
                         let (r, rr) =
                             ui.allocate_exact_size(Vec2::new(row_w, fly_row), Sense::click());
                         let current =
@@ -977,7 +1033,7 @@ fn flyout(app: &mut App, ui: &mut Ui, gi: usize, button: Rect, dock: crate::ui::
                             }
                             close = true;
                         }
-                        if SEPARATE_AFTER.contains(t) {
+                        if SEPARATE_AFTER.contains(t) && i + 1 < listed.len() {
                             let (sr, _) =
                                 ui.allocate_exact_size(Vec2::new(row_w, 7.0), Sense::hover());
                             ui.painter().hline(
@@ -1099,35 +1155,224 @@ fn quick_customize_button(app: &mut App, ui: &mut Ui) {
         egui::RichText::new("+")
             .size(flyout_metrics().0)
             .color(Tokens::text_dim()),
-        |ui| {
-            for (gi, group) in GROUPS.iter().enumerate() {
-                let mut on = group_visible(app, gi);
-                let label = group
-                    .tools
-                    .iter()
-                    .map(|t| t.name())
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                if ui.checkbox(&mut on, label).changed() {
-                    set_group_visible(app, gi, on);
-                }
-            }
-            ui.separator();
-            if ui.ibutton("toolbox.reset").clicked() {
-                app.settings.toolbox_hidden.clear();
-                app.settings.show_outline_flyout = false;
-                ui.close();
-            }
-            // Commands to drag onto the toolbox, or onto a toolbar of
-            // one's own docked beside it (#3723).
-            if ui.ibutton("bars.customize_options").clicked() {
-                open_commands_page(app);
-                ui.close();
-            }
-        },
+        |ui| quick_customize_menu(app, ui),
     )
     .response
     .rich_tip(tr("toolbox.quick_customize"));
+}
+
+/// The "+" menu: a section per flyout, its header (a check box, the
+/// flyout's picture and name) showing or hiding the flyout, then a row
+/// per tool of a flyout of several (a check box, the tool's picture,
+/// name and keys) keeping the tool in the flyout or leaving it out. The
+/// sections scroll; Reset and Customize... stay under them.
+pub(crate) fn quick_customize_menu(app: &mut App, ui: &mut Ui) {
+    let (icon, _) = flyout_metrics();
+    let row_h = (icon + 4.0).max(22.0);
+    let font = egui::FontId::proportional(12.0);
+    let head_font = theme::bold(12.0);
+    // One width for every row: the widest name with its keys.
+    let width = ui.ctx().fonts_mut(|f| {
+        let mut w = |t: String, font: &egui::FontId| {
+            f.layout_no_wrap(t, font.clone(), egui::Color32::BLACK).size().x
+        };
+        let mut widest: f32 = 0.0;
+        for (gi, group) in GROUPS.iter().enumerate() {
+            widest = widest.max(QC_CHECK + icon + 2.0 * QC_GAP + w(group_name(gi), &head_font));
+            if group.tools.len() > 1 {
+                for t in group.tools {
+                    let keys = tool_keys(app, *t);
+                    let k = if keys.is_empty() { 0.0 } else { w(keys, &font) + 24.0 };
+                    widest = widest
+                        .max(QC_INDENT + QC_CHECK + icon + 2.0 * QC_GAP + w(t.name(), &font) + k);
+                }
+            }
+        }
+        widest + 2.0 * QC_PAD
+    });
+    ui.set_width(width);
+    ui.spacing_mut().item_spacing.y = 0.0;
+    let max_h = (ui.ctx().content_rect().height() - 140.0).clamp(200.0, 640.0);
+    egui::ScrollArea::vertical()
+        .max_height(max_h)
+        .auto_shrink([false, true])
+        .show(ui, |ui| {
+            ui.spacing_mut().item_spacing.y = 0.0;
+            for (gi, group) in GROUPS.iter().enumerate() {
+                if gi > 0 {
+                    let (sr, _) = ui.allocate_exact_size(Vec2::new(width, 9.0), Sense::hover());
+                    ui.painter().hline(
+                        sr.x_range().shrink(4.0),
+                        sr.center().y,
+                        Stroke::new(1.0, Tokens::border()),
+                    );
+                }
+                let on = group_visible(app, gi);
+                let resp = qc_row(
+                    ui,
+                    QcRow {
+                        width,
+                        height: row_h + 2.0,
+                        indent: 0.0,
+                        on,
+                        enabled: true,
+                        tool: group.tools[0],
+                        name: group_name(gi),
+                        keys: String::new(),
+                        bold: true,
+                        dim: false,
+                    },
+                );
+                if resp.on_hover_text(tr("toolbox.group_tip")).clicked() {
+                    set_group_visible(app, gi, !on);
+                }
+                if group.tools.len() < 2 {
+                    continue;
+                }
+                let listed = shown_tools(app, gi);
+                for t in group.tools {
+                    let shown = !tool_hidden(app, *t);
+                    // The last tool a flyout shows stays.
+                    let enabled = !(shown && listed.len() == 1);
+                    let keys = tool_keys(app, *t);
+                    let resp = qc_row(
+                        ui,
+                        QcRow {
+                            width,
+                            height: row_h,
+                            indent: QC_INDENT,
+                            on: shown,
+                            enabled,
+                            tool: *t,
+                            name: t.name(),
+                            keys: keys.clone(),
+                            bold: false,
+                            dim: !on,
+                        },
+                    );
+                    let resp = resp.on_hover_ui(|ui| tool_tooltip(ui, *t, &keys));
+                    if enabled && resp.clicked() {
+                        set_tool_shown(app, *t, !shown);
+                    }
+                }
+            }
+        });
+    ui.separator();
+    if ui.ibutton("toolbox.reset").clicked() {
+        app.settings.toolbox_hidden.clear();
+        app.settings.toolbox_hidden_tools.clear();
+        app.settings.show_outline_flyout = false;
+        ui.close();
+    }
+    // Commands to drag onto the toolbox, or onto a toolbar of
+    // one's own docked beside it (#3723).
+    if ui.ibutton("bars.customize_options").clicked() {
+        open_commands_page(app);
+        ui.close();
+    }
+}
+
+/// The side of a check box in the "+" menu.
+const QC_CHECK: f32 = 14.0;
+/// The space between a row's check box, picture and name.
+const QC_GAP: f32 = 7.0;
+/// How far a tool's row sits in from its flyout's header.
+const QC_INDENT: f32 = 20.0;
+/// The space at each end of a row.
+const QC_PAD: f32 = 6.0;
+
+/// One row of the "+" menu.
+struct QcRow {
+    width: f32,
+    height: f32,
+    indent: f32,
+    on: bool,
+    enabled: bool,
+    tool: Tool,
+    name: String,
+    keys: String,
+    bold: bool,
+    /// The row of a tool whose flyout is hidden: drawn fainter.
+    dim: bool,
+}
+
+/// Draws a row of the "+" menu: the whole row is clickable.
+fn qc_row(ui: &mut Ui, row: QcRow) -> egui::Response {
+    let sense = if row.enabled {
+        Sense::click()
+    } else {
+        Sense::hover()
+    };
+    let (r, resp) = ui.allocate_exact_size(Vec2::new(row.width, row.height), sense);
+    let p = ui.painter();
+    if resp.hovered() && row.enabled {
+        p.rect_filled(r, 2.0, Tokens::menu_hover());
+    }
+    let faint = row.dim || !row.enabled;
+    let text = if faint {
+        Tokens::menu_text_off()
+    } else {
+        Tokens::text()
+    };
+    let mut x = r.min.x + QC_PAD + row.indent;
+    // The check box.
+    let cb = Rect::from_min_size(
+        Pos2::new(x, r.center().y - QC_CHECK / 2.0),
+        Vec2::splat(QC_CHECK),
+    );
+    let wv = &ui.visuals().widgets;
+    let look = if !row.enabled {
+        &wv.noninteractive
+    } else if resp.hovered() {
+        &wv.hovered
+    } else {
+        &wv.inactive
+    };
+    p.rect(
+        cb,
+        2.0,
+        look.bg_fill,
+        Stroke::new(1.0, Tokens::control_border()),
+        egui::StrokeKind::Inside,
+    );
+    if row.on {
+        let c = cb.center();
+        let s = Stroke::new(1.6, text);
+        p.line_segment([c + Vec2::new(-3.5, 0.0), c + Vec2::new(-1.0, 3.0)], s);
+        p.line_segment([c + Vec2::new(-1.0, 3.0), c + Vec2::new(4.0, -3.5)], s);
+    }
+    x += QC_CHECK + QC_GAP;
+    let (icon, _) = flyout_metrics();
+    let ir = Rect::from_min_size(Pos2::new(x, r.center().y - icon / 2.0), Vec2::splat(icon));
+    let tint = if faint {
+        Tokens::menu_text_off()
+    } else {
+        icons::tool_color(row.tool, Tokens::icon())
+    };
+    icons::draw(p, ir, row.tool, tint);
+    x += icon + QC_GAP;
+    let font = if row.bold {
+        theme::bold(12.0)
+    } else {
+        egui::FontId::proportional(12.0)
+    };
+    p.text(
+        Pos2::new(x, r.center().y),
+        egui::Align2::LEFT_CENTER,
+        &row.name,
+        font,
+        text,
+    );
+    if !row.keys.is_empty() {
+        p.text(
+            Pos2::new(r.max.x - QC_PAD - 4.0, r.center().y),
+            egui::Align2::RIGHT_CENTER,
+            &row.keys,
+            egui::FontId::proportional(12.0),
+            Tokens::text_dim(),
+        );
+    }
+    resp
 }
 
 /// The "+" menu > Customize...: Options > Customization > Commands on
@@ -1157,6 +1402,7 @@ fn set_group_visible(app: &mut App, gi: usize, on: bool) {
 /// showing its first tool, the default button size and icons only.
 pub fn reset_toolbox(app: &mut App) {
     app.settings.toolbox_hidden.clear();
+    app.settings.toolbox_hidden_tools.clear();
     app.settings.show_outline_flyout = false;
     app.settings.toolbox_button_size = None;
     app.settings.toolbox_captions = crate::settings::Captions::ImageOnly;
@@ -1166,6 +1412,42 @@ pub fn reset_toolbox(app: &mut App) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The "+" menu leaves single tools out of their flyout; the last
+    /// one a flyout shows stays, and Reset brings every tool back.
+    #[test]
+    fn the_quick_menu_leaves_tools_out_of_their_flyout() {
+        let mut app = App::headless();
+        let zoom = GROUPS.iter().position(|g| g.tools[0] == Tool::Zoom).unwrap();
+        assert_eq!(shown_tools(&app, zoom), vec![Tool::Zoom, Tool::Pan]);
+        set_tool_shown(&mut app, Tool::Zoom, false);
+        assert!(tool_hidden(&app, Tool::Zoom));
+        assert_eq!(shown_tools(&app, zoom), vec![Tool::Pan]);
+        // Pan is the last one shown: it stays.
+        set_tool_shown(&mut app, Tool::Pan, false);
+        assert_eq!(shown_tools(&app, zoom), vec![Tool::Pan]);
+        set_tool_shown(&mut app, Tool::Zoom, true);
+        assert_eq!(shown_tools(&app, zoom), vec![Tool::Zoom, Tool::Pan]);
+        set_tool_shown(&mut app, Tool::Pan, false);
+        reset_toolbox(&mut app);
+        assert!(app.settings.toolbox_hidden_tools.is_empty());
+        // Every flyout has a name of its own in the menu.
+        let names: std::collections::HashSet<String> =
+            (0..GROUPS.len()).map(group_name).collect();
+        assert_eq!(names.len(), GROUPS.len());
+        assert!(names.iter().all(|n| !n.starts_with("toolbox.group")));
+    }
+
+    /// The Outline flyout is off at first, as the toolbox hides it until
+    /// it is ticked here or in Options.
+    #[test]
+    fn the_outline_flyout_starts_unticked() {
+        let mut app = App::headless();
+        let outline = GROUPS.iter().position(|g| g.hidden).unwrap();
+        assert!(!group_visible(&app, outline));
+        set_group_visible(&mut app, outline, true);
+        assert!(app.settings.show_outline_flyout);
+    }
 
     /// #3099: the toolbox names the keys a tool has now. A key given to
     /// another tool in Options leaves the tool that lost it without one,
