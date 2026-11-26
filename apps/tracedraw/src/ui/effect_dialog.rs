@@ -351,6 +351,75 @@ fn channel_color(ch: &str) -> Color32 {
     }
 }
 
+/// The Tone Curve's curve where there is no dialog round it (the image
+/// editor's Effects panel and a Tone Curve adjustment layer, #4451): the
+/// channel list, the curve with its nodes (click to add, drag to move,
+/// drag off to remove) over `hist`, and Reset Active Channel. True when
+/// the curve changed.
+pub(crate) fn tone_curve_compact(
+    ui: &mut Ui,
+    salt: &str,
+    params: &mut std::collections::BTreeMap<String, f64>,
+    hist: Option<&[u32; 256]>,
+) -> bool {
+    use crate::fx::adjust::{curve_from, curve_into, curve_style, set_curve_style};
+    let ch_id = egui::Id::new(("tone_curve_compact_channel", salt));
+    let mut idx = ui.data(|d| d.get_temp::<usize>(ch_id)).unwrap_or(0).min(3);
+    let mut changed = false;
+    ui.horizontal(|ui| {
+        ui.label(tr("fxp.channel"));
+        crate::ui::keynav::ComboBox::from_id_salt(("tone_curve_compact", salt))
+            .selected_text(tr(CURVE_CHANNELS[idx].1))
+            .width(110.0)
+            .show_ui(ui, |ui| {
+                for (i, (_, key)) in CURVE_CHANNELS.iter().enumerate() {
+                    ui.selectable_value(&mut idx, i, tr(key));
+                }
+            })
+            .response
+            .rich_tip(crate::ui::tips::pair(
+                "fxp.channel",
+                "dialog.curve_channel_desc",
+            ));
+    });
+    ui.data_mut(|d| d.insert_temp(ch_id, idx));
+    let (ch, _) = CURVE_CHANNELS[idx];
+    // Freehand and gamma curves are edited in the full dialog; here the
+    // curve's nodes (a smooth curve, or straight lines kept as they are).
+    let style = curve_style(params, ch).min(1);
+    let others: Vec<(crate::bitmap_modes::ToneCurve, Color32)> = CURVE_CHANNELS
+        .iter()
+        .filter(|(c, _)| *c != ch)
+        .map(|(c, _)| (curve_from(params, c), channel_color(c).gamma_multiply(0.4)))
+        .collect();
+    let others_ref: Vec<(&crate::bitmap_modes::ToneCurve, Color32)> =
+        others.iter().map(|(c, col)| (c, *col)).collect();
+    let mut c = curve_from(params, ch);
+    let size = ui.available_width().clamp(120.0, 220.0);
+    if crate::ui::curve_edit::curve_editor(
+        ui,
+        egui::Id::new(("tone_curve_compact_curve", salt, ch)),
+        &mut c,
+        size,
+        channel_color(ch),
+        &others_ref,
+        hist,
+    ) {
+        curve_into(params, ch, &c);
+        set_curve_style(params, ch, style);
+        changed = true;
+    }
+    if ui
+        .ibutton("dialog.reset_active_channel")
+        .rich_tip(crate::ui::tips::keyed("dialog.reset_active_channel"))
+        .clicked()
+    {
+        params.retain(|k, _| !(k.starts_with(ch) && channel_key_of(k, ch)));
+        changed = true;
+    }
+    changed
+}
+
 /// The Tone Curve dialog's controls: channel and style lists, the curve
 /// (drawn as its style edits), the eyedropper that adds nodes, Smooth,
 /// Invert, Reset Active Channel, Reset, Auto Balance Tone and Display

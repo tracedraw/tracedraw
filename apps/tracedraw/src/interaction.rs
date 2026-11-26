@@ -1696,6 +1696,16 @@ impl App {
         self.transform_selection(t);
     }
 
+    /// The pointer moved in this frame (a move and a release can come in
+    /// one frame when the window is busy, #4462).
+    pub(crate) fn pointer_moved_this_frame(&self, response: &Response) -> bool {
+        response.ctx.input(|i| {
+            i.events
+                .iter()
+                .any(|e| matches!(e, egui::Event::PointerMoved(_)))
+        })
+    }
+
     /// Space during a move leaves a copy where the selection is now.
     /// Space while the selection is moved, scaled, turned or slanted drops
     /// a copy where the outline is, and the drag goes on.
@@ -1716,6 +1726,12 @@ impl App {
             })
         });
         if !pressed {
+            return;
+        }
+        // Guidelines being dragged leave copies where they are now, the
+        // drag going on with the originals (#4421).
+        if matches!(self.drag, Drag::MoveGuide { .. }) {
+            self.stamp_guide_copies();
             return;
         }
         let t = match &self.drag {
@@ -2131,6 +2147,12 @@ impl App {
                 self.pick_drag_to(p, mods);
                 self.stamp_on_space(response);
             } else {
+                // The last move can come in the frame of the release: it
+                // counts, or the change ended where the frame before had
+                // it (#4462).
+                if self.pointer_moved_this_frame(response) {
+                    self.pick_drag_to(p, mods);
+                }
                 self.end_drag();
             }
             return;
@@ -2794,13 +2816,19 @@ impl App {
                 }
             }
         }
-        if response.dragged_by(PointerButton::Primary) {
+        // The frame of the release counts its move too (#4462).
+        let last_move = response.drag_stopped_by(PointerButton::Primary)
+            && self.pointer_moved_this_frame(response);
+        if response.dragged_by(PointerButton::Primary) || last_move {
             if matches!(self.drag, Drag::NodeMove { .. }) {
                 self.node_move_to(p, mods);
-                return;
+                if !last_move {
+                    return;
+                }
+            } else {
+                self.note_drop_keys(&response.ctx);
+                self.pick_drag_to(p, mods);
             }
-            self.note_drop_keys(&response.ctx);
-            self.pick_drag_to(p, mods);
         }
         self.stamp_on_space(response);
         if response.clicked_by(PointerButton::Primary) {
@@ -3554,6 +3582,10 @@ impl App {
         } else if !response.drag_stopped_by(PointerButton::Primary) {
             // (A drag egui still counts ends below, as every tool's does.)
             self.end_drag();
+        } else if self.pointer_moved_this_frame(response) {
+            // The last move came with the release: the shape takes it
+            // before it is made (#4462).
+            self.box_follow(p, mods);
         }
         // A page frame comes from double-clicking the tool's toolbox
         // button, not from a double click on the drawing.
@@ -3632,7 +3664,10 @@ impl App {
                     } else {
                         p
                     }
-                } else if constrain {
+                } else if constrain || (mods.shift && self.tool != Tool::ThreePointCurve) {
+                    // Shift keeps the base line of the 3-Point Ellipse and
+                    // Rectangle to steps of the constrain angle, leaving
+                    // Ctrl for the circle at the third point (#4467).
                     constrain_from(*start, p, step)
                 } else {
                     p

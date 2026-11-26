@@ -2952,9 +2952,13 @@ pub fn menu_bar(app: &mut App, ui: &mut Ui) {
     // A dialog keeps Alt and its letters: Alt+O in Text > Edit Text
     // opened the Object menu behind it (#3370).
     let dialog_open = !matches!(app.dialog, crate::ui::dialogs::Dialog::None);
+    // The Guidelines panel keeps Alt+A (Add) and Alt+M (Modify) while it
+    // is shown (#4418).
+    let guides_keys = crate::ui::layout_options::guides_panel_shown(ui.ctx());
     let blocked = move |c: char| {
         capturing
             || dialog_open
+            || (guides_keys && (c == 'a' || c == 'm'))
             || (symmetry_e && c == 'e')
             || access::key_of(c).is_some_and(|k| user_alt_keys.contains(&k))
     };

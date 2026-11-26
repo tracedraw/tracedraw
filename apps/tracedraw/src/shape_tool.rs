@@ -885,7 +885,11 @@ impl App {
             };
         }
 
-        if response.dragged_by(PointerButton::Primary) {
+        // The move that comes in the frame of the release counts too, or
+        // the node or handle stayed where the frame before had it (#4462).
+        let last_move = response.drag_stopped_by(PointerButton::Primary)
+            && self.pointer_moved_this_frame(response);
+        if response.dragged_by(PointerButton::Primary) || last_move {
             match self.drag.clone() {
                 Drag::TextChars {
                     start,
@@ -1231,7 +1235,15 @@ impl App {
             if self.near_selected_nodes(p) || self.spline_polygon_at(p).is_some() {
                 return;
             }
-            match self.hit_test(p) {
+            // Ctrl+click reaches into a group, one level further in at
+            // each click, as with the Pick tool, so a curve of a group
+            // can have its nodes edited (#4417).
+            let hit = if mods.command || mods.ctrl {
+                self.hit_test_step(p)
+            } else {
+                self.hit_test(p)
+            };
+            match hit {
                 Some(id) => {
                     if mods.shift {
                         if !self.selection.contains(&id) {

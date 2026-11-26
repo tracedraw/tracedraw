@@ -1540,9 +1540,46 @@ fn shift_range(shown: &[usize], selected: &[usize], clicked: usize, ctrl: bool) 
     Some(sel)
 }
 
+/// The frame the Guidelines panel was last drawn in.
+fn guides_panel_id() -> egui::Id {
+    egui::Id::new("guides_panel_frame")
+}
+
+/// The Guidelines panel was drawn in the last frame or this one: its
+/// Alt+A and Alt+M then add and modify instead of opening a menu (#4418).
+pub fn guides_panel_shown(ctx: &egui::Context) -> bool {
+    let now = ctx.cumulative_frame_nr();
+    ctx.data(|d| d.get_temp::<u64>(guides_panel_id()))
+        .is_some_and(|f| now.saturating_sub(f) <= 1)
+}
+
 /// Window > Panels > Guidelines: show and snap toggles, the guideline type, position fields,
 /// Add and Modify, the list, delete and lock, colour and style.
 pub fn guidelines_docker(app: &mut App, ui: &mut Ui) {
+    let now = ui.ctx().cumulative_frame_nr();
+    ui.ctx().data_mut(|d| d.insert_temp(guides_panel_id(), now));
+    // Alt+A adds and Alt+M modifies from the keyboard, the hands kept off
+    // the mouse (#2883). They are taken before the fields are drawn: the
+    // field being typed in lets go of the focus, so the value typed is
+    // applied first and its letter is not typed into it (#4418).
+    let (alt_add, alt_modify) = ui.input_mut(|i| {
+        let add = i.consume_key(egui::Modifiers::ALT, egui::Key::A);
+        let modify = i.consume_key(egui::Modifiers::ALT, egui::Key::M);
+        if add || modify {
+            i.events.retain(|e| {
+                !matches!(e, egui::Event::Text(t)
+                    if t.eq_ignore_ascii_case("a") || t.eq_ignore_ascii_case("m"))
+            });
+        }
+        (add, modify)
+    });
+    if alt_add || alt_modify {
+        ui.memory_mut(|m| {
+            if let Some(id) = m.focused() {
+                m.surrender_focus(id);
+            }
+        });
+    }
     ui.horizontal(|ui| {
         ui.itoggle(&mut app.show_guides, "guides.show")
             .rich_tip(tr("guides.show_tip"));
@@ -1627,16 +1664,8 @@ pub fn guidelines_docker(app: &mut App, ui: &mut Ui) {
             }
         });
     app.guide_form = form;
-    // Alt+A adds and Alt+M modifies from the keyboard, the hands kept off
-    // the mouse (#2883).
-    let (alt_add, alt_modify) = ui.input_mut(|i| {
-        (
-            i.consume_key(egui::Modifiers::ALT, egui::Key::A),
-            i.consume_key(egui::Modifiers::ALT, egui::Key::M),
-        )
-    });
     let mut add = alt_add;
-    if moved {
+    if moved && !(alt_add || alt_modify) {
         let line = form.line(app);
         // Enter in a field with no guideline selected adds one there.
         if app.selected_guides.is_empty() {
@@ -1644,6 +1673,11 @@ pub fn guidelines_docker(app: &mut App, ui: &mut Ui) {
         } else {
             app.move_guide_from_form(line);
         }
+    }
+    // After Alt+A or Alt+M the position field takes the focus again, its
+    // value selected, so the next value can be typed and added at once.
+    if alt_add || alt_modify {
+        app.guide_focus_field = true;
     }
     ui.horizontal(|ui| {
         if ui
@@ -1690,7 +1724,7 @@ pub fn guidelines_docker(app: &mut App, ui: &mut Ui) {
             .rich_tip(crate::ui::tips::pair("guides.delete", "guides.delete_desc"))
             .rich_disabled_tip(crate::ui::tips::pair("guides.delete", "guides.delete_desc"))
             .clicked()
-            && !app.delete_selected_guides()
+            && !app.delete_selected_guides_then_next(form.kind)
         {
             app.status = tr("status.guideline_locked");
         }

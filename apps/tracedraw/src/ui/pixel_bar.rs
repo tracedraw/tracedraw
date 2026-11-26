@@ -969,6 +969,14 @@ pub(crate) fn effects_section(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app:
         if let Some(spec) = crate::fx::spec(&adj.id) {
             let mut params = adj.params.clone();
             let mut changed = false;
+            if adj.id == "tone_curve" {
+                changed |= crate::ui::effect_dialog::tone_curve_compact(
+                    ui,
+                    "pixel_adjust_layer",
+                    &mut params,
+                    None,
+                );
+            }
             for p in spec.params {
                 changed |=
                     crate::ui::effect_dialog::param_stacked(ui, p, &mut params, None);
@@ -1041,6 +1049,19 @@ pub(crate) fn effects_section(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app:
     };
     let mut changed = false;
     if let Some(e) = pe.effect.as_mut() {
+        // The Tone Curve has no number settings: its curve is drawn and
+        // edited here, as in its dialog (#4451: only Preview and Apply).
+        if spec.id == "tone_curve" {
+            let seen = if pe.pi.is_layered() {
+                pe.pi.composite()
+            } else {
+                pe.pi.img.clone()
+            };
+            let luma = crate::pixel_adjust::histogram(&seen, pe.pi.sel.as_ref()).luma;
+            let hist: [u32; 256] = std::array::from_fn(|i| luma.get(i).copied().unwrap_or(0));
+            changed |=
+                crate::ui::effect_dialog::tone_curve_compact(ui, "pixel_fx", &mut e.params, Some(&hist));
+        }
         for p in spec.params {
             changed |= crate::ui::effect_dialog::param_stacked(ui, p, &mut e.params, None);
         }

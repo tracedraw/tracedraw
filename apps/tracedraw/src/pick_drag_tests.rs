@@ -272,6 +272,75 @@ fn drag(
     frame(ctx, app, Vec::new(), Modifiers::NONE);
 }
 
+/// While a selection is dragged, the property bar reads its position and
+/// size where the drag has it, before the release (#4468).
+#[test]
+fn the_property_bar_follows_a_drag_live() {
+    let (ctx, mut app, id) = setup();
+    let from = app.view.to_screen(Point::new(30.0, 25.0));
+    let to = app.view.to_screen(Point::new(30.0, 45.0));
+    frame(&ctx, &mut app, vec![Event::PointerMoved(from)], Modifiers::NONE);
+    frame(&ctx, &mut app, vec![button(from, true, PointerButton::Primary, Modifiers::NONE)], Modifiers::NONE);
+    for i in 1..=4 {
+        let p = from + (to - from) * (i as f32 / 4.0);
+        frame(&ctx, &mut app, vec![Event::PointerMoved(p)], Modifiers::NONE);
+    }
+    assert_eq!(page_bounds(&app, id).y0, 10.0, "not moved yet");
+    let shown = crate::ui::propbar::shown_selection_bounds(&app).expect("bounds");
+    let real = app.selection_bounds().expect("bounds");
+    assert!((shown.y0 - real.y0 - 20.0).abs() < 0.5, "{shown:?} {real:?}");
+    assert!((shown.width() - real.width()).abs() < 1e-6);
+    frame(&ctx, &mut app, vec![button(to, false, PointerButton::Primary, Modifiers::NONE)], Modifiers::NONE);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let shown = crate::ui::propbar::shown_selection_bounds(&app).expect("bounds");
+    assert_eq!(shown, app.selection_bounds().expect("bounds"));
+}
+
+/// A press, one move part of the way, then the last move and the release
+/// in one frame (a busy window sends them together).
+fn quick_drag(ctx: &egui::Context, app: &mut App, from: Pos2, to: Pos2, mods: Modifiers) {
+    frame(ctx, app, vec![Event::PointerMoved(from)], mods);
+    frame(ctx, app, vec![button(from, true, PointerButton::Primary, mods)], mods);
+    let mid = from + (to - from) * 0.45;
+    frame(ctx, app, vec![Event::PointerMoved(mid)], mods);
+    frame(
+        ctx,
+        app,
+        vec![
+            Event::PointerMoved(to),
+            button(to, false, PointerButton::Primary, mods),
+        ],
+        mods,
+    );
+    frame(ctx, app, Vec::new(), Modifiers::NONE);
+}
+
+/// The last move of a drag that comes in the frame of the release
+/// counts: moving, resizing and drawing end where the pointer let go
+/// (#4462: they ended where the frame before had them).
+#[test]
+fn a_move_that_comes_with_the_release_still_counts() {
+    let (ctx, mut app, id) = setup();
+    // Move.
+    let before = page_bounds(&app, id);
+    let from = app.view.to_screen(Point::new(30.0, 25.0));
+    let to = app.view.to_screen(Point::new(30.0, 65.0));
+    quick_drag(&ctx, &mut app, from, to, Modifiers::NONE);
+    let after = page_bounds(&app, id);
+    assert!((after.y0 - before.y0 - 40.0).abs() < 0.5, "{before:?} {after:?}");
+    // Draw a rectangle.
+    app.set_tool(Tool::Rectangle);
+    let n = app.doc().pages[0].layers.iter().map(|l| l.shapes.len()).sum::<usize>();
+    let a = app.view.to_screen(Point::new(100.0, 100.0));
+    let b = app.view.to_screen(Point::new(160.0, 140.0));
+    quick_drag(&ctx, &mut app, a, b, Modifiers::NONE);
+    let m = app.doc().pages[0].layers.iter().map(|l| l.shapes.len()).sum::<usize>();
+    assert_eq!(m, n + 1);
+    let new = app.selection[0];
+    let r = page_bounds(&app, new);
+    assert!((r.x1 - 160.0).abs() < 0.5 && (r.y1 - 140.0).abs() < 0.5, "{r:?}");
+}
+
 /// A drawing with a 50 x 30 mm rectangle at (10, 10), selected, the
 /// page in view.
 fn setup() -> (egui::Context, App, ShapeId) {
@@ -1887,6 +1956,21 @@ fn every_click_on_a_palette_colour_applies_it() {
     let yellow = swatch_of(&ctx, &mut app, "Yellow");
     click_at(&ctx, &mut app, yellow, none);
     assert!(filled_with(&app, id, "Yellow"), "the click after a hold");
+}
+
+/// The Shape tool reaches an object inside a group with Ctrl+click, so
+/// its nodes can be edited without ungrouping (#4417).
+#[test]
+fn shape_tool_ctrl_click_chooses_an_object_inside_a_group() {
+    let (ctx, mut app, [a, _b, _c], group) = grouped();
+    app.select(Vec::new());
+    app.set_tool(Tool::Shape);
+    let on_a = app.view.to_screen(Point::new(115.0, 110.0));
+    click_at(&ctx, &mut app, on_a, Modifiers::NONE);
+    assert_eq!(app.selection, vec![group]);
+    click_at(&ctx, &mut app, on_a, Modifiers::CTRL);
+    assert_eq!(app.selection, vec![a]);
+    assert!(app.node_targets().contains(&a));
 }
 
 fn click_at(ctx: &egui::Context, app: &mut App, at: Pos2, mods: Modifiers) {
@@ -6592,6 +6676,21 @@ fn a_three_point_ellipse_grows_from_its_centre_line_to_both_sides() {
     let id = *app.selection.first().expect("the rectangle");
     let r = bounds(&app, id);
     assert!(close(r.y0, 220.0) && close(r.y1, 240.0), "{r:?}");
+}
+
+/// Shift keeps the first line of the 3-Point Ellipse to steps of the
+/// constrain angle, so a level base line can be drawn (#4467).
+#[test]
+fn shift_keeps_the_three_point_base_line_level() {
+    let (ctx, mut app, first) = setup();
+    app.select(vec![first]);
+    app.delete_selection();
+    app.set_tool(Tool::ThreePointEllipse);
+    let (a, b) = (Point::new(100.0, 150.0), Point::new(160.0, 153.0));
+    let (sa, sb) = (app.view.to_screen(a), app.view.to_screen(b));
+    drag(&ctx, &mut app, sa, sb, Modifiers::SHIFT, Vec::new());
+    let (p, q) = app.three_point_base.expect("the line waits for a click");
+    assert!((p.y - q.y).abs() < 1e-6, "{p:?} {q:?}");
 }
 
 /// With Ctrl held while the first line of the 3-Point Ellipse is

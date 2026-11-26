@@ -930,6 +930,13 @@ impl App {
     /// Measured from the size made 100% with
     /// [`set_scale_as_100`](Self::set_scale_as_100) when it was (#2761).
     pub fn scale_shown(&self) -> (f64, f64) {
+        self.scale_shown_with(None)
+    }
+
+    /// [`Self::scale_shown`] with `live` (the move, scale or turn being
+    /// dragged) applied, so the bar reads the size before the release
+    /// (#4468).
+    pub fn scale_shown_with(&self, live: Option<Affine>) -> (f64, f64) {
         // Asked each frame: more than one object shows 100% without a
         // copy of each.
         if self.selection.len() != 1 {
@@ -938,6 +945,16 @@ impl App {
         let shapes = self.selected_shapes();
         let [s] = shapes.as_slice() else {
             return (100.0, 100.0);
+        };
+        let moved;
+        let s = match live {
+            Some(t) => {
+                let mut c = s.clone();
+                c.transform = t * c.transform;
+                moved = c;
+                &moved
+            }
+            None => s,
         };
         let Some((sx, sy)) = transform_scale(s) else {
             return (100.0, 100.0);

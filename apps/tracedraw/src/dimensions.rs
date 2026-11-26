@@ -1498,6 +1498,35 @@ impl App {
             match &mut next.measure {
                 Measure::Linear { at, .. } | Measure::Angular { at, .. } => *at += shift,
             }
+        } else if !moved.is_empty() && !by_itself {
+            // Resized under it: a linear dimension's line keeps its
+            // distance from the measured points, following them across
+            // the line by as much as they moved on average, so one along
+            // an edge stays outside it when the object grows in
+            // proportion (#4431); along the line it stays (#4224).
+            if let Measure::Linear { a, b, .. } = d.measure {
+                let len = (b - a).hypot();
+                let across: Vec<f64> = if len > 1e-9 {
+                    let dir = (b - a) / len;
+                    let n = Vec2::new(-dir.y, dir.x);
+                    d.anchors
+                        .iter()
+                        .filter_map(|an| {
+                            let was = d.point(an.point)?;
+                            let now = next.point(an.point)?;
+                            Some((now - was).dot(n))
+                        })
+                        .collect()
+                } else {
+                    Vec::new()
+                };
+                // Only when both ends are held: one end alone moving
+                // across turns the line, which stays where it was.
+                if let (true, Measure::Linear { at, .. }) = (across.len() == 2, &mut next.measure) {
+                    let dir = (b - a) / len;
+                    *at += Vec2::new(-dir.y, dir.x) * ((across[0] + across[1]) / 2.0);
+                }
+            }
         }
         Some(next)
     }
@@ -2739,6 +2768,46 @@ mod tests {
         app.select(vec![dim]);
         app.break_apart();
         assert!(app.doc().find_shape(dim).and_then(Dimension::of).is_none());
+    }
+
+    /// A vertical dimension beside a rectangle's right edge stays outside
+    /// it when the rectangle grows in proportion (#4431: the line stayed
+    /// where it was, inside the bigger rectangle).
+    #[test]
+    fn a_dimension_beside_an_edge_stays_outside_after_a_proportional_resize() {
+        let mut app = App::headless();
+        app.view.zoom = 1.0;
+        let rect = app
+            .new_shape(ShapeKind::Rect {
+                rect: Rect::new(10.0, 10.0, 40.0, 27.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        app.create_dimension(
+            Point::new(40.0, 10.0),
+            Point::new(40.0, 27.0),
+            Point::new(50.0, 18.0),
+        );
+        let dim = app.selection[0];
+        let d0 = Dimension::of(app.doc().find_shape(dim).expect("dim")).expect("data");
+        assert_eq!(d0.anchors.len(), 2, "{:?}", d0.anchors);
+        // Bigger in proportion about the top left corner.
+        let k = 50.0 / 30.0;
+        app.run(Command::TransformShapes {
+            shapes: vec![rect],
+            transform: Affine::translate((10.0, 10.0))
+                * Affine::scale(k)
+                * Affine::translate((-10.0, -10.0)),
+        });
+        app.bake_dimensions();
+        let d1 = Dimension::of(app.doc().find_shape(dim).expect("dim")).expect("data");
+        assert!((d1.value() - 17.0 * k).abs() < 1e-6, "{}", d1.value());
+        let Measure::Linear { a, at, .. } = d1.measure else {
+            panic!("linear");
+        };
+        assert!((a.x - 60.0).abs() < 1e-6, "{a:?}");
+        assert!((at.x - 70.0).abs() < 1e-6, "still 10 mm right of the edge: {at:?}");
     }
 
     /// A diameter dimension on a circle, its points on the circle's

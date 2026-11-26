@@ -548,6 +548,41 @@ impl App {
         true
     }
 
+    /// The Guidelines panel's Delete: the selected guidelines go, and the
+    /// next one listed (of `kind`, the type the panel shows) becomes the
+    /// selection with its value ready to be typed over, so a second click
+    /// on Delete takes it too (#4420). The one before when the last went.
+    pub fn delete_selected_guides_then_next(
+        &mut self,
+        kind: crate::ui::layout_options::GuideKind,
+    ) -> bool {
+        use crate::ui::layout_options::GuideKind;
+        let before = self.page_guides();
+        let gone: Vec<usize> = (0..before.len())
+            .filter(|i| self.selected_guides.contains(i) && !before[*i].locked)
+            .collect();
+        let Some(&first) = gone.first() else {
+            return false;
+        };
+        if !self.delete_selected_guides() {
+            return false;
+        }
+        // The indices that stay, in the new numbering.
+        let listed: Vec<usize> = (0..before.len())
+            .filter(|i| !gone.contains(i) && GuideKind::of(&before[*i].line) == kind)
+            .collect();
+        let new_index = |old: usize| old - gone.iter().filter(|g| **g < old).count();
+        let next = listed
+            .iter()
+            .find(|i| **i > first)
+            .or_else(|| listed.iter().rev().find(|i| **i < first))
+            .map(|i| new_index(*i));
+        if let Some(i) = next {
+            self.open_guide_properties(i);
+        }
+        true
+    }
+
     /// Move guidelines from one set to another (#3599): from the master
     /// page's (`from` `None`) or a page's own to the master page's (`to`
     /// `None`) or a page's own, at the same places, in one undo step.
@@ -1140,6 +1175,21 @@ impl App {
             }
         }
         out
+    }
+
+    /// Space while guidelines are dragged: copies of them stay where the
+    /// drag has them now, one undo step; the drag goes on (#4421).
+    pub fn stamp_guide_copies(&mut self) {
+        let Drag::MoveGuide { start, guide, .. } = &self.drag else {
+            return;
+        };
+        if start == guide {
+            return;
+        }
+        let moves = self.guide_drag_moves();
+        let mut guides = self.page_guides();
+        guides.extend(moves.into_iter().map(|(_, g)| g));
+        self.set_guides(guides, "Copy Guidelines");
     }
 
     /// Release after dragging guidelines: commit the move or rotation as
@@ -1797,6 +1847,60 @@ mod tests {
             ui.horizontal(|ui| crate::ui::propbar::guide_bar(&mut app, ui));
         });
         out.textures_delta.clear();
+    }
+
+    /// Delete in the Guidelines panel selects the next guideline of the
+    /// type shown, its value ready to be typed over (#4420).
+    #[test]
+    fn deleting_a_guide_in_the_panel_selects_the_next_one() {
+        use crate::ui::layout_options::GuideKind;
+        let mut app = app();
+        app.add_guide(Guide::vertical(10.0));
+        app.add_guide(Guide::horizontal(50.0));
+        app.add_guide(Guide::vertical(20.0));
+        app.add_guide(Guide::vertical(30.0));
+        app.open_guide_properties(0);
+        app.guide_focus_field = false;
+        assert!(app.delete_selected_guides_then_next(GuideKind::Vertical));
+        let g = app.page_guides();
+        assert_eq!(g.len(), 3);
+        // The next vertical (x 20) is selected, skipping the horizontal.
+        assert_eq!(app.selected_guides.len(), 1);
+        assert_eq!(g[app.selected_guides[0]].line, GuideLine::Vertical { x: 20.0 });
+        assert!(app.guide_focus_field);
+        // The last one listed goes: the one before it is selected.
+        let last = g
+            .iter()
+            .position(|g| g.line == GuideLine::Vertical { x: 30.0 })
+            .unwrap();
+        app.open_guide_properties(last);
+        assert!(app.delete_selected_guides_then_next(GuideKind::Vertical));
+        let g = app.page_guides();
+        assert_eq!(g[app.selected_guides[0]].line, GuideLine::Vertical { x: 20.0 });
+    }
+
+    /// Space while a guideline is dragged leaves a copy there each time,
+    /// as it does for objects (#4421).
+    #[test]
+    fn space_during_a_guide_drag_leaves_copies() {
+        let mut app = app();
+        app.add_guide(Guide::horizontal(50.0));
+        assert!(app.press_guide(Point::new(5.0, 50.0), false));
+        app.drag_guide_to(Point::new(5.0, 60.0));
+        app.stamp_guide_copies();
+        app.drag_guide_to(Point::new(5.0, 70.0));
+        app.stamp_guide_copies();
+        app.drag_guide_to(Point::new(5.0, 80.0));
+        app.finish_guide_move(egui::pos2(100.0, 100.0));
+        let ys: Vec<GuideLine> = app.page_guides().iter().map(|g| g.line).collect();
+        assert_eq!(
+            ys,
+            vec![
+                GuideLine::Horizontal { y: 80.0 },
+                GuideLine::Horizontal { y: 60.0 },
+                GuideLine::Horizontal { y: 70.0 },
+            ]
+        );
     }
 
     #[test]

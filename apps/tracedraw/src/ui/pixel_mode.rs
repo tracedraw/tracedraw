@@ -1510,6 +1510,19 @@ mod tests {
         open_effect(&mut app, "tone_curve");
         assert!(app.pixel_edit.as_ref().unwrap().effect.is_some());
         assert!(app.open_dockers.contains(&DockerTab::PixelEffects));
+        // The panel draws the curve and its channel list, not only
+        // Preview and Apply (#4451).
+        let ctx = crate::theme::ui_context();
+        let mut drawn = None;
+        let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+            egui::CentralPanel::default().show_inside(ui, |ui| {
+                let pe = app.pixel_edit.as_mut().unwrap();
+                crate::ui::pixel_bar::effects_section(ui, pe);
+                drawn = Some(ui.min_rect().height());
+            });
+        });
+        out.textures_delta.clear();
+        assert!(drawn.unwrap_or(0.0) > 150.0, "{drawn:?}");
         for (_, _, id) in ADJUST_KEYS {
             assert!(crate::fx::adjust::EFFECTS.iter().any(|e| e.id == id), "{id}");
         }

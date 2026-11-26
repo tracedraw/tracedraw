@@ -6,6 +6,17 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Shape Builder: Delete Segment with the selection only (Alt) reaches an object picked inside a group, without its siblings (#4412).
+- Shape tool: Ctrl+click picks an object inside a group, one level further in at each click, so its nodes can be edited without ungrouping (#4417).
+- Guidelines panel: Alt+A and Alt+M add and modify from the position typed, instead of typing the letter into the box, and the box keeps the focus with its value selected for the next one (#4418).
+- Guidelines panel: after Delete, the next guideline of the list is selected, so Delete again takes it too (#4420).
+- Space while dragging a guideline leaves a copy there, as it does for objects (#4421).
+- Dimensions: one beside an object's edge stays outside it when the object is resized in proportion (#4431).
+- Image editor: the Effects panel shows the Tone Curve's curve and channel list (also for a Tone Curve adjustment layer), not only Preview and Apply (#4451).
+- A drag whose last move comes with the release (a busy window) ends where the pointer let go, when moving, resizing or drawing (#4462).
+- Interactive Fill: after a gradient is dragged out, its end node is chosen, so a palette click colours that end instead of making the fill flat (#4465).
+- 3-Point Ellipse and Rectangle: Shift keeps the first line to steps of the constrain angle (#4467).
+- Property bar: position, size, scale and angle follow a move, stretch or turn while it is dragged, not only on release (#4468).
 - Options > Display: a new Dashed outline of clip frame contents box (on by default) hides, when off, the dashed outlines a selected clip frame shows of what it holds, the parts hidden outside the frame included.
 - Grid panel (Window > Panels > Grid, or the button in Document options > Grid): Automatic mode (the spacing follows the zoom in round units), Basic mode (spacing with subdivisions in each cell) and Advanced mode (each axis with its own spacing, subdivisions, gutter and angle: isometric, dimetric, trimetric, oblique and custom grids, with optional third-axis lines, uniform axes and fixed aspect ratio); built-in presets and presets of your own saved by name; the grid's origin; colour and opacity of the grid lines and, linked or not, of the subdivisions; axis controls on the canvas that drag the origin and the ends of both axes with the Pick tool. Snapping follows subdivisions, gutters and the crossings of angled grids (#4395).
 - Panel columns split in two keep a group of tabs in each part: tabs dragged onto the lower part, or past the line in the tab strip, join the lower group, whose tabs start at the height of the lower panel; a click on one shows it below while the upper panel stays, and both groups come back with the workspace (#4372).

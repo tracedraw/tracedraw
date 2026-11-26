@@ -720,10 +720,17 @@ impl App {
                 skew: rel(skew),
             },
         );
+        // The end node is chosen, so a palette colour clicked next
+        // colours that end and the gradient stays (#4465: it became a
+        // flat fill).
+        let last = f.stops.len().saturating_sub(1);
         self.run(Command::SetFill {
             shapes: vec![id],
             fill: Fill::Fountain(f),
         });
+        if self.selection.contains(&id) {
+            self.fill_node = Some(last);
+        }
     }
 
     /// With the Transparency tool: gradient node `i` of the selected
@@ -969,6 +976,23 @@ mod tests {
 
     fn near(a: Point, b: Point) -> bool {
         (a - b).hypot() < 1e-6
+    }
+
+    /// #4465: after a gradient is dragged out its end node is chosen, so a
+    /// palette click colours that end and the gradient stays.
+    #[test]
+    fn a_palette_click_after_a_gradient_drag_colours_its_end() {
+        let mut app = App::headless();
+        let id = square(&mut app);
+        app.apply_fill(Fill::Solid(Color::BLACK));
+        app.set_tool(crate::tools::Tool::InteractiveFill);
+        app.fill_from_drag(id, Point::new(0.0, 10.0), Point::new(40.0, 10.0));
+        app.palette_fill(Color::rgb8(255, 0, 0));
+        let Fill::Fountain(f) = &app.doc().find_shape(id).expect("shape").fill else {
+            panic!("still a fountain");
+        };
+        assert_eq!(f.stops.last().unwrap().color.to_rgb8(), [255, 0, 0]);
+        assert_eq!(f.stops[0].color.to_rgb8(), [0, 0, 0]);
     }
 
     /// #3747: Ctrl+click on a palette colour with a fountain node picked

@@ -11,7 +11,7 @@ use crate::ui::tips::RichTip;
 use egui::{epaint, Color32, Painter, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2};
 use tracedraw_core::{
     document::ShapeKind,
-    geometry::{Affine, Point, Size},
+    geometry::{Affine, Point, Rect as GeoRect, Size},
     Command, CornerKind, Corners,
 };
 
@@ -1935,14 +1935,57 @@ fn origin_selector(ui: &mut Ui, app: &mut App) {
     }
 }
 
+/// The move, scale, turn or slant the Pick tool is dragging now, which
+/// the document takes only on release: the bar shows it live (#4468).
+fn live_drag(app: &App) -> Option<Affine> {
+    if !app.transforming() {
+        return None;
+    }
+    match &app.drag {
+        crate::app::Drag::Move { total, .. } => Some(Affine::translate(*total)),
+        crate::app::Drag::MoveGuide { .. } => None,
+        d => app.preview_transform_of(d),
+    }
+}
+
+/// The selection's box `b` with `t` applied. A move or a scale along
+/// the page's axes takes the box's corners exactly; a turn or a slant
+/// takes each object's outline through it (the box widens as the
+/// outlines do), or the corners for a large selection.
+fn live_bounds(app: &App, b: GeoRect, t: Affine) -> GeoRect {
+    use tracedraw_core::geometry::Shape as _;
+    let [a, bb, c, d, _, _] = t.as_coeffs();
+    let axis_aligned = bb.abs() < 1e-12 && c.abs() < 1e-12 && a > 0.0 && d > 0.0;
+    let shapes = app.selected_rc();
+    if !axis_aligned && shapes.len() <= 64 {
+        let doc = app.doc();
+        let mut out: Option<GeoRect> = None;
+        for s in shapes.iter() {
+            let parent = doc.parent_transform(s.id).unwrap_or(Affine::IDENTITY);
+            let r = (t * parent * s.transform * s.local_path()).bounding_box();
+            if r.width().is_finite() && r.height().is_finite() {
+                out = Some(out.map_or(r, |o| o.union(r)));
+            }
+        }
+        if let Some(r) = out {
+            return r;
+        }
+    }
+    let p = |x: f64, y: f64| t * Point::new(x, y);
+    GeoRect::from_points(p(b.x0, b.y0), p(b.x1, b.y1))
+        .union_pt(p(b.x1, b.y0))
+        .union_pt(p(b.x0, b.y1))
+}
+
 /// The rotation of the single selected object (degrees), from its
-/// transform.
+/// transform (and the turn being dragged, #4468).
 fn selection_angle(app: &App) -> f64 {
     let shapes = app.selected_rc();
     if shapes.len() != 1 {
         return 0.0;
     }
-    let c = shapes[0].transform.as_coeffs();
+    let t = live_drag(app).unwrap_or(Affine::IDENTITY) * shapes[0].transform;
+    let c = t.as_coeffs();
     let a = c[1].atan2(c[0]).to_degrees();
     if a.abs() < 1e-9 {
         0.0
@@ -2037,10 +2080,19 @@ fn percentage_scale_transform(app: &App, sx: f64, sy: f64, reference: Point) -> 
     .then_some(transform)
 }
 
+/// The box the property bar shows: the selection's, where the drag has
+/// it while it is dragged (#4468: the values stayed as they were until
+/// the release).
+pub(crate) fn shown_selection_bounds(app: &App) -> Option<GeoRect> {
+    let b = app.selection_bounds()?;
+    Some(live_drag(app).map_or(b, |t| live_bounds(app, b, t)))
+}
+
 pub fn object_bar(app: &mut App, ui: &mut Ui) {
-    let Some(b) = app.selection_bounds() else {
+    let Some(b) = shown_selection_bounds(app) else {
         return;
     };
+    let live = live_drag(app);
     origin_selector(ui, app);
     let o = app.ruler_origin();
     let refp = origin_point(b, app.object_origin);
@@ -2081,7 +2133,7 @@ pub fn object_bar(app: &mut App, ui: &mut Ui) {
     // Scale factors: one object shows how far it is scaled from the size
     // it was drawn or imported at (#2693); several show 100%. A value
     // typed scales the selection from what it shows.
-    let shown = app.scale_shown();
+    let shown = app.scale_shown_with(live);
     let mut scale: Option<Affine> = None;
     stacked(ui, |ui| {
         for horizontal in [true, false] {

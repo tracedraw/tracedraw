@@ -624,11 +624,6 @@ fn outlines_of(all: &[Shape]) -> Vec<Outline> {
 }
 
 impl App {
-    /// The visible objects of the page's unlocked layers.
-    fn segment_targets(&self) -> Vec<Shape> {
-        self.segment_targets_in(self.builder.segment_scope.as_ref())
-    }
-
     /// The visible objects of the page's unlocked layers, only those of
     /// `scope` when given (the Shape Builder's Alt: the selected objects
     /// alone, #4079).
@@ -659,22 +654,28 @@ impl App {
         self.segment_leaves_in(self.builder.segment_scope.as_ref())
     }
 
+    /// With a `scope`, membership is worked out while the groups are
+    /// opened: a selected group brings everything inside it, and a
+    /// selected object inside a group comes alone, without its siblings
+    /// (#4412).
     fn segment_leaves_in(&self, scope: Option<&Vec<ShapeId>>) -> Vec<Shape> {
-        fn open(s: Shape, out: &mut Vec<Shape>) {
+        fn open(s: Shape, scope: Option<&Vec<ShapeId>>, inside: bool, out: &mut Vec<Shape>) {
+            let inside = inside || scope.is_none_or(|ids| ids.contains(&s.id));
             match &s.kind {
                 ShapeKind::Group { children } => {
                     for c in children.iter().filter(|c| c.visible && !c.locked) {
                         let mut c = c.clone();
                         c.transform = s.transform * c.transform;
-                        open(c, out);
+                        open(c, scope, inside, out);
                     }
                 }
-                _ => out.push(s),
+                _ if inside => out.push(s),
+                _ => {}
             }
         }
         let mut out = Vec::new();
-        for s in self.segment_targets_in(scope) {
-            open(s, &mut out);
+        for s in self.segment_targets_in(None) {
+            open(s, scope, false, &mut out);
         }
         out
     }
@@ -1207,6 +1208,38 @@ mod tests {
         let ends: Vec<Point> = left.segments().map(|s| s.end()).collect();
         let last = *ends.last().expect("segments");
         assert!((last - x).hypot() < 1e-6, "{last:?} {x:?}");
+    }
+
+    /// The selection scope (Alt) reaches an object picked inside a moved
+    /// group, without its siblings (#4412: only a selected group counted).
+    #[test]
+    fn the_selection_scope_reaches_a_child_of_a_group() {
+        let mut app = App::headless();
+        let h = line(&mut app, (0.0, 0.0), (30.0, 0.0));
+        let v1 = line(&mut app, (10.0, -5.0), (10.0, 5.0));
+        let v2 = line(&mut app, (20.0, -5.0), (20.0, 5.0));
+        app.select(vec![h, v1, v2]);
+        app.group_selection();
+        let g = app.selection[0];
+        app.run(Command::TransformShapes {
+            shapes: vec![g],
+            transform: tracedraw_core::geometry::Affine::translate((100.0, 50.0)),
+        });
+        let scope = vec![h, v1, v2];
+        assert!(app.virtual_segment_at(Point::new(115.0, 50.0), Some(&scope)).is_some());
+        // Only the horizontal picked: nothing crosses it inside the scope,
+        // so its whole length is the stretch.
+        let only_h = vec![h];
+        let seg = app
+            .virtual_segment_at(Point::new(115.0, 50.0), Some(&only_h))
+            .expect("the picked child is in scope");
+        let b = seg.bounding_box();
+        assert!((b.x0 - 100.0).abs() < 1e-6 && (b.x1 - 130.0).abs() < 1e-6, "{b:?}");
+        // A sibling that was not picked stays out.
+        assert!(app.virtual_segment_at(Point::new(110.0, 53.0), Some(&only_h)).is_none());
+        // The whole group picked brings every child.
+        let whole = vec![g];
+        assert!(app.virtual_segment_at(Point::new(110.0, 53.0), Some(&whole)).is_some());
     }
 
     /// Curves inside a group (an imported ornament is one) are cut as
