@@ -59,6 +59,7 @@ objects/index
   objects/light-flare
   objects/tracecut
   objects/shape-generator
+  objects/math-shapes
 color/index
   color/color-docker
   color/palettes

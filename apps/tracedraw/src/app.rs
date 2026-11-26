@@ -2554,6 +2554,8 @@ pub struct App {
     pub frame_gen: crate::frame_gen::FrameSettings,
     /// The Mockup docker's settings (Effects > Mockup).
     pub mockup: crate::mockup::MockupSettings,
+    /// The Math Shapes docker's settings (Window > Panels > Math Shapes).
+    pub math: crate::math_shapes::MathSettings,
     /// The 3D Revolve and Inflate docker's settings (and picked art).
     pub shape_3d: crate::shape3d::Settings3d,
     /// The Picture Mosaic docker's settings and indexed library.
@@ -2753,6 +2755,7 @@ pub enum DockerTab {
     VectorMosaic,
     PictureMosaic,
     ShapeGenerator,
+    MathShapes,
     SymbolScatter,
     FrameGenerator,
     Mockup,
@@ -2789,7 +2792,7 @@ impl DockerTab {
         DockerTab::PixelHistogram,
     ];
 
-    pub const ALL: [DockerTab; 50] = [
+    pub const ALL: [DockerTab; 51] = [
         DockerTab::Properties,
         DockerTab::Objects,
         DockerTab::Hints,
@@ -2832,6 +2835,7 @@ impl DockerTab {
         DockerTab::VectorMosaic,
         DockerTab::PictureMosaic,
         DockerTab::ShapeGenerator,
+        DockerTab::MathShapes,
         DockerTab::SymbolScatter,
         DockerTab::FrameGenerator,
         DockerTab::Mockup,
@@ -2867,6 +2871,7 @@ impl DockerTab {
             DockerTab::StepAndRepeat,
             DockerTab::FitToPath,
             DockerTab::ShapeGenerator,
+            DockerTab::MathShapes,
         ],
         &[
             DockerTab::Shaping,
@@ -2954,6 +2959,7 @@ impl DockerTab {
             DockerTab::VectorMosaic => "docker.vector_mosaic",
             DockerTab::PictureMosaic => "docker.picture_mosaic",
             DockerTab::ShapeGenerator => "docker.shape_generator",
+            DockerTab::MathShapes => "docker.math_shapes",
             DockerTab::SymbolScatter => "docker.symbol_scatter",
             DockerTab::FrameGenerator => "docker.frame_generator",
             DockerTab::Mockup => "docker.mockup",
@@ -3989,6 +3995,7 @@ impl App {
             slice_grid: (1, 1),
             frame_gen: Default::default(),
             mockup: Default::default(),
+            math: Default::default(),
             shape_3d: Default::default(),
             picture_mosaic: Default::default(),
             picture_mosaic_job: None,

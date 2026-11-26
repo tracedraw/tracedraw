@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Math Shapes panel (Object > Create, or Window > Panels): draws a Cartesian plane with axes, arrows, ticks, numbers (also in multiples of π), grid and fine grid, ranges and units, each with its own colour and width, and on it up to 12 curves typed as formulas: functions, parametric and polar curves, any equation in x and y, and points; parameters a, b, c, d and k on sliders, roots and turning points marked, the formula written beside its curve, fills, and 23 ready graphs from parabolas to roses, spirals and the superformula. It also makes circles, triangles, regular polygons and stars, ellipses and arcs from their measures, with names, lengths, angles, heights, medians, bisectors and inscribed and circumscribed circles drawn and every measure listed. Live preview, editable curves and text in one undo step, and a selected graph comes back into the panel for Update.
 - Opening a .cdr or .cmx no longer freezes the window: it is read on a worker thread with a progress window and Cancel, large pictures are sampled to the free memory and decoded on several cores (PR #3247 by ratmanz0000).
 ## 0.53.0 (2026-11-26)
 

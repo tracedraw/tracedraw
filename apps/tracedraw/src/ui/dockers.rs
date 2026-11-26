@@ -1108,6 +1108,21 @@ pub(crate) fn tab_icon(tab: DockerTab) -> Option<TabIcon> {
         DockerTab::ShapeGenerator => {
             Some(|p, r| tool_pic(p, r, crate::tools::Tool::GraphPaper))
         }
+        // Two axes with a wave across them: graphs of formulas.
+        DockerTab::MathShapes => Some(|p, r| {
+            let c = r.center();
+            let s = egui::Stroke::new(1.1, Tokens::icon());
+            p.line_segment([c + egui::vec2(-7.5, 3.0), c + egui::vec2(7.5, 3.0)], s);
+            p.line_segment([c + egui::vec2(-4.0, 7.5), c + egui::vec2(-4.0, -7.5)], s);
+            let pts: Vec<egui::Pos2> = (0..=16)
+                .map(|i| {
+                    let t = i as f32 / 16.0;
+                    let x = -7.0 + 14.0 * t;
+                    c + egui::vec2(x, -1.5 - 4.0 * (t * std::f32::consts::TAU).sin())
+                })
+                .collect();
+            p.add(egui::Shape::line(pts, egui::Stroke::new(1.5, Tokens::ACCENT)));
+        }),
         DockerTab::Shelf => Some(|p, r| {
             // An open tray holding a sheet.
             let c = r.center();

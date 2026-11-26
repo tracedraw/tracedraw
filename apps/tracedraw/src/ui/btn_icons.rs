@@ -201,6 +201,8 @@ fn exact(key: &str) -> Option<Src> {
         "benchmark.test_with_card" | "benchmark.test_without_card" => Src::B(B::Gauge),
         "shapegen.create" | "shapegen.make_pattern" => Src::Tool(Tool::ShapeGenerator),
         "shapegen.slice_apply" => Src::B(B::Split),
+        "math.mode_graph" => Src::Tool(Tool::GraphPaper),
+        "math.mode_figure" => Src::Tool(Tool::Polygon),
         "shapegen.wrap" => Src::Pic(Pic::Combine),
         "docker.apply" => Src::B(B::Check),
         "hint.drop_ask_import" => Src::Action(Action::Import),

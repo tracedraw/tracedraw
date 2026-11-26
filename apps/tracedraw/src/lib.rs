@@ -178,6 +178,10 @@ mod text_height;
 mod blur_bar;
 mod trace_sketch;
 mod mixed;
+mod math_expr;
+mod math_shapes;
+#[cfg(test)]
+mod math_shapes_tests;
 mod mockup;
 mod mockup_photos;
 #[cfg(test)]

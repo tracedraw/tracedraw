@@ -2294,7 +2294,8 @@ mod tests {
                 "menu.object.create_arrowhead",
                 "menu.object.create_pattern",
                 "menu.object.add_common_shape",
-                "menu.object.shape_generator"
+                "menu.object.shape_generator",
+                "menu.object.math_shapes"
             ]
         );
         assert!(find("menu.table.create_new_table").is_some());
@@ -4004,6 +4005,16 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
             effect_docker_open(app, DockerTab::ShapeGenerator),
         ) {
             app.open_docker(DockerTab::ShapeGenerator);
+        }
+        // A Cartesian plane with the curves of formulas, or figures
+        // from their measures.
+        if check(
+            ui,
+            "menu.object.math_shapes",
+            "",
+            effect_docker_open(app, DockerTab::MathShapes),
+        ) {
+            app.open_docker(DockerTab::MathShapes);
         }
     });
     sub(ui, "menu.object.insert", |ui| {

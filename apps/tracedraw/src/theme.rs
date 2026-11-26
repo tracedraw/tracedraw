@@ -1676,6 +1676,10 @@ mod glyph_tests {
             ("printers.rs", '\u{2019}'),
             ("printers.rs", '\u{201A}'),
             ("printers.rs", '\u{201B}'),
+            // Symbols a formula typed or pasted may hold (dot operator,
+            // cube root), read by the Math Shapes parser, never shown.
+            ("math_expr.rs", '\u{22C5}'),
+            ("math_expr.rs", '\u{221B}'),
         ];
         // Each family's faces, read from their character maps (egui's own
         // `has_glyph` calls every character of the face holding its

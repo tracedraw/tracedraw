@@ -61,6 +61,7 @@ pub fn show(app: &mut App, ui: &mut Ui, tab: DockerTab) {
         DockerTab::VectorMosaic => crate::ui::vector_mosaic_docker::vector_mosaic(app, ui),
         DockerTab::PictureMosaic => crate::ui::picture_mosaic_docker::picture_mosaic(app, ui),
         DockerTab::ShapeGenerator => crate::ui::shape_gen_docker::shape_generator(app, ui),
+        DockerTab::MathShapes => crate::ui::math_shapes_docker::math_shapes(app, ui),
         DockerTab::SymbolScatter => crate::ui::symbol_scatter_docker::symbol_scatter(app, ui),
         DockerTab::FrameGenerator => crate::ui::frame_gen_docker::frame_generator(app, ui),
         DockerTab::Mockup => crate::ui::mockup_docker::mockup(app, ui),
