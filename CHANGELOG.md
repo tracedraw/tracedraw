@@ -11,6 +11,7 @@ full, row-by-row status.
 - Contour tool: dragging an object that already has a contour goes on from that contour instead of starting again; hold Shift for fine steps (#4364).
 - Block shadow: a new Expand box on the property bar grows the shadow all round (#4378).
 - Shape Builder: Use grid on the property bar cuts the pieces by the grid lines, as Use guidelines does with guides (#4390).
+- Ctrl+Shift+V (Paste in View) works on Windows when the clipboard holds no text, and can be captured in Options > Customization > Commands: the key's own press can be dropped there, so the command also fires from its release (#4380; PR #4382 by SnakyWarrior).
 - Moving objects snaps their edges and middle onto slanted guidelines, and slanted guidelines draw thinner (#4383).
 - Tabs dialog: when the text has no Tab yet, a hint says that leaders fill the space a Tab leaves (#4366).
 - Data Merge: a QR code object named after a QR field keeps its background, colours, outline and size on every merged page, instead of turning into a plain black code (#4396).

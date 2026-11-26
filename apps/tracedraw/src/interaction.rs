@@ -5396,10 +5396,12 @@ impl App {
         // modifiers, kept from the separate ModifiersChanged event their
         // Ctrl key-down still sends, has it, so a combination that adds
         // Shift or Alt to Ctrl+C/X/V (Ctrl+Shift+V for Paste in View) is
-        // not silently seen as missing Ctrl.
+        // not silently seen as missing Ctrl. The key's own modifiers are
+        // kept too: a quick release in the same frame leaves the frame's
+        // modifiers empty while the key still carries them.
         let real_mods = |key: Key, modifiers: Modifiers| {
             if matches!(key, Key::C | Key::X | Key::V) {
-                input.modifiers
+                modifiers | input.modifiers
             } else {
                 modifiers
             }

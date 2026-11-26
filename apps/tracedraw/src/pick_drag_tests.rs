@@ -4205,6 +4205,7 @@ fn ctrl_shift_v_pastes_into_view_even_with_ctrl_missing_from_the_key_itself() {
         vec![key(egui::Key::V, Modifiers::SHIFT)],
         Modifiers::COMMAND | Modifiers::SHIFT,
     );
+    app.complete_internal_paste_for_test();
     assert_eq!(shape_count(&app), n + 1);
     let view = app.view.visible_page_rect(app.canvas_rect).center();
     let b = app.selection_bounds().expect("bounds");
