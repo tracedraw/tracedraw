@@ -2535,8 +2535,23 @@ pub struct History {
     redo: Vec<PixelImage>,
 }
 
-/// About this much memory for the steps.
-const HISTORY_BYTES: usize = 600 * 1024 * 1024;
+/// About this much memory for the steps: less on a phone or tablet and
+/// in the browser, where 600 MB of steps left too little for Finish and
+/// the program was closed (#4427).
+const HISTORY_BYTES: usize = if cfg!(any(target_os = "android", target_os = "ios", target_arch = "wasm32")) {
+    160 * 1024 * 1024
+} else {
+    600 * 1024 * 1024
+};
+
+/// The fewest steps kept, however big the picture: one on a phone or
+/// tablet (a 12-megapixel photo with a few layers takes hundreds of MB a
+/// step there), three elsewhere.
+const MIN_STEPS: usize = if cfg!(any(target_os = "android", target_os = "ios", target_arch = "wasm32")) {
+    1
+} else {
+    3
+};
 
 impl History {
     /// Remember `state` before it is changed.
@@ -2544,7 +2559,7 @@ impl History {
         self.undo.push(state.clone());
         self.redo.clear();
         let per = state.bytes().max(1);
-        let most = (HISTORY_BYTES / per).clamp(3, 100);
+        let most = (HISTORY_BYTES / per).clamp(MIN_STEPS, 100);
         while self.undo.len() > most {
             self.undo.remove(0);
         }

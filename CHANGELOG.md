@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Image editing on tablets and phones: moving a selection or a pasted picture no longer slows down to a crawl, the picture is no longer sent to the screen again on every frame while a preview shows, and undo keeps less memory (#4427).
+- .cdr facing-page books: guidelines and master-page objects stay on their own side of the spread instead of all landing on the left page (#4443).
 - Export and Publish to PDF: the target file size can be typed in KB or MB, and the Export dialog's size estimate for PDF follows the compression settings (#4452).
 - Text on a path: a side handle stretches the letters wider or taller instead of resizing the path (#4442).
 - CNC Toolpath: ramps (smooth or zig-zag) take the bit down along the path instead of straight down, and line or arc leads bring it into closed cuts from the waste side and back out (#4449).

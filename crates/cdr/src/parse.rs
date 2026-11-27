@@ -1150,7 +1150,23 @@ pub(crate) fn parse_document_kept_data(
             (left, right)
         };
         let starts_right = records.first().is_none_or(|p| !sides(p).0);
+        // The guidelines every page shows are measured from the spine too:
+        // a vertical one belongs to the side of the spread it is on, and
+        // goes to the own guidelines of each page on that side, moved
+        // onto it; the horizontal ones stay on every page. Left where they
+        // were, the right pages showed them half a spread off (#4443).
+        let spine_w = records.first().map(|p| p.size.width).unwrap_or(0.0);
+        let mut side_guides: Vec<(bool, tracedraw_core::document::Guide)> = Vec::new();
+        doc.master_guides.retain(|g| match guide_side(g, spine_w / 2.0) {
+            Some(left) => {
+                side_guides.push((left, g.clone()));
+                false
+            }
+            None => true,
+        });
         let mut pages: Vec<Page> = Vec::with_capacity(n * 2);
+        // Which side of its spread each page is on.
+        let mut page_left: Vec<bool> = Vec::with_capacity(n * 2);
         for (i, mut record) in records.into_iter().enumerate() {
             // The name the record was given for its place, not its own.
             if record.name == format!("Page {}", i + 1) {
@@ -1176,8 +1192,23 @@ pub(crate) fn parse_document_kept_data(
                 if !first {
                     page.id = doc.ids_mut().page();
                     page.name.clear();
-                    page.guides.clear();
                 }
+                // The record's own guidelines: those of this side, moved
+                // onto the page, and the horizontal ones (#4443).
+                let mut own: Vec<tracedraw_core::document::Guide> = Vec::new();
+                for g in &record.guides {
+                    match guide_side(g, w / 2.0) {
+                        Some(left) if left != on_left => {}
+                        _ => own.push(shifted_guide(g, dx)),
+                    }
+                }
+                own.extend(
+                    side_guides
+                        .iter()
+                        .filter(|(left, _)| *left == on_left)
+                        .map(|(_, g)| shifted_guide(g, spine_shift(spine_w, !on_left))),
+                );
+                page.guides = own;
                 for l in page.layers.iter_mut() {
                     if !first {
                         l.id = doc.ids_mut().layer();
@@ -1195,8 +1226,10 @@ pub(crate) fn parse_document_kept_data(
                     }
                 }
                 pages.push(page);
+                page_left.push(on_left);
             }
         }
+        split_master_layers(&mut doc, &page_left, spine_w);
         for (i, p) in pages.iter_mut().enumerate() {
             if p.name.is_empty() {
                 p.name = format!("Page {}", i + 1);
@@ -8697,6 +8730,95 @@ fn file_corners(radii: &[f64], w: f64, h: f64) -> Corners {
     c
 }
 
+/// Which side of the spine at `spine` (record space) a guideline is on:
+/// `Some(true)` left, `Some(false)` right, `None` for a horizontal one,
+/// which every page of a spread shows.
+fn guide_side(g: &tracedraw_core::document::Guide, spine: f64) -> Option<bool> {
+    use tracedraw_core::document::GuideLine;
+    let x = match g.line {
+        GuideLine::Horizontal { .. } => return None,
+        GuideLine::Vertical { x } => x,
+        GuideLine::Angled { x, angle, .. } => {
+            if angle.rem_euclid(180.0).abs() < 1e-9 {
+                return None;
+            }
+            x
+        }
+    };
+    x.is_finite().then_some(x < spine - SPINE_SLACK_MM)
+}
+
+/// A guideline moved `dx` across.
+fn shifted_guide(g: &tracedraw_core::document::Guide, dx: f64) -> tracedraw_core::document::Guide {
+    use tracedraw_core::document::GuideLine;
+    g.with_line(match g.line {
+        GuideLine::Horizontal { y } => GuideLine::Horizontal { y },
+        GuideLine::Vertical { x } => GuideLine::Vertical { x: x + dx },
+        GuideLine::Angled { x, y, angle } => GuideLine::Angled { x: x + dx, y, angle },
+    })
+}
+
+/// The master layers of a book on facing pages, whose objects are
+/// measured from the spine like the pages' (a page number at the outer
+/// corner of each page of the spread): each layer shown on every page is
+/// split into one for the left pages and one for the right pages, each
+/// holding the objects of its side moved onto the page. Left as they
+/// were, the objects showed half a spread off on the right pages
+/// (#4443). `left[i]` is whether page `i` is a left page.
+fn split_master_layers(doc: &mut Document, left: &[bool], width: f64) {
+    use tracedraw_core::document::MasterScope;
+    if left.len() < 2 || !(width.is_finite() && width > 0.0) {
+        return;
+    }
+    // The scope that takes the pages of one side: pages alternate sides,
+    // so the first page's side is the odd pages'.
+    let scope = |on_left: bool| {
+        if on_left == left[0] {
+            MasterScope::Odd
+        } else {
+            MasterScope::Even
+        }
+    };
+    let layers = std::mem::take(&mut doc.master);
+    let mut out = Vec::with_capacity(layers.len() * 2);
+    for layer in layers {
+        if layer.scope != MasterScope::All || layer.page_range.is_some() || layer.shapes.is_empty() {
+            out.push(layer);
+            continue;
+        }
+        let on_left = |s: &tracedraw_core::Shape| {
+            let b = s.bounds();
+            let c = (b.x0 + b.x1) / 2.0;
+            c.is_finite() && c < width / 2.0 - SPINE_SLACK_MM
+        };
+        for side in [true, false] {
+            let shapes: Vec<tracedraw_core::Shape> = layer
+                .shapes
+                .iter()
+                .filter(|s| on_left(s) == side)
+                .map(|s| {
+                    let mut s = s.clone();
+                    s.transform = Affine::translate((spine_shift(width, !side), 0.0)) * s.transform;
+                    s
+                })
+                .collect();
+            if shapes.is_empty() {
+                continue;
+            }
+            let mut l = layer.clone();
+            if side || !layer.shapes.iter().any(on_left) {
+                // The first part keeps the layer's id.
+            } else {
+                l.id = doc.ids_mut().layer();
+            }
+            l.shapes = shapes;
+            l.scope = scope(side);
+            out.push(l);
+        }
+    }
+    doc.master = out;
+}
+
 /// How far a facing page's objects move from the spine of its spread
 /// onto the page (`width` across): half a page left for a page on the
 /// `right` of the spine, right for one on its left.
@@ -11041,6 +11163,49 @@ pub(crate) mod tests {
         assert_eq!(doc.pages.len(), 4);
         let x0 = doc.pages[0].layers[0].shapes[0].bounds().x0;
         assert!((x0 - 50.0).abs() < 1e-6, "{x0}");
+    }
+
+    /// #4443: in a book on facing pages the guidelines and the master
+    /// layers' objects are measured from the spine like the pages'
+    /// objects: each vertical guideline and each master object goes to
+    /// the pages of its side of the spread, moved onto them; left as they
+    /// were they showed half a spread off on the right pages.
+    #[test]
+    fn a_facing_book_keeps_guidelines_and_master_objects_on_their_side() {
+        use tracedraw_core::document::{Guide, GuideLine, MasterScope};
+        let g = |line| Guide::from(line);
+        assert_eq!(guide_side(&g(GuideLine::Vertical { x: 20.0 }), 50.0), Some(true));
+        assert_eq!(guide_side(&g(GuideLine::Vertical { x: 70.0 }), 50.0), Some(false));
+        assert_eq!(guide_side(&g(GuideLine::Horizontal { y: 5.0 }), 50.0), None);
+        assert_eq!(
+            shifted_guide(&g(GuideLine::Vertical { x: 70.0 }), -50.0).line,
+            GuideLine::Vertical { x: 20.0 }
+        );
+        // Four pages, the first on the right: right, left, right, left.
+        let mut doc = Document::new("book", Size::new(100.0, 150.0));
+        let rect = |doc: &mut Document, x0: f64| {
+            Shape::new(
+                doc.ids_mut().shape(),
+                ShapeKind::Rect {
+                    rect: Rect::new(x0, 0.0, x0 + 20.0, 10.0),
+                    radius: 0.0,
+                    corners: None,
+                },
+            )
+        };
+        let mut layer = Layer::new(doc.ids_mut().layer(), "Numbers");
+        let (l, r) = (rect(&mut doc, 10.0), rect(&mut doc, 60.0));
+        layer.shapes = vec![l, r];
+        doc.master.push(layer);
+        split_master_layers(&mut doc, &[false, true, false, true], 100.0);
+        assert_eq!(doc.master.len(), 2);
+        let x0 = |l: &Layer| (l.shapes[0].bounds().x0 * 10.0).round() / 10.0;
+        let left = doc.master.iter().find(|l| l.scope == MasterScope::Even).expect("left pages");
+        let right = doc.master.iter().find(|l| l.scope == MasterScope::Odd).expect("right pages");
+        // The left page ends at the spine, the right one starts there.
+        assert_eq!(x0(left), 60.0);
+        assert_eq!(x0(right), 10.0);
+        assert_ne!(left.id, right.id);
     }
 
     #[test]

@@ -96,6 +96,11 @@ pub struct PixelEdit {
     pub move_drag: Option<MoveDrag>,
     /// The placement the Move tool's preview shows, when it shows one.
     pub placed_for: Option<crate::pixel_ops::Placement>,
+    /// When the Move tool's preview was last made and how long that took
+    /// (seconds): on a big picture a drag makes it again only as often as
+    /// that allows, so the window keeps up with the pointer (#4427).
+    pub placed_at: Option<web_time::Instant>,
+    pub place_cost: f64,
     /// The whole layer's pixels before the Move tool's first placement on
     /// it, the placements put in since, the layer and the change after
     /// the last: a later move works from these, so what a move took past
@@ -297,12 +302,15 @@ impl PixelEdit {
         self.placed_for = want;
         match want {
             Some(p) => {
+                let started = web_time::Instant::now();
                 let b = self.move_drag.map(|d| d.b).unwrap_or_else(|| self.move_box());
                 self.preview = self.placed_layer(b, &p).or_else(|| {
                     crate::pixel_ops::place_image(&self.pi.img, self.pi.sel.as_ref(), b, &p)
                         .map(|(img, _)| img)
                 });
                 self.view.borrow_mut().full = true;
+                self.place_cost = started.elapsed().as_secs_f64();
+                self.placed_at = Some(web_time::Instant::now());
             }
             None if had => {
                 self.preview = None;
@@ -968,6 +976,8 @@ impl App {
             pen_drag: false,
             move_drag: None,
             placed_for: None,
+            placed_at: None,
+            place_cost: 0.0,
             move_memory: None,
             rev: Default::default(),
             pick_cache: Default::default(),
@@ -1046,9 +1056,16 @@ impl App {
 
     /// [`Self::finish_pixel_edit`] without asking.
     pub fn finish_pixel_edit_now(&mut self) {
-        let Some(pe) = self.pixel_edit.take() else {
+        let Some(mut pe) = self.pixel_edit.take() else {
             return;
         };
+        // The undo steps, the Move tool's memory and the preview go before
+        // the layers are put together and written: with them all still
+        // held a tablet ran out of memory at Finish and the program was
+        // closed (#4427).
+        pe.history = Default::default();
+        pe.move_memory = None;
+        pe.preview = None;
         crate::ui::pixel_mode::leave(self, &pe);
         self.pixel_opts = pe.opts;
         if self.doc().find_shape(pe.shape).is_some() {
@@ -1980,7 +1997,32 @@ fn move_input(
             }
         }
     }
+    // While the box is dragged on a big picture, the preview is made
+    // again only once the time it took has passed twice over; the box
+    // follows the pointer meanwhile (#4427: a tablet froze on every move).
+    if pe.move_drag.is_some() {
+        let since = pe.placed_at.map(|t| t.elapsed().as_secs_f64());
+        if let Some(wait) = place_wait(pe.place_cost, since) {
+            response
+                .ctx
+                .request_repaint_after(std::time::Duration::from_secs_f64(wait));
+            return;
+        }
+    }
     pe.sync_place_preview();
+}
+
+/// How long a drag of the Move tool's box waits before its preview is
+/// made again, given what the last one cost and the time since it was
+/// made (seconds); `None` when it is due. A quick one is always due.
+pub(crate) fn place_wait(cost: f64, since: Option<f64>) -> Option<f64> {
+    const QUICK: f64 = 0.012;
+    let since = since?;
+    if cost < QUICK || !cost.is_finite() {
+        return None;
+    }
+    let wait = (cost * 2.0).min(1.0) - since;
+    (wait > 0.0).then_some(wait)
 }
 
 /// How a new selection joins the one there is: Shift adds, Ctrl takes
@@ -2119,7 +2161,11 @@ pub fn draw_mapped(
     let layered = pe.pi.is_layered();
     // For the mask view, before the picture's upload takes them.
     let (dirty_now, full_now, sel_now) = (v.dirty, v.full, v.sel_changed);
-    if v.tex.is_none() || v.full || size_changed || preview || v.showed_preview {
+    // A preview is sent once when it is made (they all ask for `full`)
+    // and once when it goes, not again every frame it shows: on a big
+    // picture that froze a tablet while a layer was moved (#4427).
+    let preview_changed = preview != v.showed_preview || (preview && v.dirty.is_some());
+    if v.tex.is_none() || v.full || size_changed || preview_changed {
         let composed = layered
             .then(|| pe.pi.composite_region([0, 0, w, h], pe.preview.as_ref()))
             .flatten();
@@ -2553,6 +2599,18 @@ mod tests {
         let sel = pe.pi.sel.clone().unwrap();
         assert!(sel.get_pixel(11, 3)[0] >= 128, "the curve bulges past the corners");
         assert_eq!(sel.get_pixel(15, 3)[0], 0);
+    }
+
+    /// #4427: a quick Move preview is made every frame; a slow one (a big
+    /// picture on a tablet) waits twice what it took, a second at most.
+    #[test]
+    fn a_slow_move_preview_is_made_less_often() {
+        assert_eq!(place_wait(0.005, Some(0.0)), None);
+        assert_eq!(place_wait(0.2, None), None);
+        let w = place_wait(0.2, Some(0.1)).expect("waits");
+        assert!((w - 0.3).abs() < 1e-9, "{w}");
+        assert_eq!(place_wait(0.2, Some(0.5)), None);
+        assert!(place_wait(3.0, Some(0.0)).is_some_and(|w| w <= 1.0));
     }
 
     #[test]
