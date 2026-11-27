@@ -324,6 +324,7 @@ pub fn install(builder: &mut eframe::EventLoopBuilder<eframe::UserEvent>) {
         if let Some(m) = unsafe { msg.as_ref() } {
             tracker.message(m.message, m.wParam);
             hand_over(&mut tracker);
+            crate::external_panel::message(m);
         }
         // The message goes on to the windowing layer as before.
         false

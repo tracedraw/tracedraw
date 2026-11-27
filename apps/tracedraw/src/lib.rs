@@ -173,6 +173,7 @@ mod macro_convert;
 mod macro_forms;
 mod macros;
 mod mcp;
+mod external_panel;
 #[cfg(not(target_arch = "wasm32"))]
 mod mcp_link;
 mod media;
@@ -1317,6 +1318,8 @@ impl eframe::App for Shell {
         hang_watch::poll(app);
         frame_mark("before the interface");
         ui::root(app, ui);
+        // Another program's window docked as a panel follows it.
+        external_panel::sync(app, ui.ctx(), _frame);
         ui::text_field_menu::show(ui.ctx());
         // Keyboard handling captures a browser paste's target before its
         // files are applied, even if their promise finished before this frame.
@@ -1406,6 +1409,8 @@ impl eframe::App for Shell {
     /// Keep the toolbox, dockers and other preferences for the next
     /// session; drawings left unsaved stay backed up for it.
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        // A docked window goes back to its program before ours closes.
+        external_panel::release();
         if let Some(app) = self.app.as_mut() {
             app.wait_for_saving();
             app.wait_for_exporting();

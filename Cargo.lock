@@ -4512,6 +4512,7 @@ dependencies = [
  "pollster 0.4.0",
  "qrcode",
  "qrcode-generator",
+ "raw-window-handle",
  "rfd",
  "roxmltree 0.21.1",
  "rqrr",
