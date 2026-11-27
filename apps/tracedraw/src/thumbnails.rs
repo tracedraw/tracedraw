@@ -10,6 +10,40 @@ use std::path::{Path, PathBuf};
 /// The long side of a thumbnail, pixels.
 const SIZE: f64 = 160.0;
 
+/// Tells the Windows Explorer that the file at `path` changed, so the
+/// thumbnail and the Preview Pane of a drawing just saved show what it
+/// holds now instead of what it held before (#4455). Nothing elsewhere.
+pub fn tell_explorer_changed(path: &Path) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        #[link(name = "shell32")]
+        extern "system" {
+            fn SHChangeNotify(
+                event: i32,
+                flags: u32,
+                item1: *const std::ffi::c_void,
+                item2: *const std::ffi::c_void,
+            );
+        }
+        const SHCNE_UPDATEITEM: i32 = 0x0000_2000;
+        const SHCNF_PATHW: u32 = 0x0005;
+        const SHCNF_FLUSHNOWAIT: u32 = 0x3000;
+        let wide: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+        // SAFETY: a path ending in a nul, read before the call returns.
+        unsafe {
+            SHChangeNotify(
+                SHCNE_UPDATEITEM,
+                SHCNF_PATHW | SHCNF_FLUSHNOWAIT,
+                wide.as_ptr().cast(),
+                std::ptr::null(),
+            );
+        }
+    }
+    #[cfg(not(windows))]
+    let _ = path;
+}
+
 /// The thumbnail's file name: an FNV-1a hash of the drawing's path, the
 /// same from one run to the next.
 fn file_name(path: &Path) -> String {

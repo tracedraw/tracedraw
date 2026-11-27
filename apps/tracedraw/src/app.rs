@@ -10767,6 +10767,7 @@ impl App {
                 self.settings.touch_recent(&path);
                 self.settings.save();
                 self.store_thumbnail(&path);
+                crate::thumbnails::tell_explorer_changed(&path);
             }
             Err(e) => {
                 self.status = crate::i18n::trf("status.save_failed", &[("e", &e.to_string())])

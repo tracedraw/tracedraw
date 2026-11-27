@@ -187,6 +187,25 @@ Root: HKA; Subkey: "Software\Classes\SystemFileAssociations\.tdraw\ShellEx\{{e35
 ; Explorer asks the program that owns .cdr first, so one that draws its
 ; own thumbnails keeps doing so.
 Root: HKA; Subkey: "Software\Classes\SystemFileAssociations\.cdr\ShellEx\{{e357fccd-a995-4576-b01f-234630154e96}"; ValueType: string; ValueName: ""; ValueData: "{{6B1E5D3A-2F41-4C8E-9B7A-1D2C3E4F5A60}"; Flags: uninsdeletekey
+; The Preview Pane shows every page of a .tdraw drawing (#4455): the
+; preview handler in the same DLL, run by Windows in its preview host
+; (the AppID: prevhost.exe, the 32-bit one for the x86 build on 64-bit
+; Windows).
+Root: HKA; Subkey: "Software\Classes\CLSID\{{3C9B0727-3F4F-4DFB-9993-68CAF8283667}"; ValueType: string; ValueName: ""; ValueData: "TraceDraw preview"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\CLSID\{{3C9B0727-3F4F-4DFB-9993-68CAF8283667}\InprocServer32"; ValueType: string; ValueName: ""; ValueData: "{app}\tracedraw_thumbnailer.dll"
+Root: HKA; Subkey: "Software\Classes\CLSID\{{3C9B0727-3F4F-4DFB-9993-68CAF8283667}\InprocServer32"; ValueType: string; ValueName: "ThreadingModel"; ValueData: "Apartment"
+#if Arch == "x86"
+Root: HKA; Subkey: "Software\Classes\CLSID\{{3C9B0727-3F4F-4DFB-9993-68CAF8283667}"; ValueType: string; ValueName: "AppID"; ValueData: "{{534A1E02-D58F-44f0-B58B-36CBED287C7C}"; Check: IsWin64
+Root: HKA; Subkey: "Software\Classes\CLSID\{{3C9B0727-3F4F-4DFB-9993-68CAF8283667}"; ValueType: string; ValueName: "AppID"; ValueData: "{{6d2b5079-2f0b-48dd-ab7f-97cec514d30b}"; Check: not IsWin64
+#else
+Root: HKA; Subkey: "Software\Classes\CLSID\{{3C9B0727-3F4F-4DFB-9993-68CAF8283667}"; ValueType: string; ValueName: "AppID"; ValueData: "{{6d2b5079-2f0b-48dd-ab7f-97cec514d30b}"
+#endif
+Root: HKA; Subkey: "Software\Microsoft\Windows\CurrentVersion\PreviewHandlers"; ValueType: string; ValueName: "{{3C9B0727-3F4F-4DFB-9993-68CAF8283667}"; ValueData: "TraceDraw preview"; Flags: uninsdeletevalue
+Root: HKA; Subkey: "Software\Classes\.tdraw\ShellEx\{{8895b1c6-b41f-4c1c-a562-0d564250836f}"; ValueType: string; ValueName: ""; ValueData: "{{3C9B0727-3F4F-4DFB-9993-68CAF8283667}"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\TraceDraw.Document\ShellEx\{{8895b1c6-b41f-4c1c-a562-0d564250836f}"; ValueType: string; ValueName: ""; ValueData: "{{3C9B0727-3F4F-4DFB-9993-68CAF8283667}"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\SystemFileAssociations\.tdraw\ShellEx\{{8895b1c6-b41f-4c1c-a562-0d564250836f}"; ValueType: string; ValueName: ""; ValueData: "{{3C9B0727-3F4F-4DFB-9993-68CAF8283667}"; Flags: uninsdeletekey
+; .cdr files in the fallback key alone, as for their thumbnails.
+Root: HKA; Subkey: "Software\Classes\SystemFileAssociations\.cdr\ShellEx\{{8895b1c6-b41f-4c1c-a562-0d564250836f}"; ValueType: string; ValueName: ""; ValueData: "{{3C9B0727-3F4F-4DFB-9993-68CAF8283667}"; Flags: uninsdeletekey
 ; "Open with TraceDraw" for .cdr, without stealing the default
 Root: HKA; Subkey: "Software\Classes\.cdr\OpenWithProgids"; ValueType: string; ValueName: "TraceDraw.Document"; ValueData: ""; Flags: uninsdeletevalue
 ; "Open with TraceDraw" for pictures, without stealing their default: a
