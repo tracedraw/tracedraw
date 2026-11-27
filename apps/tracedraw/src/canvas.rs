@@ -190,6 +190,7 @@ pub fn draw_canvas(app: &App, painter: &Painter, rect: ERect) {
     // while transforming on (Options > Display, #3569), the objects
     // themselves are drawn there too.
     let live = preview.filter(|_| app.settings.live_transform_preview);
+    LIVE_PREVIEW_SHOWN.with(|c| c.set(false));
     draw_page(app, painter, rect, live);
     crate::pixel_edit_app::draw(app, painter);
     let doc: &Document = app.doc();
@@ -202,7 +203,7 @@ pub fn draw_canvas(app: &App, painter: &Painter, rect: ERect) {
     }
     // Selection.
     match preview {
-        Some(_) if !shows_transform_outline(app, live.is_some()) => {}
+        Some(_) if !shows_transform_outline(app, LIVE_PREVIEW_SHOWN.with(|c| c.get())) => {}
         Some(t) => draw_transform_outline(app, painter, t),
         None => draw_selection(app, painter, None),
     }
@@ -878,6 +879,7 @@ fn draw_page(app: &App, painter: &Painter, rect: ERect, preview: Option<Affine>)
         // at the same view the picture was drawn for.
         raster.zoom_target = app.zoom_glide.target_view();
     }
+    let asked = preview_ids.clone();
     let main = app.raster.borrow_mut().texture(
         painter.ctx(),
         doc,
@@ -894,6 +896,13 @@ fn draw_page(app: &App, painter: &Painter, rect: ERect, preview: Option<Affine>)
         (app.view_mode == crate::app::ViewMode::Pixels).then(|| app.document_dpi()),
     );
     let main_rendered = app.raster.borrow().render_count() != renders_before;
+    LIVE_PREVIEW_SHOWN.with(|c| {
+        c.set(asked.is_some_and(|(ids, t)| {
+            app.raster
+                .borrow()
+                .shows_preview(app.page, revision, &ids, t)
+        }))
+    });
     // The whole page drawn small, with what is drawn beside it (#2354),
     // for where the picture does not reach while the view moves (#2048).
     // Not while something is previewed or only part of the drawing
@@ -2498,9 +2507,17 @@ pub(crate) fn start_frame(app: &App) -> Option<Rect> {
         .filter(|r| r.width().is_finite() && r.height().is_finite())
 }
 
+thread_local! {
+    /// The page drawn this frame is a whole render of the live drag
+    /// preview as the drag stands now (#4475).
+    static LIVE_PREVIEW_SHOWN: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
 /// Whether the drag outline shows while the selection is transformed:
-/// always, unless the objects are drawn where they go (`live`) and
-/// Options > Display has the outline over them off (#3704).
+/// always, unless the objects are drawn where they go (`live`: the page
+/// shown is the render of the drag as it stands, not an earlier
+/// position, one on its way or one that failed, #4475) and Options >
+/// Display has the outline over them off (#3704).
 fn shows_transform_outline(app: &App, live: bool) -> bool {
     !live || app.settings.transform_outline_over_objects
 }
@@ -2534,6 +2551,14 @@ pub fn draw_transform_outline(app: &App, painter: &Painter, t: Affine) {
 /// not the one beneath it (#3569). A symmetry out of edit mode goes
 /// whole: its copies too, also those of one inside a group.
 pub fn transform_outline_paths(app: &App, s: &tracedraw_core::Shape, t: Affine) -> Vec<BezPath> {
+    // A symbol instance, alone or inside groups, shows its symbol's
+    // objects, not the stand-in square an instance has without its
+    // symbol table (#4474).
+    let drawn = s
+        .holds_symbol_instance()
+        .then(|| app.with_symbols_drawn(s))
+        .flatten();
+    let s = drawn.as_ref().unwrap_or(s);
     let mut moved = s.clone();
     moved.transform_by(t);
     let mut paths = Vec::new();
@@ -5492,6 +5517,53 @@ mod tests {
         assert!(holds_a_symbol(&group));
         assert!(holds_a_symbol(&clip));
         assert!(!holds_a_symbol(&plain));
+    }
+
+    /// #4474: the drag outline of a symbol instance, alone or nested two
+    /// groups deep with offsets, is the symbol's 50 x 30 rectangle where
+    /// it will drop, not a 10 x 10 stand-in.
+    #[test]
+    fn the_drag_outline_of_a_symbol_is_its_objects() {
+        use kurbo::Shape as _;
+        use tracedraw_core::document::Symbol;
+        use tracedraw_core::{Command, Rect, Shape, ShapeId};
+        let mut app = App::headless();
+        app.run(Command::AddSymbol {
+            symbol: Symbol {
+                name: "Box".into(),
+                shape: Shape::new(
+                    ShapeId(900),
+                    ShapeKind::Rect {
+                        rect: Rect::new(0.0, 0.0, 50.0, 30.0),
+                        radius: 0.0,
+                        corners: None,
+                    },
+                ),
+            },
+        });
+        let index = app.doc().symbols.len() - 1;
+        let mut inst = Shape::new(ShapeId(901), ShapeKind::SymbolInstance { index });
+        inst.transform = Affine::translate((5.0, 0.0));
+        let t = Affine::translate((100.0, 10.0));
+        let b = transform_outline_paths(&app, &inst, t)[0].bounding_box();
+        assert!(
+            (b.width() - 50.0).abs() < 1e-6 && (b.height() - 30.0).abs() < 1e-6,
+            "{b:?}"
+        );
+        assert!((b.x0 - 105.0).abs() < 1e-6 && (b.y0 - 10.0).abs() < 1e-6, "{b:?}");
+        let mut inner = Shape::new(ShapeId(902), ShapeKind::Group { children: vec![inst] });
+        inner.transform = Affine::translate((0.0, 20.0));
+        let mut outer = Shape::new(ShapeId(903), ShapeKind::Group { children: vec![inner] });
+        outer.transform = Affine::translate((7.0, 0.0));
+        let mut b = Rect::ZERO;
+        for (i, p) in transform_outline_paths(&app, &outer, t).iter().enumerate() {
+            b = if i == 0 { p.bounding_box() } else { b.union(p.bounding_box()) };
+        }
+        assert!(
+            (b.width() - 50.0).abs() < 1e-6 && (b.height() - 30.0).abs() < 1e-6,
+            "{b:?}"
+        );
+        assert!((b.x0 - 112.0).abs() < 1e-6 && (b.y0 - 30.0).abs() < 1e-6, "{b:?}");
     }
 
     /// The drag outline of an object a perspective (or an envelope)

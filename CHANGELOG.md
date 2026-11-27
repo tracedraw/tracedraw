@@ -7,6 +7,9 @@ full, row-by-row status.
 ## Unreleased
 
 - Windows Explorer: the Preview Pane shows every page of a .tdraw drawing (and of a .cdr file no other program previews), one under another, scrolled with the mouse wheel, the scroll bar or the keys; after a save, the file's thumbnail and preview show the drawing as saved (#4455).
+- Text boxes: text selected before a right click stays selected, so the menu's Cut, Copy and Delete work on it (they were always greyed out), for example in the QR Code text of Properties (#4486).
+- Drag outline: a symbol, on its own or inside groups, shows its own objects where it will drop instead of a small square (#4474).
+- With the objects shown while transforming and the outline over them off, the drag outline stays until the drawing shows the drag as it stands, so an older position never shows alone (#4475).
 - Image editing on tablets and phones: moving a selection or a pasted picture no longer slows down to a crawl, the picture is no longer sent to the screen again on every frame while a preview shows, and undo keeps less memory (#4427).
 - .cdr facing-page books: guidelines and master-page objects stay on their own side of the spread instead of all landing on the left page (#4443).
 - Export and Publish to PDF: the target file size can be typed in KB or MB, and the Export dialog's size estimate for PDF follows the compression settings (#4452).

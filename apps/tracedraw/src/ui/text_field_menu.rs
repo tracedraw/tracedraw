@@ -28,6 +28,43 @@ struct Open {
 thread_local! {
     static OPEN: RefCell<Option<Open>> = const { RefCell::new(None) };
     static PENDING: RefCell<Option<(Id, Action)>> = const { RefCell::new(None) };
+    /// The text selected in the box with the focus, as it stood the last
+    /// frame no pointer button was held. A text box moves its cursor to
+    /// the pointer on any press, the right button's too, so the
+    /// selection is gone by the time the right click ends; the menu takes
+    /// it from here and puts it back (#4486).
+    static SELECTION: RefCell<Option<(Id, egui::text::CCursorRange)>> =
+        const { RefCell::new(None) };
+}
+
+/// Notes the focused box's selection while no pointer button is held.
+fn remember_selection(ctx: &Context) {
+    if ctx.input(|i| i.pointer.any_down() || i.pointer.any_released()) {
+        return;
+    }
+    let sel = ctx.memory(|m| m.focused()).and_then(|id| {
+        egui::TextEdit::load_state(ctx, id)
+            .and_then(|s| s.cursor.char_range())
+            .filter(|r| !r.is_empty())
+            .map(|r| (id, r))
+    });
+    SELECTION.with(|s| *s.borrow_mut() = sel);
+}
+
+/// The selection the right click on `field` found, put back in the box.
+fn restore_selection(ctx: &Context, field: Id) -> bool {
+    let Some((id, range)) = SELECTION.with(|s| *s.borrow()) else {
+        return false;
+    };
+    if id != field {
+        return false;
+    }
+    let Some(mut state) = egui::TextEdit::load_state(ctx, field) else {
+        return false;
+    };
+    state.cursor.set_char_range(Some(range));
+    state.store(ctx, field);
+    true
 }
 
 /// The events that make a text box with the focus do `action`, with
@@ -144,9 +181,10 @@ pub fn show(ctx: &Context) {
     let clicked = right || long_press(ctx, pos);
     if clicked && !egui::Popup::is_any_open(ctx) {
         if let Some(field) = pos.and_then(|p| field_at(ctx, p)) {
-            let selected = egui::TextEdit::load_state(ctx, field)
-                .and_then(|s| s.cursor.char_range())
-                .is_some_and(|r| !r.is_empty());
+            let selected = restore_selection(ctx, field)
+                || egui::TextEdit::load_state(ctx, field)
+                    .and_then(|s| s.cursor.char_range())
+                    .is_some_and(|r| !r.is_empty());
             ctx.memory_mut(|m| m.request_focus(field));
             OPEN.with(|o| {
                 *o.borrow_mut() = Some(Open {
@@ -159,6 +197,7 @@ pub fn show(ctx: &Context) {
         }
     }
     let Some(open) = OPEN.with(|o| *o.borrow()) else {
+        remember_selection(ctx);
         return;
     };
     let mut picked: Option<Action> = None;
@@ -273,6 +312,66 @@ mod tests {
         raw_input(&mut raw);
         run(&ctx, &mut text, raw);
         assert_eq!(text, "pasted");
+    }
+
+    /// #4486: text selected before the right click stays selected, so
+    /// Cut, Copy and Delete are offered and Cut takes that text.
+    #[test]
+    fn a_right_click_keeps_the_selection_for_cut() {
+        let ctx = Context::default();
+        let mut text = String::from("hello world");
+        let field = Id::new("sel_field");
+        let run = |ctx: &Context, text: &mut String, raw: RawInput| {
+            let mut out = ctx.run_ui(raw, |ui| {
+                egui::CentralPanel::default().show_inside(ui, |ui| {
+                    ui.add(egui::TextEdit::singleline(text).id(field));
+                });
+                show(ui.ctx());
+            });
+            out.textures_delta.clear();
+            out.platform_output
+        };
+        let screen = egui::Rect::from_min_size(Pos2::ZERO, egui::vec2(400.0, 300.0));
+        let input = |events: Vec<Event>| RawInput {
+            screen_rect: Some(screen),
+            events,
+            ..Default::default()
+        };
+        OPEN.with(|o| *o.borrow_mut() = None);
+        SELECTION.with(|s| *s.borrow_mut() = None);
+        run(&ctx, &mut text, input(vec![]));
+        ctx.memory_mut(|m| m.request_focus(field));
+        run(&ctx, &mut text, input(vec![]));
+        // Select "hello" as a drag or Shift+arrows would.
+        let mut st = egui::TextEdit::load_state(&ctx, field).expect("state");
+        st.cursor.set_char_range(Some(egui::text::CCursorRange::two(
+            egui::text::CCursor::new(0),
+            egui::text::CCursor::new(5),
+        )));
+        st.store(&ctx, field);
+        run(&ctx, &mut text, input(vec![]));
+        let r = ctx.read_response(field).expect("the box").rect;
+        let at = r.right_center() - egui::vec2(8.0, 0.0);
+        let click = |pressed| Event::PointerButton {
+            pos: at,
+            button: egui::PointerButton::Secondary,
+            pressed,
+            modifiers: Modifiers::NONE,
+        };
+        run(&ctx, &mut text, input(vec![Event::PointerMoved(at), click(true)]));
+        run(&ctx, &mut text, input(vec![click(false)]));
+        let open = OPEN.with(|o| *o.borrow()).expect("the menu opens");
+        assert!(open.selected, "Cut, Copy and Delete are offered");
+        OPEN.with(|o| *o.borrow_mut() = None);
+        PENDING.with(|p| *p.borrow_mut() = Some((field, Action::Cut)));
+        let mut raw = input(vec![]);
+        raw_input(&mut raw);
+        let out = run(&ctx, &mut text, raw);
+        assert_eq!(text, " world");
+        assert!(out
+            .commands
+            .iter()
+            .any(|c| matches!(c, egui::OutputCommand::CopyText(t) if t == "hello")));
     }
 
     /// #4262: the font size box of the property bar (a number field on a
