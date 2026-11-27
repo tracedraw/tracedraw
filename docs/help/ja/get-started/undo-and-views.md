@@ -36,7 +36,7 @@
 
 - どのツールでも、マウスの中ボタンを押したままドラッグします。
 - [[tool.pan]] ツール (<kbd>H</kbd>) を選んでドラッグします。
-- <kbd>Ctrl</kbd>+ホイールと <kbd>Shift</kbd>+ホイールで左右に、<kbd>Alt</kbd>+ホイールで上下にスクロールします。<kbd>Ctrl</kbd>+ホイールでズームするには、[[options.zoom_pan]] ページの [[options.ctrl_wheel_zooms]] をオンにします。
+- <kbd>Shift</kbd>+ホイールで左右に、<kbd>Alt</kbd>+ホイールで上下にスクロールします。<kbd>Ctrl</kbd>+ホイールは既定でズームします。ホイール単独でズームする設定の場合は、[[options.zoom_pan]] ページの [[options.ctrl_wheel_zooms]] をオフにすると <kbd>Ctrl</kbd>+ホイールで左右にスクロールできます。
 - スクロールバーを使います。スクロールバーはページとその周囲 1 ページ分の範囲をカバーします。
 - スクロールバーの間の角にあるナビゲーターボタン、または <kbd>N</kbd> キーを押したまま、ページのサムネイル上でポインターを動かします。[[menu.view > menu.view.navigator]] はクリックするまでサムネイルを開いたままにします。サムネイルをクリックするとその場所へ移動し、ほかの場所のクリックか <kbd>Esc</kbd> で閉じます。
 - <kbd>PgUp</kbd> と <kbd>PgDn</kbd> で前のページと次のページに移動します。

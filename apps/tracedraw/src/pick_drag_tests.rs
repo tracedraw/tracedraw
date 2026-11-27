@@ -31500,9 +31500,9 @@ fn a_balloon_picked_with_its_tool_takes_the_style_clicked_on_the_bar() {
     assert_eq!(app.selection, vec![id], "still selected");
 }
 
-/// With the wheel zooming, Ctrl+wheel and Shift+wheel scroll the drawing
-/// sideways and Alt+wheel up and down, without zooming (#3087): Alt+wheel
-/// scrolled sideways, and egui took Ctrl+wheel for a zoom.
+/// With the wheel zooming, Shift+wheel scrolls sideways and Alt+wheel
+/// up and down without zooming. Ctrl+wheel pans only with the Zoom/Pan
+/// opt-out (#3087, #4507).
 #[test]
 fn ctrl_and_shift_wheel_scroll_sideways_alt_wheel_up_and_down() {
     let (ctx, mut app, _) = setup();
@@ -31527,11 +31527,13 @@ fn ctrl_and_shift_wheel_scroll_sideways_alt_wheel_up_and_down() {
     };
     step(&mut app, vec![Event::PointerMoved(at)], Modifiers::NONE);
     step(&mut app, vec![Event::PointerMoved(at)], Modifiers::NONE);
+    let default_ctrl_zoom = app.settings.ctrl_wheel_zooms;
     for (name, modifiers, sideways) in [
         ("Ctrl", Modifiers::CTRL, true),
         ("Shift", Modifiers::SHIFT, true),
         ("Alt", Modifiers::ALT, false),
     ] {
+        app.settings.ctrl_wheel_zooms = default_ctrl_zoom && modifiers != Modifiers::CTRL;
         let zoom = app.view.zoom;
         let origin = app.view.origin;
         let wheel = Event::MouseWheel {
@@ -31626,14 +31628,11 @@ fn shift_wheel_scrolls_sideways_when_the_wheel_scrolls() {
     }
 }
 
-/// Options > Tools > Zoom/Pan > Ctrl+wheel zooms (#3473): ticked, a
-/// Ctrl+wheel turn zooms about the pointer as the plain wheel does,
-/// without scrolling; unticked it scrolls sideways (#3087).
+/// Ctrl+wheel zooms about the pointer by default (#4507).
 #[test]
 fn ctrl_wheel_zooms_when_the_option_is_ticked() {
     let (ctx, mut app, _) = setup();
-    assert!(app.settings.wheel_zooms && !app.settings.ctrl_wheel_zooms);
-    app.settings.ctrl_wheel_zooms = true;
+    assert!(app.settings.wheel_zooms);
     let at = Pos2::new(700.0, 500.0);
     let mut t = 10.0;
     let mut step = |app: &mut App, events: Vec<Event>, modifiers: Modifiers| {
@@ -31666,7 +31665,11 @@ fn ctrl_wheel_zooms_when_the_option_is_ticked() {
     for _ in 0..30 {
         step(&mut app, Vec::new(), Modifiers::CTRL);
     }
-    assert!(app.view.zoom > zoom * 1.01, "zoomed in: {zoom} -> {}", app.view.zoom);
+    assert!(
+        app.view.zoom > zoom * 1.01,
+        "zoomed in: {zoom} -> {}",
+        app.view.zoom
+    );
     let still = app.view.to_page(at);
     assert!(
         (still.x - under.x).abs() < 1e-2 && (still.y - under.y).abs() < 1e-2,

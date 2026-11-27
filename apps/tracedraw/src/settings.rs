@@ -802,9 +802,9 @@ pub struct Settings {
     #[serde(default)]
     pub wheel_zoom_centers: bool,
     /// Options > Tools > Zoom/Pan > Ctrl+wheel zooms: while the wheel
-    /// zooms, Ctrl+wheel zooms too instead of scrolling sideways (off by
-    /// default, #3473; #3087).
-    #[serde(default)]
+    /// zooms, Ctrl+wheel zooms too (on by default, #4507). Off, it scrolls
+    /// sideways (#3473, #3087).
+    #[serde(default = "default_true")]
     pub ctrl_wheel_zooms: bool,
     /// Options > Tools > Zoom/Pan > Smooth zoom: a wheel notch zooms in
     /// a short glide, shorter for faster wheel turns (on by default);
@@ -1258,7 +1258,7 @@ fn default_desktop() -> [u8; 3] {
 }
 
 /// How many one-time upgrades `Settings::upgrade` knows.
-const UPGRADES: u32 = 10;
+const UPGRADES: u32 = 11;
 
 fn default_outline_units() -> String {
     "pt".into()
@@ -2821,7 +2821,7 @@ impl Default for Settings {
             zoom_right_click_out: true,
             zoom_relative_1to1: true,
             wheel_zoom_centers: false,
-            ctrl_wheel_zooms: false,
+            ctrl_wheel_zooms: true,
             smooth_zoom: true,
             same_view_on_every_page: false,
             light_zoom: false,
@@ -3122,6 +3122,10 @@ impl Settings {
                     c.clear();
                 }
             }
+        }
+        // Restore Ctrl+wheel zoom once for saved preferences (#4507).
+        if self.upgrades < 11 {
+            self.ctrl_wheel_zooms = true;
         }
         self.upgrades = self.upgrades.max(UPGRADES);
         self.migrate_ai();
@@ -4279,6 +4283,19 @@ mod tests {
         assert_eq!(typed.formats.output_condition, "FOGRA51");
         let chosen = migrated(r#"{"upgrades": 10, "formats": {"output_condition": "FOGRA39"}}"#);
         assert_eq!(chosen.formats.output_condition, "FOGRA39");
+    }
+
+    /// #4507: the old default is upgraded once; a newer opt-out stays.
+    #[test]
+    fn ctrl_wheel_defaults_to_zoom_for_new_and_upgraded_settings() {
+        assert!(Settings::default().ctrl_wheel_zooms);
+        let missing: Settings = serde_json::from_str("{}").expect("missing field");
+        assert!(missing.ctrl_wheel_zooms);
+        let mut old = migrated(r#"{"upgrades": 10, "ctrl_wheel_zooms": false}"#);
+        assert!(old.ctrl_wheel_zooms);
+        old.ctrl_wheel_zooms = false;
+        let saved = serde_json::to_string(&old).expect("saved settings");
+        assert!(!migrated(&saved).ctrl_wheel_zooms);
     }
 
     /// #3811: Save As shows TraceDraw's Save Drawing dialog, with the type

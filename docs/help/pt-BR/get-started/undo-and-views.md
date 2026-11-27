@@ -57,10 +57,10 @@ objetos.
 - Mantenha o botão do meio do mouse pressionado e arraste, com qualquer
   ferramenta.
 - Escolha a ferramenta [[tool.pan]] (<kbd>H</kbd>) e arraste.
-- <kbd>Ctrl</kbd>+roda e <kbd>Shift</kbd>+roda rolam para os lados,
-  <kbd>Alt</kbd>+roda para cima e para baixo. Para dar zoom com
-  <kbd>Ctrl</kbd>+roda, marque [[options.ctrl_wheel_zooms]] na página
-  [[options.zoom_pan]].
+- <kbd>Shift</kbd>+roda rola para os lados, e <kbd>Alt</kbd>+roda para
+  cima e para baixo. <kbd>Ctrl</kbd>+roda dá zoom por padrão. Quando a roda
+  sozinha dá zoom, desmarque [[options.ctrl_wheel_zooms]] na página
+  [[options.zoom_pan]] para rolar para os lados com <kbd>Ctrl</kbd>+roda.
 - Use as barras de rolagem, que cobrem a página e o tamanho de uma página ao
   redor.
 - Mantenha pressionado o botão Navegador, no canto entre as barras de rolagem,

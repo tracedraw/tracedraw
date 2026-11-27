@@ -57,9 +57,10 @@ Double-click the tool's button to zoom to fit all objects.
 
 - Hold the middle mouse button and drag, with any tool.
 - Choose the [[tool.pan]] tool (<kbd>H</kbd>) and drag.
-- <kbd>Ctrl</kbd>+wheel and <kbd>Shift</kbd>+wheel scroll sideways,
-  <kbd>Alt</kbd>+wheel up and down. To zoom with <kbd>Ctrl</kbd>+wheel
-  instead, tick [[options.ctrl_wheel_zooms]] on the [[options.zoom_pan]] page.
+- <kbd>Shift</kbd>+wheel scrolls sideways, <kbd>Alt</kbd>+wheel up and
+  down. <kbd>Ctrl</kbd>+wheel zooms by default. To scroll sideways with
+  <kbd>Ctrl</kbd>+wheel instead, turn off [[options.ctrl_wheel_zooms]] on
+  the [[options.zoom_pan]] page when the plain wheel zooms.
 - Use the scroll bars, which cover the page and one page size around it.
 - While you drag (moving objects, drawing, a selection frame, nodes), bring
   the pointer to the edge of the drawing window: the view scrolls that way,
