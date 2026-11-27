@@ -143,12 +143,36 @@ fn system_budget() -> Option<(usize, usize, usize)> {
     if unsafe { GlobalMemoryStatusEx(&mut st) } == 0 {
         return None;
     }
-    let bytes = |n: u64| usize::try_from(n).unwrap_or(usize::MAX);
-    Some((
-        bytes(st.avail_phys),
-        bytes(st.avail_page),
-        bytes(st.total_phys),
+    Some(windows_amounts(
+        st.avail_phys,
+        st.avail_page,
+        st.total_phys,
+        st.avail_virt,
+        st.total_virt,
     ))
+}
+
+/// The three amounts of [`system_budget`] from Windows's memory status,
+/// each capped by the address space of this process: a 32-bit program
+/// has at most 4 GB of it however much memory the machine has, and a
+/// cache sized by the machine's memory (up to 1 GB of pictures there)
+/// left too little room for the drawing, so a large one with big
+/// pictures closed the program (#4524). For a 64-bit program the
+/// address space is far larger than any memory and changes nothing.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+fn windows_amounts(
+    avail_phys: u64,
+    avail_page: u64,
+    total_phys: u64,
+    avail_virt: u64,
+    total_virt: u64,
+) -> (usize, usize, usize) {
+    let bytes = |n: u64| usize::try_from(n).unwrap_or(usize::MAX);
+    (
+        bytes(avail_phys.min(avail_virt)),
+        bytes(avail_page.min(avail_virt)),
+        bytes(total_phys.min(total_virt)),
+    )
 }
 
 /// The free memory of Linux from `/proc/meminfo`: `MemAvailable` (what
@@ -403,6 +427,34 @@ mod tests {
         let mut p = Pixmap::new(w, h).expect("pixmap");
         p.fill(tiny_skia::Color::from_rgba8(shade, 0, 0, 255));
         p.encode_png().expect("png")
+    }
+
+    /// #4524: a 32-bit program on a machine with plenty of memory
+    /// sized its picture cache by the machine, not by its 4 GB of
+    /// address space, and ran out of room; the address space caps every
+    /// amount, and a 64-bit one changes nothing.
+    #[test]
+    fn the_budget_fits_the_address_space_of_the_program() {
+        const GB: u64 = 1 << 30;
+        // 32-bit on 32 GB of memory: 1.5 GB of address space left of 4.
+        let (phys, commit, total) =
+            windows_amounts(20 * GB, 40 * GB, 32 * GB, 3 * GB / 2, 4 * GB - 1);
+        assert_eq!(phys as u64, 3 * GB / 2);
+        assert_eq!(commit as u64, 3 * GB / 2);
+        assert_eq!(total as u64, (4 * GB - 1).min(usize::MAX as u64));
+        let cap = max_budget(total);
+        assert!(budget_from(phys, commit, 0, cap) as u64 <= GB);
+        // 64-bit: the machine's own amounts.
+        let big = 128 << 40;
+        let (phys, commit, total) = windows_amounts(20 * GB, 40 * GB, 32 * GB, big, big);
+        assert_eq!(
+            (phys as u64, commit as u64, total as u64),
+            (
+                (20 * GB).min(usize::MAX as u64),
+                (40 * GB).min(usize::MAX as u64),
+                (32 * GB).min(usize::MAX as u64)
+            )
+        );
     }
 
     #[test]

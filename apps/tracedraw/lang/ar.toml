@@ -4413,6 +4413,7 @@ status.could_not_open = "تعذّر فتح {p}: {e}"
 status.closed_format = "{name} ملف أصلي لتطبيق لا ينشر تنسيقه، لذلك لا يستطيع TraceDraw قراءته. صدّره من ذلك التطبيق بصيغة PDF (تبقى المنحنيات والنصوص والصور قابلة للتحرير) أو SVG ثم افتح ذلك الملف." # mt
 status.could_not_open_viewer = "تعذّر فتح عارض النظام"
 status.could_not_read = "تعذّر قراءة {p}: {e}"
+status.picture_no_memory = "لا توجد ذاكرة كافية لقراءة هذه الصورة ({w} × {h} بكسل)"
 status.cursor_coordinates = "إحداثيات المؤشر"
 status.curve_nodes = "منحنى: {n} عقدة"
 status.defaults_changed = "تم تغيير الخصائص الافتراضية للعناصر الجديدة: {kinds}"

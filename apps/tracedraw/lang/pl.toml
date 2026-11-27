@@ -4413,6 +4413,7 @@ status.could_not_open = "Nie udało się otworzyć {p}: {e}"
 status.closed_format = "{name} to natywny plik aplikacji, która nie publikuje swojego formatu, więc TraceDraw nie może go odczytać. Wyeksportuj go w tej aplikacji jako PDF (krzywe, tekst i obrazy pozostają edytowalne) lub SVG i otwórz ten plik." # mt
 status.could_not_open_viewer = "Nie udało się otworzyć przeglądarki systemowej"
 status.could_not_read = "Nie udało się odczytać {p}: {e}"
+status.picture_no_memory = "Za mało pamięci, aby odczytać ten obraz ({w} × {h} pikseli)"
 status.cursor_coordinates = "Współrzędne kursora"
 status.curve_nodes = "Krzywa, węzły: {n}"
 status.defaults_changed = "Zmieniono domyślne właściwości nowych obiektów: {kinds}"

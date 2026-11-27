@@ -267,7 +267,7 @@ pub fn read(bytes: &[u8]) -> Result<ReadPicture, String> {
 fn read_within(bytes: &[u8], limit: u64) -> Result<ReadPicture, String> {
     match crate::files::decode_picture_within(bytes, limit) {
         Ok(img) => Ok(ReadPicture {
-            rgba: img.into_rgba8(),
+            rgba: crate::files::rgba8_of(img)?,
             planes: None,
             mode: file_mode(bytes),
         }),

@@ -1514,6 +1514,60 @@ pub fn picture_decode_limit() -> u64 {
     }
 }
 
+/// The pixels of a decoded picture as 8-bit RGBA, or why there is not
+/// memory for them. The image library's own conversion takes the room
+/// for the new pixels with a check that stops the program when it is
+/// refused: a 32-bit copy reading a 4961 x 7016 pixel photo asked for
+/// 139 MB more beside the decoded one and closed (#4524). Here the room
+/// is asked for first and a refusal is an answer, so the picture is not
+/// read and the program goes on. RGBA pictures are taken as they are,
+/// RGB and grey ones are widened here; the others go to the library
+/// once their room is known to be there.
+pub fn rgba8_of(img: image::DynamicImage) -> Result<image::RgbaImage, String> {
+    use image::DynamicImage as D;
+    let (w, h) = (img.width(), img.height());
+    if let D::ImageRgba8(rgba) = img {
+        return Ok(rgba);
+    }
+    let len = (w as usize)
+        .checked_mul(h as usize)
+        .and_then(|n| n.checked_mul(4))
+        .ok_or_else(|| no_memory_for(w, h))?;
+    let mut out: Vec<u8> = Vec::new();
+    out.try_reserve_exact(len).map_err(|_| no_memory_for(w, h))?;
+    match &img {
+        D::ImageRgb8(rgb) => {
+            for p in rgb.as_raw().chunks_exact(3) {
+                out.extend_from_slice(&[p[0], p[1], p[2], 255]);
+            }
+        }
+        D::ImageLuma8(grey) => {
+            for &g in grey.as_raw() {
+                out.extend_from_slice(&[g, g, g, 255]);
+            }
+        }
+        D::ImageLumaA8(grey) => {
+            for p in grey.as_raw().chunks_exact(2) {
+                out.extend_from_slice(&[p[0], p[0], p[0], p[1]]);
+            }
+        }
+        _ => {
+            // The room is there; give it back to the library's own copy.
+            drop(out);
+            return Ok(img.into_rgba8());
+        }
+    }
+    image::RgbaImage::from_raw(w, h, out).ok_or_else(|| no_memory_for(w, h))
+}
+
+/// The answer of [`rgba8_of`] when the memory is refused.
+fn no_memory_for(w: u32, h: u32) -> String {
+    crate::i18n::trf(
+        "status.picture_no_memory",
+        &[("w", &w.to_string()), ("h", &h.to_string())],
+    )
+}
+
 /// Decode a picture file (any format the image crate was built with)
 /// within [`picture_decode_limit`].
 pub fn decode_picture(bytes: &[u8]) -> image::ImageResult<image::DynamicImage> {
@@ -2794,6 +2848,31 @@ mod tests {
         // Not a picture: an error, no panic.
         assert!(decode_picture(b"not a picture").is_err());
         assert!(decode_picture(&png[..png.len() / 2]).is_err());
+    }
+
+    /// #4524: pictures are widened to RGBA without the image library's
+    /// conversion, which stopped the program when memory was refused;
+    /// the pixels come out as the library makes them.
+    #[test]
+    fn pictures_widen_to_rgba_as_the_library_does() {
+        let rgb = image::RgbImage::from_fn(5, 3, |x, y| image::Rgb([x as u8 * 40, y as u8 * 70, 9]));
+        let grey = image::GrayImage::from_fn(4, 2, |x, y| image::Luma([(x * 50 + y) as u8]));
+        let grey_alpha =
+            image::GrayAlphaImage::from_fn(3, 3, |x, y| image::LumaA([x as u8 * 80, y as u8 * 100]));
+        let rgba = image::RgbaImage::from_fn(2, 2, |x, y| image::Rgba([1, 2, x as u8, y as u8]));
+        let wide = image::DynamicImage::ImageRgb16(image::ImageBuffer::from_fn(2, 2, |x, _| {
+            image::Rgb([x as u16 * 30000, 65535, 0])
+        }));
+        for img in [
+            image::DynamicImage::ImageRgb8(rgb),
+            image::DynamicImage::ImageLuma8(grey),
+            image::DynamicImage::ImageLumaA8(grey_alpha),
+            image::DynamicImage::ImageRgba8(rgba),
+            wide,
+        ] {
+            let want = img.to_rgba8();
+            assert_eq!(rgba8_of(img).expect("room"), want);
+        }
     }
 
     /// iPhones and iPads (also iPadOS, which calls itself a Mac with a

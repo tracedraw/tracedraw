@@ -4413,6 +4413,7 @@ status.could_not_open = "{p} খোলা যায়নি: {e}"
 status.closed_format = "{name} এমন একটি অ্যাপ্লিকেশনের নিজস্ব ফাইল যা তার ফরম্যাট প্রকাশ করে না, তাই TraceDraw এটি পড়তে পারে না। সেই অ্যাপ্লিকেশন থেকে PDF (বক্ররেখা, লেখা ও ছবি সম্পাদনাযোগ্য থাকে) বা SVG হিসেবে এক্সপোর্ট করে সেই ফাইলটি খুলুন।" # mt
 status.could_not_open_viewer = "সিস্টেম ভিউয়ার খোলা যায়নি"
 status.could_not_read = "{p} পড়া যায়নি: {e}"
+status.picture_no_memory = "এই ছবিটি পড়ার জন্য যথেষ্ট মেমরি নেই ({w} × {h} পিক্সেল)"
 status.cursor_coordinates = "কার্সারের স্থানাঙ্ক"
 status.curve_nodes = "বক্ররেখা: {n}টি নোড"
 status.defaults_changed = "নতুন অবজেক্টের ডিফল্ট বৈশিষ্ট্য বদলানো হয়েছে: {kinds}"

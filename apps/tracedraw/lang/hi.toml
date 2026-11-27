@@ -4413,6 +4413,7 @@ status.could_not_open = "{p} खोला नहीं जा सका: {e}"
 status.closed_format = "{name} ऐसे ऐप्लिकेशन की अपनी फ़ाइल है जो अपना फ़ॉर्मेट प्रकाशित नहीं करता, इसलिए TraceDraw इसे नहीं पढ़ सकता। उसी ऐप्लिकेशन से इसे PDF (वक्र, टेक्स्ट और चित्र संपादन योग्य रहते हैं) या SVG के रूप में एक्सपोर्ट करें और वह फ़ाइल खोलें।" # mt
 status.could_not_open_viewer = "सिस्टम व्यूअर नहीं खोला जा सका"
 status.could_not_read = "{p} पढ़ा नहीं जा सका: {e}"
+status.picture_no_memory = "इस चित्र को पढ़ने के लिए पर्याप्त मेमोरी नहीं है ({w} × {h} पिक्सेल)"
 status.cursor_coordinates = "कर्सर निर्देशांक"
 status.curve_nodes = "वक्र: {n} नोड"
 status.defaults_changed = "नए ऑब्जेक्ट के डिफ़ॉल्ट गुण बदले गए: {kinds}"

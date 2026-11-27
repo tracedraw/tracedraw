@@ -4413,6 +4413,7 @@ status.could_not_open = "无法打开 {p}：{e}"
 status.closed_format = "{name} 是一个不公开其格式的应用程序的原生文件，因此 TraceDraw 无法读取。请在该应用程序中将其导出为 PDF（曲线、文字和图片仍可编辑）或 SVG，然后打开该文件。" # mt
 status.could_not_open_viewer = "无法打开系统查看器"
 status.could_not_read = "无法读取 {p}：{e}"
+status.picture_no_memory = "内存不足，无法读取此图片（{w} × {h} 像素）"
 status.cursor_coordinates = "光标坐标"
 status.curve_nodes = "曲线: {n} 个节点"
 status.defaults_changed = "已更改新对象的默认属性：{kinds}"

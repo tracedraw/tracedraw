@@ -3954,6 +3954,7 @@ status.could_not_open = "Не вдалося відкрити {p}: {e}" # mt
 status.closed_format = "{name} is the native file of an application that does not publish its format, so TraceDraw cannot read it. Export it from that application as PDF (curves, text and pictures stay editable) or SVG, and open that file." # review
 status.could_not_open_viewer = "Не вдалося відкрити системний переглядач" # mt
 status.could_not_read = "Не вдалося прочитати {p}: {e}" # mt
+status.picture_no_memory = "Недостатньо пам'яті, щоб прочитати це зображення ({w} × {h} пікселів)"
 status.cursor_coordinates = "Координати вказівника" # mt
 status.curve_nodes = "Крива: вузлів {n}" # mt
 status.defaults_changed = "Типові властивості нових об'єктів змінено: {kinds}" # mt

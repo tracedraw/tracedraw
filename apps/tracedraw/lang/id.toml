@@ -4413,6 +4413,7 @@ status.could_not_open = "Tidak dapat membuka {p}: {e}"
 status.closed_format = "{name} adalah berkas asli aplikasi yang tidak menerbitkan formatnya, jadi TraceDraw tidak dapat membacanya. Ekspor dari aplikasi itu sebagai PDF (kurva, teks, dan gambar tetap dapat diedit) atau SVG, lalu buka berkas itu." # mt
 status.could_not_open_viewer = "Tidak dapat membuka penampil sistem"
 status.could_not_read = "Tidak dapat membaca {p}: {e}"
+status.picture_no_memory = "Memori tidak cukup untuk membaca gambar ini ({w} × {h} piksel)"
 status.cursor_coordinates = "Koordinat kursor"
 status.curve_nodes = "Kurva: {n} simpul"
 status.defaults_changed = "Properti bawaan objek baru diubah: {kinds}"

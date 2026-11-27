@@ -87,6 +87,16 @@ Name: "turkish"; MessagesFile: "compiler:Languages\Turkish.isl"
 ; The 32-bit setup run on 64-bit Windows (InitializeSetup).
 Use64Setup=This is the 32-bit TraceDraw for 32-bit Windows. Your Windows is 64-bit: the x86_64 setup (tracedraw-...-windows-x86_64-setup.exe) runs faster and can use all the memory. Install the 32-bit version anyway?
 brazilianportuguese.Use64Setup=Este é o TraceDraw de 32 bits, para Windows de 32 bits. Seu Windows é de 64 bits: o instalador x86_64 (tracedraw-...-windows-x86_64-setup.exe) é mais rápido e pode usar toda a memória. Instalar a versão de 32 bits mesmo assim?
+czech.Use64Setup=Toto je 32bitový TraceDraw pro 32bitová Windows. Vaše Windows jsou 64bitová: instalátor x86_64 (tracedraw-...-windows-x86_64-setup.exe) je rychlejší a může využít veškerou paměť. Přesto nainstalovat 32bitovou verzi?
+dutch.Use64Setup=Dit is de 32-bits TraceDraw voor 32-bits Windows. Uw Windows is 64-bits: de x86_64-installatie (tracedraw-...-windows-x86_64-setup.exe) is sneller en kan al het geheugen gebruiken. Toch de 32-bits versie installeren?
+french.Use64Setup=Ceci est TraceDraw 32 bits, pour Windows 32 bits. Votre Windows est en 64 bits : l'installateur x86_64 (tracedraw-...-windows-x86_64-setup.exe) est plus rapide et peut utiliser toute la mémoire. Installer quand même la version 32 bits ?
+german.Use64Setup=Dies ist das 32-Bit-TraceDraw für 32-Bit-Windows. Ihr Windows ist 64-Bit: Das x86_64-Setup (tracedraw-...-windows-x86_64-setup.exe) ist schneller und kann den ganzen Arbeitsspeicher nutzen. Trotzdem die 32-Bit-Version installieren?
+italian.Use64Setup=Questo è TraceDraw a 32 bit, per Windows a 32 bit. Il tuo Windows è a 64 bit: il setup x86_64 (tracedraw-...-windows-x86_64-setup.exe) è più veloce e può usare tutta la memoria. Installare comunque la versione a 32 bit?
+japanese.Use64Setup=これは 32 ビット版 Windows 用の 32 ビット版 TraceDraw です。お使いの Windows は 64 ビット版です。x86_64 版のセットアップ (tracedraw-...-windows-x86_64-setup.exe) の方が速く、すべてのメモリを使えます。それでも 32 ビット版をインストールしますか?
+polish.Use64Setup=To jest 32-bitowy TraceDraw dla 32-bitowego systemu Windows. Twój Windows jest 64-bitowy: instalator x86_64 (tracedraw-...-windows-x86_64-setup.exe) działa szybciej i może używać całej pamięci. Zainstalować mimo to wersję 32-bitową?
+russian.Use64Setup=Это 32-битный TraceDraw для 32-битной Windows. Ваша Windows 64-битная: установщик x86_64 (tracedraw-...-windows-x86_64-setup.exe) работает быстрее и может использовать всю память. Всё равно установить 32-битную версию?
+spanish.Use64Setup=Este es TraceDraw de 32 bits, para Windows de 32 bits. Su Windows es de 64 bits: el instalador x86_64 (tracedraw-...-windows-x86_64-setup.exe) es más rápido y puede usar toda la memoria. ¿Instalar la versión de 32 bits de todos modos?
+turkish.Use64Setup=Bu, 32 bit Windows için 32 bit TraceDraw'dur. Windows'unuz 64 bit: x86_64 kurulumu (tracedraw-...-windows-x86_64-setup.exe) daha hızlıdır ve tüm belleği kullanabilir. Yine de 32 bit sürüm kurulsun mu?
 english.AddToPath=Add tracedraw-cli to PATH
 english.CommandLine=Command line:
 brazilianportuguese.AddToPath=Adicionar tracedraw-cli ao PATH
@@ -398,10 +408,48 @@ begin
   end;
 end;
 
+#if Arch == "x86_64"
+// A 32-bit copy installed for all users sits in Program Files (x86) and
+// is listed in the 32-bit registry, where this setup does not look: it
+// would stay beside the new one. This happens when a 32-bit copy on
+// 64-bit Windows updates to this build (#4524). Its uninstaller is run
+// quietly first (it copies itself and returns at once, so the setup
+// waits up to a minute for its entry to go); the settings stay, they
+// are not in its folder. A copy installed for one user shares the
+// registry entry and folder with this setup and is simply replaced.
+procedure RemoveOld32BitCopy;
+var
+  Key, Uninstaller: String;
+  Code, Waited: Integer;
+begin
+  if not IsAdminInstallMode then
+    exit;
+  Key := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{7E6E3B5C-4C1E-4F7B-9D7A-2B9D5C1A0E11}_is1';
+  if not RegQueryStringValue(HKLM32, Key, 'UninstallString', Uninstaller) then
+    exit;
+  Uninstaller := RemoveQuotes(Uninstaller);
+  if not FileExists(Uninstaller) then
+    exit;
+  if not Exec(Uninstaller, '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART', '', SW_HIDE, ewWaitUntilTerminated, Code) then
+    exit;
+  Waited := 0;
+  while RegKeyExists(HKLM32, Key) and (Waited < 60) do
+  begin
+    Sleep(1000);
+    Waited := Waited + 1;
+  end;
+end;
+#endif
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssInstall then
-    MoveAsideInUse('tracedraw_thumbnailer.dll')
+  begin
+#if Arch == "x86_64"
+    RemoveOld32BitCopy;
+#endif
+    MoveAsideInUse('tracedraw_thumbnailer.dll');
+  end
   else if CurStep = ssPostInstall then
     DeleteMovedAside('tracedraw_thumbnailer.dll');
 end;

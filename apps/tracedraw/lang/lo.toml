@@ -4423,6 +4423,7 @@ status.could_not_open = "ບໍ່ສາມາດເປີດ {p} ໄດ້: {e}
 status.closed_format = "{name} ແມ່ນໄຟລ໌ຂອງແອັບທີ່ບໍ່ເຜີຍແຜ່ຮູບແບບຂອງມັນ, ສະນັ້ນ TraceDraw ອ່ານບໍ່ໄດ້. ໃຫ້ສົ່ງອອກຈາກແອັບນັ້ນເປັນ PDF (ເສັ້ນໂຄ້ງ, ຂໍ້ຄວາມ ແລະ ຮູບ ຍັງແກ້ໄຂໄດ້) ຫຼື SVG ແລ້ວເປີດໄຟລ໌ນັ້ນ." # mt
 status.could_not_open_viewer = "ບໍ່ສາມາດເປີດໂປຣແກຣມເບິ່ງຂອງລະບົບໄດ້"
 status.could_not_read = "ບໍ່ສາມາດອ່ານ {p} ໄດ້: {e}"
+status.picture_no_memory = "ໜ່ວຍຄວາມຈຳບໍ່ພໍທີ່ຈະອ່ານຮູບນີ້ ({w} × {h} ພິກເຊວ)"
 status.cursor_coordinates = "ພິກັດຕົວກະພິບ"
 status.curve_nodes = "ເສັ້ນໂຄ້ງ: {n} ຈຸດໂນດ"
 status.defaults_changed = "ປ່ຽນຄຸນສົມບັດເລີ່ມຕົ້ນສໍາລັບວັດຖຸໃໝ່ແລ້ວ: {kinds}"

@@ -256,6 +256,68 @@ pub fn store_install() -> bool {
     false
 }
 
+/// The processor whose release files update this copy: its own
+/// (`arch`, as `std::env::consts::ARCH`), except a 32-bit Windows copy
+/// on a 64-bit (x86_64) Windows, which moves to the x86_64 build. The
+/// 32-bit program has at most 4 GB of address space there, and a large
+/// drawing with big pictures ran out of it and closed the program
+/// (#4524); the x86_64 build runs on the same Windows with all of its
+/// memory.
+pub fn update_arch(arch: &'static str, os: &str, native_x86_64: bool) -> &'static str {
+    if arch == "x86" && os == "windows" && native_x86_64 {
+        "x86_64"
+    } else {
+        arch
+    }
+}
+
+/// Whether Windows itself runs on an x86_64 processor, also when asked by
+/// a 32-bit program (GetNativeSystemInfo, which every Windows that runs
+/// TraceDraw has). False on other systems.
+#[cfg(windows)]
+pub fn native_x86_64() -> bool {
+    /// The `SYSTEM_INFO` record of the Windows API.
+    #[repr(C)]
+    struct SystemInfo {
+        processor_architecture: u16,
+        reserved: u16,
+        page_size: u32,
+        minimum_application_address: *mut std::ffi::c_void,
+        maximum_application_address: *mut std::ffi::c_void,
+        active_processor_mask: usize,
+        number_of_processors: u32,
+        processor_type: u32,
+        allocation_granularity: u32,
+        processor_level: u16,
+        processor_revision: u16,
+    }
+    // 32-bit Windows: the DLL exports the plain name (#1975).
+    #[cfg_attr(
+        target_arch = "x86",
+        link(
+            name = "kernel32",
+            kind = "raw-dylib",
+            import_name_type = "undecorated"
+        )
+    )]
+    #[cfg_attr(not(target_arch = "x86"), link(name = "kernel32", kind = "raw-dylib"))]
+    unsafe extern "system" {
+        fn GetNativeSystemInfo(info: *mut SystemInfo);
+    }
+    const PROCESSOR_ARCHITECTURE_AMD64: u16 = 9;
+    // SAFETY: an all-zero SYSTEM_INFO is valid (integers and null
+    // pointers), and the call only fills it in.
+    let mut info: SystemInfo = unsafe { std::mem::zeroed() };
+    // SAFETY: `info` is a SYSTEM_INFO the call may write.
+    unsafe { GetNativeSystemInfo(&mut info) };
+    info.processor_architecture == PROCESSOR_ARCHITECTURE_AMD64
+}
+
+#[cfg(not(windows))]
+pub fn native_x86_64() -> bool {
+    false
+}
+
 /// How the running copy was installed.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn current_kind() -> Kind {
@@ -394,7 +456,11 @@ impl Checker {
                         &json,
                         env!("CARGO_PKG_VERSION"),
                         std::env::consts::OS,
-                        std::env::consts::ARCH,
+                        update_arch(
+                            std::env::consts::ARCH,
+                            std::env::consts::OS,
+                            native_x86_64(),
+                        ),
                         current_kind(),
                     )
                 });
@@ -2110,6 +2176,49 @@ mod tests {
         assert!(r.page.ends_with("v0.5.0"));
     }
 
+    /// #4524: a 32-bit copy on 64-bit (x86_64) Windows ran out of its
+    /// 4 GB of address space on a large drawing; it updates to the
+    /// x86_64 build, setup or portable as it was installed. A 32-bit
+    /// copy on 32-bit Windows (or on an ARM processor) keeps its own
+    /// files, and nothing changes for the other systems.
+    #[test]
+    fn a_32_bit_copy_on_64_bit_windows_moves_to_the_64_bit_build() {
+        assert_eq!(update_arch("x86", "windows", true), "x86_64");
+        assert_eq!(update_arch("x86", "windows", false), "x86");
+        assert_eq!(update_arch("x86_64", "windows", true), "x86_64");
+        assert_eq!(update_arch("aarch64", "windows", false), "aarch64");
+        assert_eq!(update_arch("x86", "linux", true), "x86");
+        assert_eq!(update_arch("x86_64", "linux", false), "x86_64");
+        let json = r#"{
+            "tag_name": "v0.5.0",
+            "html_url": "https://github.com/tracedraw/tracedraw/releases/tag/v0.5.0",
+            "prerelease": false,
+            "draft": false,
+            "assets": [
+                {"name": "tracedraw-0.5.0-windows-x86-portable.zip", "browser_download_url": "https://x/tracedraw-0.5.0-windows-x86-portable.zip"},
+                {"name": "tracedraw-0.5.0-windows-x86-setup.exe", "browser_download_url": "https://x/tracedraw-0.5.0-windows-x86-setup.exe"},
+                {"name": "tracedraw-0.5.0-windows-x86_64-portable.zip", "browser_download_url": "https://x/tracedraw-0.5.0-windows-x86_64-portable.zip"},
+                {"name": "tracedraw-0.5.0-windows-x86_64-setup.exe", "browser_download_url": "https://x/tracedraw-0.5.0-windows-x86_64-setup.exe"}
+            ]
+        }"#;
+        for (kind, want) in [
+            (Kind::Setup, "tracedraw-0.5.0-windows-x86_64-setup.exe"),
+            (Kind::Portable, "tracedraw-0.5.0-windows-x86_64-portable.zip"),
+        ] {
+            let arch = update_arch("x86", "windows", true);
+            let r = parse_latest(json, "0.4.0", "windows", arch, kind)
+                .expect("parses")
+                .expect("newer");
+            assert_eq!(r.download.as_deref(), Some(&*format!("https://x/{want}")));
+        }
+        // The x86_64 setup removes a 32-bit copy installed for all users
+        // before its files go in, so the two do not stay side by side.
+        let iss = include_str!("../../../packaging/windows/tracedraw.iss");
+        assert!(iss.contains("procedure RemoveOld32BitCopy;"));
+        assert!(iss.contains("#if Arch == \"x86_64\"\n    RemoveOld32BitCopy;\n#endif\n    MoveAsideInUse"));
+        assert!(iss.contains("french.Use64Setup="));
+    }
+
     /// #1975: 32-bit Windows (`x86`) has a setup and a portable zip of
     /// its own, `windows-x86`, which the 64-bit copies never take, nor it
     /// theirs; no other system has a 32-bit build.
@@ -3377,7 +3486,8 @@ mod tests {
     fn an_update_held_up_by_a_file_in_use_goes_on_or_says_so() {
         let iss = include_str!("../../../packaging/windows/tracedraw.iss");
         assert!(iss.contains("CloseApplicationsFilter=*.exe\n"));
-        assert!(iss.contains("if CurStep = ssInstall then\n    MoveAsideInUse('tracedraw_thumbnailer.dll')"));
+        assert!(iss.contains("if CurStep = ssInstall then\n  begin\n"));
+        assert!(iss.contains("    MoveAsideInUse('tracedraw_thumbnailer.dll');\n  end"));
         assert!(iss.contains("Aside := Path + '.' + IntToStr(N) + '.old';"));
         assert!(is_leftover("tracedraw_thumbnailer.dll.1.old"));
         assert!(is_leftover(".tracedraw.exe.old"));

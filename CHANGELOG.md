@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Windows: the 32-bit copy on 64-bit Windows no longer closes on large drawings with big pictures. Its next update installs the x86_64 build, which has all of the memory (the setup removes the old 32-bit copy installed for all users), its picture cache now fits its 4 GB of address space, a picture with no memory left to read is turned away with a message instead of closing the program, and the 32-bit setup's advice to use the x86_64 one is in every language of the setup (#4524).
 - File > Open takes several files at once (Ctrl or Shift in the dialog), each in a tab of its own; large drawings and `.cdr` files opened together open one after the other instead of the last one replacing the others (#4496).
 - Data Merge: the QR code on the first page has the same nodes as the codes on the merged pages; a QR code object's dark pixels are outlines with a node only where they turn (#4502).
 - Number boxes grow to show their whole value with its unit, such as an ellipse's angle, instead of cutting off the first digit (#4526).

@@ -4413,6 +4413,7 @@ status.could_not_open = "{p} を開けません: {e}"
 status.closed_format = "{name} は形式を公開していないアプリケーションの独自ファイルのため、TraceDraw では読み込めません。そのアプリケーションで PDF（曲線・テキスト・画像は編集可能なまま）または SVG に書き出し、そのファイルを開いてください。" # mt
 status.could_not_open_viewer = "システムのビューアーを開けませんでした"
 status.could_not_read = "{p} を読み込めません: {e}"
+status.picture_no_memory = "この画像を読み込むためのメモリが足りません ({w} × {h} ピクセル)"
 status.cursor_coordinates = "カーソル座標"
 status.curve_nodes = "曲線: {n} ノード"
 status.defaults_changed = "新しいオブジェクトの既定のプロパティを変更しました: {kinds}"

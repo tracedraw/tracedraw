@@ -4413,6 +4413,7 @@ status.could_not_open = "Impossibile aprire {p}: {e}"
 status.closed_format = "{name} è il file nativo di un'applicazione che non pubblica il proprio formato, quindi TraceDraw non può leggerlo. Esportalo da quell'applicazione come PDF (curve, testi e immagini restano modificabili) o SVG e apri quel file." # mt
 status.could_not_open_viewer = "Impossibile aprire il visualizzatore di sistema"
 status.could_not_read = "Impossibile leggere {p}: {e}"
+status.picture_no_memory = "Memoria insufficiente per leggere questa immagine ({w} × {h} pixel)"
 status.cursor_coordinates = "Coordinate del cursore"
 status.curve_nodes = "Curva: {n} nodi"
 status.defaults_changed = "Proprietà predefinite modificate per i nuovi oggetti: {kinds}"

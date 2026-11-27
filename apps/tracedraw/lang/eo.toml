@@ -4489,6 +4489,7 @@ status.could_not_open = "Ne eblis malfermi {p}: {e}" # mt
 status.closed_format = "{name} estas la denaska dosiero de aplikaĵo, kiu ne publikigas sian formaton, do TraceDraw ne povas legi ĝin. Eksportu ĝin el tiu aplikaĵo kiel PDF (kurboj, teksto kaj bildoj restas redakteblaj) aŭ SVG, kaj malfermu tiun dosieron." # mt
 status.could_not_open_viewer = "Ne eblis malfermi la sisteman vidigilon" # mt
 status.could_not_read = "Ne eblis legi {p}: {e}" # mt
+status.picture_no_memory = "Ne sufiĉas memoro por legi ĉi tiun bildon ({w} × {h} rastrumeroj)"
 status.cursor_coordinates = "Kursoraj koordinatoj" # mt
 status.curve_nodes = "Kurbo: {n} nodoj" # mt
 status.defaults_changed = "Implicitaj ecoj ŝanĝitaj por novaj objektoj: {kinds}" # mt

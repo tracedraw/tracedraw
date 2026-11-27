@@ -4413,6 +4413,7 @@ status.could_not_open = "Nelze otevřít {p}: {e}"
 status.closed_format = "{name} je nativní soubor aplikace, která nezveřejňuje svůj formát, takže jej TraceDraw nedokáže přečíst. Vyexportujte jej v té aplikaci jako PDF (křivky, text a obrázky zůstanou upravitelné) nebo SVG a otevřete ten soubor." # mt
 status.could_not_open_viewer = "Systémový prohlížeč nelze otevřít"
 status.could_not_read = "Nelze přečíst {p}: {e}"
+status.picture_no_memory = "Nedostatek paměti pro načtení tohoto obrázku ({w} × {h} pixelů)"
 status.cursor_coordinates = "Souřadnice kurzoru"
 status.curve_nodes = "Křivka (počet uzlů: {n})"
 status.defaults_changed = "Výchozí vlastnosti nových objektů změněny: {kinds}"

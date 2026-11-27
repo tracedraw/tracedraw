@@ -4413,6 +4413,7 @@ status.could_not_open = "Kan {p} niet openen: {e}"
 status.closed_format = "{name} is het eigen bestand van een toepassing die haar formaat niet publiceert, dus TraceDraw kan het niet lezen. Exporteer het in die toepassing als PDF (curven, tekst en afbeeldingen blijven bewerkbaar) of SVG en open dat bestand." # mt
 status.could_not_open_viewer = "Kan de viewer van het systeem niet openen"
 status.could_not_read = "Kan {p} niet lezen: {e}"
+status.picture_no_memory = "Onvoldoende geheugen om deze afbeelding te lezen ({w} × {h} pixels)"
 status.cursor_coordinates = "Cursorcoördinaten"
 status.curve_nodes = "Curve: {n} knooppunten"
 status.defaults_changed = "Standaardeigenschappen gewijzigd voor nieuwe objecten: {kinds}"

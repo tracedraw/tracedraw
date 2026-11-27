@@ -4413,6 +4413,7 @@ status.could_not_open = "{p} açılamadı: {e}"
 status.closed_format = "{name}, biçimini yayımlamayan bir uygulamanın kendi dosyasıdır; bu yüzden TraceDraw onu okuyamaz. O uygulamada PDF (eğriler, metin ve resimler düzenlenebilir kalır) ya da SVG olarak dışa aktarın ve o dosyayı açın." # mt
 status.could_not_open_viewer = "Sistem görüntüleyicisi açılamadı"
 status.could_not_read = "{p} okunamadı: {e}"
+status.picture_no_memory = "Bu resmi okumak için yeterli bellek yok ({w} × {h} piksel)"
 status.cursor_coordinates = "İmleç Koordinatları"
 status.curve_nodes = "Eğri: {n} Düğüm"
 status.defaults_changed = "Yeni nesneler için varsayılan özellikler değişti: {kinds}"

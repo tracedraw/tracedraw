@@ -62,8 +62,9 @@ fn read_windows_picture() -> Result<Option<image::RgbaImage>, String> {
         match crate::win_clipboard::read_picture_result() {
             Ok(Some(bytes)) => {
                 return crate::files::decode_picture(&bytes)
-                    .map(|image| Some(image.into_rgba8()))
-                    .map_err(|error| error.to_string());
+                    .map_err(|error| error.to_string())
+                    .and_then(crate::files::rgba8_of)
+                    .map(Some);
             }
             Ok(None) => return Ok(None),
             Err(_) if attempt < 7 => std::thread::sleep(std::time::Duration::from_millis(50)),
@@ -438,8 +439,11 @@ fn read_system_image() -> Option<image::RgbaImage> {
 fn read_system_image() -> Option<image::RgbaImage> {
     let (_, uri) = split_documents(crate::android::clipboard::documents());
     let bytes = crate::android::documents::read(&uri?).ok()?;
-    match crate::files::decode_picture(&bytes) {
-        Ok(img) => Some(img.into_rgba8()),
+    match crate::files::decode_picture(&bytes)
+        .map_err(|e| e.to_string())
+        .and_then(crate::files::rgba8_of)
+    {
+        Ok(img) => Some(img),
         Err(e) => {
             log::warn!("the copied picture cannot be read: {e}");
             None
@@ -700,8 +704,9 @@ fn read_image() -> Option<image::RgbaImage> {
     #[cfg(windows)]
     if let Some(img) = crate::win_clipboard::read_picture()
         .and_then(|bytes| crate::files::decode_picture(&bytes).ok())
+        .and_then(|img| crate::files::rgba8_of(img).ok())
     {
-        return Some(img.into_rgba8());
+        return Some(img);
     }
     let from_library = with_clipboard(|cb| cb.get_image().ok())
         .flatten()
@@ -856,8 +861,11 @@ fn lone_picture(files: &[PastedFile]) -> Option<image::RgbaImage> {
     if !file.mime.starts_with("image/") {
         return None;
     }
-    match crate::files::decode_picture(&file.bytes) {
-        Ok(img) => Some(img.into_rgba8()),
+    match crate::files::decode_picture(&file.bytes)
+        .map_err(|e| e.to_string())
+        .and_then(crate::files::rgba8_of)
+    {
+        Ok(img) => Some(img),
         Err(e) => {
             log::warn!("the pasted picture cannot be read: {e}");
             None

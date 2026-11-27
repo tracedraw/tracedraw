@@ -1574,8 +1574,11 @@ impl App {
             }
         };
         // Print-size pictures too (#2000).
-        let img = match crate::files::decode_picture(&bytes) {
-            Ok(i) => i.into_rgba8(),
+        let img = match crate::files::decode_picture(&bytes)
+            .map_err(|e| e.to_string())
+            .and_then(crate::files::rgba8_of)
+        {
+            Ok(i) => i,
             Err(e) => {
                 self.status = crate::i18n::trf(
                     "status.could_not_read",
