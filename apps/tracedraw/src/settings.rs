@@ -1109,6 +1109,9 @@ pub struct Settings {
     /// The looks saved in the Effects docker's Presets (#2160).
     #[serde(default)]
     pub style_presets: Vec<crate::style_presets::StylePreset>,
+    /// Reusable vector motifs and placement settings for Fit Objects to Path.
+    #[serde(default, deserialize_with = "crate::sprayer_presets::deserialize_library")]
+    pub sprayer_presets: Vec<crate::sprayer_presets::SprayerPreset>,
     /// The outlines saved in the Outline Pen dialog's Presets (#4090).
     #[serde(default)]
     pub outline_presets: Vec<crate::outline_presets::OutlinePreset>,
@@ -2939,6 +2942,7 @@ impl Default for Settings {
             path_tick_mm: default_path_tick(),
             screen_margins: crate::ui::screen_margins::ScreenMargins::default(),
             style_presets: Vec::new(),
+            sprayer_presets: Vec::new(),
             outline_presets: Vec::new(),
             fx_presets: Vec::new(),
             fx_settings_only: false,

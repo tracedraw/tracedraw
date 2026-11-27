@@ -22,6 +22,7 @@ const MENU_BAR_BOTTOM: f32 = 26.0;
 struct Driver {
     ctx: Context,
     time: f64,
+    sprayer_only: bool,
 }
 
 impl Driver {
@@ -33,7 +34,11 @@ impl Driver {
             // Keeps the widgets' names (labels, kinds) for the report.
             s.debug.show_interactive_widgets = true;
         });
-        Self { ctx, time: 0.0 }
+        Self {
+            ctx,
+            time: 0.0,
+            sprayer_only: false,
+        }
     }
 
     fn frame(&mut self, app: &mut App, events: Vec<Event>) {
@@ -44,7 +49,15 @@ impl Driver {
             events,
             ..Default::default()
         };
-        let mut out = self.ctx.run_ui(input, |ui| root(app, ui));
+        let mut out = self.ctx.run_ui(input, |ui| {
+            if self.sprayer_only {
+                ui.add_space(MENU_BAR_BOTTOM + 8.0);
+                crate::sprayer_presets::controls(app, ui);
+                crate::sprayer_presets::library_window(app, ui.ctx());
+            } else {
+                root(app, ui);
+            }
+        });
         out.textures_delta.clear();
     }
 
@@ -203,7 +216,8 @@ fn check_state(
     d.frame(app, vec![Event::PointerGone]);
     prepare(app);
     d.frame(app, vec![]);
-    let in_dialog = !matches!(app.dialog, crate::ui::dialogs::Dialog::None);
+    let in_dialog =
+        app.sprayer_library.open || !matches!(app.dialog, crate::ui::dialogs::Dialog::None);
     let (list, texts) = controls(&d.ctx, in_dialog);
     for (id, rect, kind, label) in list {
         if is_modal_blocker(id) {
@@ -353,6 +367,74 @@ pub fn audit(dockers: bool, dialogs: bool, options: bool) -> Vec<Missing> {
 fn every_bar_docker_dialog_and_options_control_has_a_tip() {
     crate::i18n::set_language("en");
     let missing = audit(true, true, true);
+    assert!(missing.is_empty(), "controls without a tip: {missing:#?}");
+}
+
+/// Exercise the optional panel contents and modal library as well as the
+/// collapsed section visited by the general UI audit.
+#[test]
+fn sprayer_controls_and_library_have_tips() {
+    crate::i18n::set_language("en");
+    let mut d = Driver::new();
+    d.sprayer_only = true;
+    let mut app = mixed_app();
+    app.show_welcome = false;
+    let source = app.selection[0];
+    app.select(vec![source]);
+    let preset = app.save_sprayer_preset("Original motif", None).unwrap();
+    app.sprayer_preset_pick = Some(preset);
+    app.sprayer_preset_name = "Original motif".into();
+    app.open_docker(DockerTab::FitToPath);
+    for _ in 0..3 {
+        d.frame(&mut app, vec![]);
+    }
+    let (list, _) = controls(&d.ctx, false);
+    let header = list
+        .iter()
+        .find(|(_, _, _, name)| name == "Sprayer presets")
+        .expect("sprayer section")
+        .1
+        .center();
+    for pressed in [true, false] {
+        d.frame(
+            &mut app,
+            vec![
+                Event::PointerMoved(header),
+                Event::PointerButton {
+                    pos: header,
+                    button: egui::PointerButton::Primary,
+                    pressed,
+                    modifiers: Default::default(),
+                },
+            ],
+        );
+    }
+    let mut seen = BTreeSet::new();
+    let mut missing = Vec::new();
+    let mut none = |_: &mut App| {};
+    check_state(
+        &mut d,
+        &mut app,
+        "sprayer panel",
+        &mut seen,
+        &mut missing,
+        &mut none,
+    );
+    let (list, _) = controls(&d.ctx, false);
+    assert!(
+        list.iter()
+            .any(|(_, _, _, name)| name == "Browse library..."),
+        "expanded preset controls"
+    );
+    app.open_sprayer_library();
+    check_state(
+        &mut d,
+        &mut app,
+        "sprayer library",
+        &mut seen,
+        &mut missing,
+        &mut none,
+    );
     assert!(missing.is_empty(), "controls without a tip: {missing:#?}");
 }
 

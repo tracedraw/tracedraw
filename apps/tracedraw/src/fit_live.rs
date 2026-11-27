@@ -352,7 +352,7 @@ pub struct HandleDrag {
 
 impl App {
     /// Every object (inside groups and clip frames too) by its identity.
-    fn shapes_by_uid(&self) -> HashMap<String, ShapeId> {
+    pub(crate) fn shapes_by_uid(&self) -> HashMap<String, ShapeId> {
         fn walk(s: &Shape, out: &mut HashMap<String, ShapeId>) {
             if let Some(u) = s.uid {
                 out.entry(uid_text(u)).or_insert(s.id);
@@ -422,7 +422,7 @@ impl App {
     /// The objects of a live fit as they were before it (in page space,
     /// each with its id) and, last, the path: what the fit is worked out
     /// from. `None` when the path or every object is gone.
-    fn live_fit_sources(
+    pub(crate) fn live_fit_sources(
         &self,
         path: ShapeId,
         fit: &LiveFit,

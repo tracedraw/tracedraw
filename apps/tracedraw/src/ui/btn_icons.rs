@@ -166,6 +166,9 @@ pub fn source(key: &str) -> Option<Src> {
 
 fn exact(key: &str) -> Option<Src> {
     Some(match key {
+        "sprayer.replace" => Src::B(B::Swap),
+        "sprayer.use_selected" => Src::B(B::Check),
+        "sprayer.close_library" => Src::B(B::Cross),
         "guides.lock" => Src::Pic(Pic::Lock(true)),
         "guides.unlock" => Src::Pic(Pic::Lock(false)),
         "pixel.cancel" => Src::B(B::Cross),

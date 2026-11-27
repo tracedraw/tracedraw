@@ -1701,6 +1701,11 @@ pub struct App {
     /// with no preview (#1136).
     pub fit_path_for: Option<(Option<u64>, Vec<ShapeId>)>,
     pub fit_path_edited: bool,
+    /// Local state of the reusable sprayer preset controls.
+    pub sprayer_preset_pick: Option<usize>,
+    pub sprayer_preset_name: String,
+    pub(crate) sprayer_library: crate::sprayer_presets::LibraryBrowser,
+    pub(crate) sprayer_preset_pictures: Vec<Option<crate::sprayer_presets::Thumbnail>>,
     /// The Fit Objects to Path preview and what it was worked out for.
     pub fit_path_preview: Option<(crate::ops2::FitPreviewKey, Vec<tracedraw_core::BezPath>)>,
     /// Outlines a docker previews on the canvas this frame (page space).
@@ -3698,6 +3703,10 @@ impl App {
             fit_path: Default::default(),
             fit_path_for: None,
             fit_path_edited: false,
+            sprayer_preset_pick: None,
+            sprayer_preset_name: String::new(),
+            sprayer_library: Default::default(),
+            sprayer_preset_pictures: Vec::new(),
             fit_path_preview: None,
             docker_preview: Vec::new(),
             docker_preview_point: None,
@@ -4468,6 +4477,7 @@ impl App {
         self.apply_toolbox_picks(&s.toolbox);
         self.duplicate_offset = Vec2::new(s.duplicate_offset_mm[0], s.duplicate_offset_mm[1]);
         self.units = Units::from_id(&s.units);
+        self.sprayer_preset_pictures.clear();
         self.settings = s;
         self.apply_color_settings();
         // The palettes made in TraceDraw, then the bars as they were left.

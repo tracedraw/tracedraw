@@ -115,6 +115,7 @@ mod shape_gen_tool;
 mod shape_gen_warp;
 mod fill_tool;
 mod pattern_fill_tool;
+mod sprayer_presets;
 mod fit_live;
 mod fit_path;
 mod focus;

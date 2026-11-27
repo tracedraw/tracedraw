@@ -213,3 +213,9 @@ the drawing change; the frames between draw the outlines kept. Above 200
 objects each object previews as its bounding box. Selections of more than
 200 objects show no preview. `frame_times_of_the_fit_to_path_panel` in
 `pick_drag_tests.rs` measures a frame with the panel open.
+
+## Reusable sprayer presets
+
+The panel can save a vector motif or a live fit's sources and settings for
+use on a new guide in any drawing. See [Sprayer presets](sprayer-presets.md)
+for saving, replacing, deleting and applying presets and supported content.

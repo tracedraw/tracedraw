@@ -5264,6 +5264,9 @@ impl App {
         if crate::ui::keynav::takes_keys(ctx) {
             return;
         }
+        if self.sprayer_library.open && matches!(self.dialog, crate::ui::dialogs::Dialog::None) {
+            return;
+        }
         let dialog_open = !matches!(self.dialog, crate::ui::dialogs::Dialog::None);
         // Table cell typing has priority while a cell is active (not
         // behind a dialog, which owns the keyboard, nor while a field has

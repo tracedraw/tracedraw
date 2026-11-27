@@ -2556,11 +2556,15 @@ impl App {
     /// objects placed, become the selection.
     pub fn fit_objects_to_path(&mut self) {
         let shapes = self.selected_shapes();
-        let plan = self.fit_path_plan(&shapes);
+        self.fit_shapes_to_path(&shapes, Vec::new());
+    }
+
+    /// Fit existing or newly inserted sources using one atomic command batch.
+    pub(crate) fn fit_shapes_to_path(&mut self, shapes: &[Shape], mut cmds: Vec<Command>) -> bool {
+        let plan = self.fit_path_plan(shapes);
         if plan.is_empty() {
-            return;
+            return false;
         }
-        let mut cmds = Vec::with_capacity(plan.len());
         let mut placed = Vec::with_capacity(plan.len());
         let mut copied = false;
         for p in &plan {
@@ -2586,6 +2590,10 @@ impl App {
                 .locate(top)
                 .ok()
                 .map(|(l, _)| l)
+                .or_else(|| cmds.iter().find_map(|c| match c {
+                    Command::AddShape { layer, shape } if shape.id == src.id => Some(*layer),
+                    _ => None,
+                }))
                 .or_else(|| self.active_layer())
             else {
                 continue;
@@ -2614,21 +2622,22 @@ impl App {
         }
         if let Err(e) = self.engine.run_batch("Fit Objects to Path", &cmds) {
             self.status = e.to_string();
-            return;
+            return false;
         }
         // Live: the path keeps the fit, which follows it from now on.
         if self.fit_path.live {
-            self.link_live_fit(&shapes, &plan, &placed);
+            self.link_live_fit(shapes, &plan, &placed);
         }
         if group {
             if let Some(g) = self.doc().ancestors(grouped[0]).first().copied() {
                 self.select(vec![g]);
-                return;
+                return true;
             }
         }
         if copied {
             self.select(placed);
         }
+        true
     }
 
     /// [`crate::fit_path::fit_to_path_plan_with`] for `shapes` with the panel's settings and the

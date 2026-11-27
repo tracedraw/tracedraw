@@ -4309,6 +4309,7 @@ fn fit_to_path(app: &mut App, ui: &mut Ui) {
                 app.release_live_fit(path);
             }
         }
+        crate::sprayer_presets::controls(app, ui);
         return;
     }
     if f != app.fit_path {
@@ -4332,6 +4333,9 @@ fn fit_to_path(app: &mut App, ui: &mut Ui) {
         .clicked()
     {
         app.fit_objects_to_path();
+        app.docker_preview.clear();
+    }
+    if crate::sprayer_presets::controls(app, ui) {
         app.docker_preview.clear();
     }
 }
