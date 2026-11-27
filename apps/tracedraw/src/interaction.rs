@@ -5346,8 +5346,14 @@ impl App {
         // text being typed, no dialog): snapping is off until it is let
         // go, for one move or node drag placed freely without turning
         // Alt+Q on and off (#3072).
+        // Only a Q pressed here and still repeating counts: a release
+        // that went to another window, or was lost when the window lost
+        // the focus, left Q down for good and every snap off until the
+        // program was restarted (#4466).
+        self.snap_hold_seen = ctx.input(|i| snap_hold_update(self.snap_hold_seen, i));
         self.snap_held_off = self.text_edit.is_none()
             && !dialog_open
+            && self.snap_hold_seen.is_some()
             && ctx.input(|i| i.key_down(Key::Q) && i.modifiers.is_none());
         // Text typing has priority; the zoom keys, which type nothing,
         // still zoom (#1699).
@@ -6893,4 +6899,31 @@ mod paste_shortcut_tests {
             Some(false)
         );
     }
+}
+
+/// How long Q may go without a press or a key repeat and still count as
+/// held (the first repeat can take up to a second on Windows).
+pub(crate) const SNAP_HOLD_SILENCE: f64 = 1.5;
+
+/// The time of the latest press or repeat of Q on its own, given the one
+/// before and this frame's input; `None` once Q is let go, another key is
+/// pressed, the window gains or loses the focus, or no repeat came for
+/// [`SNAP_HOLD_SILENCE`] (#4466).
+pub(crate) fn snap_hold_update(seen: Option<f64>, i: &egui::InputState) -> Option<f64> {
+    let mut seen = seen;
+    for e in &i.events {
+        match e {
+            egui::Event::WindowFocused(_) => seen = None,
+            egui::Event::Key {
+                key: Key::Q,
+                pressed: true,
+                modifiers,
+                ..
+            } if modifiers.is_none() => seen = Some(i.time),
+            egui::Event::Key { key: Key::Q, pressed: false, .. } => seen = None,
+            egui::Event::Key { pressed: true, .. } => seen = None,
+            _ => {}
+        }
+    }
+    seen.filter(|t| i.time - t <= SNAP_HOLD_SILENCE && i.key_down(Key::Q))
 }

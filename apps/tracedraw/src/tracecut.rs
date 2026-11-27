@@ -1017,6 +1017,12 @@ impl App {
                 Outcome::Job { job, .. } => scene.moves = job.moves.clone(),
                 Outcome::Gcode { program, .. } => {
                     scene.marked = program.toolpaths.iter().map(|t| t.path()).collect();
+                    scene.marked.extend(
+                        program
+                            .leads
+                            .iter()
+                            .map(|l| tracedraw_core::geometry::polyline_path(l, false)),
+                    );
                     scene.moves = program.rapids.clone();
                 }
                 Outcome::Laser { program, .. } => {

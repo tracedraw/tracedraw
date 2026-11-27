@@ -57,6 +57,7 @@ objects/index
   objects/formulas
   objects/charts
   objects/light-flare
+  objects/serial-numbers
   objects/tracecut
   objects/shape-generator
   objects/math-shapes

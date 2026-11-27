@@ -13,6 +13,13 @@
 //! by `box_x` left and right and `box_y` below and above; boxes that
 //! overlap are welded into one outline. The weeding frame is the bounding
 //! box of everything (the objects, or the boxes) grown by `margin`.
+//! Lines between rows: the objects, each box grown by `gap` (so letters
+//! close together count as one word), fall into rows where their grown
+//! boxes overlap up and down; a straight line runs across the frame in
+//! the middle of the space between two rows, and, with `between`, one up
+//! and down in the middle of the space between two objects of a row,
+//! from the line or frame above the row to the one below. No line meets
+//! an object, so the waste comes off in strips.
 
 use super::{bounds, fin, finite, line_path, polys, rect_path, Poly, FLATTEN_TOLERANCE};
 use tracedraw_core::geometry::{BezPath, PathEl, Point, Rect};
@@ -33,6 +40,9 @@ pub enum WeedMode {
     Lines,
     /// A rectangle around each object.
     Boxes,
+    /// Lines across the frame between rows of objects, and between the
+    /// objects of a row.
+    Rows,
 }
 
 /// Settings of [`weeding`], in millimetres.
@@ -53,6 +63,8 @@ pub struct WeedSpec {
     /// Weeding boxes: growth left and right, below and above.
     pub box_x: f64,
     pub box_y: f64,
+    /// Lines between rows: also a line between the objects of a row.
+    pub between: bool,
 }
 
 impl Default for WeedSpec {
@@ -66,6 +78,7 @@ impl Default for WeedSpec {
             margin: 5.0,
             box_x: 2.0,
             box_y: 2.0,
+            between: true,
         }
     }
 }
@@ -206,6 +219,13 @@ pub fn weeding(objects: &[Vec<BezPath>], spec: &WeedSpec) -> Vec<BezPath> {
                 out.push(rect_path(frame));
             }
         }
+        WeedMode::Rows => {
+            let frame = all.inflate(margin, margin);
+            out.extend(row_lines(&boxes, frame, gap, spec.between));
+            if spec.frame {
+                out.push(rect_path(frame));
+            }
+        }
         WeedMode::Boxes => {
             let bx = fin(spec.box_x, 0.0).max(0.0);
             let by = fin(spec.box_y, 0.0).max(0.0);
@@ -229,6 +249,55 @@ pub fn weeding(objects: &[Vec<BezPath>], spec: &WeedSpec) -> Vec<BezPath> {
             }
         }
     }
+    out
+}
+
+/// Runs of overlapping `(lo, hi)` spans, each merged into one, in order.
+fn merge_spans(mut spans: Vec<(f64, f64)>) -> Vec<(f64, f64)> {
+    spans.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let mut out: Vec<(f64, f64)> = Vec::new();
+    for (lo, hi) in spans {
+        match out.last_mut() {
+            Some(last) if lo <= last.1 => last.1 = last.1.max(hi),
+            _ => out.push((lo, hi)),
+        }
+    }
+    out
+}
+
+/// The lines of [`WeedMode::Rows`] inside `frame`: across it between
+/// rows of the boxes grown by `gap`, and with `between` up and down
+/// between the objects of each row.
+fn row_lines(boxes: &[Option<Rect>], frame: Rect, gap: f64, between: bool) -> Vec<BezPath> {
+    let grown: Vec<Rect> = boxes.iter().flatten().map(|b| b.inflate(gap, gap)).collect();
+    let rows = merge_spans(grown.iter().map(|r| (r.y0, r.y1)).collect());
+    let mut out = Vec::new();
+    // The y of each line between two rows.
+    let cuts: Vec<f64> = rows.windows(2).map(|w| (w[0].1 + w[1].0) / 2.0).collect();
+    for y in &cuts {
+        out.push(line_path(Point::new(frame.x0, *y), Point::new(frame.x1, *y)));
+    }
+    if between {
+        for (k, (lo, hi)) in rows.iter().enumerate() {
+            let below = if k == 0 { frame.y0 } else { cuts[k - 1] };
+            let above = cuts.get(k).copied().unwrap_or(frame.y1);
+            let cols = merge_spans(
+                grown
+                    .iter()
+                    .filter(|r| r.y0 >= *lo - 1e-9 && r.y1 <= *hi + 1e-9)
+                    .map(|r| (r.x0, r.x1))
+                    .collect(),
+            );
+            for w in cols.windows(2) {
+                let x = (w[0].1 + w[1].0) / 2.0;
+                out.push(line_path(Point::new(x, below), Point::new(x, above)));
+            }
+        }
+    }
+    out.retain(|p| {
+        let b = tracedraw_core::geometry::Shape::bounding_box(p);
+        b.width().max(b.height()) >= MIN_LINE
+    });
     out
 }
 
@@ -562,4 +631,44 @@ mod tests {
         let dot = vec![line_path(Point::new(1.0, 1.0), Point::new(1.0, 1.0))];
         let _ = weeding(&[dot], &spec);
     }
+
+    /// #4423: two rows of words, each word many letters close together:
+    /// one line across the frame between the rows and the frame, no line
+    /// into a word.
+    #[test]
+    fn lines_between_rows_split_the_waste_into_strips() {
+        let mut objects = Vec::new();
+        // "Apples" and "Oranges": letters 6 mm wide, 1 mm apart.
+        for (y, n) in [(30.0, 6), (10.0, 7)] {
+            for k in 0..n {
+                objects.push(square(k as f64 * 7.0, y, 6.0));
+            }
+        }
+        let spec = WeedSpec {
+            mode: WeedMode::Rows,
+            gap: 2.5,
+            ..Default::default()
+        };
+        let out = weeding(&objects, &spec);
+        assert_eq!(out.len(), 2, "one line and the frame: {out:?}");
+        let lines = open_lines(&out);
+        assert_eq!(lines.len(), 1);
+        let (a, b) = lines[0];
+        assert!((a.y - b.y).abs() < 1e-9 && (a.y - 23.0).abs() < 1e-9, "{a:?} {b:?}");
+        // Across the whole frame.
+        assert!((a.x.min(b.x) + 5.0).abs() < 1e-9 && (a.x.max(b.x) - 53.0).abs() < 1e-9, "{a:?} {b:?}");
+        // Two words in a row get a line between them, from frame to the
+        // line between the rows.
+        objects.push(square(70.0, 30.0, 6.0));
+        let out = weeding(&objects, &spec);
+        let lines = open_lines(&out);
+        assert_eq!(lines.len(), 2, "{lines:?}");
+        let v = lines.iter().find(|(a, b)| (a.x - b.x).abs() < 1e-9).expect("upright line");
+        assert!((v.0.x - (41.0 + 2.5 + 67.5) / 2.0).abs() < 1e-9, "{v:?}");
+        assert!((v.0.y.min(v.1.y) - 23.0).abs() < 1e-9);
+        // Without it, only the lines across.
+        let only = weeding(&objects, &WeedSpec { between: false, ..spec });
+        assert_eq!(open_lines(&only).len(), 1);
+    }
+
 }

@@ -6,6 +6,17 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Export and Publish to PDF: the target file size can be typed in KB or MB, and the Export dialog's size estimate for PDF follows the compression settings (#4452).
+- Text on a path: a side handle stretches the letters wider or taller instead of resizing the path (#4442).
+- CNC Toolpath: ramps (smooth or zig-zag) take the bit down along the path instead of straight down, and line or arc leads bring it into closed cuts from the waste side and back out (#4449).
+- Object > Insert > Serial Numbers: a run of numbers (such as 01 to 99) or random codes of a set length, each optionally on a circle, star, burst, diamond or guilloche rosette, laid out in a grid (#4445).
+- The property bar shows the width and height of a rectangle or ellipse while it is drawn (#4424).
+- The outline width list no longer jumps while the pointer moves over it, and shows every width without a scroll bar when the window has room (#4434).
+- Snapping no longer stays off when the release of Q (held to snap freely) never reached the window; the rotation centre snaps again in that case (#4466).
+- A range layer picked in the Objects panel stays picked on the other pages of its range, so new objects, texts and page numbers go into it (#4450).
+- The eyedropper reads gradients, see-through fills and drop shadows in the colour model their colours were made in (CMYK, HSB, Lab…) (#4438).
+- A .cdr sent renamed as .zip opens, from File > Open (which now lists .zip files) or by dropping it (#4435).
+- TraceCut Weeding: Lines between rows draws one line across the frame between each row of objects (letters close together count as one word) and, if wanted, one between the words of a row, so the waste comes off in strips and no line touches a letter (#4423).
 - Data Merge with On every page: a field typed into a text just started with the Text tool goes on the other pages too, and printing the merge (Print Preview included) fills a copy that closes with the printing, so the drawing keeps its fields instead of the last values printed (#4354).
 - Paste: one row or one column of spreadsheet cells copied together with their picture pastes as a table (#4422).
 - Panels: a panel's menu has Close All Panels, which closes every open panel wherever it lies and keeps the locked ones (#4436).

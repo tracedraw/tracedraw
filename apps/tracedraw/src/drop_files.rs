@@ -432,6 +432,40 @@ pub fn unpack_drawings(path: &Path) -> Vec<PathBuf> {
     let Ok(mut archive) = zip::ZipArchive::new(std::io::BufReader::new(file)) else {
         return Vec::new();
     };
+    static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    let dir = std::env::temp_dir().join(format!(
+        "tracedraw-zip-{}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
+    // A .cdr is itself a ZIP archive: one renamed `name.cdr.zip` to be
+    // sent (sites take no .cdr) is the drawing, opened as a .cdr; it held
+    // no drawing inside and did not open (#4435).
+    let is_cdr = ["content/root.dat", "content/riffData.cdr"]
+        .iter()
+        .any(|m| archive.index_for_name(m).is_some());
+    if is_cdr {
+        drop(archive);
+        let stem = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("drawing")
+            .to_string();
+        let name = if Path::new(&stem)
+            .extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| matches!(e.to_ascii_lowercase().as_str(), "cdr" | "cdt" | "cdrt"))
+        {
+            stem
+        } else {
+            format!("{stem}.cdr")
+        };
+        let to = dir.join(name);
+        return match std::fs::create_dir_all(&dir).and_then(|_| std::fs::copy(path, &to)) {
+            Ok(_) => vec![to],
+            Err(_) => Vec::new(),
+        };
+    }
     let wanted = |name: &str| {
         let p = Path::new(name);
         let ext = p
@@ -451,12 +485,6 @@ pub fn unpack_drawings(path: &Path) -> Vec<PathBuf> {
                 "txt" | "rtf" | "docx" | "xlsx" | "csv" | "tsv" | "zip"
             )
     };
-    static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-    let dir = std::env::temp_dir().join(format!(
-        "tracedraw-zip-{}-{}",
-        std::process::id(),
-        NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-    ));
     let mut out = Vec::new();
     for i in 0..archive.len() {
         let Ok(mut entry) = archive.by_index(i) else {
@@ -904,6 +932,46 @@ mod tests {
         frame(&ctx, &mut app, vec![path], false);
         assert_eq!(app.docs.len(), docs + 1, "{}", app.status);
         assert!(shape_count(&app) > 0);
+    }
+
+    /// #4435: a .cdr renamed `name.cdr.zip` to be sent is the drawing
+    /// itself (a .cdr is a ZIP archive), opened as a .cdr; it held no
+    /// drawing inside and did not open.
+    #[test]
+    fn a_cdr_sent_as_a_zip_opens_as_the_cdr() {
+        let dir = dir("cdr-zip");
+        let mut doc =
+            tracedraw_core::Document::new("icons", tracedraw_core::geometry::Size::new(100.0, 100.0));
+        let id = doc.ids_mut().shape();
+        doc.pages[0].layers[0].shapes.push(tracedraw_core::Shape::new(
+            id,
+            tracedraw_core::ShapeKind::Rect {
+                rect: tracedraw_core::Rect::new(10.0, 10.0, 40.0, 30.0),
+                radius: 0.0,
+                corners: None,
+            },
+        ));
+        let bytes = tracedraw_cdr::write::document_to_cdr(&doc);
+        for (name, inside) in [("icons.cdr.zip", "icons.cdr"), ("icons.zip", "icons.cdr")] {
+            let path = dir.join(name);
+            std::fs::write(&path, &bytes).expect("zip");
+            let got = super::unpack_drawings(&path);
+            assert_eq!(got.len(), 1, "{name}: {got:?}");
+            assert_eq!(got[0].file_name().and_then(|n| n.to_str()), Some(inside));
+            assert_eq!(std::fs::read(&got[0]).expect("copy"), bytes);
+        }
+        // File > Open of it opens the drawing.
+        let mut app = App::headless();
+        let docs = app.docs.len();
+        app.open_path(dir.join("icons.cdr.zip"));
+        for _ in 0..400 {
+            if app.docs.len() > docs {
+                break;
+            }
+            app.poll_opening();
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert_eq!(app.docs.len(), docs + 1, "{}", app.status);
     }
 
     /// #2686: on Windows a drop (or the drag leaving) could fail to reach

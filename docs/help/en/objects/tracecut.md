@@ -81,6 +81,16 @@ and the **spindle speed**. X0 Y0 is the bottom-left corner of the
 selection or the ruler origin, Z0 the top of the material. Holes are cut
 before the outline around them.
 
+**Ramp in** takes the bit down along the path instead of straight down,
+which is easier on the bit: **Smooth** goes down over the **ramp length**
+as it moves along a closed cut, goes round at depth and cuts the ramp
+stretch again at the end; **Zig-zag** goes forward half way down and back
+to the start the rest of the way (open curves always zig-zag). **Lead in
+and out** brings the bit into closed outside and inside cuts from the waste
+side, along a line or a quarter arc of the **lead length**, and takes it
+back out the same way, so no mark is left on the part where the cut starts
+and ends. A lead that would cross the part is shortened.
+
 **Holding tabs** leave short bridges of material at the bottom of the
 outside cuts so the parts do not move when they come free; set how many,
 how wide and how thick. Apply shows the toolpaths, OK saves the .nc file.
@@ -120,6 +130,10 @@ material's settings as a preset.
 
 Adds weeding lines from each object to its neighbours, or a box around each
 object, and a weeding frame, so the waste peels off in small pieces.
+[[tracecut.weed_rows]] instead draws a line right across the frame between
+each row of objects (letters closer than twice the gap count as one word)
+and, with [[tracecut.weed_between]], an up and down line between the words
+of a row, so the waste comes off in strips and no line touches a letter.
 
 ## Bridges {#bridges}
 

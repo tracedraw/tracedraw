@@ -82,6 +82,8 @@ pub struct ExportState {
     /// until the file fits in `pdf_target_mb` megabytes (#4265).
     pub pdf_target: bool,
     pub pdf_target_mb: f64,
+    /// The target size shown in kilobytes (#4452).
+    pub pdf_target_kb: bool,
     pub output_condition: String,
     /// An installed script filter chosen instead of `format`, by name.
     pub script: Option<String>,
@@ -165,6 +167,7 @@ impl Default for ExportState {
             pdf_quality: 75,
             pdf_target: false,
             pdf_target_mb: 5.0,
+            pdf_target_kb: false,
             // Empty: the drawing's CMYK profile (#3829).
             output_condition: String::new(),
             script: None,
@@ -1647,6 +1650,8 @@ pub enum Dialog {
     TransformEach(crate::ui::transform_each::TransformEach),
     /// Object > Insert > Light Flare.
     Flare(crate::ui::flare::Flare),
+    /// Object > Insert > Serial Numbers.
+    Serials(Box<crate::ui::serials::Serials>),
     /// Object > Insert > Chart from Data.
     Chart(crate::ui::chart_dialog::ChartState),
     /// Effects > Bend with Pins.
@@ -3872,6 +3877,7 @@ pub fn show(app: &mut App, ctx: &Context) {
         Dialog::Formula(st) => crate::ui::formula_dialog::dialog(app, ctx, st, &mut close),
         Dialog::TransformEach(st) => crate::ui::transform_each::dialog(app, ctx, st, &mut close),
         Dialog::Flare(st) => crate::ui::flare::dialog(app, ctx, st, &mut close),
+        Dialog::Serials(st) => crate::ui::serials::dialog(app, ctx, st, &mut close),
         Dialog::Chart(st) => crate::ui::chart_dialog::dialog(app, ctx, st, &mut close),
         Dialog::Pins(st) => crate::ui::pins_dialog::dialog(app, ctx, st, &mut close),
         Dialog::CopyProperties(c) => {
@@ -5251,10 +5257,6 @@ fn export_preview_key(app: &App, st: &ExportState) -> u64 {
     st.pages.hash(&mut h);
     st.spreads.hash(&mut h);
     st.text_as_curves.hash(&mut h);
-    st.pdf_compress.hash(&mut h);
-    st.pdf_quality.hash(&mut h);
-    st.pdf_target.hash(&mut h);
-    st.pdf_target_mb.to_bits().hash(&mut h);
     st.svg_text.hash(&mut h);
     st.ai_version.hash(&mut h);
     st.quality.hash(&mut h);
@@ -5271,10 +5273,43 @@ fn export_preview_key(app: &App, st: &ExportState) -> u64 {
     h.finish()
 }
 
+/// What a PDF's estimated size depends on besides the preview: the
+/// picture compression and the target size (#4452).
+fn pdf_estimate_key(preview_key: u64, st: &ExportState) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    preview_key.hash(&mut h);
+    st.pdf_compress.hash(&mut h);
+    st.pdf_quality.hash(&mut h);
+    st.pdf_target.hash(&mut h);
+    st.pdf_target_mb.to_bits().hash(&mut h);
+    st.bleed_mm.to_bits().hash(&mut h);
+    st.pdf_standard.hash(&mut h);
+    h.finish()
+}
+
+/// The estimated size of the PDF export, made again when its settings
+/// change but not while a slider or field is being dragged, so the
+/// Compress pictures slider moves smoothly (#4452).
+fn pdf_estimate(app: &App, ui: &Ui, st: &ExportState, preview_key: u64) -> Option<usize> {
+    let id = egui::Id::new("export_pdf_estimate");
+    let key = pdf_estimate_key(preview_key, st);
+    let cached = ui.ctx().data(|d| d.get_temp::<(u64, Option<usize>)>(id));
+    if let Some((k, bytes)) = cached {
+        if k == key || ui.input(|i| i.pointer.any_down()) {
+            return bytes;
+        }
+    }
+    let bytes = crate::export::estimated_pdf_size(app, st);
+    ui.ctx().data_mut(|d| d.insert_temp(id, (key, bytes)));
+    bytes
+}
+
 /// Draw the preview box (`size` points) and return the estimated size.
 fn export_preview_box(app: &App, ui: &mut Ui, st: &ExportState, size: egui::Vec2) -> Option<usize> {
     let id = egui::Id::new("export_preview");
     let key = export_preview_key(app, st);
+    let pdf = EXPORT_FORMATS[st.format.min(EXPORT_FORMATS.len() - 1)].1 == "pdf";
     let cached = ui
         .ctx()
         .data(|d| d.get_temp::<ExportPreview>(id))
@@ -5284,8 +5319,10 @@ fn export_preview_box(app: &App, ui: &mut Ui, st: &ExportState, size: egui::Vec2
         None => {
             let px = (size.x.max(size.y) * ui.ctx().pixels_per_point()).round() as u32;
             let pm = crate::export::preview(app, st, px);
+            // A PDF's size is estimated apart, below.
             let bytes = pm
                 .as_ref()
+                .filter(|_| !pdf)
                 .and_then(|pm| crate::export::estimated_size(app, st, pm));
             let texture = pm.as_ref().map(|pm| {
                 let pixels: Vec<egui::Color32> = pm
@@ -5369,7 +5406,11 @@ fn export_preview_box(app: &App, ui: &mut Ui, st: &ExportState, size: egui::Vec2
         egui::Stroke::new(1.0, egui::Color32::from_gray(0xC8)),
         egui::StrokeKind::Inside,
     );
-    preview.bytes
+    if pdf {
+        pdf_estimate(app, ui, st, key)
+    } else {
+        preview.bytes
+    }
 }
 
 /// File > Export asks for the file before the options (the folder, the
@@ -6322,14 +6363,12 @@ fn pdf_compression_rows(ui: &mut Ui, st: &mut ExportState) {
         ui.checkbox(&mut st.pdf_target, tr("publish.target_size"))
             .rich_tip(crate::ui::tips::keyed("publish.target_size"));
         ui.add_enabled_ui(st.pdf_target, |ui| {
-            ui.add(
-                crate::ui::field::NumField::new(&mut st.pdf_target_mb)
-                    .range(0.01..=10_000.0)
-                    .speed(0.1)
-                    .max_decimals(2)
-                    .suffix(" MB"),
-            )
-            .rich_tip(crate::ui::tips::keyed("publish.target_size"));
+            crate::ui::publish_pdf::target_size_field(
+                ui,
+                "export_target_unit",
+                &mut st.pdf_target_mb,
+                &mut st.pdf_target_kb,
+            );
         });
     });
 }
@@ -6351,6 +6390,7 @@ pub fn open_pdf_settings(app: &mut App, st: &ExportState) {
         }
         p.prefs.bitmaps.target_size = st.pdf_target;
         p.prefs.bitmaps.target_mb = st.pdf_target_mb;
+        p.prefs.bitmaps.target_kb = st.pdf_target_kb;
         if st.pdf_standard < PDF_STANDARDS.len() {
             p.prefs.standard = st.pdf_standard;
         }
@@ -10229,6 +10269,7 @@ pub(crate) mod tests {
             Dialog::Formula(Default::default()),
             Dialog::TransformEach(Default::default()),
             Dialog::Flare(Default::default()),
+            Dialog::Serials(Default::default()),
             Dialog::Chart(Default::default()),
             Dialog::Pins(Default::default()),
             Dialog::ConvertToBitmap(crate::bitmap_modes::ConvertOptions {

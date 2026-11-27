@@ -61,6 +61,7 @@ pub mod export_docker;
 pub mod extrude_bar;
 pub mod field;
 pub mod flare;
+pub mod serials;
 pub mod fill_tool_bars;
 pub mod focus_bar;
 pub mod font_list;

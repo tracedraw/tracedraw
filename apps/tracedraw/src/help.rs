@@ -111,6 +111,7 @@ pub fn dialog_topic(d: &Dialog, options: OptionsPage) -> &'static str {
         Dialog::Formula(_) => "objects/formulas",
         Dialog::TransformEach(_) => "objects/transforming#transform-each",
         Dialog::Flare(_) => "objects/light-flare",
+        Dialog::Serials(_) => "objects/serial-numbers",
         Dialog::Chart(_) => "objects/charts",
         Dialog::Pins(_) => "effects/bend-with-pins",
         Dialog::ConvertToBitmap(_) => "bitmaps/convert-to-bitmap",

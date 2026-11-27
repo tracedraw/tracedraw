@@ -2001,7 +2001,11 @@ fn selection_angle(app: &App) -> f64 {
 /// turned about the box's centre even with the centre of rotation moved).
 fn rotation_field(app: &mut App, ui: &mut Ui, refp: Point) -> egui::Response {
     let refp = app.moved_rotation_center().unwrap_or(refp);
-    let angle = selection_angle(app);
+    let angle = if drawn_box(app).is_some() {
+        0.0
+    } else {
+        selection_angle(app)
+    };
     let mut a = angle;
     let r = ui.add_sized(
         [64.0, ROW + 4.0],
@@ -2080,10 +2084,29 @@ fn percentage_scale_transform(app: &App, sx: f64, sy: f64, reference: Point) -> 
     .then_some(transform)
 }
 
+/// The box of the shape being drawn with a shape tool, which the bar
+/// shows while the pointer drags it out (#4424).
+pub(crate) fn drawn_box(app: &App) -> Option<GeoRect> {
+    use tracedraw_core::geometry::Shape as _;
+    let crate::app::Drag::Box {
+        start,
+        current,
+        from_center,
+    } = app.drag
+    else {
+        return None;
+    };
+    let b = app.creation_preview(start, current, from_center)?.bounding_box();
+    (b.width().is_finite() && b.height().is_finite()).then_some(b)
+}
+
 /// The box the property bar shows: the selection's, where the drag has
 /// it while it is dragged (#4468: the values stayed as they were until
 /// the release).
 pub(crate) fn shown_selection_bounds(app: &App) -> Option<GeoRect> {
+    if let Some(b) = drawn_box(app) {
+        return Some(b);
+    }
     let b = app.selection_bounds()?;
     Some(live_drag(app).map_or(b, |t| live_bounds(app, b, t)))
 }
@@ -2133,7 +2156,12 @@ pub fn object_bar(app: &mut App, ui: &mut Ui) {
     // Scale factors: one object shows how far it is scaled from the size
     // it was drawn or imported at (#2693); several show 100%. A value
     // typed scales the selection from what it shows.
-    let shown = app.scale_shown_with(live);
+    let drawing = drawn_box(app).is_some();
+    let shown = if drawing {
+        (100.0, 100.0)
+    } else {
+        app.scale_shown_with(live)
+    };
     let mut scale: Option<Affine> = None;
     stacked(ui, |ui| {
         for horizontal in [true, false] {
@@ -2391,6 +2419,29 @@ fn set_no_outline(app: &mut App) {
     }
 }
 
+/// The width and height the outline width list needs for its rows.
+fn outline_list_size(app: &App, ui: &Ui) -> (f32, f32) {
+    let font = egui::TextStyle::Button.resolve(ui.style());
+    let measure = |t: String| {
+        ui.painter()
+            .layout_no_wrap(t, font.clone(), crate::theme::Tokens::text())
+            .size()
+            .x
+    };
+    let presets = outline_width_presets(app.outline_units());
+    let widest = presets
+        .iter()
+        .map(|w| measure(outline_text(app, Some(*w))))
+        .chain([measure(tr("toolbar.none")), measure(tr("toolbar.hairline"))])
+        .fold(0.0_f32, f32::max);
+    let pad = ui.spacing().button_padding.x * 2.0;
+    // Room for a row's picture too.
+    let w = widest + pad + ui.spacing().interact_size.y + ui.spacing().item_spacing.x + 4.0;
+    let row = ui.spacing().interact_size.y + ui.spacing().item_spacing.y;
+    let h = (presets.len() + 2) as f32 * row + ui.spacing().window_margin.sum().y;
+    (w, h)
+}
+
 /// The rows of the outline width list: None, Hairline and the usual
 /// widths; returns the one clicked. A width and its unit stay on one row
 /// and the list grows wider than the box when they need it ("0.75 pt"
@@ -2560,18 +2611,31 @@ fn outline_width_box(
     } else {
         ui.data_mut(|d| d.remove::<f32>(acc_id));
     }
+    // The list is as wide as its widest row and as tall as its rows from
+    // the start: sized from what it showed the frame before, it grew and
+    // shrank while the pointer moved over it, and the rows jumped; and it
+    // scrolls only when the window is too short for it (#4434).
+    let (list_w, list_h) = outline_list_size(app, ui);
+    let room = (ctx.content_rect().bottom() - anchor.bottom() - 12.0).max(120.0);
     egui::Popup::new(popup_id, ctx.clone(), anchor, ui.layer_id())
         .open_memory(None)
-        .width(anchor.width())
+        .width(anchor.width().max(list_w))
         .show(|ui| {
-            egui::ScrollArea::vertical()
-                .max_height(400.0)
-                .show(ui, |ui| {
-                    if let Some(p) = outline_width_rows(app, ui, width, mixed) {
-                        picked = Some(p);
-                    }
-                    crate::ui::keynav::scroll_into_view(ui);
-                });
+            ui.set_min_width(anchor.width().max(list_w));
+            if list_h <= room {
+                if let Some(p) = outline_width_rows(app, ui, width, mixed) {
+                    picked = Some(p);
+                }
+            } else {
+                egui::ScrollArea::vertical()
+                    .max_height(room)
+                    .show(ui, |ui| {
+                        if let Some(p) = outline_width_rows(app, ui, width, mixed) {
+                            picked = Some(p);
+                        }
+                        crate::ui::keynav::scroll_into_view(ui);
+                    });
+            }
         });
     if picked.is_some() {
         egui::Popup::close_id(&ctx, popup_id);

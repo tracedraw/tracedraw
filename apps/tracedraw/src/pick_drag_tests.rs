@@ -4913,6 +4913,26 @@ fn ctrl_draws_a_regular_polygon() {
     assert!(b.width() > 2.0 * b.height(), "{b:?}");
 }
 
+/// While a rectangle or an ellipse is drawn, the property bar shows the
+/// size being dragged out, nothing selected or not (#4424).
+#[test]
+fn the_property_bar_shows_the_shape_being_drawn() {
+    let (_ctx, mut app, _id) = setup();
+    app.select(Vec::new());
+    for tool in [Tool::Rectangle, Tool::Ellipse] {
+        app.set_tool(tool);
+        app.drag = Drag::Box {
+            start: Point::new(10.0, 10.0),
+            current: Point::new(40.0, 25.0),
+            from_center: false,
+        };
+        let b = crate::ui::propbar::shown_selection_bounds(&app).expect("the box being drawn");
+        assert!((b.width() - 30.0).abs() < 0.01 && (b.height() - 15.0).abs() < 0.01, "{tool:?} {b:?}");
+        app.drag = Drag::None;
+        assert!(crate::ui::propbar::shown_selection_bounds(&app).is_none());
+    }
+}
+
 /// A shape drag that is somehow still open when the tool changes does
 /// not stay on the page as a preview (#1923).
 #[test]
@@ -6350,6 +6370,44 @@ fn holding_q_turns_snapping_off_until_it_is_let_go() {
     frame(&ctx, &mut app, Vec::new(), none);
     assert!(!app.snaps_off() && app.snap_enabled());
     assert_eq!(app.tool, Tool::Pick, "Q picks no tool");
+}
+
+/// A Q whose release never reached the window (let go over another
+/// window, or the window lost the focus) does not leave every snap off:
+/// the hold ends with the focus change, or when Q stops repeating
+/// (#4466).
+#[test]
+fn a_lost_q_release_does_not_keep_snapping_off() {
+    let (ctx, mut app, _id) = setup();
+    app.snap.guides = true;
+    let none = Modifiers::NONE;
+    frame(&ctx, &mut app, vec![key(egui::Key::Q, none)], none);
+    assert!(app.snaps_off());
+    frame(&ctx, &mut app, vec![Event::WindowFocused(false)], none);
+    frame(&ctx, &mut app, vec![Event::WindowFocused(true)], none);
+    assert!(!app.snaps_off() && app.snap_enabled());
+    // Pressed again, then no repeat for two seconds.
+    frame(&ctx, &mut app, vec![key_up(egui::Key::Q, none), key(egui::Key::Q, none)], none);
+    assert!(app.snaps_off());
+    for _ in 0..150 {
+        frame(&ctx, &mut app, Vec::new(), none);
+    }
+    assert!(!app.snaps_off(), "the hold ends when Q stops repeating");
+    // Repeats keep it held.
+    frame(&ctx, &mut app, vec![key_up(egui::Key::Q, none), key(egui::Key::Q, none)], none);
+    for _ in 0..150 {
+        let repeat = Event::Key {
+            key: egui::Key::Q,
+            physical_key: None,
+            pressed: true,
+            repeat: true,
+            modifiers: none,
+        };
+        frame(&ctx, &mut app, vec![repeat], none);
+    }
+    assert!(app.snaps_off());
+    frame(&ctx, &mut app, vec![key_up(egui::Key::Q, none)], none);
+    assert!(!app.snaps_off());
 }
 
 /// With alignment guides on, a rectangle drawn near the size of another

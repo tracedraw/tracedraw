@@ -31,6 +31,23 @@
 //! top of a tab rise to it over the tab. Tabs that would take more than
 //! nine tenths of a toolpath are left out of it.
 //!
+//! Ramps take the tool down along the path instead of straight down:
+//! **smooth** goes down over the ramp length as it moves along a closed
+//! toolpath, goes round at depth and cuts the ramp stretch again at the
+//! end (the next pass starts where that one ended); **zig-zag** goes
+//! forward over the ramp length to half way down and back to the start
+//! the rest of the way. Open toolpaths always zig-zag. Straight-down
+//! moves then only reach the top of the material or the last pass.
+//!
+//! Leads bring the tool into closed outside and inside cuts from the
+//! waste side (outside an outline, inside a hole) and take it back out:
+//! a **line** square to the toolpath or a **quarter circle** meeting it
+//! along its direction, the lead length long (the circle's radius).
+//! Such a toolpath starts half way along its longest side; a lead that
+//! would cross the part is halved until it fits, or left out. With
+//! leads every pass goes in at the far end of the lead-in, and a ramp
+//! goes down along the lead-in.
+//!
 //! The program is plain RS-274 style G-code in millimetres: `G21`,
 //! `G90`, `G94`, a rapid to the safe height, `M3 S..`, then for every
 //! toolpath `G0` to its start, `G1 Z.. F<plunge>` down and `G1 X.. Y..
@@ -73,6 +90,31 @@ pub enum Zero {
     Origin,
 }
 
+/// How the tool goes down into the material at the start of a pass.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub enum Ramp {
+    /// Straight down at the plunge rate.
+    #[default]
+    Off,
+    /// Down along the path over the ramp length.
+    Smooth,
+    /// Forward over the ramp length to half way down, back to the
+    /// start the rest of the way.
+    ZigZag,
+}
+
+/// How the tool comes into and leaves a closed outside or inside cut.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub enum Lead {
+    /// Starts and ends on the toolpath.
+    #[default]
+    Off,
+    /// A straight line from the waste side, square to the toolpath.
+    Line,
+    /// A quarter circle from the waste side, meeting the toolpath along it.
+    Arc,
+}
+
 /// Settings of [`program`]; lengths in millimetres, rates in mm a minute.
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
@@ -99,6 +141,12 @@ pub struct CncSpec {
     pub tab_width: f64,
     /// Thickness of the material each tab leaves.
     pub tab_height: f64,
+    pub ramp: Ramp,
+    /// Length of path a ramp goes down over.
+    pub ramp_length: f64,
+    pub lead: Lead,
+    /// Length of a line lead, radius of an arc lead.
+    pub lead_length: f64,
 }
 
 impl Default for CncSpec {
@@ -119,6 +167,10 @@ impl Default for CncSpec {
             tab_count: 4,
             tab_width: 5.0,
             tab_height: 1.5,
+            ramp: Ramp::Off,
+            ramp_length: 10.0,
+            lead: Lead::Off,
+            lead_length: 5.0,
         }
     }
 }
@@ -132,6 +184,8 @@ pub const SPINDLE_RANGE: (f64, f64) = (0.0, 100_000.0);
 pub const TOLERANCE_RANGE: (f64, f64) = (0.001, 1.0);
 pub const TAB_COUNT_RANGE: (u32, u32) = (1, 100);
 pub const TAB_RANGE: (f64, f64) = (0.01, 500.0);
+pub const RAMP_RANGE: (f64, f64) = (0.1, 1000.0);
+pub const LEAD_RANGE: (f64, f64) = (0.1, 200.0);
 
 /// The most passes one toolpath gets.
 pub const MAX_PASSES: usize = 1000;
@@ -153,6 +207,8 @@ impl CncSpec {
             tab_count: self.tab_count.clamp(TAB_COUNT_RANGE.0, TAB_COUNT_RANGE.1),
             tab_width: c(self.tab_width, d.tab_width, TAB_RANGE),
             tab_height: c(self.tab_height, d.tab_height, TAB_RANGE),
+            ramp_length: c(self.ramp_length, d.ramp_length, RAMP_RANGE),
+            lead_length: c(self.lead_length, d.lead_length, LEAD_RANGE),
             ..*self
         }
     }
@@ -207,6 +263,8 @@ pub struct Program {
     pub toolpaths: Vec<Toolpath>,
     /// Moves at the safe height, page space.
     pub rapids: Vec<(Point, Point)>,
+    /// The lead-in and lead-out moves, page space (for the preview).
+    pub leads: Vec<Vec<Point>>,
     /// Passes per toolpath.
     pub passes: usize,
     /// Length cut at the feed rate, every pass (mm).
@@ -410,6 +468,9 @@ pub fn toolpaths(objects: &[Vec<BezPath>], spec: &CncSpec, from: Point) -> (Vec<
             .filter(|p| p.len() >= 2)
             .unwrap_or_else(|| t.pts.clone());
         let mut t = Toolpath { pts, ..t.clone() };
+        if spec.lead != Lead::Off && t.closed && matches!(t.side, Side::Outside | Side::Inside) {
+            t.pts = start_mid_longest(&t.pts);
+        }
         if spec.tabs && t.closed && t.side == Side::Outside && spec.tab_height < spec.depth {
             t.tabs = tab_ranges(t.length(), &spec);
         }
@@ -507,6 +568,27 @@ impl Writer {
         }
     }
 
+    /// `G1` along and down (or up) at once, at the feed rate.
+    fn feed_xyz(&mut self, p: Point, z: f64) {
+        let d = (p - self.at).hypot();
+        let dz = (z - self.z).abs();
+        if dz <= 1e-9 {
+            self.feed_xy(p);
+            return;
+        }
+        if d <= 1e-9 {
+            self.feed_z(z);
+            return;
+        }
+        let f = self.feed_word(self.feed);
+        let s = format!("G1 {} Z{}{f}", self.xy(p), num(z));
+        self.line(&s);
+        self.cut_length += d;
+        self.minutes += d.hypot(dz) / self.feed;
+        self.at = p;
+        self.z = z;
+    }
+
     fn feed_xy(&mut self, p: Point) {
         let d = (p - self.at).hypot();
         if d > 1e-9 {
@@ -518,6 +600,203 @@ impl Writer {
             self.at = p;
         }
     }
+}
+
+/// A closed ring started half way along its longest side, so a lead
+/// meets it on a straight stretch, not at a corner.
+fn start_mid_longest(pts: &[Point]) -> Vec<Point> {
+    let n = pts.len();
+    if n < 3 {
+        return pts.to_vec();
+    }
+    let seg = |i: usize| (pts[(i + 1) % n] - pts[i]).hypot();
+    let i = (0..n).max_by(|a, b| seg(*a).total_cmp(&seg(*b))).unwrap_or(0);
+    let mid = pts[i].midpoint(pts[(i + 1) % n]);
+    let mut out = Vec::with_capacity(n + 1);
+    out.push(mid);
+    out.extend((1..=n).map(|k| pts[(i + k) % n]));
+    out
+}
+
+/// A polyline measured by length from its first point; a closed one
+/// (its first point repeated at the end) wraps round.
+struct Poly {
+    pts: Vec<Point>,
+    /// Length from the start to each point.
+    cum: Vec<f64>,
+    len: f64,
+    closed: bool,
+}
+
+impl Poly {
+    fn new(pts: Vec<Point>, closed: bool) -> Poly {
+        let mut cum = Vec::with_capacity(pts.len());
+        let mut d = 0.0;
+        for (i, p) in pts.iter().enumerate() {
+            if i > 0 {
+                d += (*p - pts[i - 1]).hypot();
+            }
+            cum.push(d);
+        }
+        Poly {
+            pts,
+            cum,
+            len: d,
+            closed,
+        }
+    }
+
+    /// The length along it, wrapped round a closed one and kept on an
+    /// open one.
+    fn local(&self, s: f64) -> f64 {
+        if self.closed && self.len > 1e-12 {
+            s.rem_euclid(self.len)
+        } else {
+            s.clamp(0.0, self.len)
+        }
+    }
+
+    fn at(&self, s: f64) -> Point {
+        let s = self.local(s);
+        let Some(&first) = self.pts.first() else {
+            return Point::ZERO;
+        };
+        let i = self.cum.partition_point(|c| *c < s);
+        if i == 0 {
+            return first;
+        }
+        if i >= self.pts.len() {
+            return *self.pts.last().unwrap_or(&first);
+        }
+        let (a, b) = (self.pts[i - 1], self.pts[i]);
+        let seg = self.cum[i] - self.cum[i - 1];
+        if seg <= 1e-12 {
+            return b;
+        }
+        a + (b - a) * ((s - self.cum[i - 1]) / seg)
+    }
+
+    /// The lengths in `a..b` (unwrapped) where it has a point or one of
+    /// `edges` (local lengths) falls.
+    fn breaks(&self, a: f64, b: f64, edges: &[f64]) -> Vec<f64> {
+        let mut out = Vec::new();
+        let laps = if self.closed && self.len > 1e-12 {
+            ((a / self.len).floor() as i64, (b / self.len).ceil() as i64)
+        } else {
+            (0, 0)
+        };
+        for lap in laps.0..=laps.1 {
+            let base = lap as f64 * self.len;
+            for c in self.cum.iter().chain(edges) {
+                let v = base + c;
+                if v > a + 1e-9 && v < b - 1e-9 {
+                    out.push(v);
+                }
+            }
+        }
+        out.push(b);
+        out.sort_by(f64::total_cmp);
+        out.dedup_by(|x, y| (*x - *y).abs() < 1e-9);
+        out
+    }
+}
+
+/// Cuts along `line` from length `a` to `b` with the depth `z_at` gives
+/// for a local length. Level stretches go down or up at each change;
+/// `ramp` stretches go down as they go, in steps of at most 0.5 mm.
+fn walk(w: &mut Writer, line: &Poly, a: f64, b: f64, edges: &[f64], z_at: impl Fn(f64) -> f64, ramp: bool) {
+    if b <= a + 1e-12 || line.pts.len() < 2 {
+        return;
+    }
+    let mut from = a;
+    for c in line.breaks(a, b, edges) {
+        if ramp {
+            let n = ((c - from) / 0.5).ceil().max(1.0) as usize;
+            for k in 1..=n {
+                let s = from + (c - from) * k as f64 / n as f64;
+                w.feed_xyz(line.at(s), z_at(line.local(s)));
+            }
+        } else {
+            w.feed_z(z_at(line.local((from + c) / 2.0)));
+            w.feed_xy(line.at(c));
+        }
+        from = c;
+    }
+}
+
+/// A zig-zag ramp from the start of `line`: forward over `r` from `top`
+/// to half way to `z`, then back to the start the rest of the way, never
+/// below `floor` (the tabs).
+fn zigzag(w: &mut Writer, line: &Poly, r: f64, top: f64, z: f64, floor: impl Fn(f64) -> f64) {
+    let mid = (top + z) / 2.0;
+    let r = r.max(1e-9);
+    let fwd = |s: f64| (top + (mid - top) * (s / r).min(1.0)).max(floor(s));
+    walk(w, line, 0.0, r, &[], fwd, true);
+    let n = (r / 0.5).ceil().max(1.0) as usize;
+    for k in 1..=n {
+        let s = r - r * k as f64 / n as f64;
+        let zz = (mid + (z - mid) * (k as f64 / n as f64)).max(floor(s));
+        w.feed_xyz(line.at(s), zz);
+    }
+}
+
+/// The lead-in (ending at the start) and lead-out (starting there) of a
+/// closed toolpath cut outside or inside, on its waste side; none when
+/// leads are off, the toolpath is on the line or no lead fits.
+fn lead_moves(pts: &[Point], side: Side, spec: &CncSpec) -> Option<(Vec<Point>, Vec<Point>)> {
+    if spec.lead == Lead::Off || pts.len() < 3 || !matches!(side, Side::Outside | Side::Inside) {
+        return None;
+    }
+    let s = pts[0];
+    let unit = |v: tracedraw_core::geometry::Vec2| {
+        let l = v.hypot();
+        (l > 1e-12).then(|| v / l)
+    };
+    let t_in = unit(pts[1] - s)?;
+    let t_out = unit(s - pts[pts.len() - 1])?;
+    // The outward normal of a ring of the given turn.
+    let ccw = signed_area(pts) > 0.0;
+    let out_of = |t: tracedraw_core::geometry::Vec2| {
+        if ccw {
+            tracedraw_core::geometry::Vec2::new(t.y, -t.x)
+        } else {
+            tracedraw_core::geometry::Vec2::new(-t.y, t.x)
+        }
+    };
+    let flip = if side == Side::Inside { -1.0 } else { 1.0 };
+    let (n_in, n_out) = (out_of(t_in) * flip, out_of(t_out) * flip);
+    let mut len = spec.lead_length;
+    for _ in 0..6 {
+        let (a, b) = match spec.lead {
+            Lead::Line => (vec![s + n_in * len, s], vec![s, s + n_out * len]),
+            _ => {
+                let steps = 12;
+                let c_in = s + n_in * len;
+                let c_out = s + n_out * len;
+                let q = std::f64::consts::FRAC_PI_2;
+                let a = (0..=steps)
+                    .map(|i| {
+                        let f = q * i as f64 / steps as f64;
+                        c_in + (t_in * -f.cos() - n_in * f.sin()) * len
+                    })
+                    .collect::<Vec<_>>();
+                let b = (0..=steps)
+                    .map(|i| {
+                        let f = q * i as f64 / steps as f64;
+                        c_out + (n_out * -f.cos() + t_out * f.sin()) * len
+                    })
+                    .collect::<Vec<_>>();
+                (a, b)
+            }
+        };
+        // Every lead point must be on the waste side.
+        let waste = |p: &Point| inside(*p, pts) == (side == Side::Inside);
+        if a[..a.len() - 1].iter().all(waste) && b[1..].iter().all(waste) {
+            return Some((a, b));
+        }
+        len /= 2.0;
+    }
+    None
 }
 
 /// The program that cuts `objects` (page-space outlines per object) as
@@ -567,6 +846,7 @@ pub fn program(objects: &[Vec<BezPath>], spec: &CncSpec, origin: Point) -> Progr
         w.line(&s);
     }
     let mut rapids = Vec::new();
+    let mut all_leads = Vec::new();
     for (i, t) in paths.iter().enumerate() {
         let Some(&start) = t.pts.first() else {
             continue;
@@ -582,16 +862,20 @@ pub fn program(objects: &[Vec<BezPath>], spec: &CncSpec, origin: Point) -> Progr
         if t.closed {
             ring.push(start);
         }
+        let line = Poly::new(ring, t.closed);
+        let leads = if t.closed {
+            lead_moves(&t.pts, t.side, &spec)
+        } else {
+            None
+        };
+        if let Some((a, b)) = &leads {
+            all_leads.push(a.clone());
+            all_leads.push(b.clone());
+        }
+        // Where along a closed ring a smooth ramp left the tool.
+        let mut off = 0.0;
+        let mut top = 0.0;
         for (k, &z) in levels.iter().enumerate() {
-            // A closed toolpath goes down again where it ended; an open
-            // one goes back to its start at the safe height.
-            if k == 0 || !t.closed {
-                w.rapid_z(spec.safe_z);
-                if (w.at - start).hypot() > 1e-9 {
-                    rapids.push((w.at, start));
-                }
-                w.rapid_xy(start);
-            }
             let deep = |s: f64| {
                 if z < tab_z && t.tabs.iter().any(|(a, b)| s > *a && s < *b) {
                     tab_z
@@ -599,33 +883,67 @@ pub fn program(objects: &[Vec<BezPath>], spec: &CncSpec, origin: Point) -> Progr
                     z
                 }
             };
-            w.feed_z(deep(0.0));
-            let mut s0 = 0.0;
-            for seg in ring.windows(2) {
-                let (a, b) = (seg[0], seg[1]);
-                let len = (b - a).hypot();
-                if len <= 1e-12 {
-                    continue;
+            let edges: Vec<f64> = t.tabs.iter().flat_map(|(a, b)| [*a, *b]).collect();
+            if let Some((lead_in, lead_out)) = &leads {
+                // In from the waste side every pass, out the same way.
+                let lin = Poly::new(lead_in.clone(), false);
+                w.rapid_z(spec.safe_z);
+                if (w.at - lin.pts[0]).hypot() > 1e-9 {
+                    rapids.push((w.at, lin.pts[0]));
                 }
-                // Break the segment where it enters or leaves a tab.
-                let mut cuts: Vec<f64> = t
-                    .tabs
-                    .iter()
-                    .flat_map(|(x, y)| [*x, *y])
-                    .filter(|c| *c > s0 + 1e-9 && *c < s0 + len - 1e-9)
-                    .collect();
-                cuts.sort_by(f64::total_cmp);
-                cuts.push(s0 + len);
-                let mut from = s0;
-                for c in cuts {
-                    let mid = (from + c) / 2.0;
-                    w.feed_z(deep(mid));
-                    let p = a + (b - a) * ((c - s0) / len);
-                    w.feed_xy(p);
-                    from = c;
+                w.rapid_xy(lin.pts[0]);
+                match spec.ramp {
+                    Ramp::Off => {
+                        w.feed_z(z);
+                        walk(&mut w, &lin, 0.0, lin.len, &[], |_| z, false);
+                    }
+                    Ramp::Smooth => {
+                        w.feed_z(top);
+                        let r = lin.len.max(1e-9);
+                        walk(&mut w, &lin, 0.0, lin.len, &[], |s| top + (z - top) * (s / r).min(1.0), true);
+                    }
+                    Ramp::ZigZag => {
+                        w.feed_z(top);
+                        zigzag(&mut w, &lin, lin.len, top, z, |_| z);
+                    }
                 }
-                s0 += len;
+                walk(&mut w, &line, 0.0, line.len, &edges, deep, false);
+                let lout = Poly::new(lead_out.clone(), false);
+                walk(&mut w, &lout, 0.0, lout.len, &[], |_| z, false);
+            } else {
+                // A closed toolpath goes down again where it ended; an
+                // open one goes back to its start at the safe height.
+                if k == 0 || !t.closed {
+                    w.rapid_z(spec.safe_z);
+                    let p0 = line.at(off);
+                    if (w.at - p0).hypot() > 1e-9 {
+                        rapids.push((w.at, p0));
+                    }
+                    w.rapid_xy(p0);
+                }
+                let r = spec.ramp_length.min(line.len);
+                match spec.ramp {
+                    Ramp::Smooth if t.closed && r > 1e-9 => {
+                        // Down along the ring, round it at depth, then
+                        // over the ramp again at depth.
+                        w.feed_z(top);
+                        let ramp = |s: f64| (top + (z - top) * ((s - off) / r).min(1.0)).max(deep(s));
+                        walk(&mut w, &line, off, off + r, &edges, ramp, true);
+                        walk(&mut w, &line, off + r, off + line.len + r, &edges, deep, false);
+                        off = (off + r) % line.len;
+                    }
+                    Ramp::Smooth | Ramp::ZigZag if r > 1e-9 => {
+                        w.feed_z(top);
+                        zigzag(&mut w, &line, r, top, z, deep);
+                        walk(&mut w, &line, 0.0, line.len, &edges, deep, false);
+                    }
+                    _ => {
+                        w.feed_z(deep(off));
+                        walk(&mut w, &line, off, off + line.len, &edges, deep, false);
+                    }
+                }
             }
+            top = z;
         }
         w.rapid_z(spec.safe_z);
     }
@@ -645,6 +963,7 @@ pub fn program(objects: &[Vec<BezPath>], spec: &CncSpec, origin: Point) -> Progr
         minutes: w.minutes,
         toolpaths: paths,
         rapids,
+        leads: all_leads,
         skipped,
         zero,
     }
@@ -1015,4 +1334,127 @@ mod tests {
         .clamped();
         assert!(s.tool_diameter.is_finite() && s.feed >= 1.0);
     }
+    /// The Z of every straight-down `G1` move.
+    fn plunges(gcode: &str) -> Vec<f64> {
+        gcode
+            .lines()
+            .filter(|l| l.starts_with("G1 Z"))
+            .filter_map(|l| l[4..].split(' ').next()?.parse().ok())
+            .collect()
+    }
+
+    #[test]
+    fn a_smooth_ramp_goes_down_along_the_path_not_straight_down() {
+        let objs = [vec![rect(0.0, 0.0, 40.0, 40.0)]];
+        let plain = program(&objs, &spec(), Point::ZERO);
+        let ramped = program(
+            &objs,
+            &CncSpec {
+                ramp: Ramp::Smooth,
+                ramp_length: 10.0,
+                ..spec()
+            },
+            Point::ZERO,
+        );
+        // Only the move down to the top of the material is straight.
+        assert!(plunges(&ramped.gcode).iter().all(|z| *z >= -1e-9), "{}", ramped.gcode);
+        assert!(plunges(&plain.gcode).iter().any(|z| *z < -1.0));
+        assert!(ramped.gcode.lines().any(|l| l.contains(" X") && l.contains(" Z-")));
+        assert!(ramped.gcode.contains("Z-6.000"));
+        // Each pass cuts its ramp again at depth.
+        let extra = ramped.cut_length - plain.cut_length;
+        assert!((extra - 3.0 * 10.0).abs() < 0.5, "{extra}");
+    }
+
+    #[test]
+    fn a_zigzag_ramp_comes_back_to_the_start_at_depth() {
+        let mut line = BezPath::new();
+        line.move_to((0.0, 0.0));
+        line.line_to((50.0, 0.0));
+        let p = program(
+            &[vec![line]],
+            &CncSpec {
+                ramp: Ramp::ZigZag,
+                ramp_length: 8.0,
+                depth: 2.0,
+                pass_depth: 2.0,
+                ..spec()
+            },
+            Point::ZERO,
+        );
+        assert!(plunges(&p.gcode).iter().all(|z| *z >= -1e-9), "{}", p.gcode);
+        let lines: Vec<&str> = p.gcode.lines().collect();
+        // Half way down at the far end of the ramp, all the way back at the start.
+        assert!(lines.iter().any(|l| l.starts_with("G1 X8.000 Y0.000 Z-1.000")), "{}", p.gcode);
+        assert!(lines.iter().any(|l| l.starts_with("G1 X0.000 Y0.000 Z-2.000")), "{}", p.gcode);
+        assert!(lines.iter().any(|l| l.starts_with("G1 X50.000 Y0.000")));
+    }
+
+    #[test]
+    fn leads_come_in_from_the_waste_side() {
+        let part = rect(0.0, 0.0, 60.0, 60.0);
+        let hole = rect(20.0, 20.0, 40.0, 40.0);
+        for lead in [Lead::Line, Lead::Arc] {
+            let p = program(
+                &[vec![part.clone(), hole.clone()]],
+                &CncSpec {
+                    lead,
+                    lead_length: 4.0,
+                    ..spec()
+                },
+                Point::ZERO,
+            );
+            assert_eq!(p.leads.len(), 4, "{lead:?}");
+            for (t, pair) in p.toolpaths.iter().zip(p.leads.chunks(2)) {
+                let start = t.pts[0];
+                let (lin, lout) = (&pair[0], &pair[1]);
+                assert!((*lin.last().unwrap() - start).hypot() < 1e-9);
+                assert!((lout[0] - start).hypot() < 1e-9);
+                let r = Rect::new(0.0, 0.0, 60.0, 60.0);
+                let h = Rect::new(20.0, 20.0, 40.0, 40.0);
+                for q in lin[..lin.len() - 1].iter().chain(&lout[1..]) {
+                    if t.side == Side::Inside {
+                        assert!(h.contains(*q), "{lead:?} {q:?}");
+                    } else {
+                        assert!(!r.inflate(2.9, 2.9).contains(*q), "{lead:?} {q:?}");
+                    }
+                }
+                // The tool goes in at the far end of the lead-in.
+                let gx = format!("G0 X{} Y{}", num(lin[0].x), num(lin[0].y));
+                assert!(p.gcode.contains(&gx), "{lead:?}\n{}", p.gcode);
+            }
+        }
+    }
+
+    #[test]
+    fn a_lead_too_long_for_a_hole_is_shortened() {
+        let p = program(
+            &[vec![rect(0.0, 0.0, 60.0, 60.0), circle(Point::new(30.0, 30.0), 6.0)]],
+            &CncSpec {
+                lead: Lead::Line,
+                lead_length: 20.0,
+                ..spec()
+            },
+            Point::ZERO,
+        );
+        let hole = &p.leads[0];
+        // The tool centre runs 3 mm inside the 6 mm hole.
+        assert!((hole[0] - Point::new(30.0, 30.0)).hypot() < 3.0, "{hole:?}");
+    }
+
+    #[test]
+    fn leads_and_a_ramp_go_down_along_the_lead() {
+        let p = program(
+            &[vec![rect(0.0, 0.0, 40.0, 40.0)]],
+            &CncSpec {
+                lead: Lead::Arc,
+                ramp: Ramp::Smooth,
+                ..spec()
+            },
+            Point::ZERO,
+        );
+        assert!(plunges(&p.gcode).iter().all(|z| *z >= -4.0 - 1e-9), "{}", p.gcode);
+        assert!(p.gcode.contains("Z-6.000"));
+    }
+
 }

@@ -219,9 +219,9 @@ fn resized_table(s: &Shape, t: Affine) -> Option<ShapeKind> {
 /// The kind of `s` (a text fitted to a path) with its letters scaled by
 /// the scale `t` instead of the text and its path (#2962): the path stays
 /// where it is, so the text stays on the curve it was fitted to, bigger or
-/// smaller, as far from it in proportion. A side handle's scale is the
-/// letters' scale; a corner's (or any scale on both axes) gives the
-/// geometric mean of the two.
+/// smaller, as far from it in proportion. A side handle stretches each
+/// letter along the line, wider or taller (#4442); a corner scales them
+/// both ways.
 fn resized_fitted_text(s: &Shape, t: Affine) -> Option<ShapeKind> {
     let (sx, sy) = axis_scale(t)?;
     let ShapeKind::Text {
@@ -235,20 +235,14 @@ fn resized_fitted_text(s: &Shape, t: Affine) -> Option<ShapeKind> {
     else {
         return None;
     };
-    let k = if (sx - 1.0).abs() < 1e-9 {
-        sy
-    } else if (sy - 1.0).abs() < 1e-9 {
-        sx
-    } else {
-        (sx * sy).sqrt()
-    };
-    if !(k.is_finite() && k > 1e-6) || (k - 1.0).abs() < 1e-9 {
+    let ok = |k: f64| k.is_finite() && k > 1e-6;
+    if !(ok(sx) && ok(sy)) || ((sx - 1.0).abs() < 1e-9 && (sy - 1.0).abs() < 1e-9) {
         return None;
     }
     let mut on_path = on_path.clone();
-    on_path.distance *= k;
+    on_path.distance *= sy;
     Some(ShapeKind::Text {
-        spans: scale_letters(spans, k, k),
+        spans: scale_letters(spans, sx, sy),
         origin: *origin,
         frame: *frame,
         align: *align,

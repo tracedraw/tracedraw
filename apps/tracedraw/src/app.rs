@@ -1344,6 +1344,10 @@ pub struct App {
     pub duplicate_offset: Vec2,
     /// Q held down on its own: all snapping off while it is held (#3072).
     pub snap_held_off: bool,
+    /// When the last press or repeat of Q held on its own came (input
+    /// time, seconds); a hold whose release never reached the window
+    /// ends when the repeats stop (#4466).
+    pub snap_hold_seen: Option<f64>,
     /// The last Duplicate: each original and its copy. While the copies
     /// are the selection, the next Duplicate repeats what was done to
     /// them since (moved, scaled, turned), as the reference program's
@@ -1476,6 +1480,8 @@ pub struct App {
     pub last_transform_each: crate::ui::transform_each::TransformEach,
     /// The Light Flare settings used last.
     pub last_flare: crate::ui::flare::Flare,
+    /// The Serial Numbers settings used last.
+    pub last_serials: crate::ui::serials::Serials,
     /// The settings of the chart inserted last.
     pub last_chart: Option<crate::chart::ChartSpec>,
     pub blend_steps: u32,
@@ -3531,6 +3537,7 @@ impl App {
             last_duplicate: Vec::new(),
             last_duplicate_in_place: false,
             snap_held_off: false,
+            snap_hold_seen: None,
             forgotten_duplicate: None,
             selection_steps: Default::default(),
             last_guide_duplicate: None,
@@ -3591,6 +3598,7 @@ impl App {
             last_formula: None,
             last_transform_each: Default::default(),
             last_flare: Default::default(),
+            last_serials: Default::default(),
             last_chart: None,
             blend_steps: 20,
             blend_options: Default::default(),
@@ -9666,6 +9674,9 @@ impl App {
             .chain(PICTURE_EXTENSIONS)
             .copied()
             .collect();
+        // A .zip of drawings, or a .cdr sent as `name.cdr.zip` (#4435).
+        let mut all = all;
+        all.push("zip");
         crate::files::Dialog::new()
             .add_filter(crate::i18n::tr("file.all_supported"), &all)
             .add_filter(crate::i18n::tr("file.images"), PICTURE_EXTENSIONS)
@@ -9682,6 +9693,7 @@ impl App {
             .add_filter("Windows Metafile (*.emf, *.wmf)", &["emf", "wmf"])
             .add_filter("Photoshop (*.psd, *.psb)", &["psd", "psb"])
             .add_filter(crate::i18n::tr("file.cdr_files"), &["cdr", "cdt", "cdrt"])
+            .add_filter("ZIP (*.zip)", &["zip"])
             .add_filter(crate::i18n::tr("file.symbol_library"), &["csl"])
             .add_filter("CMX (*.cmx)", &["cmx"])
             .add_filter(
@@ -9697,6 +9709,15 @@ impl App {
     /// untitled drawing, see [`App::open_as_template`]) and Revert read the
     /// file again.
     pub fn open_path(&mut self, path: PathBuf) {
+        // A .zip chosen in File > Open (a .cdr sent as `name.cdr.zip`, or
+        // drawings sent zipped) opens the drawings it is or holds (#4435).
+        let inside = crate::drop_files::unpack_drawings(&path);
+        if !inside.is_empty() {
+            for p in inside {
+                self.open_path(p);
+            }
+            return;
+        }
         if !is_template_path(&path) {
             if let Some(i) = self.tab_with_file(&path) {
                 self.switch_document(i);

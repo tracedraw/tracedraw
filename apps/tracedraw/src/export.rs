@@ -1010,6 +1010,15 @@ pub fn preview(app: &App, st: &ExportState, max_px: u32) -> Option<tiny_skia::Pi
     Some(pm)
 }
 
+/// The size of the PDF the Export dialog writes, made as it will be:
+/// with Compress pictures and the target file size as chosen (#4452).
+pub fn estimated_pdf_size(app: &App, st: &ExportState) -> Option<usize> {
+    let (doc, _) = export_document(app, st);
+    document_file_with(&doc, "pdf", st, "", None, String::new())
+        .ok()
+        .map(|b| b.len())
+}
+
 /// About how many bytes the export of `st` takes: a vector format is
 /// written in memory; a bitmap format is estimated from `preview` (the
 /// output of [`preview`]) encoded the same way and scaled to the export's
@@ -1024,7 +1033,8 @@ pub fn estimated_size(app: &App, st: &ExportState, preview: &tiny_skia::Pixmap) 
         "eps" => Some(tracedraw_io::eps::page_to_eps(&doc, 0).len() * pages),
         "ps" | "prn" => Some(tracedraw_io::eps::document_to_ps(&doc).len()),
         "ai" if st.classic_ai() => Some(tracedraw_io::ai::page_to_ai8(&doc, 0).len() * pages),
-        "pdf" | "ai" => Some(tracedraw_io::pdf::document_to_pdf(&doc).len()),
+        "pdf" => estimated_pdf_size(app, st),
+        "ai" => Some(tracedraw_io::pdf::document_to_pdf(&doc).len()),
         "png" | "jpg" | "bmp" | "tif" | "webp" | "gif" | "psd" | "jxl" => {
             let enc = if ext == "psd" { "tif" } else { ext };
             let (w, h) = (preview.width(), preview.height());

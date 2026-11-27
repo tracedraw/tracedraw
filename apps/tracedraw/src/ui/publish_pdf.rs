@@ -87,6 +87,8 @@ pub struct BitmapPrefs {
     pub target_size: bool,
     /// The largest file wanted, in megabytes.
     pub target_mb: f64,
+    /// The target size is shown and typed in kilobytes (#4452).
+    pub target_kb: bool,
 }
 
 impl Default for BitmapPrefs {
@@ -103,6 +105,7 @@ impl Default for BitmapPrefs {
             compress_content: true,
             target_size: false,
             target_mb: 5.0,
+            target_kb: false,
         }
     }
 }
@@ -1470,18 +1473,42 @@ fn bitmaps(ui: &mut Ui, b: &mut BitmapPrefs) {
             ui.checkbox(&mut b.target_size, tr("publish.target_size"))
                 .rich_tip(crate::ui::tips::keyed("publish.target_size"));
             ui.add_enabled_ui(b.target_size, |ui| {
-                ui.add(
-                    crate::ui::field::NumField::new(&mut b.target_mb)
-                        .range(0.01..=10_000.0)
-                        .speed(0.1)
-                        .max_decimals(2)
-                        .suffix(" MB"),
-                )
-                .rich_tip(crate::ui::tips::keyed("publish.target_size"));
+                target_size_field(ui, "publish_target_unit", &mut b.target_mb, &mut b.target_kb);
             });
         });
         note(ui, "publish.bitmaps_note");
     });
+}
+
+/// A target file size field (#4265) in megabytes or kilobytes, with
+/// the unit chosen beside it (#4452); the size is kept in megabytes.
+pub(crate) fn target_size_field(ui: &mut Ui, salt: &str, mb: &mut f64, kb: &mut bool) {
+    let (mut shown, range, speed) = if *kb {
+        (*mb * 1024.0, 10.0..=10_240_000.0, 10.0)
+    } else {
+        (*mb, 0.01..=10_000.0, 0.1)
+    };
+    if ui
+        .add(
+            crate::ui::field::NumField::new(&mut shown)
+                .range(range)
+                .speed(speed)
+                .max_decimals(if *kb { 0 } else { 2 }),
+        )
+        .rich_tip(crate::ui::tips::keyed("publish.target_size"))
+        .changed()
+    {
+        *mb = if *kb { shown / 1024.0 } else { shown };
+    }
+    crate::ui::keynav::ComboBox::from_id_salt(salt)
+        .selected_text(if *kb { "KB" } else { "MB" })
+        .width(48.0)
+        .show_ui(ui, |ui| {
+            ui.selectable_value(kb, true, "KB");
+            ui.selectable_value(kb, false, "MB");
+        })
+        .response
+        .rich_tip(crate::ui::tips::keyed("publish.target_unit"));
 }
 
 /// Objects: how text and fonts go into the file.
@@ -1760,6 +1787,32 @@ mod tests {
         assert_eq!(b.target_bytes(), Some(2 * 1024 * 1024));
         b.target_mb = f64::NAN;
         assert_eq!(b.target_bytes(), None);
+    }
+
+    /// #4452: the Export dialog's size estimate of a PDF follows Compress
+    /// pictures and the target size, and the target can be kept in KB.
+    #[test]
+    fn the_pdf_estimate_follows_the_compression() {
+        let mut app = App::headless();
+        app.open_document(picture_doc(), None);
+        let mut st = crate::ui::dialogs::ExportState {
+            format: crate::ui::dialogs::EXPORT_FORMATS
+                .iter()
+                .position(|(_, e)| *e == "pdf")
+                .expect("pdf"),
+            ..Default::default()
+        };
+        let plain = crate::export::estimated_pdf_size(&app, &st).expect("a size");
+        st.pdf_compress = true;
+        st.pdf_quality = 20;
+        let jpeg = crate::export::estimated_pdf_size(&app, &st).expect("a size");
+        assert!(jpeg < plain, "{jpeg} < {plain}");
+        st.pdf_compress = false;
+        st.pdf_target = true;
+        st.pdf_target_kb = true;
+        st.pdf_target_mb = (plain / 8) as f64 / (1024.0 * 1024.0);
+        let fit = crate::export::estimated_pdf_size(&app, &st).expect("a size");
+        assert!(fit <= plain / 8 + 1, "{fit} <= {}", plain / 8);
     }
 
     fn app_with_two_pages() -> App {

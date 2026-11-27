@@ -1149,13 +1149,36 @@ mod tests {
             }
             _ => panic!("still fitted"),
         }
-        // One undo step; a side handle scales by its own side.
+        // One undo step; a side handle stretches each letter, wider or
+        // taller, its path left in place (#4442).
         app.undo();
+        let width = match &before.kind {
+            ShapeKind::Text { spans, .. } => spans[0].width_pct,
+            _ => panic!("text"),
+        };
         let side = Affine::scale_non_uniform(1.5, 1.0);
         app.select(vec![t]);
         app.transform_selection(side);
+        let stretched = app.doc().shape(t).expect("text").1.clone();
+        match &stretched.kind {
+            ShapeKind::Text {
+                spans,
+                on_path: Some(p),
+                ..
+            } => {
+                assert!((spans[0].size_pt - size).abs() < 1e-9, "as tall");
+                assert!((spans[0].width_pct - 1.5 * width).abs() < 1e-9, "wider");
+                assert_eq!(stretched.transform * p.path.clone(), page_path);
+            }
+            _ => panic!("text"),
+        }
+        app.undo();
+        app.transform_selection(Affine::scale_non_uniform(1.0, 2.0));
         match &app.doc().shape(t).expect("text").1.kind {
-            ShapeKind::Text { spans, .. } => assert!((spans[0].size_pt - 1.5 * size).abs() < 1e-9),
+            ShapeKind::Text { spans, .. } => {
+                assert!((spans[0].size_pt - 2.0 * size).abs() < 1e-9, "taller");
+                assert!((spans[0].width_pct - width / 2.0).abs() < 1e-9, "as wide");
+            }
             _ => panic!("text"),
         }
         app.undo();

@@ -4042,6 +4042,10 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
         if item(ui, "menu.object.insert_flare", "", true) {
             app.open_flare_dialog();
         }
+        // Numbered or random codes on optional shapes (#4445).
+        if item(ui, "menu.object.insert_serials", "", true) {
+            app.open_serials_dialog();
+        }
         // A chart from a table typed or pasted; with one selected, the
         // same item edits it.
         if item(ui, "menu.object.insert_chart", "", true) {

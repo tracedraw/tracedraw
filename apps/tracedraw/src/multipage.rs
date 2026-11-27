@@ -416,6 +416,22 @@ impl App {
         self.fit_pending = true;
     }
 
+    /// The page at `index` made current: the layer picked in the Objects
+    /// panel stays picked when it is a master or range layer showing on
+    /// that page too, so what is drawn there still goes into it; a page's
+    /// own layer is let go (#4450: a click on another page of a range
+    /// layer's range sent new objects to that page's top layer).
+    fn keep_picked_master_layer(&mut self, index: usize) {
+        let keep = self.picked_layer.filter(|id| {
+            self.doc()
+                .master
+                .iter()
+                .any(|l| l.id == *id && l.applies_to(index))
+        });
+        self.picked_layer = keep;
+        self.selected_layers = keep.into_iter().collect();
+    }
+
     /// Make `page` the current page and keep every page where it is on
     /// screen: the view moves by the page's place in the grid.
     pub fn multipage_activate(&mut self, page: PageId) {
@@ -447,8 +463,7 @@ impl App {
                 }
                 self.selection.clear();
                 self.focus.clear();
-                self.picked_layer = None;
-                self.selected_layers.clear();
+                self.keep_picked_master_layer(index);
             }
             if restricted {
                 self.sync_layer_ranges(None);
@@ -461,8 +476,7 @@ impl App {
         self.page = page;
         self.selection.clear();
         self.focus.clear();
-        self.picked_layer = None;
-        self.selected_layers.clear();
+        self.keep_picked_master_layer(index);
         if restricted {
             self.sync_layer_ranges(None);
         }

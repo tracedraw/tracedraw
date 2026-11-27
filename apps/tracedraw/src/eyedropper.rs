@@ -62,14 +62,32 @@ fn shows_other_than_its_fill(s: &tracedraw_core::Shape) -> bool {
     (several && !matches!(s.kind, ShapeKind::Bitmap { .. })) || s.opacity < 1.0 || effects
 }
 
-/// Whether every colour of a gradient fill is a CMYK one: what it shows
-/// is read back in CMYK (#4403).
-fn fill_is_cmyk(f: &Fill) -> bool {
-    match f {
-        Fill::Fountain(g) => {
-            !g.stops.is_empty() && g.stops.iter().all(|s| matches!(s.color, Color::Cmyk { .. }))
+/// The colour model `colors` were all made in (a spot colour counts as
+/// its process colour's), when they share one other than RGB: what they
+/// show is read back in it, not in the screen's RGB (#4403, #4438).
+fn shared_model(colors: impl IntoIterator<Item = Color>) -> Option<&'static str> {
+    let mut model = None;
+    for c in colors {
+        let m = match c {
+            Color::Registration => continue,
+            Color::Spot { .. } => c.process().model_name(),
+            c => c.model_name(),
+        };
+        match model {
+            None => model = Some(m),
+            Some(prev) if prev != m => return None,
+            _ => {}
         }
-        _ => false,
+    }
+    model.filter(|m| *m != "RGB")
+}
+
+/// The colours a fill is made of.
+fn fill_colors(f: &Fill) -> Vec<Color> {
+    match f {
+        Fill::Solid(c) => vec![*c],
+        Fill::Fountain(g) => g.stops.iter().map(|s| s.color).collect(),
+        _ => Vec::new(),
     }
 }
 
@@ -462,6 +480,28 @@ impl App {
         })
     }
 
+    /// The colour model of the drop shadow of the topmost object whose
+    /// shadow reaches `p`, when not RGB.
+    fn shadow_model_at(&self, p: Point) -> Option<&'static str> {
+        self.page_layers()
+            .into_iter()
+            .rev()
+            .filter(|l| l.visible)
+            .flat_map(|l| l.shapes.iter().rev())
+            .filter(|s| s.visible)
+            .find_map(|s| {
+                let sh = s.shadow.as_ref()?;
+                let b = self.visual_bounds(s);
+                let reach = (sh.blur.abs() * 2.0).min(1000.0);
+                (b + sh.offset)
+                    .union(b)
+                    .inflate(reach, reach)
+                    .contains(p)
+                    .then(|| shared_model([sh.color]))
+            })
+            .flatten()
+    }
+
     /// [`App::sample_color_with`] reading `leaf` (page space) when given,
     /// its own pixels, not what is drawn over it.
     fn sample_color_from(
@@ -482,7 +522,14 @@ impl App {
                 // No object here: a drop shadow, a glow, a blend's step
                 // or the paper may still show; its colour is read as
                 // shown (#4051).
-                None => return self.shown_color_at(p).filter(|c| *c != Color::WHITE),
+                None => {
+                    let c = self.shown_color_at(p).filter(|c| *c != Color::WHITE)?;
+                    // A drop shadow reads in its colour's model (#4438).
+                    return Some(match self.shadow_model_at(p) {
+                        Some(m) => c.convert_to(m),
+                        None => c,
+                    });
+                }
             }
         };
         let s = &s;
@@ -495,13 +542,12 @@ impl App {
             // colour is read as the drawing shows it there, with what
             // shows through, not as the object's first colour (#4051).
             if let Some(c) = self.shown_color_at(p) {
-                return Some(if fill_is_cmyk(&s.fill) {
-                    // A gradient of CMYK colours reads in CMYK, the
-                    // model it was made in, not as the screen's RGB
-                    // (#4403).
-                    c.convert_to("CMYK")
-                } else {
-                    c
+                // A gradient, a see-through or merged fill reads in the
+                // model its colours were made in (CMYK, HSB, Lab…), not
+                // as the screen's RGB (#4403, #4438).
+                return Some(match shared_model(fill_colors(&s.fill)) {
+                    Some(m) => c.convert_to(m),
+                    None => c,
                 });
             }
         }
@@ -1055,6 +1101,72 @@ mod tests {
             Some(Color::Cmyk { c, y, .. }) => assert!(c > 0.6 && y < 0.4, "{c} {y}"),
             other => panic!("not CMYK: {other:?}"),
         }
+    }
+
+    /// #4438: a gradient, a see-through fill and a drop shadow read in
+    /// the model their colours were made in, HSB, Lab or CMYK, not RGB;
+    /// colours of mixed models read in RGB.
+    #[test]
+    fn shown_colours_read_in_the_model_they_were_made_in() {
+        use tracedraw_core::style::{Fountain, FountainKind};
+        let mut app = App::headless();
+        let hsb = rect(&mut app, Rect::new(0.0, 0.0, 100.0, 20.0));
+        app.run(Command::SetFill {
+            shapes: vec![hsb],
+            fill: Fill::Fountain(Fountain::two(
+                FountainKind::Linear,
+                Color::Hsb { h: 0.0, s: 1.0, b: 1.0 },
+                Color::Hsb { h: 240.0, s: 1.0, b: 1.0 },
+                0.0,
+            )),
+        });
+        let lab = rect(&mut app, Rect::new(0.0, 30.0, 40.0, 50.0));
+        app.run(Command::SetFill {
+            shapes: vec![lab],
+            fill: Fill::Solid(Color::Lab { l: 50.0, a: 60.0, b: 30.0 }),
+        });
+        app.run(Command::SetOpacity {
+            shapes: vec![lab],
+            opacity: 0.5,
+        });
+        let mixed = rect(&mut app, Rect::new(0.0, 60.0, 100.0, 80.0));
+        app.run(Command::SetFill {
+            shapes: vec![mixed],
+            fill: Fill::Fountain(Fountain::two(
+                FountainKind::Linear,
+                Color::Hsb { h: 0.0, s: 1.0, b: 1.0 },
+                Color::rgb8(0, 0, 255),
+                0.0,
+            )),
+        });
+        let shadowed = rect(&mut app, Rect::new(120.0, 40.0, 140.0, 60.0));
+        app.run(Command::SetFill {
+            shapes: vec![shadowed],
+            fill: Fill::Solid(Color::rgb8(250, 250, 0)),
+        });
+        app.run(Command::SetShadow {
+            shapes: vec![shadowed],
+            shadow: Some(tracedraw_core::Shadow {
+                offset: tracedraw_core::geometry::Vec2::new(6.0, -6.0),
+                opacity: 1.0,
+                blur: 0.0,
+                color: Color::Cmyk {
+                    c: 0.0,
+                    m: 0.0,
+                    y: 0.0,
+                    k: 1.0,
+                },
+                ..Default::default()
+            }),
+        });
+        app.select(Vec::new());
+        let model = |app: &App, p: Point| app.sample_color_at(p, false).map(|c| c.model_name());
+        assert_eq!(model(&app, Point::new(5.0, 10.0)), Some("HSB"));
+        assert_eq!(model(&app, Point::new(20.0, 40.0)), Some("Lab"));
+        assert_eq!(model(&app, Point::new(5.0, 70.0)), Some("RGB"));
+        // The shadow alone, beside the object.
+        let off = app.sample_color_at(Point::new(143.0, 37.0), false);
+        assert_eq!(off.map(|c| c.model_name()), Some("CMYK"), "{off:?}");
     }
 
     /// An object with a Hue/Saturation/Lightness effect gives the colour

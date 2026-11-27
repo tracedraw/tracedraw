@@ -2399,7 +2399,9 @@ fn curve_tool_properties(app: &mut App, ui: &mut Ui) {
 }
 
 fn object_properties(app: &mut App, ui: &mut Ui) {
-    if app.selection_bounds().is_none() {
+    // The shape being drawn shows its size even with nothing selected
+    // (#4424).
+    if app.selection_bounds().is_none() && crate::ui::propbar::drawn_box(app).is_none() {
         page_properties(app, ui);
         return;
     }

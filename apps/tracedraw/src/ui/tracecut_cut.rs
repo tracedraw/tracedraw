@@ -10,7 +10,7 @@ use crate::tracecut_send::{Destination, CAN_SEND};
 use crate::ui::tips::RichTip;
 use crate::ui::tracecut::{length, row};
 use egui::Ui;
-use tracedraw_tracecut::cnc::{self, CncSpec, Milling, Side, Zero};
+use tracedraw_tracecut::cnc::{self, CncSpec, Lead, Milling, Ramp, Side, Zero};
 use tracedraw_tracecut::laser::{self, Firmware, GroupBy, Mode};
 use tracedraw_tracecut::cut::hpgl::{Machine, Origin, MAX_PASSES};
 use tracedraw_tracecut::cut::marks::MarkStyle;
@@ -96,6 +96,7 @@ pub fn settings(ui: &mut Ui, units: Units, st: &mut TraceCutState) -> Option<Act
                     &[
                         (WeedMode::Lines, "tracecut.weed_lines"),
                         (WeedMode::Boxes, "tracecut.weed_boxes"),
+                        (WeedMode::Rows, "tracecut.weed_rows"),
                     ],
                     "tracecut.weed_mode",
                 )
@@ -122,6 +123,14 @@ pub fn settings(ui: &mut Ui, units: Units, st: &mut TraceCutState) -> Option<Act
                             "tracecut.weed_dividers",
                         )
                     });
+                }
+                // Lines across between rows of objects, the waste peeled
+                // in strips (#4423).
+                WeedMode::Rows => {
+                    row(ui, &tr("tracecut.weed_gap"), |ui| {
+                        length(ui, units, &mut s.gap, (0.0, 100.0), "tracecut.weed_rows_gap")
+                    });
+                    row(ui, "", |ui| check(ui, &mut s.between, "tracecut.weed_between"));
                 }
                 WeedMode::Boxes => {
                     row(ui, &tr("tracecut.weed_box_x"), |ui| {
@@ -331,7 +340,7 @@ pub fn settings(ui: &mut Ui, units: Units, st: &mut TraceCutState) -> Option<Act
 }
 
 /// CNC Toolpath: the tool, the side and direction, the depths, the
-/// rates, the origin and the holding tabs.
+/// rates, the origin, the ramps and leads and the holding tabs.
 fn cnc_settings(ui: &mut Ui, units: Units, s: &mut CncSpec) {
     row(ui, &tr("tracecut.cnc_tool"), |ui| {
         length(
@@ -431,6 +440,54 @@ fn cnc_settings(ui: &mut Ui, units: Units, s: &mut CncSpec) {
             "tracecut.cnc_origin",
         )
     });
+    row(ui, &tr("tracecut.cnc_ramp"), |ui| {
+        choice(
+            ui,
+            "cnc_ramp",
+            &mut s.ramp,
+            &[
+                (Ramp::Off, "tracecut.cnc_ramp_off"),
+                (Ramp::Smooth, "tracecut.cnc_ramp_smooth"),
+                (Ramp::ZigZag, "tracecut.cnc_ramp_zigzag"),
+            ],
+            "tracecut.cnc_ramp",
+        )
+    });
+    if s.ramp != Ramp::Off {
+        row(ui, &tr("tracecut.cnc_ramp_length"), |ui| {
+            length(
+                ui,
+                units,
+                &mut s.ramp_length,
+                cnc::RAMP_RANGE,
+                "tracecut.cnc_ramp_length",
+            )
+        });
+    }
+    row(ui, &tr("tracecut.cnc_lead"), |ui| {
+        choice(
+            ui,
+            "cnc_lead",
+            &mut s.lead,
+            &[
+                (Lead::Off, "tracecut.cnc_lead_off"),
+                (Lead::Line, "tracecut.cnc_lead_line"),
+                (Lead::Arc, "tracecut.cnc_lead_arc"),
+            ],
+            "tracecut.cnc_lead",
+        )
+    });
+    if s.lead != Lead::Off {
+        row(ui, &tr("tracecut.cnc_lead_length"), |ui| {
+            length(
+                ui,
+                units,
+                &mut s.lead_length,
+                cnc::LEAD_RANGE,
+                "tracecut.cnc_lead_length",
+            )
+        });
+    }
     row(ui, "", |ui| check(ui, &mut s.tabs, "tracecut.cnc_tabs"));
     if s.tabs {
         row(ui, &tr("tracecut.cnc_tab_count"), |ui| {

@@ -250,6 +250,8 @@ pub struct FormatPrefs {
     pub pdf_quality: u8,
     pub pdf_target: bool,
     pub pdf_target_mb: f64,
+    /// The target size in kilobytes (#4452).
+    pub pdf_target_kb: bool,
     /// The unit of the bitmap size fields (#617).
     pub export_size_unit: usize,
     /// Bitmaps: the scale of the artwork (1 = as drawn, #617).
@@ -317,6 +319,7 @@ impl Default for FormatPrefs {
             pdf_quality: st.pdf_quality,
             pdf_target: st.pdf_target,
             pdf_target_mb: st.pdf_target_mb,
+            pdf_target_kb: st.pdf_target_kb,
             export_size_unit: st.size_unit,
             export_scale: st.scale,
             export_color_mode: st.color_mode,
@@ -1050,6 +1053,7 @@ impl FormatPrefs {
             } else {
                 d.pdf_target_mb
             },
+            pdf_target_kb: self.pdf_target_kb,
             remember: self.remember_last,
             size_unit: if self.export_size_unit < EXPORT_SIZE_UNITS.len() {
                 self.export_size_unit
@@ -1087,6 +1091,7 @@ impl FormatPrefs {
         self.pdf_quality = st.pdf_quality;
         self.pdf_target = st.pdf_target;
         self.pdf_target_mb = st.pdf_target_mb;
+        self.pdf_target_kb = st.pdf_target_kb;
         self.export_size_unit = st.size_unit;
         self.export_scale = st.scale;
         self.export_color_mode = st.color_mode;

@@ -8117,6 +8117,37 @@ mod range_layer_tests {
         assert_eq!(app.doc(), &before);
     }
 
+    /// A range layer picked stays picked when another page of its range
+    /// becomes current (a click on it in the Multipage View), so what is
+    /// drawn there goes into it; a page outside the range lets it go
+    /// (#4450).
+    #[test]
+    fn a_picked_range_layer_stays_on_the_other_pages_of_its_range() {
+        let mut app = book(4);
+        assert!(create_range_layer(&mut app, &draft("1-3")));
+        let layer = app.doc().master.last().expect("range").id;
+        app.set_multipage(true);
+        app.goto_page(0);
+        app.picked_layer = Some(layer);
+        let second = app.doc().pages[1].id;
+        app.multipage_activate(second);
+        assert_eq!(app.page_index(), 1);
+        assert_eq!(app.active_layer(), Some(layer));
+        let shape = app
+            .new_shape(ShapeKind::Rect {
+                rect: tracedraw_core::Rect::new(0.0, 0.0, 10.0, 10.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("shape");
+        let range = app.doc().master.iter().find(|l| l.id == layer).expect("range");
+        assert!(range.shapes.iter().any(|s| s.id == shape));
+        // Page 4 is outside the range.
+        let fourth = app.doc().pages[3].id;
+        app.multipage_activate(fourth);
+        assert_eq!(app.picked_layer, None);
+    }
+
     #[test]
     fn an_object_rows_menu_opens_on_a_page_in_its_range() {
         let mut app = book(3);
