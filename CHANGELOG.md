@@ -7,6 +7,12 @@ full, row-by-row status.
 ## Unreleased
 
 - Data Merge with On every page: a field typed into a text just started with the Text tool goes on the other pages too, and printing the merge (Print Preview included) fills a copy that closes with the printing, so the drawing keeps its fields instead of the last values printed (#4354).
+- Text boxes: text selected before a right click stays selected, so the menu's Cut, Copy and Delete work on it (they were always greyed out), for example in the QR Code text of Properties (#4486).
+- Drag outline: a symbol, on its own or inside groups, shows its own objects where it will drop instead of a small square (#4474).
+- With the objects shown while transforming and the outline over them off, the drag outline stays until the drawing shows the drag as it stands, so an older position never shows alone (#4475).
+- Property bar: the position and size of a rectangle, ellipse or other shape follow it while it is drawn, not only after the release (#4424).
+- Facing pages: the guidelines of all pages lie on the whole spread, measured from its left page, so they stay put when the right page becomes the active one (#4443).
+- Image editor: a large layer moved or resized with the Move tool is previewed a few times a second while its box follows the pointer, so the drag no longer freezes slower devices (#4427).
 - Paste: one row or one column of spreadsheet cells copied together with their picture pastes as a table (#4422).
 - Panels: a panel's menu has Close All Panels, which closes every open panel wherever it lies and keeps the locked ones (#4436).
 - Drag with the right button onto an object: Copy Size Here, Copy Width Here and Copy Height Here stretch that object to the selection's size about its own centre (#4448).

@@ -70,6 +70,12 @@ pub type PickKey = (u64, usize, bool, (u32, u32));
 pub const BOX_GRAB: f32 = 7.0;
 pub const BOX_KNOB: f32 = 22.0;
 
+/// A layer of more pixels than this is previewed a few times a second
+/// while the Move tool drags it, not each frame (#4427).
+const LARGE_MOVE_PIXELS: u64 = 4_000_000;
+/// The time between two previews of such a layer.
+const LARGE_MOVE_GAP: std::time::Duration = std::time::Duration::from_millis(120);
+
 /// A picture being edited in place.
 pub struct PixelEdit {
     pub shape: ShapeId,
@@ -96,6 +102,9 @@ pub struct PixelEdit {
     pub move_drag: Option<MoveDrag>,
     /// The placement the Move tool's preview shows, when it shows one.
     pub placed_for: Option<crate::pixel_ops::Placement>,
+    /// When the Move tool's preview of a large layer was last made while
+    /// its box is dragged (#4427).
+    pub placed_at: std::cell::Cell<Option<web_time::Instant>>,
     /// The whole layer's pixels before the Move tool's first placement on
     /// it, the placements put in since, the layer and the change after
     /// the last: a later move works from these, so what a move took past
@@ -293,6 +302,23 @@ impl PixelEdit {
         if want == self.placed_for {
             return;
         }
+        // A large layer dragged: its pixels placed anew at most a few
+        // times a second, the box following the pointer meanwhile; each
+        // frame placing and showing the whole layer froze a tablet for
+        // the whole drag (#4427). The release puts it in where it is.
+        if want.is_some() && self.move_drag.is_some() && self.placed_for.is_some() {
+            let (w, h) = self.pi.img.dimensions();
+            let large = u64::from(w) * u64::from(h) > LARGE_MOVE_PIXELS;
+            let now = web_time::Instant::now();
+            let recent = self
+                .placed_at
+                .get()
+                .is_some_and(|t| now.duration_since(t) < LARGE_MOVE_GAP);
+            if large && recent {
+                return;
+            }
+            self.placed_at.set(Some(now));
+        }
         let had = self.placed_for.is_some();
         self.placed_for = want;
         match want {
@@ -310,6 +336,16 @@ impl PixelEdit {
             }
             None => {}
         }
+    }
+
+    /// Whether the Move tool's preview is behind the box being dragged
+    /// (a large layer waits between previews, #4427): the window asks
+    /// for another frame so the last position shows.
+    pub fn place_preview_pending(&self) -> bool {
+        self.tool == PixelTool::Move
+            && self.warp.is_none()
+            && !self.placement.is_identity()
+            && self.placed_for != Some(self.placement)
     }
 
     /// The Move tool's memory of the layer in use, while nothing else
@@ -968,6 +1004,7 @@ impl App {
             pen_drag: false,
             move_drag: None,
             placed_for: None,
+            placed_at: Default::default(),
             move_memory: None,
             rev: Default::default(),
             pick_cache: Default::default(),
@@ -1981,6 +2018,11 @@ fn move_input(
         }
     }
     pe.sync_place_preview();
+    // A large layer's preview behind the box (#4427): another frame
+    // shows where the pointer stopped.
+    if pe.place_preview_pending() {
+        response.ctx.request_repaint_after(LARGE_MOVE_GAP);
+    }
 }
 
 /// How a new selection joins the one there is: Shift adds, Ctrl takes
@@ -2572,6 +2614,49 @@ mod tests {
         // Later on they have moved on along the line.
         assert_eq!(dashes(2.0), vec![(2.0, 6.0), (10.0, 14.0)]);
         assert_eq!(dashes(6.0), vec![(0.0, 2.0), (6.0, 10.0), (14.0, 16.0)]);
+    }
+
+    /// #4427: a large layer dragged with the Move tool is previewed a few
+    /// times a second, not at each move of the pointer; the last place
+    /// still shows once the wait is over.
+    #[test]
+    fn a_large_layer_dragged_is_previewed_a_few_times_a_second() {
+        let (mut app, id) = app_with_picture();
+        app.edit_bitmap_inside(id);
+        let pe = app.pixel_edit.as_mut().unwrap();
+        pe.pi.img = RgbaImage::from_pixel(2100, 2000, Rgba([10, 20, 30, 255]));
+        pe.tool = PixelTool::Move;
+        let b = [0, 0, 2100, 2000];
+        pe.move_drag = Some(MoveDrag {
+            handle: crate::pixel_ops::BoxHandle::Move,
+            from: (0.0, 0.0),
+            start: pe.placement,
+            b,
+        });
+        let at = |dx: f32| crate::pixel_ops::Placement {
+            dx,
+            ..Default::default()
+        };
+        for dx in [5.0, 6.0] {
+            pe.placement = at(dx);
+            pe.sync_place_preview();
+            assert_eq!(pe.placed_for, Some(at(dx)));
+        }
+        pe.placement = at(7.0);
+        pe.sync_place_preview();
+        assert_eq!(pe.placed_for, Some(at(6.0)), "waits");
+        assert!(pe.place_preview_pending());
+        std::thread::sleep(LARGE_MOVE_GAP + std::time::Duration::from_millis(20));
+        pe.sync_place_preview();
+        assert_eq!(pe.placed_for, Some(at(7.0)));
+        assert!(!pe.place_preview_pending());
+        // A small layer: each move.
+        pe.pi.img = RgbaImage::from_pixel(200, 100, Rgba([10, 20, 30, 255]));
+        for dx in [8.0, 9.0, 10.0] {
+            pe.placement = at(dx);
+            pe.sync_place_preview();
+            assert_eq!(pe.placed_for, Some(at(dx)));
+        }
     }
 
     /// An app with one 20 x 10 pixel picture, 40 x 20 mm at (10, 10).

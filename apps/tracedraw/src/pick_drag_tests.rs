@@ -296,6 +296,28 @@ fn the_property_bar_follows_a_drag_live() {
     assert_eq!(shown, app.selection_bounds().expect("bounds"));
 }
 
+/// While a rectangle is drawn, the property bar reads the size of the
+/// box being dragged out, before the release (#4424).
+#[test]
+fn the_property_bar_shows_the_box_being_drawn() {
+    let (ctx, mut app, _) = setup();
+    app.set_tool(crate::tools::Tool::Rectangle);
+    let from = app.view.to_screen(Point::new(100.0, 100.0));
+    let to = app.view.to_screen(Point::new(140.0, 125.0));
+    frame(&ctx, &mut app, vec![Event::PointerMoved(from)], Modifiers::NONE);
+    frame(&ctx, &mut app, vec![button(from, true, PointerButton::Primary, Modifiers::NONE)], Modifiers::NONE);
+    for i in 1..=4 {
+        let p = from + (to - from) * (i as f32 / 4.0);
+        frame(&ctx, &mut app, vec![Event::PointerMoved(p)], Modifiers::NONE);
+    }
+    let shown = crate::ui::propbar::shown_selection_bounds(&app).expect("the box drawn");
+    assert!((shown.width() - 40.0).abs() < 0.5, "{shown:?}");
+    assert!((shown.height() - 25.0).abs() < 0.5, "{shown:?}");
+    frame(&ctx, &mut app, vec![button(to, false, PointerButton::Primary, Modifiers::NONE)], Modifiers::NONE);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    assert!(crate::ui::propbar::drawing_bounds(&app).is_none());
+}
+
 /// A press, one move part of the way, then the last move and the release
 /// in one frame (a busy window sends them together).
 fn quick_drag(ctx: &egui::Context, app: &mut App, from: Pos2, to: Pos2, mods: Modifiers) {

@@ -182,6 +182,29 @@ impl Document {
         Some(m.inner(page, side))
     }
 
+    /// With facing pages the master page's guidelines lie on the whole
+    /// spread, measured from its left page (#4443: they jumped by a
+    /// page's width whenever the right page of the spread became the
+    /// active one). How far they move to sit on page `index`: minus the
+    /// width of the left page beside it, or of its own when it stands
+    /// alone on the right; 0 on a left page or without facing pages.
+    pub fn master_guides_shift(&self, index: usize) -> f64 {
+        let Some(start) = self.facing() else {
+            return 0.0;
+        };
+        if index >= self.pages.len() || !side_of(index, start).is_right() {
+            return 0.0;
+        }
+        let spread = self.spread_at(index);
+        let left = spread.left.unwrap_or(index);
+        let w = self.pages.get(left).map_or(0.0, |p| p.size.width);
+        if w.is_finite() && w > 0.0 {
+            -w
+        } else {
+            0.0
+        }
+    }
+
     /// Where the pages of `spread` sit in it (see [`place`]).
     pub fn place_spread(&self, spread: Spread) -> (Vec<(usize, Point)>, Rect) {
         place(spread, |i| {

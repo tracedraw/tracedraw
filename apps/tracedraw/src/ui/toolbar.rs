@@ -2399,7 +2399,7 @@ fn curve_tool_properties(app: &mut App, ui: &mut Ui) {
 }
 
 fn object_properties(app: &mut App, ui: &mut Ui) {
-    if app.selection_bounds().is_none() {
+    if app.selection_bounds().is_none() && crate::ui::propbar::drawing_bounds(app).is_none() {
         page_properties(app, ui);
         return;
     }

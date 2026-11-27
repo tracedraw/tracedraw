@@ -2080,10 +2080,36 @@ fn percentage_scale_transform(app: &App, sx: f64, sy: f64, reference: Point) -> 
     .then_some(transform)
 }
 
+/// The box of the object a shape tool (Rectangle, Ellipse, Polygon...)
+/// is drawing while the drag goes on: the bar shows its size and place
+/// as it grows (#4424: it showed the page, or the object selected
+/// before, until the release).
+pub(crate) fn drawing_bounds(app: &App) -> Option<GeoRect> {
+    let crate::app::Drag::Box {
+        start,
+        current,
+        from_center,
+    } = &app.drag
+    else {
+        return None;
+    };
+    if matches!(
+        app.tool,
+        crate::tools::Tool::Knife | crate::tools::Tool::SegmentDelete
+    ) {
+        return None;
+    }
+    let r = App::box_rect(*start, *current, *from_center);
+    (r.width().is_finite() && r.height().is_finite()).then_some(r)
+}
+
 /// The box the property bar shows: the selection's, where the drag has
 /// it while it is dragged (#4468: the values stayed as they were until
 /// the release).
 pub(crate) fn shown_selection_bounds(app: &App) -> Option<GeoRect> {
+    if let Some(r) = drawing_bounds(app) {
+        return Some(r);
+    }
     let b = app.selection_bounds()?;
     Some(live_drag(app).map_or(b, |t| live_bounds(app, b, t)))
 }
@@ -2133,7 +2159,11 @@ pub fn object_bar(app: &mut App, ui: &mut Ui) {
     // Scale factors: one object shows how far it is scaled from the size
     // it was drawn or imported at (#2693); several show 100%. A value
     // typed scales the selection from what it shows.
-    let shown = app.scale_shown_with(live);
+    let shown = if drawing_bounds(app).is_some() {
+        (100.0, 100.0)
+    } else {
+        app.scale_shown_with(live)
+    };
     let mut scale: Option<Affine> = None;
     stacked(ui, |ui| {
         for horizontal in [true, false] {

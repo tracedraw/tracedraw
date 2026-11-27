@@ -202,7 +202,7 @@ impl App {
         match target {
             GuidesTarget::AllPages => {
                 let mut all = doc.master_guides.clone();
-                all.extend(moved.iter().cloned());
+                all.extend(self.to_master(moved.iter().cloned()));
                 cmds.push(Command::SetMasterGuides { guides: all });
                 if let Some(page) = from_page {
                     cmds.push(Command::SetGuides {
@@ -225,7 +225,13 @@ impl App {
                     }
                     reached += 1;
                     let mut own = p.guides.clone();
-                    own.extend(moved.iter().cloned());
+                    if from_page.is_none() {
+                        // The master page's lie on the spread (#4443).
+                        let dx = doc.master_guides_shift(k);
+                        own.extend(doc.master_guides.iter().map(|g| g.shifted_x(dx)));
+                    } else {
+                        own.extend(moved.iter().cloned());
+                    }
                     cmds.push(Command::SetGuides {
                         page: p.id,
                         guides: own,
@@ -261,7 +267,7 @@ impl App {
     /// page's (every page shows them, #1928) while those are chosen.
     pub fn page_guides(&self) -> Vec<Guide> {
         if self.edit_master_guides {
-            return self.doc().master_guides.clone();
+            return self.master_guides_here();
         }
         self.doc()
             .page(self.page)
@@ -279,8 +285,26 @@ impl App {
                 .map(|p| p.guides.clone())
                 .unwrap_or_default()
         } else {
-            self.doc().master_guides.clone()
+            self.master_guides_here()
         }
+    }
+
+    /// How far the master page's guidelines move to sit on the active
+    /// page: with facing pages they lie on the whole spread (#4443).
+    pub fn master_guides_dx(&self) -> f64 {
+        self.doc().master_guides_shift(self.page_index())
+    }
+
+    /// The master page's guidelines where the active page shows them.
+    fn master_guides_here(&self) -> Vec<Guide> {
+        let dx = self.master_guides_dx();
+        self.doc().master_guides.iter().map(|g| g.shifted_x(dx)).collect()
+    }
+
+    /// Guidelines of the active page as the master page keeps them.
+    fn to_master(&self, guides: impl IntoIterator<Item = Guide>) -> Vec<Guide> {
+        let dx = self.master_guides_dx();
+        guides.into_iter().map(|g| g.shifted_x(-dx)).collect()
     }
 
     /// Whether the guidelines being edited are shown: guidelines on, and
@@ -397,7 +421,7 @@ impl App {
     pub fn add_guide(&mut self, guide: Guide) {
         if self.edit_master_guides {
             let mut guides = self.doc().master_guides.clone();
-            guides.push(guide);
+            guides.extend(self.to_master([guide]));
             let _ = self
                 .engine
                 .run_with_label(&Command::SetMasterGuides { guides }, "Add Guideline");
@@ -413,7 +437,9 @@ impl App {
         let page = self.page;
         let n = guides.len();
         let cmd = if self.edit_master_guides {
-            Command::SetMasterGuides { guides }
+            Command::SetMasterGuides {
+                guides: self.to_master(guides),
+            }
         } else {
             Command::SetGuides { page, guides }
         };
@@ -430,8 +456,9 @@ impl App {
     pub fn replace_guide(&mut self, index: usize, guide: Guide, label: &'static str) {
         if self.edit_master_guides {
             let mut guides = self.doc().master_guides.clone();
-            if let Some(g) = guides.get_mut(index) {
-                *g = guide;
+            let stored = self.to_master([guide]).pop();
+            if let (Some(g), Some(stored)) = (guides.get_mut(index), stored) {
+                *g = stored;
                 let _ = self
                     .engine
                     .run_with_label(&Command::SetMasterGuides { guides }, label);
@@ -613,7 +640,18 @@ impl App {
             return 0;
         }
         let n = target.len();
-        target.extend(moved.iter().map(|(_, g)| g.clone()));
+        // With facing pages the master page's guidelines lie on the
+        // spread: a guideline keeps its place on the page (#4443).
+        let dx_of = |page: Option<tracedraw_core::PageId>| {
+            page.and_then(|p| self.doc().pages.iter().position(|pg| pg.id == p))
+                .map_or(0.0, |i| self.doc().master_guides_shift(i))
+        };
+        let dx = match (from, to) {
+            (Some(_), None) => -dx_of(from),
+            (None, Some(_)) => dx_of(to),
+            _ => 0.0,
+        };
+        target.extend(moved.iter().map(|(_, g)| g.shifted_x(dx)));
         let keep: Vec<Guide> = keep.into_iter().map(|(_, g)| g).collect();
         let command = |page: Option<tracedraw_core::PageId>, guides: Vec<Guide>| match page {
             None => Command::SetMasterGuides { guides },
@@ -1689,6 +1727,45 @@ mod tests {
         app.choose_master_guides(false);
         app.move_guides_to(GuidesTarget::OddPages);
         assert_eq!((own(&app, 0), own(&app, 1), own(&app, 2)), (1, 0, 1));
+    }
+
+    /// #4443: with facing pages the master page's guidelines lie on the
+    /// whole spread; they stay put when the right page becomes the
+    /// active one, and one added there lands where it was put.
+    #[test]
+    fn master_guidelines_lie_on_the_spread_with_facing_pages() {
+        use tracedraw_core::spreads::PageSide;
+        let mut app = App::headless();
+        app.add_page();
+        assert!(app.set_facing_pages(true, PageSide::Left));
+        let w = app.doc().pages[0].size.width;
+        app.goto_page(0);
+        app.choose_master_guides(true);
+        app.add_guide(Guide::vertical(w + 30.0));
+        let xs = |gs: Vec<Guide>| -> Vec<f64> {
+            gs.iter()
+                .filter_map(|g| match g.line {
+                    GuideLine::Vertical { x } => Some(x),
+                    _ => None,
+                })
+                .collect()
+        };
+        assert_eq!(xs(app.page_guides()), vec![w + 30.0]);
+        // The right page: the same line of the spread, 30 into it.
+        app.goto_page(1);
+        assert!((xs(app.page_guides())[0] - 30.0).abs() < 1e-9);
+        let page1 = app.doc().pages[1].id;
+        assert!((xs(app.doc().guides_on_page(page1).unwrap())[0] - 30.0).abs() < 1e-9);
+        // One added on the right page shows where it was put there and
+        // on the left page a page's width further.
+        app.add_guide(Guide::vertical(10.0));
+        assert!((xs(app.page_guides())[1] - 10.0).abs() < 1e-9);
+        app.goto_page(0);
+        assert!((xs(app.page_guides())[1] - (w + 10.0)).abs() < 1e-9);
+        // Without facing pages nothing moves.
+        assert!(app.set_facing_pages(false, PageSide::Left));
+        app.goto_page(1);
+        assert!((xs(app.page_guides())[0] - (w + 30.0)).abs() < 1e-9);
     }
 
     /// #3574: a guideline takes a name (trimmed), saved with the drawing

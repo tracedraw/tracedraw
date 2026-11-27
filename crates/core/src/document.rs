@@ -6681,6 +6681,19 @@ pub enum GuideLine {
 }
 
 impl GuideLine {
+    /// The same line moved `dx` along the page's width.
+    pub fn shifted_x(&self, dx: f64) -> GuideLine {
+        match *self {
+            GuideLine::Vertical { x } => GuideLine::Vertical { x: x + dx },
+            GuideLine::Horizontal { y } => GuideLine::Horizontal { y },
+            GuideLine::Angled { x, y, angle } => GuideLine::Angled {
+                x: x + dx,
+                y,
+                angle,
+            },
+        }
+    }
+
     /// Signed distance from `p` to the line.
     pub fn distance(&self, p: crate::geometry::Point) -> f64 {
         match self {
@@ -6866,6 +6879,14 @@ impl From<GuideLine> for Guide {
 }
 
 impl Guide {
+    /// The same guideline moved `dx` along the page's width.
+    pub fn shifted_x(&self, dx: f64) -> Guide {
+        Guide {
+            line: self.line.shifted_x(dx),
+            ..self.clone()
+        }
+    }
+
     pub fn horizontal(y: f64) -> Self {
         GuideLine::Horizontal { y }.into()
     }
@@ -7898,8 +7919,23 @@ impl Document {
     /// shows it (#1775).
     pub fn guides_on_page(&self, page: PageId) -> Result<Vec<Guide>> {
         let p = self.page(page)?;
+        let shifted;
         let master: &[Guide] = if self.guides_shown(None) {
-            &self.master_guides
+            let dx = self
+                .pages
+                .iter()
+                .position(|q| q.id == page)
+                .map_or(0.0, |i| self.master_guides_shift(i));
+            if dx == 0.0 {
+                &self.master_guides
+            } else {
+                shifted = self
+                    .master_guides
+                    .iter()
+                    .map(|g| g.shifted_x(dx))
+                    .collect::<Vec<_>>();
+                &shifted
+            }
         } else {
             &[]
         };

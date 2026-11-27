@@ -1513,6 +1513,21 @@ impl Raster {
         self.page_rect = page_rect;
     }
 
+    /// Whether the picture shown is a whole render of `page` at
+    /// `revision` with exactly `ids` moved by `t`: the live drag preview
+    /// has caught up with the drag (#4475). A render still on its way, a
+    /// picture of an earlier position or one that failed is not.
+    pub fn shows_preview(&self, page: PageId, revision: u64, ids: &[ShapeId], t: Affine) -> bool {
+        self.texture.is_some()
+            && self.key.as_ref().is_some_and(|k| {
+                k.page == page
+                    && k.revision == revision
+                    && k.preview.as_ref().is_some_and(|(set, c)| {
+                        *c == t.as_coeffs() && set.len() == ids.len() && ids.iter().all(|i| set.contains(i))
+                    })
+            })
+    }
+
     /// Let go of the pictures kept of other zooms, as when the view has
     /// shown no other (tests of the wait for a new picture).
     #[cfg(test)]
@@ -3263,6 +3278,52 @@ mod tests {
             .expect("texture");
         assert_eq!(at, rect);
         assert_eq!(raster.texture.as_ref().map(|t| t.size()), Some([400, 400]));
+    }
+
+    /// #4475: the picture counts as the live drag preview only when it
+    /// was drawn for the drag as it stands: same objects, same move,
+    /// same drawing state.
+    #[test]
+    fn a_picture_shows_the_preview_only_for_its_own_drag() {
+        let ctx = Context::default();
+        let doc = Document::new("t", Size::new(100.0, 50.0));
+        let page = doc.pages[0].id;
+        let view = View {
+            zoom: 4.0,
+            origin: egui::pos2(0.0, 300.0),
+        };
+        let rect = Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(400.0, 300.0));
+        let mut raster = Raster::default();
+        let ids = vec![ShapeId(7)];
+        let t = Affine::translate((5.0, 0.0));
+        assert!(!raster.shows_preview(page, 1, &ids, t), "nothing drawn yet");
+        let mut drawn = false;
+        for _ in 0..400 {
+            let _ = raster.texture(
+                &ctx,
+                &doc,
+                page,
+                &view,
+                rect,
+                Some((ids.clone(), t)),
+                1,
+                false,
+                false,
+                false,
+                false,
+                None,
+                None,
+            );
+            if raster.shows_preview(page, 1, &ids, t) {
+                drawn = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert!(drawn, "the render of this drag is shown");
+        assert!(!raster.shows_preview(page, 1, &ids, Affine::translate((6.0, 0.0))));
+        assert!(!raster.shows_preview(page, 2, &ids, t));
+        assert!(!raster.shows_preview(page, 1, &[ShapeId(8)], t));
     }
 
     /// The browser has no clock behind std::time: asking it the time

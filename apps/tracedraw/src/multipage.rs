@@ -1924,9 +1924,23 @@ mod tests {
         let w = app.doc().pages[1].size.width;
         let shown = app.other_page_guides();
         assert_eq!(shown.len(), 1);
+        // A master page's guideline lies on the spread (#4443): the
+        // right page shows it where the left page does, 20 from the
+        // spread's left edge, not 20 into the right page.
         assert!(
-            matches!(shown[0].0.line, GuideLine::Vertical { x } if (x - (w + 20.0)).abs() < 1e-9)
+            matches!(shown[0].0.line, GuideLine::Vertical { x } if (x - 20.0).abs() < 1e-9),
+            "{:?}",
+            shown[0].0.line
         );
+        // A page's own guideline stays on its page.
+        app.page = p3;
+        app.choose_master_guides(false);
+        app.add_guide(Guide::vertical(30.0));
+        app.page = app.doc().pages[1].id;
+        let shown = app.other_page_guides();
+        assert!(shown
+            .iter()
+            .any(|(g, _)| matches!(g.line, GuideLine::Vertical { x } if (x - (w + 30.0)).abs() < 1e-9)));
         app.show_guides = true;
         app.show_bleed = true;
         let mut m = app.doc().metadata.clone();
