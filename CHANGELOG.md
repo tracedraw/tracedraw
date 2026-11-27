@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Data Merge with On every page: a field typed into a text just started with the Text tool goes on the other pages too, and printing the merge (Print Preview included) fills a copy that closes with the printing, so the drawing keeps its fields instead of the last values printed (#4354).
 - Paste: one row or one column of spreadsheet cells copied together with their picture pastes as a table (#4422).
 - Panels: a panel's menu has Close All Panels, which closes every open panel wherever it lies and keeps the locked ones (#4436).
 - Drag with the right button onto an object: Copy Size Here, Copy Width Here and Copy Height Here stretch that object to the selection's size about its own centre (#4448).

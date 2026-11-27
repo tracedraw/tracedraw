@@ -155,8 +155,18 @@ impl App {
             .filter(|p| p.x.is_finite() && p.y.is_finite())
             .unwrap_or_else(|| self.page_rect().center());
         if self.merge_docker.kind == 0 {
-            if self.text_edit.is_some() {
+            if let Some(id) = self.text_edit.as_ref().map(|te| te.shape) {
                 self.insert_text(&field);
+                // On every page, a text that holds the field alone (one
+                // just started with the Text tool, say) goes on the
+                // other pages too (#4354).
+                let alone = self.doc().find_shape(id).and_then(field_of) == Some(name.clone());
+                if self.merge_docker.all_pages && alone {
+                    self.finish_text();
+                    if self.doc().top_level_of(id) == Some(id) {
+                        self.copy_to_other_pages(id);
+                    }
+                }
             } else {
                 self.start_text(at, None);
                 self.text_insert(&field);
@@ -679,7 +689,30 @@ impl App {
             return;
         };
         // With On every page the records go onto the drawing's own pages,
-        // one per page, rather than into a new drawing (#618).
+        // one per page, rather than into a new drawing (#618). To print,
+        // they go onto a copy of the drawing that closes again with the
+        // printing, so that the drawing keeps its fields (#4354).
+        if self.merge_docker.all_pages && print {
+            let source = (self.engine.instance(), self.engine.revision(), self.page);
+            let page = self.page;
+            let mut copy = tracedraw_core::Engine::new(self.doc().clone());
+            match crate::print_merge::merge_onto_pages(&mut copy, &st) {
+                Ok(_) => {
+                    self.open_document(copy.document().clone(), None);
+                    if self.doc().pages.iter().any(|p| p.id == page) {
+                        self.page = page;
+                    }
+                    self.merge_docker.made = Some(MergedDrawing {
+                        drawing: (self.engine.instance(), self.engine.revision()),
+                        source,
+                        data: MergedDrawing::data_of(&st),
+                    });
+                    self.print();
+                }
+                Err(e) => self.status = e,
+            }
+            return;
+        }
         if self.merge_docker.all_pages {
             match crate::print_merge::merge_onto_pages(&mut self.engine, &st) {
                 Ok(m) => {
@@ -695,9 +728,6 @@ impl App {
                     } else {
                         crate::i18n::trf("status.merge_filled", &[("n", &m.filled.to_string())])
                     };
-                    if print {
-                        self.print();
-                    }
                 }
                 Err(e) => self.status = e,
             }
@@ -1389,6 +1419,54 @@ mod tests {
         assert_eq!(texts(&app, 0)[0].0, "Ana");
         assert_eq!(texts(&app, 1)[0].0, "Bob");
         assert_eq!(texts(&app, 2)[0].0, "<Name>");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// #4354: with On every page, a field typed into a text just started
+    /// with the Text tool goes on the other pages too, and printing the
+    /// merge fills a copy of the drawing that closes with the printing:
+    /// the drawing keeps its fields rather than the values printed.
+    #[test]
+    fn on_every_page_printing_keeps_the_fields_of_the_drawing() {
+        let dir = std::env::temp_dir().join(format!("td_merge_print_all_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut app = App::headless();
+        app.add_page();
+        app.goto_page(0);
+        app.merge_state = Some(data(&dir));
+        app.merge_docker.kind = 0;
+        app.merge_docker.column = 0;
+        app.merge_docker.all_pages = true;
+        let text_on = |app: &App, k: usize| -> Vec<String> {
+            all_of(&app.doc().pages[k])
+                .iter()
+                .filter_map(|s| match &s.kind {
+                    ShapeKind::Text { spans, .. } => {
+                        Some(spans.iter().map(|sp| sp.text.as_str()).collect())
+                    }
+                    _ => None,
+                })
+                .collect()
+        };
+        let at = app.page_rect().center();
+        app.start_text(at, None);
+        app.insert_merge_field();
+        assert!(app.text_edit.is_none(), "the text is finished");
+        assert_eq!(text_on(&app, 0), vec!["<Name>".to_string()]);
+        assert_eq!(text_on(&app, 1), vec!["<Name>".to_string()], "copied to page 2");
+        let source = app.engine.instance();
+        let docs = app.docs.len();
+        app.create_merged_document(true);
+        assert_eq!(app.docs.len(), docs + 1, "a copy to print from");
+        assert_eq!(text_on(&app, 0), vec!["Ana".to_string()]);
+        assert_eq!(text_on(&app, 1), vec!["Bob".to_string()]);
+        app.dialog = crate::ui::dialogs::Dialog::None;
+        app.print_preview = None;
+        app.close_printed_merge();
+        assert_eq!(app.docs.len(), docs);
+        assert_eq!(app.engine.instance(), source);
+        assert_eq!(text_on(&app, 0), vec!["<Name>".to_string()], "still a field");
+        assert_eq!(text_on(&app, 1), vec!["<Name>".to_string()]);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
