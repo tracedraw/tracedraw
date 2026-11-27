@@ -6,6 +6,12 @@ full, row-by-row status.
 
 ## Unreleased
 
+- File > Open takes several files at once (Ctrl or Shift in the dialog), each in a tab of its own; large drawings and `.cdr` files opened together open one after the other instead of the last one replacing the others (#4496).
+- Data Merge: the QR code on the first page has the same nodes as the codes on the merged pages; a QR code object's dark pixels are outlines with a node only where they turn (#4502).
+- Number boxes grow to show their whole value with its unit, such as an ellipse's angle, instead of cutting off the first digit (#4526).
+- Facing pages and the Multipage View: a line drawn click by click goes on over the other page instead of starting again where the click landed (#4527).
+- Object Data sheet: each column is as wide as its longest value; dragging a heading resizes it and a double-click fits it again (#4495).
+- Object Data: the Name field names the object too, as the Objects panel shows it (#4504).
 - Windows Explorer: the Preview Pane shows every page of a .tdraw drawing (and of a .cdr file no other program previews), one under another, scrolled with the mouse wheel, the scroll bar or the keys; after a save, the file's thumbnail and preview show the drawing as saved (#4455).
 - Text boxes: text selected before a right click stays selected, so the menu's Cut, Copy and Delete work on it (they were always greyed out), for example in the QR Code text of Properties (#4486).
 - Drag outline: a symbol, on its own or inside groups, shows its own objects where it will drop instead of a small square (#4474).

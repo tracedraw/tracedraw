@@ -6,7 +6,7 @@
 use crate::app::App;
 use tracedraw_core::{
     document::ShapeKind,
-    geometry::{BezPath, Point, Rect, Shape as _},
+    geometry::{BezPath, Point, Rect},
     Command, Fill, QrCode, QrKind, QrSymbol, Shape, ShapeId,
 };
 
@@ -91,30 +91,20 @@ pub fn size_mm(g: &Grid, qr: &QrCode) -> (f64, f64) {
     )
 }
 
-/// The dark pixels as one path, each row's runs of dark pixels as one
-/// rectangle, with the object's top-left corner at `top_left` (y up).
+/// The dark pixels as one path, with the object's top-left corner at
+/// `top_left` (y up): the outlines of each patch of touching pixels with
+/// a node only where they turn ([`grid_outline`]), the same as a merged
+/// record's code, so a QR code object and the codes Data Merge makes from
+/// it have the same nodes (#4502).
 pub fn pixels_path(g: &Grid, pixel: f64, top_left: Point) -> BezPath {
-    let mut path = BezPath::new();
-    let n = g.cols;
-    for y in 0..g.rows {
-        let mut x = 0;
-        while x < n {
-            if !g.dark[y * n + x] {
-                x += 1;
-                continue;
-            }
-            let start = x;
-            while x < n && g.dark[y * n + x] {
-                x += 1;
-            }
-            let x0 = top_left.x + (start + QUIET) as f64 * pixel;
-            let x1 = top_left.x + (x + QUIET) as f64 * pixel;
-            let y1 = top_left.y - (y + QUIET) as f64 * pixel;
-            let y0 = y1 - pixel;
-            path.extend(Rect::new(x0, y0, x1, y1).to_path(0.01));
-        }
-    }
-    path
+    let inset = QUIET as f64 * pixel;
+    grid_outline(
+        g.cols,
+        g.rows,
+        &g.dark,
+        pixel,
+        Point::new(top_left.x + inset, top_left.y - inset),
+    )
 }
 
 /// The outlines of the dark pixels of a `cols` by `rows` grid (row by
@@ -487,6 +477,34 @@ mod tests {
 
     use super::*;
     use tracedraw_core::{Color, QrKind};
+
+    /// #4502: a QR code object's dark pixels have the same nodes as the
+    /// code Data Merge makes for a record, so the first page's code (the
+    /// object) and the merged pages' codes look alike when edited.
+    #[test]
+    fn a_qr_object_has_as_few_nodes_as_a_merged_code() {
+        let mut app = App::headless();
+        let id = app.insert_qr_code().expect("placed");
+        let s = app.doc().find_shape(id).cloned().expect("shape");
+        let qr = s.qr.clone().expect("qr");
+        let ShapeKind::Group { children } = &s.kind else {
+            panic!("a group");
+        };
+        let count = |p: &BezPath| {
+            p.elements()
+                .iter()
+                .filter(|e| !matches!(e, tracedraw_core::geometry::PathEl::ClosePath))
+                .count()
+        };
+        let ShapeKind::Path { path, .. } = &children[1].kind else {
+            panic!("dark pixels path");
+        };
+        let merged = crate::ui::dialogs::qr_path(&qr.payload(), 30.0).expect("merged code");
+        assert_eq!(count(path), count(&merged));
+        let g = modules(&qr.payload(), qr.symbol).expect("modules");
+        let dark_px = g.dark.iter().filter(|d| **d).count();
+        assert!(count(path) < dark_px * 2, "{} for {dark_px}", count(path));
+    }
 
     #[test]
     fn insert_places_a_selected_qr_code_that_reads_back() {

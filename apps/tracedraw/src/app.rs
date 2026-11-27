@@ -1870,6 +1870,8 @@ pub struct App {
     /// A large `.tdraw` being read off the interface's thread, with its
     /// progress window (#2849).
     pub opening: Option<crate::opening::Opening>,
+    /// More drawings to read that way after it, in their order (#4496).
+    pub opening_next: Vec<(PathBuf, String)>,
     /// A large drawing being written off the interface's thread (#4011):
     /// while it is, nothing typed or clicked reaches the drawing.
     pub saving: Option<crate::saving::Saving>,
@@ -3760,6 +3762,7 @@ impl App {
             print_job: None,
             print_progress: Default::default(),
             opening: None,
+            opening_next: Vec::new(),
             saving: None,
             save_on_worker: !crate::files::WEB && !cfg!(test),
             exporting: None,
@@ -9660,8 +9663,14 @@ impl App {
         }
     }
 
+    /// File > Open: several files can be picked at once (Ctrl or Shift
+    /// in the dialog), each opening in a tab of its own (#4496).
     pub fn open_dialog(&mut self) {
-        Self::open_file_dialog().pick_file(self, |app, p| app.open_path(p));
+        Self::open_file_dialog().pick_files(self, |app, paths| {
+            for p in paths {
+                app.open_path(p);
+            }
+        });
     }
 
     /// File > Open's dialog. Pictures are among what it opens, each a new
@@ -9884,8 +9893,14 @@ impl App {
                 0
             };
             if let Some(size) = crate::opening::wants_background_from(&path, from) {
-                if let Some(old) = self.opening.take() {
-                    old.cancel();
+                // Several drawings opened at once (File > Open with
+                // Ctrl or Shift, a drop, a .zip): each waits for the one
+                // being read, which went on to be dropped (#4496).
+                if let Some(old) = &self.opening {
+                    if old.path != path {
+                        self.opening_next.push((path, password.to_string()));
+                    }
+                    return;
                 }
                 self.opening = Some(crate::opening::Opening::start(
                     path,
@@ -11609,11 +11624,18 @@ impl App {
             self.open_path_with_password(job.path, &job.password);
             self.opened_read = None;
         }
-        false
+        // The next drawing opened with it (#4496).
+        while self.opening.is_none() && !self.opening_next.is_empty() {
+            let (path, password) = self.opening_next.remove(0);
+            self.open_path_with_password(path, &password);
+        }
+        self.opening.is_some()
     }
 
-    /// Stop reading the large drawing being opened.
+    /// Stop reading the large drawing being opened, and the ones waiting
+    /// for it.
     pub fn cancel_opening(&mut self) {
+        self.opening_next.clear();
         if let Some(job) = self.opening.take() {
             job.cancel();
             self.status = crate::i18n::tr("status.open_cancelled");

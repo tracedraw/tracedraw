@@ -349,8 +349,21 @@ impl<N: Numeric> NumField<'_, N> {
             }
             label_resp = Some(label);
         }
-        // The spin arrows take their width at the right of the box.
-        let width = (slot.unwrap_or(self.width) - SPIN_W).max(16.0);
+        // The spin arrows take their width at the right of the box. A box
+        // of its own width grows to show its whole text: a value with its
+        // unit (272.0 degrees on the ellipse's bar) lost its first digit,
+        // most of all with larger interface fonts (#4526).
+        let mut width = (slot.unwrap_or(self.width) - SPIN_W).max(16.0);
+        if slot.is_none() {
+            let font = egui::TextStyle::Body.resolve(ui.style());
+            let text = ui
+                .painter()
+                .layout_no_wrap(buf.clone(), font, egui::Color32::WHITE)
+                .size()
+                .x;
+            // The margins (4 a side) and room for the cursor.
+            width = width.max((text + 10.0).ceil());
+        }
         let spacing = ui.spacing().item_spacing;
         ui.spacing_mut().item_spacing.x = 0.0;
         let mut resp = ui.add(
@@ -1487,6 +1500,54 @@ mod tests {
             }],
         );
         assert_eq!(v, 2.0);
+    }
+
+    /// #4526: a field of its own width grows to show its whole text (the
+    /// ellipse's angles, 272.0 degrees), and keeps its width when it fits.
+    #[test]
+    fn a_field_grows_to_show_its_whole_text() {
+        let ctx = crate::theme::ui_context();
+        let mut long = 272.0f64;
+        let mut short = 2.0f64;
+        let mut rects = (egui::Rect::NOTHING, egui::Rect::NOTHING);
+        let mut text = 0.0f32;
+        for _ in 0..4 {
+            let mut out = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(600.0, 400.0),
+                    )),
+                    ..Default::default()
+                },
+                |ui| {
+                    egui::Area::new(egui::Id::new("fit_fields"))
+                        .fixed_pos(egui::pos2(10.0, 10.0))
+                        .show(ui.ctx(), |ui| {
+                            ui.horizontal(|ui| {
+                                let a = ui.add(
+                                    NumField::new(&mut long)
+                                        .fixed_decimals(1)
+                                        .suffix(" \u{00B0}")
+                                        .width(30.0),
+                                );
+                                let b = ui.add(NumField::new(&mut short).width(30.0));
+                                rects = (a.rect, b.rect);
+                                let font = egui::TextStyle::Body.resolve(ui.style());
+                                text = ui
+                                    .painter()
+                                    .layout_no_wrap("272.0 \u{00B0}".into(), font, egui::Color32::WHITE)
+                                    .size()
+                                    .x;
+                            });
+                        });
+                },
+            );
+            out.textures_delta.clear();
+        }
+        // The box (the arrows beside it aside) holds the text and margins.
+        assert!(rects.0.width() >= text + 8.0, "{:?} for {text}", rects.0);
+        assert!((rects.1.width() - (30.0 - SPIN_W)).abs() < 1.0, "{:?}", rects.1);
     }
 
     /// The spin arrows at the right of a field and the mouse wheel over

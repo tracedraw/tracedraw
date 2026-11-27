@@ -2925,7 +2925,7 @@ fn object_data(app: &mut App, ui: &mut Ui) {
         }
     });
     if changed {
-        app.run(Command::SetObjectData { shape: s.id, data });
+        set_object_data(app, s.id, data);
     }
     // Copy the fields to the other selected objects (#3262).
     if app.selected_shapes().len() > 1
@@ -3066,6 +3066,12 @@ fn data_sheet_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
     };
     let rows = sheet_rows(&roots, levels);
     let cols = sheet_columns(&rows);
+    // The columns' widths (#4495): each as wide as its longest value or
+    // its name, unless dragged wider or narrower by its heading (a
+    // double-click on the heading fits it again).
+    let widths_id = egui::Id::new("object_data_sheet_widths");
+    let mut set_widths: std::collections::HashMap<String, f32> =
+        ctx.data(|d| d.get_temp(widths_id)).unwrap_or_default();
     let mut edit: Option<(ShapeId, String, String)> = None;
     egui::Window::new(tr("docker.data_sheet"))
         .id(egui::Id::new("object_data_sheet"))
@@ -3083,9 +3089,47 @@ fn data_sheet_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
                     .striped(true)
                     .num_columns(cols.len() + 1)
                     .show(ui, |ui| {
+                        let font = egui::TextStyle::Body.resolve(ui.style());
+                        let text_w = |ui: &Ui, t: &str| {
+                            ui.painter()
+                                .layout_no_wrap(t.to_string(), font.clone(), egui::Color32::WHITE)
+                                .size()
+                                .x
+                        };
+                        let widths: Vec<f32> = cols
+                            .iter()
+                            .map(|c| {
+                                set_widths.get(c).copied().unwrap_or_else(|| {
+                                    sheet_fit_width(
+                                        std::iter::once(text_w(ui, c)).chain(rows.iter().map(|r| {
+                                            r.data
+                                                .iter()
+                                                .find(|(k, _)| k == c)
+                                                .map_or(0.0, |(_, v)| text_w(ui, v))
+                                        })),
+                                    )
+                                })
+                            })
+                            .collect();
                         ui.label("");
-                        for c in &cols {
-                            ui.strong(c);
+                        for (c, w) in cols.iter().zip(&widths) {
+                            let head = ui.add_sized(
+                                [*w, ui.spacing().interact_size.y],
+                                egui::Label::new(egui::RichText::new(c).strong())
+                                    .sense(egui::Sense::click_and_drag()),
+                            );
+                            if head.hovered() || head.dragged() {
+                                ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeColumn);
+                            }
+                            if head.dragged() {
+                                set_widths.insert(
+                                    c.clone(),
+                                    (w + head.drag_delta().x).clamp(SHEET_MIN_W, SHEET_MAX_W * 2.0),
+                                );
+                            }
+                            if head.double_clicked() {
+                                set_widths.remove(c);
+                            }
                         }
                         ui.end_row();
                         let mut n = 0;
@@ -3107,9 +3151,10 @@ fn data_sheet_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
                                     .map(|(_, v)| v.clone())
                                     .unwrap_or_default();
                                 let field = egui::Id::new(("object_data_sheet_cell", ci));
+                                let w = widths.get(ci).copied().unwrap_or(SHEET_MIN_W);
                                 let (_, typed) =
                                     kept_text(ui, field, (r.id, ci), &stored, |ui, text| {
-                                        ui.add(egui::TextEdit::singleline(text).desired_width(80.0))
+                                        ui.add(egui::TextEdit::singleline(text).desired_width(w))
                                     });
                                 if let Some(v) = typed {
                                     edit = Some((r.id, c.clone(), v));
@@ -3128,7 +3173,10 @@ fn data_sheet_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
                     });
             });
         });
-    ctx.data_mut(|d| d.insert_temp(levels_id, levels));
+    ctx.data_mut(|d| {
+        d.insert_temp(levels_id, levels);
+        d.insert_temp(widths_id, set_widths);
+    });
     if let Some((id, field, value)) = edit {
         if let Some(s) = app.doc().find_shape(id) {
             let mut data = s.data.clone();
@@ -3136,9 +3184,43 @@ fn data_sheet_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
                 Some((_, v)) => *v = value,
                 None => data.push((field, value)),
             }
-            app.run(Command::SetObjectData { shape: id, data });
+            set_object_data(app, id, data);
         }
     }
+}
+
+/// Give object `id` the fields `data`, in one undo step. A Name field
+/// typed or changed names the object too, as the Objects docker shows it
+/// (#4504).
+pub(crate) fn set_object_data(app: &mut App, id: ShapeId, data: Vec<(String, String)>) {
+    let field = |d: &[(String, String)]| {
+        d.iter()
+            .find(|(k, _)| k == "Name")
+            .map(|(_, v)| v.trim().to_string())
+    };
+    let before = app.doc().find_shape(id).and_then(|s| field(&s.data));
+    let name = field(&data).filter(|n| Some(n) != before.as_ref());
+    let mut cmds = vec![Command::SetObjectData { shape: id, data }];
+    if let Some(n) = name {
+        cmds.push(Command::SetShapeName {
+            shape: id,
+            name: (!n.is_empty()).then_some(n),
+        });
+    }
+    if let Err(e) = app.engine.run_batch("Object Data", &cmds) {
+        app.status = e.to_string();
+    }
+}
+
+/// The narrowest and the widest a data sheet column fits itself to.
+const SHEET_MIN_W: f32 = 60.0;
+const SHEET_MAX_W: f32 = 360.0;
+
+/// The width of a data sheet column whose texts (its name and values)
+/// are `texts` wide: the widest with the field's margins, kept between
+/// [`SHEET_MIN_W`] and [`SHEET_MAX_W`] (#4495).
+fn sheet_fit_width(texts: impl Iterator<Item = f32>) -> f32 {
+    (texts.fold(0.0f32, f32::max) + 12.0).clamp(SHEET_MIN_W, SHEET_MAX_W)
 }
 
 /// The Hyperlink field of the Links and Bookmarks docker.
@@ -4463,6 +4545,47 @@ mod data_sheet_tests {
         assert_eq!(sheet_total(&rows, "Name"), None);
         assert_eq!(sheet_total(&rows, "Size"), None);
         assert_eq!(sheet_number("$1,250.50"), Some(1250.5));
+    }
+
+    /// #4504: a Name field typed in Object Data names the object, as the
+    /// Objects docker shows it; one undo step takes both back.
+    #[test]
+    fn the_name_field_names_the_object() {
+        let mut app = App::headless();
+        let id = app
+            .new_shape(ShapeKind::Rect {
+                rect: tracedraw_core::Rect::new(0.0, 0.0, 10.0, 10.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("a layer");
+        set_object_data(&mut app, id, vec![("Name".into(), "Sign A".into())]);
+        let s = app.doc().find_shape(id).cloned().unwrap();
+        assert_eq!(s.name.as_deref(), Some("Sign A"));
+        assert_eq!(s.data, vec![("Name".to_string(), "Sign A".to_string())]);
+        // Another field changed leaves a name given since alone.
+        app.run(Command::SetShapeName {
+            shape: id,
+            name: Some("Renamed".into()),
+        });
+        set_object_data(
+            &mut app,
+            id,
+            vec![("Name".into(), "Sign A".into()), ("Cost".into(), "5".into())],
+        );
+        assert_eq!(app.doc().find_shape(id).and_then(|s| s.name.clone()).as_deref(), Some("Renamed"));
+        app.undo();
+        app.undo();
+        app.undo();
+        assert_eq!(app.doc().find_shape(id).and_then(|s| s.name.clone()), None);
+    }
+
+    /// #4495: a data sheet column fits its widest text, within bounds.
+    #[test]
+    fn data_sheet_columns_fit_their_text() {
+        assert_eq!(sheet_fit_width([10.0, 20.0].into_iter()), SHEET_MIN_W);
+        assert_eq!(sheet_fit_width([10.0, 150.0, 40.0].into_iter()), 162.0);
+        assert_eq!(sheet_fit_width([900.0].into_iter()), SHEET_MAX_W);
     }
 }
 

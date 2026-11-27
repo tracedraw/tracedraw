@@ -482,6 +482,17 @@ impl App {
         }
     }
 
+    /// A line, curve or measure being drawn click by click (or a drag
+    /// under way): a press goes on with it on the current page, also over
+    /// the facing page, and never makes another page current, which
+    /// dropped the line and started again where the click was (#4527).
+    pub fn drawing_under_way(&self) -> bool {
+        self.curve.as_ref().is_some_and(|c| !c.nodes.is_empty())
+            || self.three_point_base.is_some()
+            || !self.dimension_points.is_empty()
+            || !matches!(self.drag, crate::app::Drag::None)
+    }
+
     /// In the Multipage View and a spread of facing pages, a press on
     /// another page makes it current before the tool sees the press.
     /// True when the page changed. With facing pages an object reaching
@@ -490,7 +501,7 @@ impl App {
     /// current page where only an object of another page of the spread
     /// lies makes that page current.
     pub fn multipage_press(&mut self, s: Pos2) -> bool {
-        if !self.shows_other_pages() {
+        if !self.shows_other_pages() || self.drawing_under_way() {
             return false;
         }
         let p = self.view.to_page(s);
@@ -2023,6 +2034,29 @@ mod tests {
         assert!(app.set_page_spacing(-3.0));
         assert_eq!(app.page_spacing(), 0.0);
         assert!(!app.set_page_spacing(f64::INFINITY));
+    }
+
+    /// #4527: a line drawn click by click goes on over another page; the
+    /// press does not make that page current.
+    #[test]
+    fn a_line_being_drawn_goes_on_over_another_page() {
+        let mut app = App::headless();
+        app.add_page();
+        let first = app.doc().pages[0].id;
+        app.page = first;
+        app.set_multipage(true);
+        app.fit_pending = false;
+        let r = app.multipage_layout()[1].1;
+        let on_second = app.view.to_screen(Point::new(r.x0 + 5.0, r.y0 + 5.0));
+        app.curve = Some(crate::app::CurveInProgress {
+            nodes: vec![(Point::new(5.0, 5.0), None)],
+            ..Default::default()
+        });
+        assert!(!app.multipage_press(on_second));
+        assert_eq!(app.page, first);
+        assert_eq!(app.curve.as_ref().map(|c| c.nodes.len()), Some(1));
+        app.curve = None;
+        assert!(app.multipage_press(on_second));
     }
 
     #[test]

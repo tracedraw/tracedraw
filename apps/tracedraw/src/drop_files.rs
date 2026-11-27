@@ -974,6 +974,38 @@ mod tests {
         assert_eq!(app.docs.len(), docs + 1, "{}", app.status);
     }
 
+    /// #4496: several .cdr files opened at once (File > Open with Ctrl or
+    /// Shift) each open in a tab; the second one dropped the first, read
+    /// off the interface's thread.
+    #[test]
+    fn several_cdr_files_opened_at_once_all_open() {
+        let dir = dir("cdr-many");
+        let doc =
+            tracedraw_core::Document::new("one", tracedraw_core::geometry::Size::new(100.0, 100.0));
+        let bytes = tracedraw_cdr::write::document_to_cdr(&doc);
+        let paths: Vec<PathBuf> = ["a.cdr", "b.cdr", "c.cdr"]
+            .iter()
+            .map(|n| {
+                let p = dir.join(n);
+                std::fs::write(&p, &bytes).expect("cdr");
+                p
+            })
+            .collect();
+        let mut app = App::headless();
+        let docs = app.docs.len();
+        for p in &paths {
+            app.open_path(p.clone());
+        }
+        for _ in 0..1200 {
+            if app.docs.len() >= docs + 3 {
+                break;
+            }
+            app.poll_opening();
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert_eq!(app.docs.len(), docs + 3, "{}", app.status);
+    }
+
     /// #2686: on Windows a drop (or the drag leaving) could fail to reach
     /// the program; the files stayed listed as hovered and the drop frame
     /// came back at every later click. Once the buttons have been up a
