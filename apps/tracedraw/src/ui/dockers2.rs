@@ -69,6 +69,7 @@ pub fn show(app: &mut App, ui: &mut Ui, tab: DockerTab) {
         DockerTab::Shape3d => crate::ui::shape3d_docker::shape_3d(app, ui),
         DockerTab::Shelf => crate::ui::shelf_docker::shelf(app, ui),
         DockerTab::Export => crate::ui::export_docker::export_docker(app, ui),
+        DockerTab::QuickExport => crate::ui::quick_export_docker::quick_export_docker(app, ui),
         DockerTab::Comments => crate::ui::comments_docker::comments_docker(app, ui),
         DockerTab::AiGenerate => crate::ui::ai_generate_docker::ai_generate(app, ui),
         DockerTab::Effects => crate::ui::effects_docker::effects_docker(app, ui),

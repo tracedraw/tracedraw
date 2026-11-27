@@ -4,10 +4,10 @@
 //! text (tabs, columns, bullets, drop cap, statistics, spell check),
 //! colour management, font manager, palette editor, confirmations.
 
-use crate::ui::btn_icons::IconUi;
 use crate::app::{App, Units};
 use crate::i18n::{tr, trf};
 use crate::theme::Tokens;
+use crate::ui::btn_icons::IconUi;
 use crate::ui::tips::RichTip;
 use egui::{Context, Ui};
 use tracedraw_core::{
@@ -20,6 +20,25 @@ pub use crate::ui::options::OptionsPage;
 
 /// The lowest export resolution: an A4 page comes out 9 x 12 pixels.
 pub const MIN_EXPORT_DPI: f64 = 1.0;
+
+/// Square icon sizes offered to users, in pixels.
+pub const ICO_SIZES: [u32; 7] = [16, 24, 32, 48, 64, 128, 256];
+pub const DEFAULT_ICO_SIZE: u32 = 256;
+
+pub(crate) fn ico_size_combo(ui: &mut Ui, size: &mut u32, width: f32) -> egui::Response {
+    let label = |px| format!("{px} × {px} px");
+    crate::ui::keynav::ComboBox::from_id_salt("ico_size")
+        .field_arrow()
+        .selected_text(label(*size))
+        .width(width)
+        .truncate()
+        .show_ui(ui, |ui| {
+            for px in ICO_SIZES {
+                ui.selectable_value(size, px, label(px));
+            }
+        })
+        .response
+}
 
 /// The pixel size a raster export of `w_mm` by `h_mm` has at `dpi` (the
 /// renderer rounds up).
@@ -46,6 +65,8 @@ pub struct ExportState {
     pub remember: bool,
     pub format: usize,
     pub dpi: f64,
+    /// ICO: the side of the square output in pixels.
+    pub ico_size: u32,
     /// More than the current page: every page, or with `page_list` the
     /// pages listed in `pages` (#1382).
     pub all_pages: bool,
@@ -57,6 +78,8 @@ pub struct ExportState {
     /// wide as both (#1972); else every page on its own.
     pub spreads: bool,
     pub selection_only: bool,
+    /// Plain PDF: convert process colours to CMYK for print.
+    pub pdf_cmyk: bool,
     pub transparent: bool,
     /// Bitmaps: edges smoothed (on), or hard pixels all in or all out of
     /// a shape (#3807).
@@ -149,11 +172,13 @@ impl Default for ExportState {
             remember: false,
             format: 0,
             dpi: 300.0,
+            ico_size: DEFAULT_ICO_SIZE,
             all_pages: false,
             page_list: false,
             pages: String::new(),
             spreads: false,
             selection_only: false,
+            pdf_cmyk: false,
             transparent: true,
             anti_alias: true,
             quality: 90,
@@ -478,7 +503,7 @@ pub const SVG_TEXT_KEYS: [&str; 3] = [
     "dialog.svg_text_fonts",
 ];
 
-pub const EXPORT_FORMATS: [(&str, &str); 19] = [
+pub const EXPORT_FORMATS: [(&str, &str); 20] = [
     ("SVG", "svg"),
     ("PDF", "pdf"),
     ("PNG", "png"),
@@ -498,6 +523,7 @@ pub const EXPORT_FORMATS: [(&str, &str); 19] = [
     ("PostScript", "ps"),
     ("PRN", "prn"),
     ("JPEG XL", "jxl"),
+    ("ICO", "ico"),
 ];
 
 /// The kinds of AI file the export writes, as translation keys: the
@@ -521,6 +547,7 @@ pub fn export_patterns(ext: &str) -> &'static str {
         "bmp" => "*.bmp",
         "webp" => "*.webp",
         "jxl" => "*.jxl",
+        "ico" => "*.ico",
         "gif" => "*.gif",
         "eps" => "*.eps",
         "ai" => "*.ai",
@@ -5261,6 +5288,7 @@ fn export_preview_key(app: &App, st: &ExportState) -> u64 {
     st.ai_version.hash(&mut h);
     st.quality.hash(&mut h);
     st.dpi.to_bits().hash(&mut h);
+    st.ico_size.hash(&mut h);
     st.scale_or_one().to_bits().hash(&mut h);
     st.webp_lossless.hash(&mut h);
     st.color_mode.hash(&mut h);
@@ -5447,9 +5475,9 @@ pub fn export_format_of(path: &std::path::Path) -> Option<usize> {
 /// (live test of 0.41: only the format of Options > File Formats was
 /// offered); the drawing's name with that format's extension; the folder
 /// exported to last, else the drawing's own (#1817).
-fn export_save_dialog(app: &App, st: &ExportState) -> crate::files::Dialog {
+fn export_save_dialog(app: &App, st: &ExportState, stem: Option<&str>) -> crate::files::Dialog {
     let (name, ext) = EXPORT_FORMATS[st.format.min(EXPORT_FORMATS.len() - 1)];
-    let stem = app.export_stem();
+    let stem = stem.map_or_else(|| app.export_stem(), str::to_owned);
     let mut dialog = crate::files::Dialog::new()
         .set_title(crate::files::Dialog::command_title("menu.file.export"))
         .add_filter(name, &export_extensions(ext));
@@ -5517,22 +5545,33 @@ pub fn export_chosen_file(
 /// says the last options were used and how to see them, and a click on it
 /// opens Options > Global > File Formats, where the setting is.
 pub fn write_export(app: &mut App, path: &std::path::Path, st: &ExportState, last_options: bool) {
+    let work = crate::export::prepare_export(app, path, st);
+    write_prepared_export(app, work, last_options);
+}
+
+pub(crate) fn write_prepared_export(
+    app: &mut App,
+    work: crate::export::ExportWork,
+    last_options: bool,
+) {
     // Off the interface's thread, with a window that shows how far it
     // got: a long export no longer stops the program with nothing on
     // screen.
     if app.save_on_worker {
         app.wait_for_exporting();
-        let work = crate::export::prepare_export(app, path, st);
         match crate::exporting::Exporting::start(work, last_options) {
             Ok(job) => {
-                app.status = trf("status.exporting", &[("p", &path.display().to_string())]);
+                app.status = trf(
+                    "status.exporting",
+                    &[("p", &job.path.display().to_string())],
+                );
                 app.exporting = Some(job);
             }
             Err(e) => export_done(app, Err(e), last_options),
         }
         return;
     }
-    let result = crate::export::export(app, path, st);
+    let result = work.run(&std::sync::atomic::AtomicUsize::new(0));
     export_done(app, result, last_options);
 }
 
@@ -5553,9 +5592,14 @@ pub fn export_done(app: &mut App, result: Result<String, String>, last_options: 
 /// Ask for the file and export to it with `st`'s choices: the options
 /// were chosen first (the presets for the web and office, the browser,
 /// Android) or are not shown (`last_options`).
-pub fn export_with_file_dialog(app: &mut App, st: &ExportState, last_options: bool) {
+pub fn export_with_file_dialog(
+    app: &mut App,
+    st: &ExportState,
+    last_options: bool,
+    stem: Option<&str>,
+) {
     let st = st.clone();
-    export_save_dialog(app, &st).save_file(app, move |app, path| {
+    export_save_dialog(app, &st, stem).save_file(app, move |app, path| {
         let mut st = st;
         let path = export_chosen_file(app, &mut st, path);
         write_export(app, &path, &st, last_options);
@@ -5568,7 +5612,7 @@ pub fn export_with_file_dialog(app: &mut App, st: &ExportState, last_options: bo
 /// show this dialog again" on, Shift not held) the file is written right
 /// after the Save dialog with the last options instead.
 pub fn choose_export_file(app: &mut App, st: ExportState, skip: bool) {
-    export_save_dialog(app, &st).save_file(app, move |app, path| {
+    export_save_dialog(app, &st, None).save_file(app, move |app, path| {
         let mut st = st;
         let path = export_chosen_file(app, &mut st, path);
         if skip {
@@ -5893,7 +5937,24 @@ fn export_dialog(app: &mut App, ctx: &Context, st: &mut ExportState, close: &mut
                         ));
                 });
                 let scripted = st.script.is_some();
+                let (_, ext) = EXPORT_FORMATS[st.format.min(EXPORT_FORMATS.len() - 1)];
                 let raster = !scripted && ((2..=7).contains(&st.format) || st.format == 15);
+                if !scripted && ext == "ico" {
+                    ui.horizontal(|ui| {
+                        let label = ui.label(tr("docker.size"));
+                        ico_size_combo(ui, &mut st.ico_size, 108.0).labelled_by(label.id);
+                    });
+                    ui.checkbox(&mut st.transparent, tr("dialog.transparent_background"))
+                        .rich_tip(crate::ui::tips::pair(
+                            "dialog.transparent_background",
+                            "dialog.export_transparent_desc",
+                        ));
+                    ui.checkbox(&mut st.anti_alias, tr("dialog.anti_aliasing"))
+                        .rich_tip(crate::ui::tips::pair(
+                            "dialog.anti_aliasing",
+                            "dialog.export_anti_alias_desc",
+                        ));
+                }
                 if raster {
                     ui.horizontal(|ui| {
                         ui.label(tr("dialog.resolution"));
@@ -5951,7 +6012,6 @@ fn export_dialog(app: &mut App, ctx: &Context, st: &mut ExportState, close: &mut
                         )
                         .rich_tip(crate::ui::tips::keyed("dialog.quality"));
                     }
-                    let (_, ext) = EXPORT_FORMATS[st.format.min(EXPORT_FORMATS.len() - 1)];
                     if ExportColorMode::applies_to(ext) {
                         // RGB, CMYK inks for print or grey (#1763).
                         ui.horizontal(|ui| {
@@ -6439,7 +6499,7 @@ pub fn export_dialog_ok(app: &mut App, st: &ExportState) {
     }
     match st.target.clone() {
         Some(path) => write_export(app, &path, st, false),
-        None => export_with_file_dialog(app, st, false),
+        None => export_with_file_dialog(app, st, false, None),
     }
     app.keep_export_choices(st);
 }

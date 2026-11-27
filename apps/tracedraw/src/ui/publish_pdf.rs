@@ -712,6 +712,7 @@ impl PublishState {
     pub fn options(&self, output_profile: Option<Vec<u8>>) -> PdfOptions {
         PdfOptions {
             standard: self.prefs.standard(),
+            cmyk: false,
             output_profile,
             output_condition: self.prefs.output_condition.clone(),
             bleed_mm: self.bleed_mm.max(0.0),

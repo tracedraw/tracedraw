@@ -280,6 +280,7 @@ pub fn docker_topic(t: DockerTab) -> &'static str {
         DockerTab::Shape3d => "effects/revolve-inflate",
         DockerTab::Shelf => "objects/shelf",
         DockerTab::Export => "web-graphics/export-docker",
+        DockerTab::QuickExport => "web-graphics/export-docker",
         DockerTab::Comments => "objects/comments",
         DockerTab::AiGenerate => "customize/ai#generate",
         DockerTab::Effects => "effects/effects-docker",

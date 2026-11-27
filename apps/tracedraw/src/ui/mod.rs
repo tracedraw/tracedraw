@@ -58,6 +58,7 @@ pub mod effect_picker;
 pub mod effects_docker;
 pub mod envelope_ui;
 pub mod export_docker;
+pub mod quick_export_docker;
 pub mod extrude_bar;
 pub mod field;
 pub mod flare;

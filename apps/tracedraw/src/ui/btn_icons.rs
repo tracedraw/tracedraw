@@ -50,6 +50,7 @@ pub enum B {
     Wand,
     Picture,
     Folder,
+    FolderOutline,
     FolderPlus,
     Chat,
     Plug,
@@ -191,6 +192,7 @@ fn exact(key: &str) -> Option<Src> {
         "preflight.show_settings" => Src::Action(Action::Options),
         "table.edit_in_spreadsheet" => Src::B(B::Data),
         "export_docker.export" => Src::Action(Action::Export),
+        "quick_export.export" => Src::Action(Action::Export),
         "dimension.options" => Src::Action(Action::Options),
         "docker.use_sampled" => Src::Tool(Tool::ColorEyedropper),
         "docker.cancel_symbol_edit" => Src::B(B::Cross),
@@ -535,6 +537,8 @@ fn exact(key: &str) -> Option<Src> {
         "options.dynamic_add_angle" => Src::B(B::Plus),
         "options.page_look_reset" => Src::B(B::Reset),
         "options.open_folder" => Src::B(B::Folder),
+        "quick_export.browse" => Src::B(B::FolderOutline),
+        "quick_export.open_folder" => Src::Action(Action::Open),
         "options.clear_folder" => Src::B(B::Clear),
         "options.choose_bitmap" => Src::B(B::Picture),
         "options.command_icon_choose" => Src::B(B::Picture),
@@ -1209,6 +1213,7 @@ pub fn draw_b(painter: &Painter, r: Rect, b: B, color: Color32) {
             circle(11.0, 5.5, 1.5, accent(GOLD), Stroke::NONE);
         }
         Folder => folder(accent(Color32::from_rgb(0xF2, 0xC9, 0x4C))),
+        FolderOutline => folder(Color32::TRANSPARENT),
         FolderPlus => {
             folder(accent(Color32::from_rgb(0xF2, 0xC9, 0x4C)));
             plus(11.0, 9.5, 2.5, accent(GREEN));

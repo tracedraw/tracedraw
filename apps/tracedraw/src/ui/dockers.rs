@@ -1212,7 +1212,9 @@ pub(crate) fn tab_icon(tab: DockerTab) -> Option<TabIcon> {
                 egui::StrokeKind::Middle,
             );
         }),
-        DockerTab::Export => Some(|p, r| action_pic(p, r, crate::ui::icons::Action::Export)),
+        DockerTab::Export | DockerTab::QuickExport => {
+            Some(|p, r| action_pic(p, r, crate::ui::icons::Action::Export))
+        }
         DockerTab::Comments => Some(|p, r| tool_pic(p, r, crate::tools::Tool::Callout)),
         DockerTab::AiGenerate => Some(|p, r| glyph_pic(p, r, Glyph::Ai)),
         DockerTab::Effects => Some(|p, r| letters(p, r, "fx", 12.0)),

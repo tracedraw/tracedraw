@@ -1155,6 +1155,28 @@ impl ComboBox {
         self
     }
 
+    /// A compact chevron with a divider between the value and the arrow.
+    pub fn field_arrow(mut self) -> Self {
+        self.inner = self.inner.icon(|ui, rect, visuals, open| {
+            let painter = ui.painter();
+            let x = rect.left() - 2.0;
+            let divider = ui.visuals().widgets.inactive.bg_stroke;
+            painter.vline(x, rect.y_range().shrink(1.0), divider);
+
+            let center = rect.center();
+            let dy = if open { -1.5 } else { 1.5 };
+            let points = [
+                center + egui::vec2(-3.0, -dy),
+                center + egui::vec2(0.0, dy),
+                center + egui::vec2(3.0, -dy),
+            ];
+            let stroke = egui::Stroke::new(1.25, visuals.text_color());
+            painter.line_segment([points[0], points[1]], stroke);
+            painter.line_segment([points[1], points[2]], stroke);
+        });
+        self
+    }
+
     pub fn selected_text(mut self, text: impl Into<egui::WidgetText>) -> Self {
         let text = text.into();
         self.shown = text.text().to_string();

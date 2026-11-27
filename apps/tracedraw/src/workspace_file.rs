@@ -95,6 +95,7 @@ const NOT_CARRIED: &[&str] = &[
     "recent_files",
     "last_dir",
     "last_export_dir",
+    "quick_export_folders",
     "folder_bookmarks",
     "thesaurus_file",
     "bitmap_editor",

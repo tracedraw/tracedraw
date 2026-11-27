@@ -4,14 +4,15 @@
 use crate::app::App;
 use crate::i18n::{tr, trf};
 use crate::ui::dialogs::{
-    ExportColorMode, ExportState, FindReplaceState, PrintState, PropertyFind, EXPORT_FORMATS,
+    ExportColorMode, ExportState, FindReplaceState, PrintState, PropertyFind, DEFAULT_ICO_SIZE,
+    EXPORT_FORMATS, ICO_SIZES,
 };
 use std::path::Path;
 use tracedraw_core::find::{self as objfind, ColorQuery, Hit, ObjectQuery, ObjectType};
 use tracedraw_core::{
     document::ShapeKind,
     geometry::{Affine, Rect, Size},
-    Command, Document, ShapeId, TextSpan,
+    Command, Document, Layer, Page, Shape, ShapeId, TextSpan,
 };
 
 /// Document limited to the selection, sized to what it covers, and that
@@ -21,29 +22,70 @@ use tracedraw_core::{
 /// Export dialog and by the MCP server's `export` with `selection`, so the
 /// two cannot come out different.
 pub(crate) fn selection_document(app: &App) -> (Document, Rect) {
-    let doc = app.engine.document();
-    let bounds = selection_export_bounds(app).unwrap_or(app.page_rect());
-    let mut tmp = Document::new(
-        doc.title.clone(),
-        Size::new(bounds.width().max(0.1), bounds.height().max(0.1)),
-    );
-    tmp.symbols = doc.symbols.clone();
-    // The drawing's spot inks and colour profile go along: without
-    // its ink, a spot colour exports as its process stand-in.
-    tmp.inks = doc.inks.clone();
-    tmp.cmyk_profile = doc.cmyk_profile.clone();
-    tmp.color_styles = doc.color_styles.clone();
-    let l = tmp.pages[0].layers[0].id;
-    for s in app.selected_shapes() {
-        let mut c = s.clone();
-        let shift = Affine::translate((-bounds.x0, -bounds.y0));
-        c.transform_by(shift);
-        carry_blend_ends(&mut c, shift);
-        if let Ok(layer) = tmp.layer_mut(l) {
-            layer.shapes.push(c);
-        }
+    let shapes = app.selected_shapes();
+    let bounds = shapes
+        .iter()
+        .map(|shape| selection_shape_bounds(app, shape))
+        .reduce(|a, b| a.union(b))
+        .unwrap_or_else(|| app.page_rect());
+    let mut doc = selection_export_base(app.doc(), bounds);
+    if let Some(layer) = doc
+        .pages
+        .first_mut()
+        .and_then(|page| page.layers.first_mut())
+    {
+        layer.shapes = shapes
+            .into_iter()
+            .map(|shape| move_to_crop_origin(shape, bounds))
+            .collect();
     }
-    (tmp, bounds)
+    (doc, bounds)
+}
+
+/// A temporary document with each object cropped onto its own page.
+pub(crate) fn object_pages_document(app: &App, shapes: Vec<Shape>) -> Document {
+    let mut doc = selection_export_base(app.doc(), app.page_rect());
+    doc.metadata.fill_open_curves = app.doc().metadata.fill_open_curves;
+    doc.fonts = app.doc().fonts.clone();
+    doc.pages.clear();
+    for shape in shapes {
+        let crop = selection_shape_bounds(app, &shape);
+        let name = shape.name.clone().unwrap_or_default();
+        let ids = doc.ids_mut();
+        let id = ids.page();
+        let mut layer = Layer::new(ids.layer(), "Layer 1");
+        layer.shapes.push(move_to_crop_origin(shape, crop));
+        doc.pages.push(Page {
+            id,
+            name,
+            size: cropped_page_size(crop),
+            layers: vec![layer],
+            guides: Vec::new(),
+            background: None,
+        });
+    }
+    doc
+}
+
+fn selection_export_base(source: &Document, bounds: Rect) -> Document {
+    let mut doc = Document::new(source.title.clone(), cropped_page_size(bounds));
+    doc.symbols = source.symbols.clone();
+    // Without its ink, a spot colour exports as its process stand-in.
+    doc.inks = source.inks.clone();
+    doc.cmyk_profile = source.cmyk_profile.clone();
+    doc.color_styles = source.color_styles.clone();
+    doc
+}
+
+fn cropped_page_size(bounds: Rect) -> Size {
+    Size::new(bounds.width().max(0.1), bounds.height().max(0.1))
+}
+
+fn move_to_crop_origin(mut shape: Shape, bounds: Rect) -> Shape {
+    let shift = Affine::translate((-bounds.x0, -bounds.y0));
+    shape.transform_by(shift);
+    carry_blend_ends(&mut shape, shift);
+    shape
 }
 
 /// A slice: the area `area` of the current page as a page of its own,
@@ -87,14 +129,9 @@ pub(crate) fn area_document(app: &App, area: Rect) -> (Document, Rect) {
 /// outline out (an outline straddles the path), so a selected rectangle
 /// came out of an SVG, PDF or PNG export with half its outline cut off at
 /// every edge (#2290).
-fn selection_export_bounds(app: &App) -> Option<Rect> {
-    app.selected_shapes()
-        .iter()
-        .map(|s| {
-            let r = outline_reach_within(s, s.transform);
-            app.own_visual_bounds(s).inflate(r, r)
-        })
-        .reduce(|a, b| a.union(b))
+fn selection_shape_bounds(app: &App, shape: &Shape) -> Rect {
+    let reach = outline_reach_within(shape, shape.transform);
+    app.own_visual_bounds(shape).inflate(reach, reach)
 }
 
 /// How far the outline of `s`, or of any object inside it (a group's),
@@ -182,6 +219,7 @@ pub struct ExportWork {
     ext: &'static str,
     st: ExportState,
     pub path: std::path::PathBuf,
+    keep_existing_files: bool,
     /// The drawing's title, for the formats that carry one.
     title: String,
     /// The output profile and condition of a PDF/X file.
@@ -191,12 +229,24 @@ pub struct ExportWork {
     icc: Option<Vec<u8>>,
     /// The number each page's file gets when there are several (#1382).
     numbers: Vec<usize>,
+    /// Use the output pages' names as individual file stems.
+    named_pages: bool,
 }
 
 /// The export of `st` to `path`, ready to run.
 pub fn prepare_export(app: &mut App, path: &Path, st: &ExportState) -> ExportWork {
+    let (doc, _) = export_document(app, st);
+    prepare_export_document(app, path, st, doc)
+}
+
+/// Prepare an export whose output pages have already been assembled.
+pub(crate) fn prepare_export_document(
+    app: &App,
+    path: &Path,
+    st: &ExportState,
+    mut doc: Document,
+) -> ExportWork {
     let (_, ext) = EXPORT_FORMATS[st.format];
-    let (mut doc, _) = export_document(app, st);
     let title = if st.title.trim().is_empty() {
         app.document_title().trim_end_matches('*').to_string()
     } else {
@@ -227,13 +277,27 @@ pub fn prepare_export(app: &mut App, path: &Path, st: &ExportState) -> ExportWor
         ext,
         st: st.clone(),
         path: path.to_path_buf(),
+        keep_existing_files: false,
         title,
         icc,
         numbers,
+        named_pages: false,
     }
 }
 
 impl ExportWork {
+    /// Use the next available filename for each file the export writes.
+    pub(crate) fn keeping_existing_files(mut self) -> Self {
+        self.keep_existing_files = true;
+        self
+    }
+
+    /// Write each output page under its object's name.
+    pub(crate) fn naming_object_files(mut self) -> Self {
+        self.named_pages = true;
+        self
+    }
+
     /// How many steps the export has: the files of a format that holds
     /// one page each, one for a format that holds them all.
     pub fn steps(&self) -> usize {
@@ -246,12 +310,16 @@ impl ExportWork {
 
     /// Make the files and write them, counting each one done in `done`;
     /// the status line's words.
-    pub fn run(self, done: &std::sync::atomic::AtomicUsize) -> Result<String, String> {
+    pub fn run(mut self, done: &std::sync::atomic::AtomicUsize) -> Result<String, String> {
+        if self.named_pages {
+            return self.run_object_files(done);
+        }
         let (doc, ext, st, path) = (&self.doc, self.ext, &self.st, self.path.as_path());
+        let write = |path: &Path, bytes| write_export_file(path, bytes, self.keep_existing_files);
         if st.one_file_holds_the_pages(ext) {
             let bytes =
                 document_file_with(doc, ext, st, &self.title, self.profile, self.condition)?;
-            crate::files::write(path, bytes).map_err(|e| e.to_string())?;
+            let path = write(path, bytes)?;
             done.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             return Ok(trf(
                 "status.exported",
@@ -267,8 +335,7 @@ impl ExportWork {
             } else {
                 path.to_path_buf()
             };
-            crate::files::write(&target, bytes).map_err(|e| e.to_string())?;
-            written.push(target);
+            written.push(write(&target, bytes)?);
             done.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         }
         Ok(match (written.first(), written.last()) {
@@ -280,9 +347,62 @@ impl ExportWork {
                     ("last", &last.display().to_string()),
                 ],
             ),
-            _ => trf("status.exported", &[("path", &path.display().to_string())]),
+            _ => {
+                let path = written.first().map_or(path, |p| p.as_path());
+                trf("status.exported", &[("path", &path.display().to_string())])
+            }
         })
     }
+
+    fn run_object_files(
+        &mut self,
+        done: &std::sync::atomic::AtomicUsize,
+    ) -> Result<String, String> {
+        let mut written = 0;
+        let mut first_error = None;
+        let mut used_names = std::collections::HashSet::new();
+        for page in std::mem::take(&mut self.doc.pages) {
+            let name = &page.name;
+            let mut filename = format!("{name}.{}", self.ext);
+            if !self.keep_existing_files {
+                // Overwrite earlier exports, but give each object in this batch its own file.
+                let mut number = 2;
+                while !used_names.insert(filename.to_lowercase()) {
+                    filename = format!("{name} ({number}).{}", self.ext);
+                    number += 1;
+                }
+            }
+            let target = self.path.with_file_name(filename);
+            self.doc.pages.push(page);
+            let result = page_file(&self.doc, 0, self.ext, &self.st, self.icc.as_deref())
+                .and_then(|bytes| write_export_file(&target, bytes, self.keep_existing_files));
+            self.doc.pages.clear();
+            match result {
+                Ok(_) => written += 1,
+                Err(error) => {
+                    first_error.get_or_insert_with(|| format!("{}: {error}", target.display()));
+                }
+            }
+            done.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
+        match first_error {
+            Some(error) => Err(error),
+            None => Ok(trf("quick_export.done", &[("n", &written.to_string())])),
+        }
+    }
+}
+
+fn write_export_file(
+    path: &Path,
+    bytes: Vec<u8>,
+    keep_existing_files: bool,
+) -> Result<std::path::PathBuf, String> {
+    if keep_existing_files {
+        crate::files::write_unique(path, bytes)
+    } else {
+        crate::files::write(path, bytes).map(|()| path.to_path_buf())
+    }
+    .map_err(|error| error.to_string())
 }
 
 /// The PDF/X standard `st` asks of a file of format `ext`.
@@ -358,6 +478,7 @@ fn document_file_with(
             use tracedraw_io::pdf::PdfOptions;
             let opts = PdfOptions {
                 standard: pdf_standard(ext, st),
+                cmyk: ext == "pdf" && st.pdf_cmyk,
                 output_profile,
                 output_condition,
                 bleed_mm: if ext == "pdf" { st.bleed_mm } else { 0.0 },
@@ -404,6 +525,11 @@ fn page_file(
         "wmf" => tracedraw_io::emf::page_to_wmf_with(doc, k, &st.wmf_options()),
         "plt" => tracedraw_io::plt::page_to_plt_with(doc, k, &st.plt_options()).into_bytes(),
         "psd" => tracedraw_io::psd::page_to_psd(doc, k, st.render_dpi()).ok_or("render failed")?,
+        "ico" => {
+            let page = doc.pages.get(k).ok_or("no page")?;
+            let pm = render_ico(doc, page, st).ok_or("render failed")?;
+            encode_raster_with(&pm, ext, st.quality, st.webp_lossless)?
+        }
         _ => {
             let pid = doc.pages.get(k).ok_or("no page")?.id;
             match st.color_mode_for(ext) {
@@ -470,7 +596,7 @@ fn page_file(
                 st.anti_alias,
             )
             .ok_or("render failed")?;
-            if st.transparent && matches!(ext, "png" | "webp" | "gif" | "jxl") {
+            if st.transparent && keeps_alpha(ext) {
                 // Re-render on a transparent background.
                 let p = doc.page(pid).map_err(|e| e.to_string())?;
                 let (w, h, view) = tracedraw_render::ViewTransform::whole_page(
@@ -937,16 +1063,79 @@ fn crc32(data: &[u8]) -> u32 {
 
 /// True when the export format `ext` keeps transparency.
 pub fn keeps_alpha(ext: &str) -> bool {
-    matches!(ext, "png" | "webp" | "gif" | "jxl")
+    matches!(ext, "png" | "webp" | "gif" | "ico" | "jxl")
 }
 
-/// What the export will look like: the page (or the selection) of `st`
-/// rendered to fit `max_px` on its longer side, on a transparent
-/// background when the format keeps one, else on white.
+/// Fit the page into a square icon, preserving its proportions. Draw into
+/// the fitted page area so objects overhanging the page stay clipped when
+/// the picture is placed in the center of the square.
+fn render_ico(
+    doc: &Document,
+    page: &tracedraw_core::Page,
+    st: &ExportState,
+) -> Option<tiny_skia::Pixmap> {
+    use tracedraw_render::{RenderOptions, ViewTransform};
+    let side = if ICO_SIZES.contains(&st.ico_size) {
+        st.ico_size
+    } else {
+        DEFAULT_ICO_SIZE
+    };
+    let (mm_w, mm_h) = (page.size.width, page.size.height);
+    let positive_finite = |value: f64| value.is_finite() && value > 0.0;
+    if !positive_finite(mm_w) || !positive_finite(mm_h) {
+        return None;
+    }
+    let side_px = f64::from(side);
+    let zoom = side_px / mm_w.max(mm_h);
+    if !positive_finite(zoom) {
+        return None;
+    }
+    let inset = |mm: f64| (side_px - (mm * zoom).min(side_px)) / 2.0;
+    let (x, y) = (inset(mm_w), inset(mm_h));
+    let max_inset = (side - 1) / 2;
+    let (left, top) = ((x as u32).min(max_inset), (y as u32).min(max_inset));
+    let (width, height) = (side - 2 * left, side - 2 * top);
+    let objects = tracedraw_render::render_page(
+        doc,
+        page.id,
+        &RenderOptions {
+            width,
+            height,
+            view: ViewTransform {
+                zoom,
+                origin_x: x - f64::from(left),
+                origin_y: y - f64::from(top) + (side_px - 2.0 * y),
+                stretch_y: 1.0,
+            },
+            anti_alias: st.anti_alias,
+            ..RenderOptions::default()
+        },
+    )?;
+    let mut icon = tiny_skia::Pixmap::new(side, side)?;
+    if !st.transparent {
+        icon.fill(tiny_skia::Color::WHITE);
+    }
+    icon.draw_pixmap(
+        left as i32,
+        top as i32,
+        objects.as_ref(),
+        &tiny_skia::PixmapPaint::default(),
+        tiny_skia::Transform::identity(),
+        None,
+    );
+    Some(icon)
+}
+
+/// What the export will look like: an ICO at its chosen size, or the page
+/// (or selection) of `st` rendered to fit `max_px` on its longer side.
+/// The background is transparent when the format keeps one, else white.
 pub fn preview(app: &App, st: &ExportState, max_px: u32) -> Option<tiny_skia::Pixmap> {
     let (_, ext) = EXPORT_FORMATS[st.format.min(EXPORT_FORMATS.len() - 1)];
     let (doc, _) = export_document(app, st);
     let page = doc.pages.first()?;
+    if ext == "ico" {
+        return render_ico(&tracedraw_io::for_output(&doc), page, st);
+    }
     let longest = page.size.width.max(page.size.height).max(0.1);
     let zoom = max_px.max(16) as f64 / longest;
     let (w, h, view) =
@@ -1035,6 +1224,12 @@ pub fn estimated_size(app: &App, st: &ExportState, preview: &tiny_skia::Pixmap) 
         "ai" if st.classic_ai() => Some(tracedraw_io::ai::page_to_ai8(&doc, 0).len() * pages),
         "pdf" => estimated_pdf_size(app, st),
         "ai" => Some(tracedraw_io::pdf::document_to_pdf(&doc).len()),
+        "ico" => Some(
+            encode_raster_with(preview, ext, st.quality, st.webp_lossless)
+                .ok()?
+                .len()
+                * pages,
+        ),
         "png" | "jpg" | "bmp" | "tif" | "webp" | "gif" | "psd" | "jxl" => {
             let enc = if ext == "psd" { "tif" } else { ext };
             let (w, h) = (preview.width(), preview.height());
@@ -1227,6 +1422,7 @@ fn encode_raster_with(
         "tif" => image::ImageFormat::Tiff,
         "webp" => image::ImageFormat::WebP,
         "gif" => image::ImageFormat::Gif,
+        "ico" => image::ImageFormat::Ico,
         _ => image::ImageFormat::Png,
     };
     let mut out = std::io::Cursor::new(Vec::new());
@@ -6649,6 +6845,57 @@ mod tests {
     }
 
     #[test]
+    fn ico_export_fits_the_page_and_keeps_alpha_at_the_chosen_size() {
+        use tracedraw_core::{Color, Fill, Shape};
+        // A page too big to be rendered at normal bitmap resolution.
+        let mut doc = Document::new("Wide icon", Size::new(80_000.0, 20_000.0));
+        let mut shape = Shape::new(
+            doc.ids_mut().shape(),
+            ShapeKind::Rect {
+                rect: Rect::new(0.0, 0.0, 80_000.0, 40_000.0),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        shape.fill = Fill::Solid(Color::rgb8(255, 0, 0));
+        shape.stroke = None;
+        shape.opacity = 0.5;
+        doc.pages[0].layers[0].shapes.push(shape);
+        let format = EXPORT_FORMATS
+            .iter()
+            .position(|(_, e)| *e == "ico")
+            .expect("ICO format");
+        assert!(keeps_alpha("ico"));
+        for (size, transparent) in [(32, true), (256, true), (48, false)] {
+            let st = ExportState {
+                format,
+                ico_size: size,
+                transparent,
+                ..ExportState::default()
+            };
+            let bytes = page_file(&doc, 0, "ico", &st, None).expect("ICO export");
+            assert_eq!(&bytes[..6], &[0, 0, 1, 0, 1, 0]);
+            let back = image::load_from_memory_with_format(&bytes, image::ImageFormat::Ico)
+                .expect("ICO decode")
+                .to_rgba8();
+            assert_eq!(back.dimensions(), (size, size));
+            let pad = size * 3 / 8;
+            let margin = if transparent { [0; 4] } else { [255; 4] };
+            assert_eq!(back.get_pixel(size / 2, pad - 1).0, margin);
+            assert_eq!(back.get_pixel(size / 2, size - pad).0, margin);
+            let first = back.get_pixel(0, pad).0;
+            let last = back.get_pixel(size - 1, size - pad - 1).0;
+            assert_eq!(first, last);
+            assert_eq!(first[0], 255);
+            if transparent {
+                assert!((127..=128).contains(&first[3]), "{first:?}");
+            } else {
+                assert_eq!(first[3], 255);
+            }
+        }
+    }
+
+    #[test]
     fn webp_quality_shrinks_the_file() {
         let mut pm = tiny_skia::Pixmap::new(256, 128).expect("pixmap");
         for (i, p) in pm.pixels_mut().iter_mut().enumerate() {
@@ -7340,7 +7587,11 @@ mod tests {
         let all = std::fs::read_to_string(dir.join("all.eps")).unwrap();
         let curves = |t: &str| t.split_whitespace().filter(|w| *w == "c").count();
         assert!(curves(&sel) < curves(&all), "{sel}");
-        let bbox = |t: &str| t.lines().find(|l| l.starts_with("%%BoundingBox:")).map(str::to_string);
+        let bbox = |t: &str| {
+            t.lines()
+                .find(|l| l.starts_with("%%BoundingBox:"))
+                .map(str::to_string)
+        };
         assert_ne!(bbox(&sel), bbox(&all));
         let _ = std::fs::remove_dir_all(&dir);
     }

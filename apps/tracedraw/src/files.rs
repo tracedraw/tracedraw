@@ -435,6 +435,51 @@ pub fn write(path: impl AsRef<Path>, bytes: impl AsRef<[u8]>) -> std::io::Result
     replace_with(path, |w| std::io::Write::write_all(w, bytes.as_ref()))
 }
 
+/// Create a new file, appending ` (2)`, ` (3)` and so on to the stem when
+/// its name is already taken. Return the path that was written.
+pub(crate) fn write_unique(path: &Path, bytes: Vec<u8>) -> std::io::Result<PathBuf> {
+    use std::io::{ErrorKind, Write as _};
+
+    let memory = in_memory(path);
+    if (WEB && !memory) || is_document_path(path) {
+        return write(path, bytes).map(|()| path.to_path_buf());
+    }
+    let stem = path.file_stem().unwrap_or_default();
+    let extension = path.extension();
+    let mut target = path.to_path_buf();
+    let mut number = 2;
+    loop {
+        if memory {
+            // The browser's store is local to this thread.
+            if !STORE.with(|s| s.borrow().contains_key(&target)) {
+                store(&target, bytes);
+                return Ok(target);
+            }
+        } else {
+            match std::fs::File::create_new(&target) {
+                Ok(mut file) => {
+                    let result = file.write_all(&bytes).and_then(|()| file.sync_all());
+                    drop(file);
+                    if result.is_err() {
+                        let _ = std::fs::remove_file(&target);
+                    }
+                    return result.map(|()| target);
+                }
+                Err(e) if e.kind() == ErrorKind::AlreadyExists => {}
+                Err(e) => return Err(e),
+            }
+        }
+        let mut name = stem.to_os_string();
+        name.push(format!(" ({number})"));
+        if let Some(extension) = extension {
+            name.push(".");
+            name.push(extension);
+        }
+        target.set_file_name(name);
+        number += 1;
+    }
+}
+
 /// Write a file as `fill` makes it, without holding the whole file in
 /// memory; in a browser, the bytes are gathered and downloaded.
 pub fn write_with(
@@ -817,6 +862,50 @@ pub fn pick_folder_into(token: FolderToken, start: Option<&Path>, key: &str) {
     });
     #[cfg(any(target_arch = "wasm32", target_os = "android"))]
     let _ = (token, start, key);
+}
+
+/// Show an existing output folder in the desktop file manager.
+pub(crate) fn open_folder(_token: FolderToken, path: &Path) -> Result<(), String> {
+    if !is_dir(path) {
+        return Err(crate::i18n::tr("dialog.no_such_folder"));
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        use std::ptr::null;
+        use windows_sys::Win32::System::Com::{
+            CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE,
+        };
+        use windows_sys::Win32::UI::{Shell::ShellExecuteW, WindowsAndMessaging::SW_SHOWNORMAL};
+
+        let folder: Vec<u16> = path.as_os_str().encode_wide().chain([0]).collect();
+        // SAFETY: The verb and folder are null-terminated, and the folder
+        // stays alive for the call. A successful COM init is balanced here.
+        let result = unsafe {
+            let initialized = CoInitializeEx(
+                null(),
+                (COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE) as u32,
+            );
+            let result = ShellExecuteW(
+                0,
+                windows_sys::w!("open"),
+                folder.as_ptr(),
+                null(),
+                null(),
+                SW_SHOWNORMAL,
+            );
+            if initialized >= 0 {
+                CoUninitialize();
+            }
+            result
+        };
+        if result <= 32 {
+            return Err(crate::i18n::tr("status.could_not_open_viewer"));
+        }
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    crate::export::open_with_system(path)
 }
 
 /// Choose a folder and resume an action on the UI thread after a selection.

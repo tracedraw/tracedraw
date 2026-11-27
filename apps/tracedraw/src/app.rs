@@ -2324,6 +2324,8 @@ pub struct App {
     pub shelf: crate::shelf::Shelf,
     /// The Export docker's assets.
     pub export_assets: crate::export_assets::ExportAssets,
+    /// The compact Quick Export docker's choices.
+    pub quick_export: crate::quick_export::QuickExportState,
     /// A colour dragged from a palette (`Some(None)`: No Color).
     pub palette_drag: Option<Option<Color>>,
     /// The fill being dragged from the status bar onto an object.
@@ -2799,6 +2801,7 @@ pub enum DockerTab {
     Shape3d,
     Shelf,
     Export,
+    QuickExport,
     Comments,
     AiGenerate,
     Effects,
@@ -2829,7 +2832,7 @@ impl DockerTab {
         DockerTab::PixelHistogram,
     ];
 
-    pub const ALL: [DockerTab; 52] = [
+    pub const ALL: [DockerTab; 53] = [
         DockerTab::Properties,
         DockerTab::Objects,
         DockerTab::Hints,
@@ -2847,6 +2850,7 @@ impl DockerTab {
         DockerTab::SelectSame,
         DockerTab::AiGenerate,
         DockerTab::Export,
+        DockerTab::QuickExport,
         DockerTab::Comments,
         DockerTab::Scripts,
         DockerTab::Palettes,
@@ -2899,6 +2903,7 @@ impl DockerTab {
             DockerTab::FindReplace,
             DockerTab::SelectSame,
             DockerTab::Export,
+            DockerTab::QuickExport,
             DockerTab::PrintMerge,
             DockerTab::AiGenerate,
         ],
@@ -3005,6 +3010,7 @@ impl DockerTab {
             DockerTab::Shape3d => "docker.shape3d",
             DockerTab::Shelf => "docker.shelf",
             DockerTab::Export => "docker.export",
+            DockerTab::QuickExport => "docker.quick_export",
             DockerTab::Comments => "docker.comments",
             DockerTab::AiGenerate => "docker.ai_generate",
             DockerTab::Macros => "docker.macros",
@@ -3826,6 +3832,7 @@ impl App {
             recent_thumbs: Default::default(),
             shelf: Default::default(),
             export_assets: crate::export_assets::ExportAssets::new(),
+            quick_export: Default::default(),
             palette_drag: None,
             fill_drag: None,
             doc_palette_rect: None,
@@ -11373,7 +11380,7 @@ impl App {
         if EXPORT_FILE_FIRST {
             choose_export_file(self, st, skip);
         } else if skip {
-            export_with_file_dialog(self, &st, true);
+            export_with_file_dialog(self, &st, true, None);
             self.keep_export_choices(&st);
         } else {
             self.dialog = Dialog::Export(st);

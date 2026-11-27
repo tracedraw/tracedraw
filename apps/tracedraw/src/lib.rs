@@ -92,6 +92,7 @@ mod envelope_edit;
 mod envelope_shapes;
 mod export;
 mod export_assets;
+mod quick_export;
 mod extrude_tool;
 mod eyedropper;
 mod screen_sample;

@@ -176,6 +176,9 @@ fn jpeg_bytes(data: &[u8], channels: u8, w: u32, h: u32, quality: u8) -> Option<
 #[derive(Debug, Clone, Default)]
 pub struct PdfOptions {
     pub standard: PdfStandard,
+    /// Use CMYK for process colours in a plain PDF, keeping transparency
+    /// and spot inks.
+    pub cmyk: bool,
     /// ICC profile embedded as the output intent's destination profile
     /// (a CMYK press profile for X-1a). Without one, the CMYK profile the
     /// drawing carries is embedded; without either, a registered
@@ -2797,7 +2800,7 @@ pub fn document_to_pdf_report(doc: &Document, opts: &PdfOptions) -> (Vec<u8>, Pd
     let mut pdf = Pdf {
         objects: Vec::new(),
         spot_spaces: std::collections::HashMap::new(),
-        cmyk_only: std_.cmyk_only(),
+        cmyk_only: std_.cmyk_only() || (std_ == PdfStandard::None && opts.cmyk),
         allow_alpha: !std_.flatten(),
         encrypt_id: None,
         fonts: Vec::new(),
@@ -2958,8 +2961,13 @@ pub fn document_to_pdf_report(doc: &Document, opts: &PdfOptions) -> (Vec<u8>, Pd
         } else {
             String::new()
         };
+        let group = if pdf.cmyk_only && pdf.allow_alpha {
+            " /Group << /S /Transparency /CS /DeviceCMYK >>"
+        } else {
+            ""
+        };
         let page_id = pdf.add_str(format!(
-            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {} {}]{boxes} /Contents {} 0 R /Resources {} >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {} {}]{boxes}{group} /Contents {} 0 R /Resources {} >>",
             f(mw),
             f(mh),
             content_id,
@@ -4855,6 +4863,47 @@ mod pdfx_tests {
         };
         let bytes = document_to_pdf_with(&doc_with(MergeMode::Screen), &opts);
         assert!(!String::from_utf8_lossy(&bytes).contains("/BM"));
+    }
+
+    #[test]
+    fn plain_cmyk_pdf_converts_gradients_and_bitmaps_without_flattening() {
+        let mut doc = doc_with_transparent_rect();
+        let layer = doc.pages[0].layers[0].id;
+        doc.pages[0].layers[0].shapes[0].fill =
+            Fill::linear(Color::rgb8(255, 0, 0), Color::rgb8(0, 128, 255), 0.0);
+        let mut png = std::io::Cursor::new(Vec::new());
+        image::RgbaImage::from_pixel(2, 2, image::Rgba([80, 170, 30, 127]))
+            .write_to(&mut png, image::ImageFormat::Png)
+            .expect("PNG image");
+        let id = doc.ids_mut().shape();
+        let shape = Shape::new(
+            id,
+            ShapeKind::Bitmap {
+                rect: Rect::new(60.0, 15.0, 80.0, 35.0),
+                width_px: 2,
+                height_px: 2,
+                png: png.into_inner().into(),
+                fx: Default::default(),
+            },
+        );
+        doc.layer_mut(layer).expect("layer").shapes.push(shape);
+        let bytes = document_to_pdf_with(
+            &doc,
+            &PdfOptions {
+                cmyk: true,
+                ..Default::default()
+            },
+        );
+        let pdf = lopdf::Document::load_mem(&bytes).expect("PDF parses");
+        let page = *pdf.get_pages().values().next().expect("page");
+        let content = pdf.get_and_decode_page_content(page).expect("page content");
+        assert!(content.operations.iter().any(|op| op.operator == "k"));
+        let text = String::from_utf8_lossy(&bytes);
+        assert!(text.contains("/Group << /S /Transparency /CS /DeviceCMYK >>"));
+        assert!(text.contains("/ShadingType 2 /ColorSpace /DeviceCMYK"));
+        assert!(text.contains("/Width 2 /Height 2 /ColorSpace /DeviceCMYK"));
+        assert!(text.contains("/ca 0.5") && text.contains("/SMask "));
+        assert!(!text.contains("/DeviceRGB") && !text.contains("/GTS_PDFXVersion"));
     }
 
     #[test]

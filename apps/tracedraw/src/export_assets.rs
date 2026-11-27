@@ -427,6 +427,11 @@ mod tests {
     fn assets_export_as_one_zip_where_no_folder_can_be_picked() {
         let mut app = App::headless();
         app.add_page();
+        let cover = app.doc().pages[0].id;
+        app.run(tracedraw_core::Command::RenamePage {
+            page: cover,
+            name: "Cover".into(),
+        });
         app.export_assets = ExportAssets::new();
         app.add_page_assets();
         let svg = EXPORT_FORMATS
@@ -448,7 +453,7 @@ mod tests {
             .file_names()
             .map(|n| n.unwrap().to_string())
             .collect();
-        assert_eq!(names, ["Flyer/Page 1.svg"]);
+        assert_eq!(names, ["Flyer/Cover.svg"]);
         assert_eq!(
             export_status(written, &errors),
             crate::i18n::trf("export_docker.done", &[("n", "1")])
@@ -458,7 +463,16 @@ mod tests {
     #[test]
     fn pages_and_a_selection_export_together_to_one_folder() {
         let mut app = App::headless();
+        let cover = app.page;
         app.add_page();
+        app.run(tracedraw_core::Command::RenamePage {
+            page: cover,
+            name: "Cover".into(),
+        });
+        app.run(tracedraw_core::Command::RenamePage {
+            page: app.page,
+            name: "Inside".into(),
+        });
         let layer = app.active_layer().expect("a layer");
         let id = app.engine.new_shape_id();
         let mut shape = tracedraw_core::Shape::new(
@@ -490,12 +504,12 @@ mod tests {
         let (written, errors) = app.export_assets_to(&dir);
         assert!(errors.is_empty(), "{errors:?}");
         assert_eq!(written, 2);
-        assert!(dir.join("Page 1.svg").is_file());
+        assert!(dir.join("Cover.svg").is_file());
         let png = image::open(dir.join("Badge 3.png")).unwrap();
         // The selection asset is cropped to the rectangle: 30 x 20 mm.
         let ratio = png.width() as f64 / png.height() as f64;
         assert!((ratio - 1.5).abs() < 0.05, "{ratio}");
-        assert!(!dir.join("Page 2.png").exists());
+        assert!(!dir.join("Inside.png").exists());
         // A CMYK JPEG asset is written in CMYK; new assets start with
         // the colour mode of the docker's row (#1763).
         app.export_assets.format = EXPORT_FORMATS

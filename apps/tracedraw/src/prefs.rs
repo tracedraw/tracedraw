@@ -5,7 +5,7 @@
 
 use crate::ui::dialogs::{
     ExportState, PrintState, AI_VERSIONS, EXPORT_COLOR_MODES, EXPORT_FORMATS, EXPORT_SCALE_RANGE,
-    EXPORT_SIZE_UNITS, PDF_STANDARDS,
+    EXPORT_SIZE_UNITS, ICO_SIZES, PDF_STANDARDS,
 };
 use serde::{Deserialize, Serialize};
 
@@ -747,6 +747,8 @@ pub struct ExportPreset {
     pub name: String,
     pub format: usize,
     pub dpi: f64,
+    /// ICO side length in pixels.
+    pub ico_size: u32,
     pub quality: u8,
     pub transparent: bool,
     pub selection_only: bool,
@@ -809,6 +811,7 @@ impl ExportPreset {
             name: name.trim().to_string(),
             format: st.format,
             dpi: st.dpi,
+            ico_size: st.ico_size,
             quality: st.quality,
             transparent: st.transparent,
             selection_only: st.selection_only,
@@ -843,6 +846,9 @@ impl ExportPreset {
         }
         if self.dpi.is_finite() {
             st.dpi = self.dpi.clamp(crate::ui::dialogs::MIN_EXPORT_DPI, 2400.0);
+        }
+        if ICO_SIZES.contains(&self.ico_size) {
+            st.ico_size = self.ico_size;
         }
         st.quality = self.quality.clamp(1, 100);
         st.transparent = self.transparent;
@@ -1013,14 +1019,19 @@ impl FormatPrefs {
             d.format
         };
         // A remembered export of this format keeps its page choice.
-        let all_pages = self
+        let last = self
             .export_by_format
             .iter()
-            .find(|p| self.remember_last && p.format == format)
-            .map_or(ExportState::pages_by_default(format), |p| p.all_pages);
+            .find(|p| self.remember_last && p.format == format);
+        let all_pages = last.map_or(ExportState::pages_by_default(format), |p| p.all_pages);
+        let ico_size = last
+            .map(|p| p.ico_size)
+            .filter(|size| ICO_SIZES.contains(size))
+            .unwrap_or(d.ico_size);
         ExportState {
             format,
             all_pages,
+            ico_size,
             dpi: if self.export_dpi.is_finite() {
                 self.export_dpi
                     .clamp(crate::ui::dialogs::MIN_EXPORT_DPI, 2400.0)
@@ -1625,6 +1636,26 @@ mod tests {
         app.recall_export_format(&mut st, png);
         app.recall_export_format(&mut st, pdf);
         assert!(!st.all_pages);
+    }
+
+    #[test]
+    fn ico_export_size_is_kept_in_presets_and_remembered_choices() {
+        let st = ExportState {
+            format: crate::quick_export::format_index("ico"),
+            ico_size: 48,
+            ..ExportState::default()
+        };
+        let mut prefs = FormatPrefs::default();
+        prefs.remember(&st);
+        let json = serde_json::to_string(&prefs).unwrap();
+        let saved: FormatPrefs = serde_json::from_str(&json).unwrap();
+        assert_eq!(saved.state().ico_size, 48);
+        let mut restored = ExportState::default();
+        saved.export_by_format[0].apply(&mut restored);
+        assert_eq!(restored.ico_size, 48);
+        let old: ExportPreset = serde_json::from_str(r#"{"name":"old"}"#).unwrap();
+        old.apply(&mut restored);
+        assert_eq!(restored.ico_size, crate::ui::dialogs::DEFAULT_ICO_SIZE);
     }
 
     /// The DXF export's unit is kept in a preset and comes back, and the

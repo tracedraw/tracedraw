@@ -382,6 +382,9 @@ pub struct Settings {
     /// The folder exported to last: File > Export's dialog opens there
     /// (#1817).
     pub last_export_dir: Option<PathBuf>,
+    /// Quick Export destinations used on this computer, newest first.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub quick_export_folders: Vec<PathBuf>,
     /// Folders bookmarked in the Save Drawing dialog (#1391).
     pub folder_bookmarks: Vec<PathBuf>,
     pub color: ColorPrefs,
@@ -2751,6 +2754,7 @@ impl Default for Settings {
             last_dir: None,
             pattern_folder: None,
             last_export_dir: None,
+            quick_export_folders: Vec::new(),
             folder_bookmarks: Vec::new(),
             color: ColorPrefs::default(),
             show_outline_flyout: false,
@@ -3020,6 +3024,7 @@ impl Settings {
             last_dir: self.last_dir.clone(),
             pattern_folder: self.pattern_folder.clone(),
             last_export_dir: self.last_export_dir.clone(),
+            quick_export_folders: self.quick_export_folders.clone(),
             folder_bookmarks: self.folder_bookmarks.clone(),
             window_maximized: self.window_maximized,
             window_size: self.window_size,
@@ -3046,6 +3051,8 @@ impl Settings {
     ///    (#3829).
     pub fn upgrade(mut self) -> Settings {
         self.autocorrect.upgrade();
+        self.quick_export_folders
+            .truncate(crate::quick_export::RECENT_FOLDER_LIMIT);
         if self.upgrades < 1 {
             self.treat_all_filled = true;
         }
