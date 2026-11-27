@@ -23,7 +23,7 @@
 //! time is up.
 
 use super::poly::{bounds, overlap, Grid, Region};
-use super::{Frame, Layout, Placement, Rng, SheetSpec};
+use super::{sheet_rects, Frame, Layout, Placement, Rng, SheetSpec, StockSheet};
 use crate::subpaths;
 use tracedraw_core::geometry::{flatten, Affine, BezPath, PathEl, Point, Rect, Shape as _, Vec2};
 use tracedraw_core::shaping;
@@ -62,9 +62,15 @@ impl Rotations {
 }
 
 /// What shape nesting does.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ShapeSettings {
     pub sheet: SheetSpec,
+    /// The sheets in stock, used in this order; empty: as many sheets of
+    /// the sheet's size as it takes. Not used for a roll (#4460).
+    pub stock: Vec<StockSheet>,
+    /// Each sheet is changed afterwards for the smallest size in stock
+    /// that still holds its objects (#4460).
+    pub smallest: bool,
     pub rotations: Rotations,
     /// Smaller objects may go into the holes of larger ones.
     pub holes: bool,
@@ -79,6 +85,8 @@ impl Default for ShapeSettings {
     fn default() -> Self {
         ShapeSettings {
             sheet: SheetSpec::default(),
+            stock: Vec::new(),
+            smallest: false,
             rotations: Rotations::Quarter,
             holes: true,
             tolerance: 0.5,
@@ -120,6 +128,8 @@ struct Spot {
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct Score {
     left_out: usize,
+    /// The area of the sheets used.
+    material: f64,
     sheets: usize,
     last_length: f64,
     tops: f64,
@@ -131,6 +141,7 @@ impl Score {
         let ord = self
             .left_out
             .cmp(&o.left_out)
+            .then(self.material.total_cmp(&o.material))
             .then(self.sheets.cmp(&o.sheets))
             .then(self.last_length.total_cmp(&o.last_length))
             .then(self.tops.total_cmp(&o.tops));
@@ -140,7 +151,40 @@ impl Score {
 
 struct Attempt {
     spots: Vec<Option<Spot>>,
+    /// The stock size of each sheet used.
+    sizes: Vec<usize>,
     score: Score,
+}
+
+/// The sizes of sheet there are: the usable area of each, its full size
+/// and how many there are (0: no limit).
+#[derive(Debug, Clone)]
+struct Stock {
+    areas: Vec<Area>,
+    sizes: Vec<(f64, f64)>,
+    counts: Vec<u32>,
+}
+
+impl Stock {
+    /// Whether one more sheet of size `k` may be used, `used` of each
+    /// being taken.
+    fn free(&self, k: usize, used: &[u32]) -> bool {
+        let c = self.counts.get(k).copied().unwrap_or(0);
+        c == 0 || used.get(k).copied().unwrap_or(0) < c
+    }
+
+    fn material(&self, k: usize) -> f64 {
+        self.sizes.get(k).map_or(0.0, |(w, h)| w * h)
+    }
+
+    /// Only size `k`, once.
+    fn only(&self, k: usize) -> Stock {
+        Stock {
+            areas: vec![self.areas[k]],
+            sizes: vec![self.sizes[k]],
+            counts: vec![1],
+        }
+    }
 }
 
 const EPS: f64 = 1e-7;
@@ -155,6 +199,14 @@ struct Area {
 }
 
 impl Area {
+    /// The usable area of a sheet of `across` x `along`, `inset` in from
+    /// its edges, drawn on cells of `cell`; `None` when nothing is left.
+    fn of(across: f64, along: f64, inset: f64, cell: f64) -> Option<Area> {
+        let cw = across - 2.0 * inset;
+        let ch = along - 2.0 * inset;
+        (cw > EPS && ch > EPS).then_some(Area { cw, ch, cell })
+    }
+
     fn new_grid(&self) -> Grid {
         let cols = (self.cw / self.cell).ceil().clamp(1.0, 1e6) as usize + 1;
         let rows = if self.ch.is_finite() {
@@ -489,15 +541,18 @@ fn best_on(part: &Part, sheet: &SheetState, area: &Area) -> Option<(usize, Vec2)
     best.map(|(oi, pos, _)| (oi, pos))
 }
 
-/// Nest the parts in `order`. `None` when `out_of_time` says stop.
+/// Nest the parts in `order` on sheets from `stock`. `None` when
+/// `out_of_time` says stop.
 fn run(
     parts: &[Option<Part>],
     order: &[usize],
-    area: &Area,
+    stock: &Stock,
     roll: bool,
     out_of_time: &mut Option<&mut dyn FnMut() -> bool>,
 ) -> Option<Attempt> {
     let mut sheets: Vec<SheetState> = Vec::new();
+    let mut sizes: Vec<usize> = Vec::new();
+    let mut used = vec![0u32; stock.areas.len()];
     let mut spots: Vec<Option<Spot>> = vec![None; parts.len()];
     for &i in order {
         if let Some(stop) = out_of_time.as_mut() {
@@ -510,19 +565,32 @@ fn run(
         };
         let mut spot = None;
         for (si, sheet) in sheets.iter().enumerate() {
+            let Some(area) = sizes.get(si).and_then(|k| stock.areas.get(*k)) else {
+                continue;
+            };
             if let Some((oi, pos)) = best_on(part, sheet, area) {
                 spot = Some((si, oi, pos));
                 break;
             }
         }
         if spot.is_none() && (!roll || sheets.is_empty()) {
-            let fresh = SheetState {
-                grid: area.new_grid(),
-                placed: Vec::new(),
-            };
-            if let Some((oi, pos)) = best_on(part, &fresh, area) {
-                sheets.push(fresh);
-                spot = Some((sheets.len() - 1, oi, pos));
+            // A new sheet: the first size in stock that is left and
+            // holds the object.
+            for (k, area) in stock.areas.iter().enumerate() {
+                if !stock.free(k, &used) {
+                    continue;
+                }
+                let fresh = SheetState {
+                    grid: area.new_grid(),
+                    placed: Vec::new(),
+                };
+                if let Some((oi, pos)) = best_on(part, &fresh, area) {
+                    sheets.push(fresh);
+                    sizes.push(k);
+                    used[k] += 1;
+                    spot = Some((sheets.len() - 1, oi, pos));
+                    break;
+                }
             }
         }
         let Some((si, oi, pos)) = spot else {
@@ -542,7 +610,17 @@ fn run(
             });
         }
     }
-    let n_sheets = sheets.len();
+    let score = score_of(parts, &spots, &sizes, stock);
+    Some(Attempt {
+        spots,
+        sizes,
+        score,
+    })
+}
+
+/// How good the layout `spots` on sheets of `sizes` is.
+fn score_of(parts: &[Option<Part>], spots: &[Option<Spot>], sizes: &[usize], stock: &Stock) -> Score {
+    let n_sheets = sizes.len();
     let mut last_length: f64 = 0.0;
     let mut tops = 0.0;
     let mut left_out = 0;
@@ -561,15 +639,64 @@ fn run(
             }
         }
     }
-    Some(Attempt {
-        spots,
-        score: Score {
-            left_out,
-            sheets: n_sheets,
-            last_length,
-            tops,
-        },
-    })
+    Score {
+        left_out,
+        material: sizes.iter().map(|k| stock.material(*k)).sum(),
+        sheets: n_sheets,
+        last_length,
+        tops,
+    }
+}
+
+/// Change each sheet of `best` for the smallest size in stock that still
+/// holds all its objects (sizes still left, smaller ones first).
+fn shrink_sheets(parts: &[Option<Part>], best: &mut Attempt, stock: &Stock, key: &dyn Fn(usize) -> f64) {
+    let mut used = vec![0u32; stock.areas.len()];
+    for k in &best.sizes {
+        if let Some(u) = used.get_mut(*k) {
+            *u += 1;
+        }
+    }
+    for si in 0..best.sizes.len() {
+        let cur = best.sizes[si];
+        let mut on: Vec<usize> = best
+            .spots
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| s.is_some_and(|s| s.sheet == si))
+            .map(|(i, _)| i)
+            .collect();
+        if on.is_empty() {
+            continue;
+        }
+        on.sort_by(|a, b| key(*b).total_cmp(&key(*a)).then(a.cmp(b)));
+        let mut smaller: Vec<usize> = (0..stock.areas.len())
+            .filter(|k| *k != cur && stock.material(*k) < stock.material(cur) - EPS)
+            .collect();
+        smaller.sort_by(|a, b| stock.material(*a).total_cmp(&stock.material(*b)));
+        for k in smaller {
+            if !stock.free(k, &used) {
+                continue;
+            }
+            let Some(a) = run(parts, &on, &stock.only(k), false, &mut None) else {
+                continue;
+            };
+            let all = on.iter().all(|i| a.spots.get(*i).is_some_and(|s| s.is_some()));
+            if !all || a.sizes.len() != 1 {
+                continue;
+            }
+            for &i in &on {
+                if let (Some(dst), Some(Some(src))) = (best.spots.get_mut(i), a.spots.get(i)) {
+                    *dst = Some(Spot { sheet: si, ..*src });
+                }
+            }
+            used[cur] -= 1;
+            used[k] += 1;
+            best.sizes[si] = k;
+            best.score = score_of(parts, &best.spots, &best.sizes, stock);
+            break;
+        }
+    }
 }
 
 /// Place each object, given by its page-space outlines, by its true
@@ -596,17 +723,38 @@ pub fn nest_shapes(
     // The grown regions hold each outline grown by at least half the
     // spacing (the rest of `d` covers flattening and simplifying).
     let inset = spec.margin - spec.spacing / 2.0;
-    let (across, along) = spec.across_along();
-    let cw = across - 2.0 * inset;
-    let ch = along - 2.0 * inset;
-    if !(cw > EPS && ch > EPS) {
+    // The sizes of sheet: the stock (not for a roll), else the sheet's.
+    let mut dims: Vec<(f64, f64, u32)> = if spec.roll {
+        Vec::new()
+    } else {
+        s.stock
+            .iter()
+            .filter(|k| k.width.is_finite() && k.height.is_finite())
+            .map(|k| (k.width, k.height, k.count))
+            .collect()
+    };
+    if dims.is_empty() {
+        let (across, along) = spec.across_along();
+        dims.push((across, along, 0));
+    }
+    let widest = dims.iter().map(|d| d.0).fold(0.0_f64, f64::max);
+    let cell = tol.max((widest - 2.0 * inset) / 256.0);
+    let mut stock = Stock {
+        areas: Vec::new(),
+        sizes: Vec::new(),
+        counts: Vec::new(),
+    };
+    for (w, h, c) in dims {
+        if let Some(a) = Area::of(w, h, inset, cell) {
+            stock.areas.push(a);
+            stock.sizes.push((w, h));
+            stock.counts.push(c);
+        }
+    }
+    if stock.areas.is_empty() {
         return layout;
     }
-    let area = Area {
-        cw,
-        ch,
-        cell: tol.max(cw / 256.0),
-    };
+    let area = stock.areas[0];
     let frame = Frame::new(&spec);
     let norm = frame.to_norm();
     let prepared: Vec<Option<Part>> = parts
@@ -624,7 +772,7 @@ pub fn nest_shapes(
     };
     order.sort_by(|a, b| key(*b).total_cmp(&key(*a)).then(a.cmp(b)));
 
-    let Some(mut best) = run(&prepared, &order, &area, spec.roll, &mut None) else {
+    let Some(mut best) = run(&prepared, &order, &stock, spec.roll, &mut None) else {
         return layout;
     };
     let n = order.len();
@@ -651,7 +799,7 @@ pub fn nest_shapes(
             let attempt = run(
                 &prepared,
                 &cand,
-                &area,
+                &stock,
                 spec.roll,
                 &mut Some(&mut *out_of_time),
             );
@@ -667,6 +815,16 @@ pub fn nest_shapes(
         }
     }
 
+    if s.smallest && !spec.roll && stock.areas.len() > 1 {
+        shrink_sheets(&prepared, &mut best, &stock, &key);
+    }
+
+    let sizes: Vec<(f64, f64)> = best
+        .sizes
+        .iter()
+        .filter_map(|k| stock.sizes.get(*k).copied())
+        .collect();
+    let rects = sheet_rects(&sizes);
     let mut extents = Vec::new();
     for (i, spot) in best.spots.iter().enumerate() {
         let (Some(spot), Some(Some(part))) = (spot, prepared.get(i)) else {
@@ -675,7 +833,16 @@ pub fn nest_shapes(
         let Some(o) = part.orients.get(spot.orient) else {
             continue;
         };
-        let transform = frame.place(spot.sheet, inset, spot.pos, o.local);
+        let (transform, to_sheet) = if spec.roll {
+            let t = frame.place(spot.sheet, inset, spot.pos, o.local);
+            (t, frame.to_sheet(spot.sheet) * t)
+        } else {
+            let Some(r) = rects.get(spot.sheet) else {
+                continue;
+            };
+            let t = frame.place_on(*r, inset, spot.pos, o.local);
+            (t, frame.to_sheet_on(*r) * t)
+        };
         if let Some(p) = layout.placements.get_mut(i) {
             *p = Some(Placement {
                 sheet: spot.sheet,
@@ -683,7 +850,6 @@ pub fn nest_shapes(
                 angle: o.angle,
             });
         }
-        let to_sheet = frame.to_sheet(spot.sheet) * transform;
         let far = parts
             .get(i)
             .and_then(|p| placed_bounds(p, to_sheet))
@@ -692,6 +858,10 @@ pub fn nest_shapes(
         layout.parts_area += part.area;
     }
     layout.finish(&spec, &extents);
+    if !spec.roll {
+        layout.used_area = sizes.iter().map(|(w, h)| w * h).sum();
+        layout.sheet_rects = rects;
+    }
     layout
 }
 
@@ -1125,6 +1295,93 @@ mod tests {
             t.elapsed()
         );
         no_overlaps(&moved(&parts, &l));
+    }
+
+    /// #4460: sheets of the sizes in stock, in order and no more than
+    /// there are; an object too large for the first size opens a larger
+    /// one, and what fits nowhere is left out.
+    #[test]
+    fn stock_sizes_are_used_in_order_and_counted() {
+        let mut s = settings(50.0, 50.0, 0.0);
+        s.stock = vec![
+            StockSheet {
+                width: 50.0,
+                height: 50.0,
+                count: 1,
+            },
+            StockSheet {
+                width: 100.0,
+                height: 60.0,
+                count: 1,
+            },
+        ];
+        // Four 40 mm squares: one on the small sheet, two on the large;
+        // the fourth finds no sheet left.
+        let parts: Vec<Vec<BezPath>> = (0..4).map(|i| vec![square(i as f64 * 50.0, 0.0, 40.0)]).collect();
+        let l = nest_shapes(&parts, &s, &mut never());
+        assert_eq!((l.placed(), l.sheets), (3, 2), "{:?}", l.placements);
+        assert_eq!(l.sheet_rects.len(), 2);
+        assert_eq!(l.sheet_rects[0], Rect::new(0.0, 0.0, 50.0, 50.0));
+        let x = 50.0 + crate::nest::SHEET_GAP;
+        assert_eq!(l.sheet_rects[1], Rect::new(x, 0.0, x + 100.0, 60.0));
+        assert!((l.used_area - (2500.0 + 6000.0)).abs() < 1e-6);
+        // Every object lies on its own sheet.
+        for (p, pl) in parts.iter().zip(&l.placements) {
+            let Some(pl) = pl else { continue };
+            let b = placed_bounds(p, pl.transform).unwrap();
+            let r = l.sheet_rects[pl.sheet].inset(1e-6);
+            assert!(r.contains(b.origin()) && r.contains(Point::new(b.x1, b.y1)), "{b:?} off {r:?}");
+        }
+        // A 55 mm part skips the small size and opens the large one.
+        let big = vec![vec![square(0.0, 0.0, 55.0)]];
+        let l = nest_shapes(&big, &s, &mut never());
+        assert_eq!((l.placed(), l.sheets), (1, 1));
+        assert_eq!(l.sheet_rects[0].width(), 100.0);
+    }
+
+    /// #4460: with Smallest sheet, a sheet with little on it becomes the
+    /// smallest size in stock that holds it.
+    #[test]
+    fn the_last_sheet_shrinks_to_the_smallest_size_that_holds_it() {
+        let mut s = settings(100.0, 100.0, 0.0);
+        s.stock = vec![
+            StockSheet {
+                width: 100.0,
+                height: 100.0,
+                count: 0,
+            },
+            StockSheet {
+                width: 30.0,
+                height: 30.0,
+                count: 0,
+            },
+            StockSheet {
+                width: 60.0,
+                height: 60.0,
+                count: 0,
+            },
+        ];
+        // Two 90 mm squares, then a 25 mm one that fits beside neither.
+        let parts = vec![
+            vec![square(0.0, 0.0, 90.0)],
+            vec![square(100.0, 0.0, 90.0)],
+            vec![square(200.0, 0.0, 25.0)],
+        ];
+        let plain = nest_shapes(&parts, &s, &mut never());
+        assert_eq!(plain.sheets, 3);
+        assert_eq!(plain.sheet_rects[2].width(), 100.0);
+        s.smallest = true;
+        let l = nest_shapes(&parts, &s, &mut never());
+        assert_eq!((l.placed(), l.sheets), (3, 3));
+        assert_eq!(l.sheet_rects[2].width(), 30.0);
+        assert!(l.used_area < plain.used_area);
+        let pl = l.placements[2].unwrap();
+        assert_eq!(pl.sheet, 2);
+        let b = placed_bounds(&parts[2], pl.transform).unwrap();
+        assert!(l.sheet_rects[2].inset(1e-6).contains(b.origin()));
+        // Per-sheet use adds up to the parts' area.
+        let per = l.sheet_parts_area(&[8100.0, 8100.0, 625.0]);
+        assert_eq!(per, vec![8100.0, 8100.0, 625.0]);
     }
 
     #[test]

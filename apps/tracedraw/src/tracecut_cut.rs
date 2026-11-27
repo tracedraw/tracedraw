@@ -227,6 +227,9 @@ pub enum Change {
         fill: Fill,
         stroke: Option<Stroke>,
     },
+    /// A nesting layout with copies, bleeds, cut lines, crop marks or a
+    /// page for each sheet (#4460).
+    Nest(Box<crate::tracecut_nest::NestPlan>),
 }
 
 /// How new objects look.
@@ -281,7 +284,7 @@ fn invert(t: Affine) -> Option<Affine> {
 }
 
 /// True when every subpath of `path` is closed.
-fn all_closed(path: &BezPath) -> bool {
+pub(crate) fn all_closed(path: &BezPath) -> bool {
     let els = path.elements();
     let starts = els
         .iter()
@@ -1099,6 +1102,11 @@ impl App {
                     added.push(g.id);
                     cmds.push(Command::AddShape { layer, shape: g });
                 }
+                Change::Nest(plan) => {
+                    let (more, new) = self.tracecut_nest_commands(plan);
+                    cmds.extend(more);
+                    added.extend(new);
+                }
                 Change::AddNested { name, parts } => {
                     let Some(layer) = self.active_layer() else {
                         continue;
@@ -1129,7 +1137,7 @@ impl App {
     }
 
     /// A group of new objects drawn from `paths`.
-    fn tracecut_group(
+    pub(crate) fn tracecut_group(
         &mut self,
         _layer: LayerId,
         name: &str,
@@ -1169,7 +1177,7 @@ impl App {
     }
 
     /// A group of `children` named by the i18n key `name`.
-    fn tracecut_group_of(&mut self, name: &str, children: Vec<Shape>) -> Shape {
+    pub(crate) fn tracecut_group_of(&mut self, name: &str, children: Vec<Shape>) -> Shape {
         let id = self.engine.new_shape_id();
         let mut g = Shape::new(id, ShapeKind::Group { children });
         g.fill = Fill::None;
@@ -1181,7 +1189,7 @@ impl App {
 
 /// The area `shape` covers (page space; its outlines welded into one,
 /// holes kept), for a cut line round it or a bleed (#2098).
-fn outer_area(shape: &Shape) -> BezPath {
+pub(crate) fn outer_area(shape: &Shape) -> BezPath {
     let mut area = BezPath::new();
     for p in tracedraw_tracecut::outlines(shape) {
         if !all_closed(&p) || p.elements().is_empty() {
@@ -1199,7 +1207,7 @@ fn outer_area(shape: &Shape) -> BezPath {
 /// The colour a bleed takes: the object's fill (a gradient's first
 /// colour), the first of a group's members that has one, else its
 /// outline's, else black.
-fn object_color(shape: &Shape) -> Color {
+pub(crate) fn object_color(shape: &Shape) -> Color {
     fn fill_color(s: &Shape) -> Option<Color> {
         match &s.fill {
             Fill::Solid(c) => return Some(*c),

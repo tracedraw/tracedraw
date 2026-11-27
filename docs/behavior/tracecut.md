@@ -435,6 +435,32 @@ its length running to the right or up the page. **Margin** (0) is kept
 free along the edges, **spacing** (2 mm) between objects, and the
 layout starts from the **start corner** (bottom left).
 
+**Copies of each** (1) nests that many copies of every selected object;
+the copies are new objects. Further options (#4460), off at first:
+
+- **A page for each sheet** (sheets only): OK adds, after the last
+  page, a new page the size of each sheet used ("Sheet 1 (100 × 80
+  mm)"), and moves the sheet's objects onto it in their nested place;
+  the objects leave their page. Each page is then ready to print or to
+  export as PDF, with the print and export bleed and marks options as
+  usual. **Draw the sheets** draws nothing with pages: the page is the
+  sheet.
+- **Bleed** (0, up to 20 mm): a copy of each object's outer area grown
+  by the bleed, in its colour (as CutContour's bleed), behind it, in a
+  group named Bleeds (on the page: just behind the lowest object
+  nested). The objects are nested with room for it: the spacing grows
+  by two bleeds and the margin by one.
+- **Cut lines**: a CutContour hairline round each object's outer area
+  (its box when it has no closed outline), on top in a group named Cut
+  lines; the CutContour ink joins the drawing when it has none.
+- **Crop marks**: two 3 mm hairlines at each corner of each object's
+  box, 1 mm out beyond the bleed, in a group named Crop marks (one per
+  page with pages). They need enough spacing not to touch the next
+  object.
+
+The status line also gives the share of each sheet the objects cover
+when there are several (up to eight).
+
 ### Shape Nesting
 
 Objects by their true outlines: each becomes a region (its closed
@@ -453,6 +479,18 @@ the turn whose top ends lowest wins. Then, for up to the **search time**
 layout is kept when it is no worse: fewer left out, fewer sheets, less
 length on the last sheet, a lower sum of tops. The search is seeded, so
 the same selection gives the same layout. Apply waits for the search.
+
+**Stock** (sheets only, #4460): **sheets of this size** (0: as many
+as it takes) says how many sheets of the first size there are; **Add a
+sheet size** lists more sizes, each with its width, height and count
+(0: no limit), up to 12. A new sheet takes the first size in the list
+that has sheets left and holds the object, so an object too large for
+the first size opens a larger one; an object no sheet left can hold
+stays where it is. Layouts compare by the material's area before the
+number of sheets. With **smallest sheet that fits** (shown with more
+sizes) each sheet afterwards becomes the smallest size with sheets left
+that still holds all its objects, nested again on it alone. Sheets of
+different sizes lie side by side from the page's origin, 20 mm apart.
 
 ### Rectangle Nesting
 

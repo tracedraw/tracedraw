@@ -8,7 +8,9 @@ use crate::ui::tips::RichTip;
 use crate::ui::tracecut::{length, row};
 use egui::Ui;
 use tracedraw_tracecut::nest::shapes::Rotations;
-use tracedraw_tracecut::nest::{Corner, RollDir, SheetSpec};
+use crate::tracecut_nest::{NestOutput, MAX_COPIES, MAX_MORE_SHEETS};
+use crate::ui::btn_icons::IconUi;
+use tracedraw_tracecut::nest::{Corner, RollDir, SheetSpec, StockSheet};
 
 /// A number field with its tip.
 fn number(ui: &mut Ui, v: &mut f64, range: (f64, f64), decimals: usize, tip: &str) {
@@ -136,12 +138,82 @@ fn sheet(ui: &mut Ui, units: Units, s: &mut SheetSpec) {
     });
 }
 
+/// Shape Nesting's stock (#4460): how many sheets of the first size
+/// there are, more sizes with their counts, and Smallest sheet.
+fn stock(ui: &mut Ui, units: Units, count: &mut u32, more: &mut Vec<StockSheet>, smallest: &mut bool) {
+    row(ui, &tr("tracecut.sheet_count"), |ui| {
+        whole(ui, count, (0, 100_000), "tracecut.sheet_count")
+    });
+    let mut remove = None;
+    for (i, k) in more.iter_mut().enumerate() {
+        ui.push_id(("tracecut_more_sheet", i), |ui| {
+            row(ui, &tr("tracecut.more_sheet"), |ui| {
+                length(ui, units, &mut k.width, (1.0, 100_000.0), "tracecut.sheet_width");
+                ui.label("×");
+                length(ui, units, &mut k.height, (1.0, 100_000.0), "tracecut.sheet_height");
+            });
+            row(ui, "", |ui| {
+                ui.label(tr("tracecut.sheet_count"));
+                whole(ui, &mut k.count, (0, 100_000), "tracecut.sheet_count");
+                if ui
+                    .ibutton("tracecut.remove_sheet_size")
+                    .rich_tip(crate::ui::tips::keyed("tracecut.remove_sheet_size"))
+                    .clicked()
+                {
+                    remove = Some(i);
+                }
+            });
+        });
+    }
+    if let Some(i) = remove {
+        more.remove(i);
+    }
+    row(ui, "", |ui| {
+        let r = ui.add_enabled_ui(more.len() < MAX_MORE_SHEETS, |ui| {
+            ui.ibutton("tracecut.add_sheet_size")
+                .rich_tip(crate::ui::tips::keyed("tracecut.add_sheet_size"))
+        });
+        if r.inner.clicked() {
+            let last = more.last().copied().unwrap_or_default();
+            more.push(StockSheet { count: 0, ..last });
+        }
+    });
+    if !more.is_empty() {
+        row(ui, "", |ui| check(ui, smallest, "tracecut.smallest_sheet"));
+    }
+}
+
+/// What a nesting run makes besides moving the objects (#4460).
+fn output(ui: &mut Ui, units: Units, roll: bool, o: &mut NestOutput) {
+    ui.separator();
+    row(ui, &tr("tracecut.nest_copies"), |ui| {
+        whole(ui, &mut o.copies, (1, MAX_COPIES), "tracecut.nest_copies")
+    });
+    row(ui, "", |ui| {
+        ui.add_enabled_ui(!roll, |ui| check(ui, &mut o.pages, "tracecut.nest_pages_each"));
+    });
+    row(ui, &tr("tracecut.nest_bleed"), |ui| {
+        length(
+            ui,
+            units,
+            &mut o.bleed,
+            crate::tracecut_cut::BLEED_RANGE,
+            "tracecut.nest_bleed",
+        )
+    });
+    row(ui, "", |ui| check(ui, &mut o.cut_lines, "tracecut.nest_cut_lines"));
+    row(ui, "", |ui| check(ui, &mut o.crop_marks, "tracecut.nest_crop_marks"));
+}
+
 /// The settings of the Nesting and Measure tools.
 pub fn settings(ui: &mut Ui, units: Units, st: &mut TraceCutState) {
     match st.tool {
         ToolId::ShapeNesting => {
             let s = &mut st.settings.shape_nest;
             sheet(ui, units, &mut s.sheet);
+            if !s.sheet.roll {
+                stock(ui, units, &mut s.count, &mut s.more_sheets, &mut s.smallest);
+            }
             row(ui, &tr("tracecut.rotations"), |ui| {
                 choice(
                     ui,
@@ -172,6 +244,7 @@ pub fn settings(ui: &mut Ui, units: Units, st: &mut TraceCutState) {
             row(ui, "", |ui| {
                 check(ui, &mut s.draw_sheets, "tracecut.draw_sheets")
             });
+            output(ui, units, s.sheet.roll, &mut s.output);
         }
         ToolId::RectNesting => {
             let s = &mut st.settings.rect_nest;
@@ -180,6 +253,7 @@ pub fn settings(ui: &mut Ui, units: Units, st: &mut TraceCutState) {
             row(ui, "", |ui| {
                 check(ui, &mut s.draw_sheets, "tracecut.draw_sheets")
             });
+            output(ui, units, s.sheet.roll, &mut s.output);
         }
         ToolId::CuttingTime => time(ui, st),
         ToolId::Cost => {

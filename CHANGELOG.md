@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- TraceCut Shape Nesting: a stock of several sheet sizes, each with how many there are, and Smallest sheet that fits, which changes each sheet for the smallest size that still holds its objects; both nesting tools nest copies of each object, can put each sheet on a new page of its size ready to print or export as PDF, add a bleed, cut lines and crop marks round each object, and give the share of each sheet used (#4460).
 - Toolbox "+" menu (quick customize) reorganized: a section per flyout with a check box, picture and name, then a row per tool with its own check box, picture, name and shortcut, so single tools can be left out of a flyout (the last one stays); no more long comma lists that wrapped, the list scrolls and Reset / Customize... stay below it. The Outline flyout stays unticked at first, as the toolbox hides it until it is ticked.
 - Shape Builder: with Use Guidelines on, a place off the objects that two or more guidelines close in together with an object's edge is a part (#4456).
 - Shape Builder: outlines are drawn as one joined line, so an ellipse shows no notches at the joins of its arcs when zoomed in (#4457).

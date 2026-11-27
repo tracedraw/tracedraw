@@ -139,6 +139,41 @@ impl SheetSpec {
     }
 }
 
+/// A size of sheet in stock: `count` sheets of `width` x `height` (0:
+/// as many as it takes). Shape nesting takes the sizes in the order
+/// given (#4460).
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct StockSheet {
+    pub width: f64,
+    pub height: f64,
+    pub count: u32,
+}
+
+impl Default for StockSheet {
+    fn default() -> Self {
+        StockSheet {
+            width: 1000.0,
+            height: 1000.0,
+            count: 0,
+        }
+    }
+}
+
+/// The page-space rectangles of sheets of `sizes` laid side by side from
+/// the page's origin to the right, [`SHEET_GAP`] apart.
+pub fn sheet_rects(sizes: &[(f64, f64)]) -> Vec<Rect> {
+    let mut x = 0.0;
+    sizes
+        .iter()
+        .map(|&(w, h)| {
+            let r = Rect::new(x, 0.0, x + w, h);
+            x += w + SHEET_GAP;
+            r
+        })
+        .collect()
+}
+
 /// The map from the normalised frame of a sheet to the page.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Frame {
@@ -169,6 +204,11 @@ impl Frame {
 
     /// The page point of sheet `i`'s origin corner.
     fn origin(&self, i: usize) -> Point {
+        self.origin_of(i, self.spec.sheet_rect(i, 0.0))
+    }
+
+    /// The origin corner of a sheet lying at `r` (a roll: its start).
+    fn origin_of(&self, _i: usize, r: Rect) -> Point {
         let s = &self.spec;
         if s.roll {
             let w = s.width;
@@ -177,7 +217,6 @@ impl Frame {
                 RollDir::Up => Point::new(if s.corner.right() { w } else { 0.0 }, 0.0),
             };
         }
-        let r = s.sheet_rect(i, 0.0);
         Point::new(
             if s.corner.right() { r.x1 } else { r.x0 },
             if s.corner.top() { r.y1 } else { r.y0 },
@@ -206,6 +245,20 @@ impl Frame {
             * self.linear
             * Affine::translate(pos + Vec2::new(inset, inset))
             * local
+    }
+
+    /// As [`Frame::place`], on a sheet lying at `r` on the page.
+    pub(crate) fn place_on(&self, r: Rect, inset: f64, pos: Vec2, local: Affine) -> Affine {
+        let o = self.origin_of(0, r);
+        Affine::translate(o.to_vec2())
+            * self.linear
+            * Affine::translate(pos + Vec2::new(inset, inset))
+            * local
+    }
+
+    /// Page to the frame of a sheet lying at `r` (no inset).
+    pub(crate) fn to_sheet_on(self, r: Rect) -> Affine {
+        self.to_norm() * Affine::translate(-self.origin_of(0, r).to_vec2())
     }
 }
 
@@ -238,6 +291,9 @@ pub struct Layout {
     pub stopped_by_time: bool,
     /// Rounds of the improvement loop run.
     pub rounds: usize,
+    /// The page-space rectangle of each sheet used (a roll: the length
+    /// used), in order.
+    pub sheet_rects: Vec<Rect>,
 }
 
 impl Layout {
@@ -272,6 +328,30 @@ impl Layout {
         } else {
             sheets as f64 * spec.width * spec.height
         };
+        self.sheet_rects = if spec.roll {
+            (sheets > 0)
+                .then(|| spec.sheet_rect(0, self.length))
+                .into_iter()
+                .collect()
+        } else {
+            (0..sheets).map(|i| spec.sheet_rect(i, 0.0)).collect()
+        };
+    }
+
+    /// The net area of the objects placed on each sheet (mm2), given the
+    /// area of every object.
+    pub fn sheet_parts_area(&self, areas: &[f64]) -> Vec<f64> {
+        let mut out = vec![0.0; self.sheet_rects.len()];
+        for (p, a) in self.placements.iter().zip(areas) {
+            if let Some(p) = p {
+                if let Some(o) = out.get_mut(p.sheet) {
+                    if a.is_finite() {
+                        *o += a;
+                    }
+                }
+            }
+        }
+        out
     }
 }
 

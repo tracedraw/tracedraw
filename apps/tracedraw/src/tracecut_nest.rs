@@ -10,10 +10,10 @@
 
 use crate::app::App;
 use crate::i18n::{tr, trf};
-use crate::tracecut_cut::{fmt_len, AddStyle, Change, Changes};
+use crate::tracecut_cut::{all_closed, fmt_len, object_color, outer_area, AddStyle, Change, Changes};
 use serde::{Deserialize, Serialize};
-use tracedraw_core::geometry::{BezPath, Point, Rect, Shape as _};
-use tracedraw_core::Command;
+use tracedraw_core::geometry::{Affine, BezPath, Point, Rect, Shape as _, Size, Vec2};
+use tracedraw_core::{Color, Command, Fill, Shape, ShapeId, ShapeKind, Stroke};
 use tracedraw_tracecut::calc::cost::{
     self, Material, MaterialUnit, Quantities, Service, ServiceUnit,
 };
@@ -21,7 +21,140 @@ use tracedraw_tracecut::calc::time::{self, TimeProfile, TravelOrder};
 use tracedraw_tracecut::measure;
 use tracedraw_tracecut::nest::rects::{self, RectItem, RectSettings};
 use tracedraw_tracecut::nest::shapes::{self, Rotations, ShapeSettings};
-use tracedraw_tracecut::nest::{Layout, SheetSpec};
+use tracedraw_tracecut::nest::{Layout, SheetSpec, StockSheet};
+
+/// What a nesting run makes besides moving the objects (#4460): copies
+/// of each object, a page for each sheet, a bleed round each object,
+/// cut lines and crop marks.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct NestOutput {
+    /// Copies of each object nested (1: the objects themselves).
+    pub copies: u32,
+    /// Each sheet becomes a new page of its size, its objects on it.
+    pub pages: bool,
+    /// A bleed this far round each object, in its colour (mm, 0: none);
+    /// the objects are nested with room for it.
+    pub bleed: f64,
+    /// A CutContour line round each object.
+    pub cut_lines: bool,
+    /// Crop marks at the corners of each object's box.
+    pub crop_marks: bool,
+}
+
+impl Default for NestOutput {
+    fn default() -> Self {
+        NestOutput {
+            copies: 1,
+            pages: false,
+            bleed: 0.0,
+            cut_lines: false,
+            crop_marks: false,
+        }
+    }
+}
+
+impl NestOutput {
+    /// The bleed made usable.
+    pub fn bleed_mm(&self) -> f64 {
+        if self.bleed.is_finite() {
+            self.bleed
+                .clamp(crate::tracecut_cut::BLEED_RANGE.0, crate::tracecut_cut::BLEED_RANGE.1)
+        } else {
+            0.0
+        }
+    }
+
+    /// Copies of each object, 1 to [`MAX_COPIES`].
+    pub fn copies(&self) -> usize {
+        self.copies.clamp(1, MAX_COPIES) as usize
+    }
+
+    /// Whether the layout is only the objects moved, as before #4460.
+    fn plain(&self) -> bool {
+        self.copies() == 1
+            && !self.pages
+            && self.bleed_mm() <= 0.0
+            && !self.cut_lines
+            && !self.crop_marks
+    }
+
+    /// The material with room for the bleed: the spacing grows by two
+    /// bleeds and the margin by one.
+    fn sheet(&self, s: &SheetSpec) -> SheetSpec {
+        let b = self.bleed_mm();
+        SheetSpec {
+            spacing: s.spacing + 2.0 * b,
+            margin: s.margin + b,
+            ..*s
+        }
+    }
+}
+
+/// Copies of each object a nesting run makes at most.
+pub const MAX_COPIES: u32 = 1000;
+
+/// Sheet sizes a Shape Nesting stock lists besides the first, at most.
+pub const MAX_MORE_SHEETS: usize = 12;
+
+/// The length of a crop mark and its gap from the object's box (mm).
+const CROP_LEN: f64 = 3.0;
+const CROP_GAP: f64 = 1.0;
+
+/// One object a nesting layout places.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NestItem {
+    pub id: ShapeId,
+    /// A new copy of the object (else the object itself moves).
+    pub copy: bool,
+    pub sheet: usize,
+    /// The page-space transform that takes it to its place.
+    pub transform: Affine,
+    /// Its bleed, in place: the area and the colour.
+    pub bleed: Option<(BezPath, Color)>,
+    /// Its cut line, in place.
+    pub cut: Option<BezPath>,
+}
+
+/// A nesting layout as it will be applied (#4460).
+#[derive(Debug, Clone, PartialEq)]
+pub struct NestPlan {
+    pub items: Vec<NestItem>,
+    /// The page-space rectangle of each sheet.
+    pub sheets: Vec<Rect>,
+    /// The crop marks of each sheet.
+    pub marks: Vec<Vec<BezPath>>,
+    /// Each sheet becomes a new page.
+    pub pages: bool,
+    /// The sheets are drawn (not with pages: the page is the sheet).
+    pub draw_sheets: bool,
+}
+
+/// Crop marks at the corners of `b`: two short lines at each corner,
+/// `gap` out from the box, along its edges.
+pub fn crop_marks(b: Rect, gap: f64) -> Vec<BezPath> {
+    let mut out = Vec::new();
+    let line = |a: Point, z: Point| {
+        let mut p = BezPath::new();
+        p.move_to(a);
+        p.line_to(z);
+        p
+    };
+    for (x, sx) in [(b.x0, -1.0), (b.x1, 1.0)] {
+        for (y, sy) in [(b.y0, -1.0), (b.y1, 1.0)] {
+            // Across: along the horizontal edge's line, outward in x.
+            out.push(line(
+                Point::new(x + sx * gap, y),
+                Point::new(x + sx * (gap + CROP_LEN), y),
+            ));
+            out.push(line(
+                Point::new(x, y + sy * gap),
+                Point::new(x, y + sy * (gap + CROP_LEN)),
+            ));
+        }
+    }
+    out
+}
 
 /// Shape nesting: the material, the turns, holes, accuracy and how long
 /// the search may take.
@@ -40,6 +173,26 @@ pub struct ShapeNestSettings {
     pub seconds: f64,
     /// Draw the sheets (or the roll's length used) as rectangles.
     pub draw_sheets: bool,
+    /// Sheets of the first size there are (0: as many as it takes).
+    pub count: u32,
+    /// More sizes of sheet in stock, used after the first (#4460).
+    pub more_sheets: Vec<StockSheet>,
+    /// Each sheet becomes the smallest size in stock that holds it.
+    pub smallest: bool,
+    pub output: NestOutput,
+}
+
+impl ShapeNestSettings {
+    /// The sheets in stock, the first size first.
+    pub fn stock(&self) -> Vec<StockSheet> {
+        let mut v = vec![StockSheet {
+            width: self.sheet.width,
+            height: self.sheet.height,
+            count: self.count,
+        }];
+        v.extend(self.more_sheets.iter().take(MAX_MORE_SHEETS).copied());
+        v
+    }
 }
 
 impl Default for ShapeNestSettings {
@@ -52,6 +205,10 @@ impl Default for ShapeNestSettings {
             rounds: 30,
             seconds: 2.0,
             draw_sheets: true,
+            count: 0,
+            more_sheets: Vec::new(),
+            smallest: false,
+            output: NestOutput::default(),
         }
     }
 }
@@ -63,6 +220,7 @@ pub struct RectNestSettings {
     pub sheet: SheetSpec,
     pub rotate: bool,
     pub draw_sheets: bool,
+    pub output: NestOutput,
 }
 
 impl Default for RectNestSettings {
@@ -71,6 +229,7 @@ impl Default for RectNestSettings {
             sheet: SheetSpec::default(),
             rotate: true,
             draw_sheets: true,
+            output: NestOutput::default(),
         }
     }
 }
@@ -205,52 +364,128 @@ impl App {
     }
 
     /// Turn a nesting layout into changes: each placed object moved, the
-    /// sheets drawn when asked.
+    /// sheets drawn when asked; with `output` (#4460) also copies, a page
+    /// for each sheet, bleeds, cut lines and crop marks. `ids` holds
+    /// each object once per copy.
+    #[allow(clippy::too_many_arguments)]
     fn tracecut_layout_changes(
         &self,
         label: &'static str,
-        ids: &[tracedraw_core::ShapeId],
+        ids: &[ShapeId],
         outlines: &[Vec<BezPath>],
         layout: &Layout,
         sheet: &SheetSpec,
         draw_sheets: bool,
+        output: &NestOutput,
     ) -> Changes {
         let mut out = Changes {
             label,
             hide_objects: true,
             ..Default::default()
         };
+        let plain = output.plain();
+        let bleed = output.bleed_mm();
+        // The bleed area and cut line of each object, worked out once.
+        let mut areas: std::collections::HashMap<ShapeId, (BezPath, Color)> =
+            std::collections::HashMap::new();
+        let mut seen: std::collections::HashSet<ShapeId> = std::collections::HashSet::new();
+        let mut items = Vec::new();
         for ((id, paths), p) in ids.iter().zip(outlines).zip(&layout.placements) {
-            match p {
-                Some(p) => {
-                    out.preview
-                        .extend(paths.iter().map(|path| p.transform * path.clone()));
-                    out.changes
-                        .push(Change::Cmd(Box::new(Command::TransformShapes {
-                            shapes: vec![*id],
-                            transform: p.transform,
-                        })));
+            let first = seen.insert(*id);
+            let Some(p) = p else {
+                if first {
+                    out.preview.extend(paths.iter().cloned());
                 }
-                None => out.preview.extend(paths.iter().cloned()),
+                continue;
+            };
+            out.preview
+                .extend(paths.iter().map(|path| p.transform * path.clone()));
+            if plain {
+                out.changes
+                    .push(Change::Cmd(Box::new(Command::TransformShapes {
+                        shapes: vec![*id],
+                        transform: p.transform,
+                    })));
+                continue;
             }
-        }
-        let sheets: Vec<BezPath> = if sheet.roll {
-            (layout.sheets > 0)
-                .then(|| sheet.sheet_rect(0, layout.length).to_path(0.01))
-                .into_iter()
-                .collect()
-        } else {
-            (0..layout.sheets)
-                .map(|i| sheet.sheet_rect(i, 0.0).to_path(0.01))
-                .collect()
-        };
-        out.preview.extend(sheets.iter().cloned());
-        if draw_sheets && !sheets.is_empty() {
-            out.changes.push(Change::AddGroup {
-                name: "tracecut.sheets_group",
-                paths: sheets,
-                style: AddStyle::Hairline,
+            if (bleed > 0.0 || output.cut_lines) && !areas.contains_key(id) {
+                if let Some(sh) = self.doc().shape_on_page(*id) {
+                    areas.insert(*id, (outer_area(&sh), object_color(&sh)));
+                }
+            }
+            let area = areas.get(id).filter(|(a, _)| !a.elements().is_empty());
+            let item_bleed = area
+                .filter(|_| bleed > 0.0)
+                .map(|(a, c)| (p.transform * tracedraw_core::shaping::offset(a, bleed), *c))
+                .filter(|(a, _)| !a.elements().is_empty());
+            let cut = output.cut_lines.then(|| {
+                match area {
+                    Some((a, _)) => p.transform * a.clone(),
+                    // Nothing closed to go round: the box.
+                    None => bounds_of(paths)
+                        .map(|b| p.transform * b.to_path(0.01))
+                        .unwrap_or_default(),
+                }
             });
+            if let Some((b, _)) = &item_bleed {
+                out.preview.push(b.clone());
+            }
+            if let Some(c) = &cut {
+                out.scored.push(c.clone());
+            }
+            items.push(NestItem {
+                id: *id,
+                copy: !first,
+                sheet: p.sheet,
+                transform: p.transform,
+                bleed: item_bleed,
+                cut,
+            });
+        }
+        let sheets: Vec<BezPath> = layout
+            .sheet_rects
+            .iter()
+            .map(|r| r.to_path(0.01))
+            .collect();
+        out.preview.extend(sheets.iter().cloned());
+        if plain {
+            if draw_sheets && !sheets.is_empty() {
+                out.changes.push(Change::AddGroup {
+                    name: "tracecut.sheets_group",
+                    paths: sheets,
+                    style: AddStyle::Hairline,
+                });
+            }
+        } else if !items.is_empty() {
+            let mut marks = vec![Vec::new(); layout.sheet_rects.len().max(1)];
+            if output.crop_marks {
+                for (it, paths) in items.iter().zip(
+                    ids.iter()
+                        .zip(outlines)
+                        .zip(&layout.placements)
+                        .filter(|(_, p)| p.is_some())
+                        .map(|((_, o), _)| o),
+                ) {
+                    let moved: Vec<BezPath> =
+                        paths.iter().map(|q| it.transform * q.clone()).collect();
+                    let Some(b) = bounds_of(&moved) else {
+                        continue;
+                    };
+                    let m = crop_marks(b, bleed + CROP_GAP);
+                    out.guides.extend(m.iter().cloned());
+                    let k = it.sheet.min(marks.len() - 1);
+                    if let Some(v) = marks.get_mut(k) {
+                        v.extend(m);
+                    }
+                }
+            }
+            out.changes.push(Change::Nest(Box::new(NestPlan {
+                items,
+                sheets: layout.sheet_rects.clone(),
+                marks,
+                pages: output.pages && !sheet.roll,
+                draw_sheets,
+            })));
         }
         let u = self.units;
         let left = ids.len().saturating_sub(layout.placed());
@@ -273,6 +508,37 @@ impl App {
                 ],
             )
         };
+        // The use of each sheet, when there are several (#4460).
+        if !sheet.roll && layout.sheet_rects.len() > 1 {
+            let areas: Vec<f64> = outlines
+                .iter()
+                .map(|p| measure::measure_object(p).area)
+                .collect();
+            let per = layout.sheet_parts_area(&areas);
+            let shown: Vec<String> = per
+                .iter()
+                .zip(&layout.sheet_rects)
+                .take(8)
+                .map(|(a, r)| {
+                    let m = r.width() * r.height();
+                    let pc = if m > 1e-9 { (a / m * 100.0).clamp(0.0, 100.0) } else { 0.0 };
+                    format!("{pc:.0}%")
+                })
+                .collect();
+            let mut list = shown.join(", ");
+            if per.len() > 8 {
+                list.push_str(", …");
+            }
+            summary.push(' ');
+            summary.push_str(&trf("tracecut.nest_per_sheet", &[("list", &list)]));
+        }
+        if output.pages && !sheet.roll && layout.placed() > 0 {
+            summary.push(' ');
+            summary.push_str(&trf(
+                "tracecut.nest_pages",
+                &[("n", &layout.sheet_rects.len().to_string())],
+            ));
+        }
         if left > 0 {
             summary.push(' ');
             summary.push_str(&trf("tracecut.nest_left_out", &[("n", &left.to_string())]));
@@ -281,11 +547,29 @@ impl App {
         out
     }
 
+    /// The objects to nest, each once per copy, and their outlines.
+    fn tracecut_nest_parts(&self, output: &NestOutput) -> (Vec<ShapeId>, Vec<Vec<BezPath>>) {
+        let (ids, outlines) = self.tracecut_parts();
+        let n = output.copies();
+        if n <= 1 {
+            return (ids, outlines);
+        }
+        let mut all_ids = Vec::with_capacity(ids.len() * n);
+        let mut all = Vec::with_capacity(ids.len() * n);
+        for _ in 0..n {
+            all_ids.extend(ids.iter().copied());
+            all.extend(outlines.iter().cloned());
+        }
+        (all_ids, all)
+    }
+
     /// Shape nesting of the selection.
     pub fn tracecut_shape_nest(&self, s: &ShapeNestSettings) -> Changes {
-        let (ids, outlines) = self.tracecut_parts();
+        let (ids, outlines) = self.tracecut_nest_parts(&s.output);
         let settings = ShapeSettings {
-            sheet: s.sheet,
+            sheet: s.output.sheet(&s.sheet),
+            stock: s.stock(),
+            smallest: s.smallest,
             rotations: s.rotations,
             holes: s.holes,
             tolerance: s.tolerance,
@@ -307,12 +591,231 @@ impl App {
             &layout,
             &s.sheet,
             s.draw_sheets,
+            &s.output,
         )
+    }
+
+    /// The commands that apply a nesting plan, and the new objects to
+    /// select (#4460).
+    pub(crate) fn tracecut_nest_commands(&mut self, plan: &NestPlan) -> (Vec<Command>, Vec<ShapeId>) {
+        let mut cmds = Vec::new();
+        let mut added = Vec::new();
+        let cut_stroke = if plan.items.iter().any(|i| i.cut.is_some()) {
+            let (color, add) = self.tracecut_contour_ink();
+            cmds.extend(add);
+            Some(Stroke::hairline(color))
+        } else {
+            None
+        };
+        let Some(active) = self.active_layer() else {
+            return (cmds, added);
+        };
+        if plan.pages {
+            self.tracecut_nest_pages(plan, active, cut_stroke.as_ref(), &mut cmds);
+            return (cmds, added);
+        }
+        // On the page: the objects move, copies are added on the layer
+        // of their object, then the bleeds go behind the lowest object
+        // and the cut lines and crop marks on top.
+        let mut lowest: Option<(tracedraw_core::LayerId, usize)> = None;
+        let mut bleeds = Vec::new();
+        let mut cuts = Vec::new();
+        for it in &plan.items {
+            let Ok((layer, index)) = self.doc().locate(it.id) else {
+                // Inside a group: it moves, no copy.
+                if !it.copy {
+                    cmds.push(Command::TransformShapes {
+                        shapes: vec![it.id],
+                        transform: it.transform,
+                    });
+                }
+                continue;
+            };
+            if lowest.is_none_or(|(l, i)| l == layer && index < i) {
+                lowest = Some((layer, index));
+            }
+            if it.copy {
+                let Some(src) = self.doc().find_shape(it.id).cloned() else {
+                    continue;
+                };
+                let id = self.engine.new_shape_id();
+                let copy = crate::app::reid_pub(src, id, &mut self.engine);
+                cmds.push(Command::AddShape { layer, shape: copy });
+                cmds.push(Command::TransformShapes {
+                    shapes: vec![id],
+                    transform: it.transform,
+                });
+                added.push(id);
+            } else {
+                cmds.push(Command::TransformShapes {
+                    shapes: vec![it.id],
+                    transform: it.transform,
+                });
+            }
+            if let Some((b, c)) = &it.bleed {
+                bleeds.push(self.tracecut_path_shape(b.clone(), Fill::Solid(*c), None, "tracecut.bleed_name"));
+            }
+            if let (Some(c), Some(st)) = (&it.cut, &cut_stroke) {
+                cuts.push(self.tracecut_path_shape(c.clone(), Fill::None, Some(st.clone()), "tracecut.cut_line_name"));
+            }
+        }
+        if !bleeds.is_empty() {
+            let (layer, index) = lowest.unwrap_or((active, 0));
+            let g = self.tracecut_group_of("tracecut.bleeds_group", bleeds);
+            let gid = g.id;
+            cmds.push(Command::AddShape { layer, shape: g });
+            cmds.push(Command::Reorder {
+                shape: gid,
+                layer,
+                index,
+            });
+        }
+        if !cuts.is_empty() {
+            let g = self.tracecut_group_of("tracecut.cut_lines_group", cuts);
+            cmds.push(Command::AddShape {
+                layer: active,
+                shape: g,
+            });
+        }
+        let marks: Vec<BezPath> = plan.marks.iter().flatten().cloned().collect();
+        if !marks.is_empty() {
+            let g = self.tracecut_group(active, "tracecut.crop_marks_group", &marks, AddStyle::Hairline);
+            cmds.push(Command::AddShape {
+                layer: active,
+                shape: g,
+            });
+        }
+        if plan.draw_sheets && !plan.sheets.is_empty() {
+            let paths: Vec<BezPath> = plan.sheets.iter().map(|r| r.to_path(0.01)).collect();
+            let g = self.tracecut_group(active, "tracecut.sheets_group", &paths, AddStyle::Hairline);
+            added.push(g.id);
+            cmds.push(Command::AddShape {
+                layer: active,
+                shape: g,
+            });
+        }
+        (cmds, added)
+    }
+
+    /// A page for each sheet, of its size, after the last page: its
+    /// bleeds, objects, cut lines and crop marks moved onto it; the
+    /// objects leave their page (#4460).
+    fn tracecut_nest_pages(
+        &mut self,
+        plan: &NestPlan,
+        active: tracedraw_core::LayerId,
+        cut: Option<&Stroke>,
+        cmds: &mut Vec<Command>,
+    ) {
+        // The objects are moved in a copy of the drawing, then taken
+        // from it as they end up.
+        let mut scratch = self.doc().clone();
+        let mut gone = Vec::new();
+        let first = self.doc().pages.len();
+        for (k, r) in plan.sheets.iter().enumerate() {
+            let to_page = Affine::translate(-Vec2::new(r.x0, r.y0));
+            let mut bleeds = Vec::new();
+            let mut parts = Vec::new();
+            let mut cuts = Vec::new();
+            for it in plan.items.iter().filter(|i| i.sheet == k) {
+                let Ok((layer, _)) = self.doc().locate(it.id) else {
+                    continue;
+                };
+                let Some(src) = self.doc().find_shape(it.id).cloned() else {
+                    continue;
+                };
+                let id = self.engine.new_shape_id();
+                let copy = crate::app::reid_pub(src, id, &mut self.engine);
+                let moved = Command::AddShape { layer, shape: copy }
+                    .apply(&mut scratch)
+                    .and_then(|_| {
+                        Command::TransformShapes {
+                            shapes: vec![id],
+                            transform: to_page * it.transform,
+                        }
+                        .apply(&mut scratch)
+                    });
+                if moved.is_err() {
+                    continue;
+                }
+                let Some(sh) = scratch.find_shape(id).cloned() else {
+                    continue;
+                };
+                parts.push(sh);
+                if !it.copy {
+                    gone.push(it.id);
+                }
+                if let Some((b, c)) = &it.bleed {
+                    bleeds.push(self.tracecut_path_shape(
+                        to_page * b.clone(),
+                        Fill::Solid(*c),
+                        None,
+                        "tracecut.bleed_name",
+                    ));
+                }
+                if let (Some(c), Some(st)) = (&it.cut, cut) {
+                    cuts.push(self.tracecut_path_shape(
+                        to_page * c.clone(),
+                        Fill::None,
+                        Some(st.clone()),
+                        "tracecut.cut_line_name",
+                    ));
+                }
+            }
+            if parts.is_empty() {
+                continue;
+            }
+            let mut shapes = Vec::new();
+            if !bleeds.is_empty() {
+                shapes.push(self.tracecut_group_of("tracecut.bleeds_group", bleeds));
+            }
+            shapes.extend(parts);
+            if !cuts.is_empty() {
+                shapes.push(self.tracecut_group_of("tracecut.cut_lines_group", cuts));
+            }
+            let marks: Vec<BezPath> = plan
+                .marks
+                .get(k)
+                .map(|m| m.iter().map(|p| to_page * p.clone()).collect())
+                .unwrap_or_default();
+            if !marks.is_empty() {
+                shapes.push(self.tracecut_group(active, "tracecut.crop_marks_group", &marks, AddStyle::Hairline));
+            }
+            let u = self.units;
+            cmds.push(Command::InsertPage {
+                at: first + k,
+                name: Some(trf(
+                    "tracecut.sheet_page",
+                    &[
+                        ("n", &(k + 1).to_string()),
+                        ("w", &fmt_len(u, r.width())),
+                        ("h", &fmt_len(u, r.height())),
+                    ],
+                )),
+                size: Size::new(r.width(), r.height()),
+                layer: None,
+                shapes,
+            });
+        }
+        if !gone.is_empty() {
+            cmds.push(Command::DeleteShapes { shapes: gone });
+        }
+    }
+
+    /// A new curve named by the i18n key `name`.
+    fn tracecut_path_shape(&mut self, path: BezPath, fill: Fill, stroke: Option<Stroke>, name: &str) -> Shape {
+        let id = self.engine.new_shape_id();
+        let closed = all_closed(&path);
+        let mut sh = Shape::new(id, ShapeKind::Path { path, closed });
+        sh.fill = fill;
+        sh.stroke = stroke;
+        sh.name = Some(tr(name));
+        sh
     }
 
     /// Rectangle nesting of the selection, by the objects' boxes.
     pub fn tracecut_rect_nest(&self, s: &RectNestSettings) -> Changes {
-        let (ids, outlines) = self.tracecut_parts();
+        let (ids, outlines) = self.tracecut_nest_parts(&s.output);
         let items: Vec<RectItem> = outlines
             .iter()
             .map(|paths| {
@@ -326,7 +829,7 @@ impl App {
         let layout = rects::nest_rects(
             &items,
             &RectSettings {
-                sheet: s.sheet,
+                sheet: s.output.sheet(&s.sheet),
                 rotate: s.rotate,
             },
         );
@@ -337,6 +840,7 @@ impl App {
             &layout,
             &s.sheet,
             s.draw_sheets,
+            &s.output,
         )
     }
 
@@ -499,6 +1003,159 @@ mod tests {
             height: 100.0,
             spacing: 2.0,
             ..Default::default()
+        }
+    }
+
+    /// The top-level shapes on page `i`, all layers.
+    fn on_page(app: &App, i: usize) -> Vec<Shape> {
+        app.doc().pages[i]
+            .layers
+            .iter()
+            .flat_map(|l| l.shapes.iter().cloned())
+            .collect()
+    }
+
+    /// #4460: copies, a page per sheet of mixed sizes, bleeds, cut lines
+    /// and crop marks in one undo step.
+    #[test]
+    fn nesting_onto_pages_with_copies_bleed_cut_lines_and_crop_marks() {
+        let mut app = App::headless();
+        let a = rect(&mut app, 300.0, 300.0, 40.0, 40.0);
+        let b = rect(&mut app, 400.0, 300.0, 60.0, 20.0);
+        let keep = rect(&mut app, 10.0, 10.0, 5.0, 5.0);
+        app.select(vec![a, b]);
+        let s = ShapeNestSettings {
+            sheet: SheetSpec {
+                width: 100.0,
+                height: 100.0,
+                spacing: 2.0,
+                ..Default::default()
+            },
+            count: 1,
+            more_sheets: vec![StockSheet {
+                width: 80.0,
+                height: 80.0,
+                count: 0,
+            }],
+            rounds: 0,
+            output: NestOutput {
+                copies: 3,
+                pages: true,
+                bleed: 2.0,
+                cut_lines: true,
+                crop_marks: true,
+            },
+            ..Default::default()
+        };
+        let c = app.tracecut_shape_nest(&s);
+        assert!(!c.scored.is_empty() && !c.guides.is_empty(), "preview shows cut lines and marks");
+        let pages_before = app.doc().pages.len();
+        let before = app.engine.history_labels().0.len();
+        assert!(app.tracecut_apply_changes(&c), "{}", app.status);
+        assert_eq!(app.engine.history_labels().0.len(), before + 1);
+        let added = app.doc().pages.len() - pages_before;
+        assert!(added >= 2, "{added} pages");
+        // The first new page is the first stock size, later ones the next.
+        assert_eq!(app.doc().pages[pages_before].size, Size::new(100.0, 100.0));
+        assert_eq!(app.doc().pages[pages_before + added - 1].size, Size::new(80.0, 80.0));
+        // The objects left their page; the other object stayed.
+        assert!(app.doc().find_shape(a).is_none() && app.doc().find_shape(b).is_none());
+        assert!(app.doc().find_shape(keep).is_some());
+        // Six objects (three copies of two) on the new pages, each with
+        // a bleed and a cut line, all within its page.
+        let mut objects = 0;
+        let mut bleeds = 0;
+        let mut cuts = 0;
+        let mut marks = 0;
+        for i in pages_before..pages_before + added {
+            let page = app.doc().pages[i].rect();
+            for sh in on_page(&app, i) {
+                match (&sh.kind, sh.name.as_deref()) {
+                    (ShapeKind::Group { children }, Some(n)) if n == tr("tracecut.bleeds_group") => {
+                        bleeds += children.len()
+                    }
+                    (ShapeKind::Group { children }, Some(n)) if n == tr("tracecut.cut_lines_group") => {
+                        assert!(children.iter().all(|c| c.stroke.is_some() && c.fill == Fill::None));
+                        cuts += children.len()
+                    }
+                    (ShapeKind::Group { children }, Some(n)) if n == tr("tracecut.crop_marks_group") => {
+                        marks += children.len()
+                    }
+                    _ => {
+                        objects += 1;
+                        let bb = sh.page_path().bounding_box();
+                        assert!(page.inset(1e-6).contains(bb.origin()), "{bb:?} off {page:?}");
+                        assert!(bb.x1 <= page.x1 + 1e-6 && bb.y1 <= page.y1 + 1e-6, "{bb:?} off {page:?}");
+                        // Two of bleed and the spacing kept from the edge.
+                        assert!(bb.x0 >= 2.0 - 1e-3 && bb.y0 >= 2.0 - 1e-3, "{bb:?}");
+                    }
+                }
+            }
+        }
+        assert_eq!((objects, bleeds, cuts), (6, 6, 6));
+        assert_eq!(marks, 6 * 8);
+        // The cut line ink was added to the drawing.
+        assert!(app.doc().inks.iter().any(|i| i.name == crate::tracecut_cut::CUT_CONTOUR));
+        // One undo brings it all back.
+        app.engine.undo();
+        assert_eq!(app.doc().pages.len(), pages_before);
+        assert!(app.doc().find_shape(a).is_some() && app.doc().find_shape(b).is_some());
+    }
+
+    /// #4460: copies on the page, without pages: the object moves, its
+    /// copies are new objects, bleeds go behind the objects.
+    #[test]
+    fn copies_and_bleeds_on_the_same_page() {
+        let mut app = App::headless();
+        let a = rect(&mut app, 300.0, 300.0, 20.0, 20.0);
+        app.select(vec![a]);
+        let shapes_before = on_page(&app, 0).len();
+        let s = RectNestSettings {
+            sheet: small_sheet(),
+            draw_sheets: false,
+            output: NestOutput {
+                copies: 4,
+                bleed: 1.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let c = app.tracecut_rect_nest(&s);
+        assert!(app.tracecut_apply_changes(&c), "{}", app.status);
+        let shapes = on_page(&app, 0);
+        // The object, three copies and the bleeds group.
+        assert_eq!(shapes.len(), shapes_before + 4);
+        let bleed_at = shapes
+            .iter()
+            .position(|s| s.name.as_deref() == Some(tr("tracecut.bleeds_group").as_str()))
+            .expect("bleeds");
+        let obj_at = shapes.iter().position(|s| s.id == a).expect("object");
+        assert!(bleed_at < obj_at, "the bleeds go behind");
+        let boxes: Vec<Rect> = shapes
+            .iter()
+            .filter(|s| matches!(s.kind, ShapeKind::Rect { .. }))
+            .map(|s| s.page_path().bounding_box())
+            .collect();
+        assert_eq!(boxes.len(), 4);
+        for (i, p) in boxes.iter().enumerate() {
+            assert!(p.x0 >= 1.0 - 1e-6 && p.x1 <= 99.0 + 1e-6, "{p:?}");
+            for q in &boxes[i + 1..] {
+                // Spacing 2 plus a bleed of 1 on each side.
+                let gap = (q.x0 - p.x1).max(p.x0 - q.x1).max(q.y0 - p.y1).max(p.y0 - q.y1);
+                assert!(gap >= 4.0 - 1e-6, "{p:?} {q:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn crop_marks_sit_outside_the_box() {
+        let m = crop_marks(Rect::new(0.0, 0.0, 10.0, 10.0), 1.0);
+        assert_eq!(m.len(), 8);
+        for p in &m {
+            let b = p.bounding_box();
+            let inside = b.x0 > 0.0 && b.x1 < 10.0 && b.y0 > 0.0 && b.y1 < 10.0;
+            assert!(!inside);
+            assert!((b.width().max(b.height()) - CROP_LEN).abs() < 1e-9);
         }
     }
 
@@ -807,4 +1464,14 @@ mod tests {
         assert!(cost.lines[0].contains("0.35 EUR"), "{:?}", cost.lines);
         assert_eq!(cost.lines.len(), 3);
     }
+}
+
+/// The box round `paths`, when they have one.
+fn bounds_of(paths: &[BezPath]) -> Option<Rect> {
+    paths
+        .iter()
+        .filter(|p| !p.elements().is_empty())
+        .map(|p| p.bounding_box())
+        .filter(|b| [b.x0, b.y0, b.x1, b.y1].iter().all(|v| v.is_finite()))
+        .reduce(|a, b| a.union(b))
 }
