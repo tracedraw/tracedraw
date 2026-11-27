@@ -14,6 +14,7 @@ full, row-by-row status.
 - Alt+click on a clip frame selects the object of its contents under the pointer without editing the frame, so it can be moved or changed in place (#4470).
 - Objects panel: a double-click or F2 renames a layer or object in place, the old name selected so typing replaces it; the Rename windows also open with the name selected (#4472).
 - Options > Text: Size by capital height shows and takes font sizes as the height of the capital letters, as sign makers measure them; sizes are still kept in points (#4419).
+- Objects panel: whole layers can be dragged to reorder them and dropped on another page to move them there (#4426; PR #4428 by Anton Karpov).
 - Formulas are inserted with fewer nodes, and the Pick tool no longer covers them with node marks (#4453).
 - Effects and Properties panels: the drop shadow has a row of its own with an eye to hide it and bring it back as it was, Edit and remove (#4454).
 - Shape Builder: Use Page lets the page's edges cut the objects into parts, and with nothing selected the page itself is a part (#4458).
