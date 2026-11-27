@@ -71,19 +71,27 @@ pub enum DropAction {
     /// The first selected object's Layer Effects go onto the object
     /// under the drop (#4243).
     CopyEffects,
+    /// The object under the drop takes the selection's width and height,
+    /// its width alone or its height alone, about its own centre (#4448).
+    CopySize,
+    CopyWidth,
+    CopyHeight,
     PlaceInside,
     FitTextToPath,
     Cancel,
 }
 
 impl DropAction {
-    pub const ALL: [DropAction; 9] = [
+    pub const ALL: [DropAction; 12] = [
         DropAction::Move,
         DropAction::Copy,
         DropAction::CopyFill,
         DropAction::CopyOutline,
         DropAction::CopyProperties,
         DropAction::CopyEffects,
+        DropAction::CopySize,
+        DropAction::CopyWidth,
+        DropAction::CopyHeight,
         DropAction::PlaceInside,
         DropAction::FitTextToPath,
         DropAction::Cancel,
@@ -97,6 +105,9 @@ impl DropAction {
             DropAction::CopyOutline => "drop.copy_outline_here",
             DropAction::CopyProperties => "drop.copy_all_properties",
             DropAction::CopyEffects => "drop.copy_effects_here",
+            DropAction::CopySize => "drop.copy_size_here",
+            DropAction::CopyWidth => "drop.copy_width_here",
+            DropAction::CopyHeight => "drop.copy_height_here",
             DropAction::PlaceInside => "drop.place_inside",
             DropAction::FitTextToPath => "menu.text.fit_text_to_path",
             DropAction::Cancel => "drop.cancel",
@@ -126,6 +137,9 @@ impl DropAction {
                 | DropAction::CopyOutline
                 | DropAction::CopyProperties
                 | DropAction::CopyEffects
+                | DropAction::CopySize
+                | DropAction::CopyWidth
+                | DropAction::CopyHeight
                 | DropAction::PlaceInside
                 | DropAction::FitTextToPath
         )
@@ -312,6 +326,15 @@ impl App {
                     self.copy_layer_effects_onto(target);
                 }
             }
+            DropAction::CopySize | DropAction::CopyWidth | DropAction::CopyHeight => {
+                if let Some(target) = menu.target {
+                    self.copy_size_onto(
+                        target,
+                        action != DropAction::CopyHeight,
+                        action != DropAction::CopyWidth,
+                    );
+                }
+            }
             DropAction::PlaceInside => {
                 let Some(target) = menu.target else {
                     return;
@@ -369,6 +392,43 @@ impl App {
                 }
             }
             DropAction::Cancel => {}
+        }
+    }
+
+    /// Copy Size Here, Copy Width Here, Copy Height Here: object `target`
+    /// is stretched about its centre to the selection's width (`width`)
+    /// and height (`height`) as drawn, one undo step (#4448).
+    pub fn copy_size_onto(&mut self, target: ShapeId, width: bool, height: bool) {
+        if self.selection.contains(&target) {
+            return;
+        }
+        let (Some(src), Some(t)) = (
+            self.selection_bounds(),
+            self.doc().find_shape(target).cloned(),
+        ) else {
+            return;
+        };
+        let b = self.own_visual_bounds(&t);
+        let ratio = |to: f64, from: f64| {
+            if to > 1e-9 && from > 1e-9 {
+                to / from
+            } else {
+                1.0
+            }
+        };
+        let sx = if width { ratio(src.width(), b.width()) } else { 1.0 };
+        let sy = if height { ratio(src.height(), b.height()) } else { 1.0 };
+        if (sx - 1.0).abs() < 1e-12 && (sy - 1.0).abs() < 1e-12 {
+            return;
+        }
+        let c = b.center().to_vec2();
+        let transform = Affine::translate(c) * Affine::scale_non_uniform(sx, sy) * Affine::translate(-c);
+        let cmds = [Command::TransformShapes {
+            shapes: vec![target],
+            transform,
+        }];
+        if let Err(error) = self.engine.run_batch("Copy Size", &cmds) {
+            self.status = error.to_string();
         }
     }
 
@@ -545,6 +605,37 @@ pub fn drop_menu_ui(app: &mut App, ui: &mut Ui) {
 mod tests {
     use super::*;
     use tracedraw_core::{Color, Fill, Rect, ShapeKind, Stroke};
+
+    /// Copy Size, Width and Height Here stretch the object under the drop
+    /// to the selection's size about its own centre (#4448).
+    #[test]
+    fn copy_size_width_and_height_here() {
+        let mut app = App::headless();
+        let (a, b) = two_boxes(&mut app);
+        app.select(vec![a]);
+        let bounds = |app: &App, id| {
+            let s = app.doc().find_shape(id).unwrap().clone();
+            app.own_visual_bounds(&s)
+        };
+        let before = bounds(&app, b);
+        app.copy_size_onto(b, true, false);
+        let w = bounds(&app, b);
+        assert!((w.width() - bounds(&app, a).width()).abs() < 1e-6, "{w:?}");
+        assert!((w.height() - before.height()).abs() < 1e-6);
+        assert!((w.center() - before.center()).hypot() < 1e-6, "about its centre");
+        app.copy_size_onto(b, false, true);
+        let h = bounds(&app, b);
+        assert!((h.height() - bounds(&app, a).height()).abs() < 1e-6);
+        app.undo();
+        app.undo();
+        app.copy_size_onto(b, true, true);
+        let both = bounds(&app, b);
+        let src = bounds(&app, a);
+        assert!((both.width() - src.width()).abs() < 1e-6 && (both.height() - src.height()).abs() < 1e-6);
+        // Offered in the drop menu with an object under the pointer.
+        assert!(DropAction::CopySize.needs_target());
+        assert_eq!(DropAction::CopyWidth.key(), "drop.copy_width_here");
+    }
 
     fn two_boxes(app: &mut App) -> (ShapeId, ShapeId) {
         let a = app

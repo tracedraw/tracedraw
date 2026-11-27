@@ -2911,6 +2911,9 @@ pub(crate) fn pick_node_marks_every(shapes: &[tracedraw_core::Shape]) -> Vec<Poi
         }
         let transform = parent * s.transform;
         match &s.kind {
+            // A formula is set like a text: no marks, the letters' nodes
+            // would cover it (#4453).
+            ShapeKind::Path { .. } if crate::formula::FormulaSpec::of_shape(s).is_some() => {}
             ShapeKind::Path { path, .. } if s.spline.is_none() => {
                 out.extend(
                     tracedraw_core::nodes::nodes(path)

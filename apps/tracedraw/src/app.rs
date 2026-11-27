@@ -2128,6 +2128,9 @@ pub struct App {
     pub objects_ranges_closed: bool,
     /// Objects docker: the cached thumbnails of the objects.
     pub object_thumbs: crate::object_thumbs::ObjectThumbs,
+    /// The frame the pointer was last over the Objects panel's list: F2
+    /// there renames the selected row in place instead of zooming (#4472).
+    pub objects_hover_frame: Option<u64>,
     /// Symbols docker: the cached pictures of the symbols (#3249).
     pub symbol_thumbs: crate::object_thumbs::ObjectThumbs,
     /// The last Symbolize Similar / Replace Symbol result, shown under
@@ -2507,6 +2510,9 @@ pub struct App {
     pub fill_node: Option<usize>,
     /// A font shown in the drawing while a font list points at it.
     pub live_font: Option<crate::ui::font_list::LiveFont>,
+    /// A transparency merge mode shown on the selection while the list
+    /// points at it, and the one in use before (#4469).
+    pub live_merge: Option<(tracedraw_core::live::MergeMode, tracedraw_core::live::MergeMode, egui::Id)>,
     /// A variable font axis slider is being dragged: the text shows its
     /// value as a preview the history does not keep (#870).
     pub live_axis: bool,
@@ -3867,6 +3873,7 @@ impl App {
             settings_pending: false,
             objects_closed_pages: Default::default(),
             object_thumbs: Default::default(),
+            objects_hover_frame: None,
             symbol_thumbs: Default::default(),
             symbolize_report: None,
             symbol_replace_source: None,
@@ -4020,6 +4027,7 @@ impl App {
             blend_rotation: 0.0,
             fill_node: None,
             live_font: None,
+            live_merge: None,
             live_axis: false,
             blend_accel_objects: 0.0,
             blend_accel_colors: 0.0,
@@ -5810,6 +5818,36 @@ impl App {
         self.left_inner_dockers.take(tab);
         self.floating_dockers.retain(|f| f.tab != tab);
         self.settle_columns();
+    }
+
+    /// Every open panel, wherever it lies: right and left columns, the
+    /// inner columns and the floating ones.
+    pub fn open_docker_list(&self) -> Vec<DockerTab> {
+        let mut tabs: Vec<DockerTab> = Vec::new();
+        for t in self
+            .open_dockers
+            .iter()
+            .chain(self.left_dockers.iter())
+            .chain(self.inner_dockers.tabs.iter())
+            .chain(self.left_inner_dockers.tabs.iter())
+            .copied()
+            .chain(self.floating_dockers.iter().map(|f| f.tab))
+        {
+            if !tabs.contains(&t) {
+                tabs.push(t);
+            }
+        }
+        tabs
+    }
+
+    /// Close every open panel at once; a locked one keeps its place
+    /// (#4436, #3953).
+    pub fn close_all_dockers(&mut self) {
+        for tab in self.open_docker_list() {
+            if !self.docker_locked(tab) {
+                self.close_docker(tab);
+            }
+        }
     }
 
     /// Close a docker wherever it is: its tab leaves its column and the
@@ -9593,6 +9631,7 @@ impl App {
         let name = self.next_untitled_name();
         let mut doc = self.settings.new_document.build(name);
         self.settings.document_defaults.apply(&mut doc);
+        crate::styles::start_with_library(&mut doc, &self.settings.object_style_library);
         self.open_document(doc, None);
         self.status.clear();
     }

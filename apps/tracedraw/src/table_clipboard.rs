@@ -93,6 +93,15 @@ pub fn looks_tabular(text: &str) -> bool {
     rows.len() >= 2 && rows.iter().all(|r| r.len() >= 2)
 }
 
+/// Whether text is cells copied in a spreadsheet, a single row or column
+/// too: it holds a tab, or every line of it ends with a line break as a
+/// spreadsheet writes them (#4422: one column of cells pasted as their
+/// picture).
+pub fn spreadsheet_cells(text: &str) -> bool {
+    let t = text.replace("\r\n", "\n").replace('\r', "\n");
+    !t.trim().is_empty() && (t.contains('\t') || (t.ends_with('\n') && t.trim_end_matches('\n').contains('\n')))
+}
+
 /// Whether text pasted into a table cell goes over several cells: it
 /// holds a tab, or several lines ending with a line break (one column of
 /// a spreadsheet).
@@ -388,6 +397,16 @@ mod tests {
             .filter(|s| matches!(s.kind, ShapeKind::Bitmap { .. }))
             .count();
         assert_eq!(pictures, 0);
+        // One column or one row of cells with their picture (#4422).
+        for text in ["Pen\r\nInk\r\nPaper\r\n", "Item\tQty\tPrice\r\n"] {
+            let mut app = App::headless();
+            app.paste_from(crate::clipboard::ClipboardContent {
+                text: Some(text.into()),
+                image: Some(image::RgbaImage::new(40, 20)),
+                ..Default::default()
+            });
+            assert!(app.lone_selected_table().is_some(), "a table for {text:?}");
+        }
         // A picture with plain text still pastes as the picture.
         let mut app = App::headless();
         app.paste_from(crate::clipboard::ClipboardContent {

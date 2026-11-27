@@ -451,6 +451,7 @@ fn docker_context_menu(app: &mut App, ui: &mut Ui, tab: DockerTab) {
         "docker.stack_below",
         "docker.lock_docker",
         "docker.close_docker",
+        "docker.close_all_dockers",
     ])
     .iter()
     .copied()
@@ -476,6 +477,11 @@ fn docker_context_menu(app: &mut App, ui: &mut Ui, tab: DockerTab) {
             let open = !app.docker_locked(tab);
             if crate::ui::menus::item(ui, key, "", open) {
                 app.close_docker(tab);
+            }
+        } else if key == "docker.close_all_dockers" {
+            // Every open panel at once, the locked ones kept (#4436).
+            if crate::ui::menus::item(ui, key, "", app.open_docker_list().len() > 1) {
+                app.close_all_dockers();
             }
         }
     }
@@ -2472,9 +2478,13 @@ fn properties(app: &mut App, ui: &mut Ui) {
                 // stack (envelope, contour, extrusion, shadows...) first,
                 // each with its eye and Edit as the bitmap effects
                 // under them (#4231).
-                if !first.effect_stack().is_empty() {
+                let shadowed = first.shadow.is_some()
+                    || crate::ui::effects_docker::parked_shadow(&first).is_some();
+                if !first.effect_stack().is_empty() || shadowed {
                     let shape = first.clone();
                     crate::ui::effects_docker::stack_rows(app, ui, &shape);
+                    // The drop shadow as a row of its own there (#4454).
+                    crate::ui::effects_docker::shadow_row(app, ui, &shape);
                     ui.add_space(2.0);
                 }
                 crate::ui::effect_dialog::fx_section(app, ui, id);
@@ -8078,6 +8088,23 @@ pub(crate) mod tests {
 #[cfg(test)]
 mod context_menu_settings_tests {
     use super::*;
+
+    /// Close All in a panel's menu closes every open panel, wherever it
+    /// lies, and keeps a locked one (#4436).
+    #[test]
+    fn close_all_closes_every_open_panel_but_a_locked_one() {
+        let mut app = App::headless();
+        for tab in [DockerTab::Hints, DockerTab::Properties, DockerTab::Objects] {
+            app.open_docker(tab);
+        }
+        app.move_docker(DockerTab::Objects, DockerPlace::Floating, None);
+        app.set_docker_locked(DockerTab::Properties, true);
+        app.close_all_dockers();
+        assert_eq!(app.open_docker_list(), vec![DockerTab::Properties]);
+        app.set_docker_locked(DockerTab::Properties, false);
+        app.close_all_dockers();
+        assert!(app.open_docker_list().is_empty());
+    }
 
     #[test]
     fn hidden_panel_tab_actions_remain_in_the_title_menu() {

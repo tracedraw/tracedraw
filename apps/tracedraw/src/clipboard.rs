@@ -1675,16 +1675,21 @@ impl App {
         // Cells copied in a spreadsheet come with a picture of them too:
         // the cells make a table, which the picture had always won over
         // (#4336).
-        let cells = content
-            .text
-            .as_deref()
-            .is_some_and(crate::table_clipboard::looks_tabular);
+        // With the picture, one row or one column of cells counts too
+        // (cells, each line ended): a spreadsheet offers both, a picture
+        // copied with a caption does not end its lines so (#4422).
+        let with_picture = content.image.is_some();
+        let cells = content.text.as_deref().is_some_and(|t| {
+            crate::table_clipboard::looks_tabular(t)
+                || (with_picture && crate::table_clipboard::spreadsheet_cells(t))
+        });
         if content.is_svg() {
             if let Some(t) = content.text {
                 self.paste_as_svg(&t);
             }
         } else if let (true, Some(t)) = (cells, content.text.as_deref()) {
-            self.paste_as_text_or_table(t);
+            let rows = crate::table_clipboard::parse_tsv(t);
+            self.paste_rows_as_table(&rows);
         } else if let Some(img) = content.image {
             self.paste_as_bitmap(img);
         } else if let Some(t) = content.text {

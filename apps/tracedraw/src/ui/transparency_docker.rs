@@ -534,27 +534,18 @@ pub fn section(app: &mut App, ui: &mut Ui) {
     // layout on one row after its label.
     let classic = crate::ui::dockers::classic_active(ui.ctx());
     let merge_shown = !mixed.contains(&F::Merge);
-    let mut merge_list = |ui: &mut Ui, field: &mut Option<F>| {
-        crate::ui::keynav::ComboBox::from_id_salt("transparency_docker_merge")
-            .selected_text(if merge_shown {
-                set.merge.name().to_string()
-            } else {
-                String::new()
-            })
-            .width(ui.available_width() - 4.0)
-            .show_ui(ui, |ui| {
-                for m in tracedraw_core::live::MergeMode::ALL {
-                    if ui
-                        .selectable_label(merge_shown && set.merge == m, m.name())
-                        .clicked()
-                    {
-                        set.merge = m;
-                        *field = Some(F::Merge);
-                    }
-                }
-            })
-            .response
-            .rich_tip(crate::ui::tips::keyed("transparency.merge_mode"));
+    let mut merge_list = |app: &mut App, ui: &mut Ui, field: &mut Option<F>| {
+        let w = ui.available_width() - 4.0;
+        crate::ui::toolbar::merge_mode_list(
+            app,
+            ui,
+            "transparency_docker_merge",
+            w,
+            &mut set,
+            merge_shown,
+            field,
+        )
+        .rich_tip(crate::ui::tips::keyed("transparency.merge_mode"));
     };
     if classic {
         ui.horizontal(|ui| {
@@ -562,11 +553,11 @@ pub fn section(app: &mut App, ui: &mut Ui) {
                 "{}:",
                 tr("transparency.merge_mode").trim_end_matches(':')
             ));
-            merge_list(ui, &mut field);
+            merge_list(app, ui, &mut field);
         });
     } else {
         dim(ui, tr("transparency.merge_mode"));
-        merge_list(ui, &mut field);
+        merge_list(app, ui, &mut field);
     }
 
     // The type buttons.

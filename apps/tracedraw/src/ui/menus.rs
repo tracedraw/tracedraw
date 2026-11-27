@@ -2004,6 +2004,16 @@ mod tests {
             app.doc().shape_on_page(id).expect("rect again").kind,
             ShapeKind::Rect { .. }
         ));
+        // Add Guidelines keeps the rectangle and adds its four (#4459).
+        app.select(vec![id]);
+        let start = app.page_guides().len();
+        assert!(run(&mut app, "menu.object.add_guidelines"));
+        assert!(app.doc().shape_on_page(id).is_some(), "the object stays");
+        assert_eq!(app.page_guides().len(), start + 4);
+        assert!(run(&mut app, "menu.object.add_guidelines"));
+        assert_eq!(app.page_guides().len(), start + 4, "not added twice");
+        app.undo();
+        assert_eq!(app.page_guides().len(), start);
         // The rectangle becomes four guidelines along its sides.
         app.select(vec![id]);
         let b = app.doc().shape_on_page(id).expect("rect").bounds();
@@ -4689,6 +4699,15 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
         app.can_convert_to_guides(),
     ) {
         app.convert_to_guides();
+    }
+    // The same guidelines, the objects kept (#4459).
+    if item(
+        ui,
+        "menu.object.add_guidelines",
+        "",
+        app.can_convert_to_guides(),
+    ) {
+        app.add_guides_from_selection();
     }
     // A new outline at a typed distance outside or inside the selected
     // objects (#2622).

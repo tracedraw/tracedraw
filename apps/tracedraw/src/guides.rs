@@ -1497,6 +1497,18 @@ impl App {
     /// for a curved one) and is removed, one undo step. Guidelines already
     /// on the page are not added twice.
     pub fn convert_to_guides(&mut self) {
+        self.guides_from_selection(false);
+    }
+
+    /// Add Guidelines (#4459): the guidelines Convert to Guidelines makes
+    /// along each selected object's sides, the objects kept as they are.
+    pub fn add_guides_from_selection(&mut self) {
+        self.guides_from_selection(true);
+    }
+
+    /// Guidelines along the selected objects' sides, one undo step; the
+    /// objects are removed unless `keep`.
+    fn guides_from_selection(&mut self, keep: bool) {
         let shapes: Vec<_> = self
             .selected_shapes()
             .into_iter()
@@ -1531,12 +1543,21 @@ impl App {
                 guide: Guide::from(line),
             }));
         }
-        cmds.push(Command::DeleteShapes { shapes: ids });
-        if let Err(e) = self.engine.run_batch("Convert to Guidelines", &cmds) {
+        if keep {
+            if cmds.is_empty() {
+                return;
+            }
+        } else {
+            cmds.push(Command::DeleteShapes { shapes: ids });
+        }
+        let name = if keep { "Add Guidelines" } else { "Convert to Guidelines" };
+        if let Err(e) = self.engine.run_batch(name, &cmds) {
             self.status = e.to_string();
             return;
         }
-        self.select(Vec::new());
+        if !keep {
+            self.select(Vec::new());
+        }
     }
 }
 

@@ -1102,6 +1102,22 @@ impl App {
         true
     }
 
+    /// The object of a clip frame's contents under `p`, when the topmost
+    /// object there is a clip frame and none of what lies inside it there
+    /// is selected yet (#4470).
+    pub fn clip_content_at(&self, p: Point) -> Option<ShapeId> {
+        let chain = self.hit_chain(p);
+        let top = *chain.first()?;
+        let frame = self.doc().find_shape(top)?;
+        if !matches!(frame.kind, ShapeKind::ClipFrame { .. }) {
+            return None;
+        }
+        if chain[1..].iter().any(|id| self.selection.contains(id)) {
+            return None;
+        }
+        chain.get(1).copied()
+    }
+
     /// Ctrl+click: one group level further in at `p` than what is selected
     /// there (the first level inside the topmost group when nothing of it
     /// is), down to the innermost object.
@@ -2866,6 +2882,15 @@ impl App {
             // topmost one (the hidden object behind the one clicked,
             // #1350); after the bottom one, the top again (with Ctrl
             // among the objects inside groups).
+            // Alt+click on a clip frame: the object of its contents under
+            // the pointer, without editing the frame (#4470); Alt+click
+            // again digs on as below.
+            if mods.alt && !mods.ctrl && !mods.shift {
+                if let Some(id) = self.clip_content_at(p) {
+                    self.select(vec![id]);
+                    return;
+                }
+            }
             if mods.alt {
                 let hits = self.hits_at(p, mods.ctrl);
                 if !hits.is_empty() {
@@ -6038,7 +6063,14 @@ impl App {
         if pressed(Key::F2, Modifiers::SHIFT) {
             self.zoom_to_selection();
         }
-        if pressed(Key::F2, Modifiers::NONE) && self.tool != Tool::Zoom {
+        // Over the Objects panel's list, F2 renames the selected layer or
+        // object there, in place (#4472).
+        let over_objects = self
+            .objects_hover_frame
+            .is_some_and(|f| f + 1 >= ctx.cumulative_frame_nr());
+        if over_objects && pressed(Key::F2, Modifiers::NONE) {
+            crate::ui::objects_docker::rename_selected_in_place(self, ctx);
+        } else if pressed(Key::F2, Modifiers::NONE) && self.tool != Tool::Zoom {
             // One zoom, then back to the tool before (#1039); Z keeps
             // the Zoom tool.
             self.set_tool(Tool::Zoom);

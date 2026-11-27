@@ -1272,6 +1272,9 @@ fn shape_builder_bar(app: &mut App, ui: &mut Ui) {
     // The grid's lines cut them too, its cells are parts (#4390).
     ui.checkbox(&mut app.builder.use_grid, tr("toolbar.builder_grid"))
         .rich_tip(crate::ui::tips::keyed("toolbar.builder_grid"));
+    // The page's edges cut them too, the page is a part (#4458).
+    ui.checkbox(&mut app.builder.use_page, tr("toolbar.builder_page"))
+        .rich_tip(crate::ui::tips::keyed("toolbar.builder_page"));
     // Accept deletes what is left of the objects the merges used (#4123),
     // off by default.
     ui.checkbox(&mut app.builder.remove_leftovers, tr("toolbar.builder_leftovers"))
@@ -2781,6 +2784,78 @@ pub fn transparency_section(app: &mut App, ui: &mut Ui) {
     ui.vertical(|ui| crate::ui::transparency_docker::section(app, ui));
 }
 
+/// The transparency merge mode list (property bar and Properties
+/// docker): pointing at a mode in the open list shows it on the selection
+/// at once, leaving the list unchosen puts the mode back; with the box
+/// focused and the list closed, Up and Down step through the modes and
+/// apply each (#4469). A choice sets `set.merge` and `field`.
+pub(crate) fn merge_mode_list(
+    app: &mut App,
+    ui: &mut Ui,
+    salt: &str,
+    width: f32,
+    set: &mut crate::effects_ui::TransparencySettings,
+    shown: bool,
+    field: &mut Option<crate::mixed::TransparencyField>,
+) -> egui::Response {
+    use tracedraw_core::live::MergeMode;
+    let id = ui.make_persistent_id(salt);
+    let open = egui::ComboBox::is_open(ui.ctx(), id);
+    // The mode in use, not the one previewed.
+    let current = app.live_merge.map_or(set.merge, |(_, saved, _)| saved);
+    if !open && ui.memory(|m| m.has_focus(id)) {
+        let step = ui.input_mut(|i| {
+            if i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown) {
+                1
+            } else if i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp) {
+                -1
+            } else {
+                0
+            }
+        });
+        if step != 0 {
+            let all = MergeMode::ALL;
+            let at = all.iter().position(|m| *m == current).unwrap_or(0) as i32;
+            let to = (at + step).clamp(0, all.len() as i32 - 1) as usize;
+            if all[to] != current || !shown {
+                app.end_merge_preview();
+                set.merge = all[to];
+                *field = Some(crate::mixed::TransparencyField::Merge);
+            }
+        }
+    }
+    let mut pointed = None;
+    let mut chosen = None;
+    let ir = crate::ui::keynav::ComboBox::from_id_salt(salt)
+        .selected_text(if shown {
+            current.name().to_string()
+        } else {
+            String::new()
+        })
+        .width(width)
+        .show_ui(ui, |ui| {
+            for m in MergeMode::ALL {
+                let r = ui.selectable_label(shown && current == m, m.name());
+                if r.hovered() || r.has_focus() {
+                    pointed = Some(m);
+                }
+                if r.clicked() {
+                    chosen = Some(m);
+                }
+            }
+        });
+    if let Some(m) = chosen {
+        app.end_merge_preview();
+        set.merge = m;
+        *field = Some(crate::mixed::TransparencyField::Merge);
+    } else if ir.inner.is_some() {
+        app.preview_merge(id, pointed);
+    } else if app.live_merge.is_some_and(|(_, _, by)| by == id) {
+        app.end_merge_preview();
+    }
+    ir.response
+}
+
 /// What the Transparency part shows: the settings of the first selected
 /// object (the defaults with nothing selected), its kind as
 /// [`crate::mixed::ShapeTransparency::kind`] (`None` when the selection's
@@ -3029,25 +3104,7 @@ fn transparency_controls(app: &mut App, ui: &mut Ui, stacked: bool) {
             .extend(),
         );
         let merge_shown = !mixed.contains(&F::Merge);
-        crate::ui::keynav::ComboBox::from_id_salt("transparency_merge")
-            .selected_text(if merge_shown {
-                set.merge.name().to_string()
-            } else {
-                String::new()
-            })
-            .width(100.0)
-            .show_ui(ui, |ui| {
-                for m in tracedraw_core::live::MergeMode::ALL {
-                    if ui
-                        .selectable_label(merge_shown && set.merge == m, m.name())
-                        .clicked()
-                    {
-                        set.merge = m;
-                        field = Some(F::Merge);
-                    }
-                }
-            })
-            .response
+        merge_mode_list(app, ui, "transparency_merge", 100.0, &mut set, merge_shown, &mut field)
             .rich_tip(crate::ui::tips::keyed("transparency.merge_mode"));
         if !stacked {
             target_list(ui, &mut set, &mut field);
@@ -3083,7 +3140,8 @@ pub(crate) fn text_size_list(app: &mut App, ui: &mut Ui) -> bool {
     // Shown and typed in the text units (points at first, #529); kept in
     // points.
     let u = app.text_units();
-    let mut shown_size = u.from_pt(app.text_size_pt);
+    // With Size by Capital Height, the height of the capitals (#4419).
+    let mut shown_size = u.from_pt(app.shown_text_size_pt(app.text_size_pt));
     let mut picked: Option<f64> = None;
     let ctx = ui.ctx().clone();
     let popup_id = ui.make_persistent_id("text_size_list");
@@ -3125,7 +3183,7 @@ pub(crate) fn text_size_list(app: &mut App, ui: &mut Ui) -> bool {
         })
     });
     let (field, anchor) = inner.inner;
-    let size = u.to_pt(shown_size);
+    let size = app.text_size_from_shown_pt(u.to_pt(shown_size));
     let current = app.text_settings_shown().3;
     // The size last under the pointer while the list is open: the text
     // shows it (#370).
@@ -3143,7 +3201,12 @@ pub(crate) fn text_size_list(app: &mut App, ui: &mut Ui) -> bool {
                     for s in TEXT_SIZES {
                         let label = format!(
                             "{} {}",
-                            crate::ui::field::format_number(u.from_pt(s), false, 0, Some(2)),
+                            crate::ui::field::format_number(
+                                u.from_pt(app.shown_text_size_pt(s)),
+                                false,
+                                0,
+                                Some(2)
+                            ),
                             u.short()
                         );
                         let r = ui.selectable_label((current - s).abs() < 1e-6, label);

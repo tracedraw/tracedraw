@@ -205,6 +205,8 @@ fn exact(key: &str) -> Option<Src> {
         "math.mode_figure" => Src::Tool(Tool::Polygon),
         "shapegen.wrap" => Src::Pic(Pic::Combine),
         "docker.apply" => Src::B(B::Check),
+        "docker.style_keep_for_all" => Src::B(B::Star),
+        "docker.style_add_all" | "docker.style_add_to_drawing" => Src::B(B::Plus),
         "hint.drop_ask_import" => Src::Action(Action::Import),
         "hint.drop_ask_open" => Src::Action(Action::Open),
         "dialog.table_shapes_file" => Src::B(B::Csv),

@@ -2557,6 +2557,17 @@ fn text_display_tab(app: &mut App, ui: &mut Ui) {
                 });
         });
         ui.end_row();
+        // Font sizes as the height of the capitals, for sign work (#4419).
+        row_label(ui, "");
+        ui.checkbox(
+            &mut app.settings.text_size_by_caps,
+            tr("options.text_size_by_caps"),
+        )
+        .rich_tip(crate::ui::tips::pair(
+            "options.text_size_by_caps",
+            "options.text_size_by_caps_tip",
+        ));
+        ui.end_row();
         row_label(ui, &tr("options.default_font"));
         crate::ui::tips::tip_over(
             ui,

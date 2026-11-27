@@ -55,7 +55,7 @@ impl App {
             return None;
         }
         self.last_formula = Some(st.spec.clone());
-        let laid_path = page_curve(&laid.path);
+        let laid_path = fewer_nodes(&page_curve(&laid.path));
         let data = vec![(formula::DATA_KEY.to_string(), st.spec.to_data())];
         if let Some(id) = st.editing {
             let old = self.doc().find_shape(id)?.clone();
@@ -112,6 +112,18 @@ impl App {
         self.select(vec![id]);
         Some(id)
     }
+}
+
+/// The formula's curve with the nodes it does not need taken out: the
+/// letters' outlines come with many short pieces, and the curve stays
+/// within a two-thousandth of the formula's height of where it was
+/// (#4453).
+fn fewer_nodes(path: &tracedraw_core::BezPath) -> tracedraw_core::BezPath {
+    let h = tracedraw_core::geometry::Shape::bounding_box(path).height();
+    if !(h.is_finite() && h > 0.0) {
+        return path.clone();
+    }
+    tracedraw_core::nodes::reduce_nodes(path, h * 0.002)
 }
 
 /// The laid-out curve for the page, which has Y up. The layout is Y down,
@@ -270,6 +282,31 @@ pub fn dialog(app: &mut App, ctx: &Context, st: &mut FormulaState, close: &mut b
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #4453: the inserted formula keeps fewer nodes than the letters'
+    /// outlines bring, its size unchanged, and the Pick tool marks none.
+    #[test]
+    fn a_formula_has_fewer_nodes_and_no_pick_marks() {
+        let mut app = App::headless();
+        let spec = FormulaSpec {
+            source: r"x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}".into(),
+            ..Default::default()
+        };
+        let raw = page_curve(&formula::layout(&spec).path);
+        let fewer = fewer_nodes(&raw);
+        let count = |p: &tracedraw_core::BezPath| tracedraw_core::nodes::nodes(p).len();
+        assert!(count(&fewer) < count(&raw), "{} -> {}", count(&raw), count(&fewer));
+        let (a, b) = (
+            tracedraw_core::geometry::Shape::bounding_box(&raw),
+            tracedraw_core::geometry::Shape::bounding_box(&fewer),
+        );
+        assert!((a.width() - b.width()).abs() < a.height() * 0.01);
+        let id = app
+            .apply_formula(&FormulaState { spec, editing: None })
+            .expect("inserted");
+        let s = app.doc().find_shape(id).unwrap().clone();
+        assert!(crate::canvas::pick_node_marks_every(&[s]).is_empty());
+    }
 
     #[test]
     fn a_formula_is_inserted_as_a_curve_and_edited_again() {

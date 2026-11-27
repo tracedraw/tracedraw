@@ -168,6 +168,7 @@ macro_rules! object_items {
             "menu.object.convert_to_curves",
             "menu.object.convert_outline_to_object",
             "menu.object.convert_to_guidelines",
+            "menu.object.add_guidelines",
             "menu.object.break_apart",
             "menu.object.break_contour_apart",
             "menu.object.break_blend_apart",
@@ -691,6 +692,9 @@ pub(crate) const CATALOG: &[MenuDefinition] = &[
             "drop.copy_fill_here",
             "drop.copy_outline_here",
             "drop.copy_all_properties",
+            "drop.copy_size_here",
+            "drop.copy_width_here",
+            "drop.copy_height_here",
             "drop.place_inside",
             "drop.cancel",
         ],
@@ -706,6 +710,7 @@ const DOCKER_ITEMS: &[&str] = &[
     "docker.stack_below",
     "docker.lock_docker",
     "docker.close_docker",
+    "docker.close_all_dockers",
 ];
 
 #[cfg(test)]

@@ -39,6 +39,10 @@ pub struct Builder {
     /// lines cut the objects into parts as guidelines do, and its cells
     /// are parts of their own (#4390).
     pub use_grid: bool,
+    /// The property bar's Use Page, off by default: the page's edges cut
+    /// the objects into parts as guidelines do, and the page is a part
+    /// of its own with nothing selected (#4458).
+    pub use_page: bool,
     /// Alt was held during the drag (not only the Delete mode): a drag
     /// over lines deletes their segments (#4079).
     pub alt: bool,
@@ -57,7 +61,7 @@ pub struct Builder {
 }
 
 struct Hover {
-    key: (u64, Vec<ShapeId>, bool, bool),
+    key: (u64, Vec<ShapeId>, bool, bool, bool),
     part: BezPath,
 }
 
@@ -377,6 +381,16 @@ impl App {
         if self.builder.use_grid {
             lines.extend(self.builder_grid_lines());
         }
+        if self.builder.use_page {
+            use tracedraw_core::document::GuideLine;
+            let r = self.page_rect();
+            lines.extend([
+                GuideLine::Vertical { x: r.x0 },
+                GuideLine::Vertical { x: r.x1 },
+                GuideLine::Horizontal { y: r.y0 },
+                GuideLine::Horizontal { y: r.y1 },
+            ]);
+        }
         lines
     }
 
@@ -446,6 +460,7 @@ impl App {
             self.selection.clone(),
             self.builder.use_guides,
             self.builder.use_grid,
+            self.builder.use_page,
         );
         if let Some(h) = self.builder.hover.borrow().as_ref() {
             if h.key == key && inside(&h.part, p) {
@@ -1633,6 +1648,38 @@ mod tests {
         let q = Point::new(o.x + 5.5 * g.spacing_x, o.y - 5.5 * g.spacing_y);
         let room = app.builder_part_at(q).expect("a grid cell");
         assert!((area(&room) - g.spacing_x * g.spacing_y).abs() < 1e-6, "{}", area(&room));
+    }
+
+    /// #4458: with Use Page on, the page's edges cut an object running
+    /// off the page, and with nothing selected the page is a part; with
+    /// guidelines on too, they cut the page.
+    #[test]
+    fn use_page_cuts_by_the_page_edges() {
+        use tracedraw_core::document::GuideLine;
+        let mut app = App::headless();
+        let r = app.page_rect();
+        let a = square(&mut app, r.x1 - 10.0, r.y0 + 10.0, r.x1 + 10.0, r.y0 + 30.0);
+        app.select(vec![a]);
+        app.set_tool(Tool::ShapeBuilder);
+        let on_page = Point::new(r.x1 - 5.0, r.y0 + 20.0);
+        let whole = app.builder_part_at(on_page).expect("the square");
+        assert!((area(&whole) - 400.0).abs() < 1e-6);
+        app.builder.use_page = true;
+        let inside = app.builder_part_at(on_page).expect("its part on the page");
+        assert!((area(&inside) - 200.0).abs() < 1e-6, "{}", area(&inside));
+        app.selection.clear();
+        let page = app.builder_part_at(r.center()).expect("the page");
+        assert!((area(&page) - r.area()).abs() < 1e-3);
+        let page_id = app.page;
+        app.run(Command::AddGuide {
+            page: page_id,
+            guide: GuideLine::Vertical { x: r.center().x }.into(),
+        });
+        app.builder.use_guides = true;
+        let half = app
+            .builder_part_at(Point::new(r.x0 + 1.0, r.center().y))
+            .expect("half the page");
+        assert!((area(&half) - r.area() / 2.0).abs() < 1e-3, "{}", area(&half));
     }
 
     /// With Use Guidelines on and an object still selected, a room of

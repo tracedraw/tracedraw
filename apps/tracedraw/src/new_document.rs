@@ -574,6 +574,7 @@ pub fn create(app: &mut App, st: &NewDocState) {
     });
     doc.cmyk_profile = cmyk_profile_file(&st.settings.cmyk_profile, &found);
     app.settings.document_defaults.apply(&mut doc);
+    crate::styles::start_with_library(&mut doc, &app.settings.object_style_library);
     // The name shown was the next Untitled-N: use it up.
     app.untitled_counter += 1;
     app.open_document(doc, None);

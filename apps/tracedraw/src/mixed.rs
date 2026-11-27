@@ -502,6 +502,39 @@ impl App {
             .collect()
     }
 
+    /// Show the selection's transparency in merge mode `want` while a
+    /// list points at it, as a preview the history does not keep
+    /// (#4469); `None` shows it as it is.
+    pub fn preview_merge(&mut self, owner: egui::Id, want: Option<tracedraw_core::live::MergeMode>) {
+        if self.live_merge.map(|(shown, _, by)| (shown, by)) == want.map(|m| (m, owner)) {
+            return;
+        }
+        if want.is_none() && self.live_merge.is_some_and(|(_, _, by)| by != owner) {
+            return;
+        }
+        self.end_merge_preview();
+        let Some(m) = want else {
+            return;
+        };
+        let (mut set, _, mixed, has) = crate::ui::toolbar::transparency_state(self);
+        if !has || (set.merge == m && !mixed.contains(&TransparencyField::Merge)) {
+            return;
+        }
+        let saved = set.merge;
+        self.engine.begin_preview();
+        set.merge = m;
+        self.patch_transparency(&set, &[TransparencyField::Merge]);
+        self.live_merge = Some((m, saved, owner));
+    }
+
+    /// End a merge mode preview: the selection as it was, the history
+    /// untouched.
+    pub fn end_merge_preview(&mut self) {
+        if self.live_merge.take().is_some() {
+            self.engine.withdraw_preview();
+        }
+    }
+
     /// Set the transparency `fields` from `settings` on every selected
     /// object, each keeping its other transparency settings (one undo
     /// step; a run of slider changes stays one step).
@@ -1008,6 +1041,37 @@ mod tests {
         });
         let mix = app.selection_fill_mix();
         assert!(!mix.kind && mix.has(FillField::All));
+    }
+
+    /// Pointing at a merge mode in the list shows it on the selection
+    /// without a step in the history; pointing away, or the list closing,
+    /// puts the mode back (#4469).
+    #[test]
+    fn a_merge_mode_previews_without_a_history_step() {
+        let mut app = App::headless();
+        let (a, _b) = two_rects(&mut app);
+        app.select(vec![a]);
+        app.run(Command::SetEffects {
+            shape: a,
+            effects: vec![Effect::Transparency {
+                mask: Fill::Solid(Color::BLACK),
+                merge: MergeMode::Normal,
+                target: 0,
+            }],
+        });
+        let steps = app.engine.undo_label();
+        let list = egui::Id::new("list");
+        app.preview_merge(list, Some(MergeMode::Multiply));
+        assert_eq!(app.selection_transparency()[0].merge, MergeMode::Multiply);
+        app.preview_merge(list, Some(MergeMode::Add));
+        assert_eq!(app.selection_transparency()[0].merge, MergeMode::Add);
+        // Another list closing leaves this preview alone.
+        app.preview_merge(egui::Id::new("other"), None);
+        assert_eq!(app.selection_transparency()[0].merge, MergeMode::Add);
+        app.preview_merge(list, None);
+        assert_eq!(app.selection_transparency()[0].merge, MergeMode::Normal);
+        assert_eq!(app.engine.undo_label(), steps, "no step");
+        assert!(!app.engine.in_preview());
     }
 
     #[test]

@@ -8,6 +8,73 @@ use crate::i18n::{tr, trf};
 use std::collections::HashMap;
 use tracedraw_core::{document::ShapeKind, Command, Document, ObjectStyle, Shape};
 
+/// A new drawing starts with the styles kept for every drawing (#4416),
+/// each with an id of its own; one that has styles keeps them.
+pub fn start_with_library(doc: &mut Document, library: &[ObjectStyle]) {
+    if !doc.object_styles.is_empty() || library.is_empty() {
+        return;
+    }
+    doc.object_styles = with_ids(
+        library
+            .iter()
+            .cloned()
+            .map(|mut st| {
+                st.id = 0;
+                st
+            })
+            .collect(),
+    );
+}
+
+impl App {
+    /// Keep the drawing's style `i` for every drawing (#4416): added to
+    /// the library, or replacing the one of the same name there.
+    pub fn keep_style_for_all(&mut self, i: usize) {
+        let Some(mut st) = self.doc().object_styles.get(i).cloned() else {
+            return;
+        };
+        st.id = 0;
+        let name = st.name.clone();
+        let lib = &mut self.settings.object_style_library;
+        match lib.iter_mut().find(|s| s.name == st.name) {
+            Some(old) => *old = st,
+            None => lib.push(st),
+        }
+        self.status = trf("docker.style_kept_for_all", &[("name", &name)]);
+    }
+
+    /// The library styles this drawing has no style of the same name for.
+    pub fn library_styles_missing(&self) -> Vec<usize> {
+        let doc = self.doc();
+        self.settings
+            .object_style_library
+            .iter()
+            .enumerate()
+            .filter(|(_, st)| !doc.object_styles.iter().any(|d| d.name == st.name))
+            .map(|(i, _)| i)
+            .collect()
+    }
+
+    /// Add the library styles `which` to this drawing, one undo step.
+    pub fn add_library_styles(&mut self, which: &[usize]) {
+        let mut styles = self.doc().object_styles.clone();
+        for &i in which {
+            if let Some(mut st) = self.settings.object_style_library.get(i).cloned() {
+                if styles.iter().any(|d| d.name == st.name) {
+                    continue;
+                }
+                st.id = 0;
+                styles.push(st);
+            }
+        }
+        if styles.len() != self.doc().object_styles.len() {
+            self.run(Command::SetObjectStyles {
+                styles: with_ids(styles),
+            });
+        }
+    }
+}
+
 /// `styles` with a free id for each style that has none, as the engine
 /// gives them.
 pub fn with_ids(mut styles: Vec<ObjectStyle>) -> Vec<ObjectStyle> {
@@ -155,6 +222,38 @@ impl App {
 mod tests {
     use super::*;
     use tracedraw_core::{geometry::Rect, Color, Fill};
+
+    #[test]
+    fn a_style_kept_for_all_drawings_comes_with_new_ones() {
+        let mut app = App::headless();
+        let a = app
+            .new_shape(ShapeKind::Rect {
+                rect: Rect::new(0.0, 0.0, 10.0, 10.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("shape");
+        app.select(vec![a]);
+        app.apply_fill(Fill::Solid(Color::rgb8(255, 0, 0)));
+        app.new_style_from_selection();
+        app.keep_style_for_all(0);
+        assert_eq!(app.settings.object_style_library.len(), 1);
+        assert_eq!(app.settings.object_style_library[0].id, 0);
+        // A new drawing starts with it, numbered.
+        let mut doc = Document::default();
+        start_with_library(&mut doc, &app.settings.object_style_library);
+        assert_eq!(doc.object_styles.len(), 1);
+        assert_eq!(doc.object_styles[0].id, 1);
+        // A drawing without it can add it, once.
+        app.open_document(Document::default(), None);
+        assert_eq!(app.library_styles_missing(), vec![0]);
+        app.add_library_styles(&[0]);
+        assert!(app.library_styles_missing().is_empty());
+        assert_eq!(app.doc().object_styles.len(), 1);
+        assert_ne!(app.doc().object_styles[0].id, 0);
+        app.add_library_styles(&[0]);
+        assert_eq!(app.doc().object_styles.len(), 1);
+    }
 
     #[test]
     fn a_style_from_the_selection_links_it_and_follows_edits() {

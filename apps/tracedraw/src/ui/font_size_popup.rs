@@ -39,7 +39,8 @@ pub fn open(app: &App, ctx: &Context) {
     }
     let u = app.text_units();
     let size = app.text_settings_shown().3;
-    let text = crate::ui::field::format_number(u.from_pt(size), false, 0, Some(2));
+    let text =
+        crate::ui::field::format_number(u.from_pt(app.shown_text_size_pt(size)), false, 0, Some(2));
     ctx.data_mut(|d| d.insert_temp(state_id(), BoxState { text, fresh: true }));
 }
 
@@ -54,7 +55,9 @@ fn close(app: &mut App, ctx: &Context) {
 pub fn typed_pt(app: &App, text: &str) -> Option<f64> {
     let v: f64 = text.trim().replace(',', ".").parse().ok()?;
     // To a thousandth of a point: 24 typed is 24, not 23.999...
-    let pt = (app.text_units().to_pt(v) * 1000.0).round() / 1000.0;
+    // With Size by Capital Height, the height typed is the capitals'
+    // (#4419).
+    let pt = (app.text_size_from_shown_pt(app.text_units().to_pt(v)) * 1000.0).round() / 1000.0;
     (pt.is_finite() && (1.0..=3000.0).contains(&pt)).then_some(pt)
 }
 
@@ -121,7 +124,7 @@ pub fn show(app: &mut App, ctx: &Context) {
                             .show_ui(ui, |ui| {
                                 for s in crate::ui::toolbar::TEXT_SIZES {
                                     let label = crate::ui::field::format_number(
-                                        u.from_pt(s),
+                                        u.from_pt(app.shown_text_size_pt(s)),
                                         false,
                                         0,
                                         Some(2),

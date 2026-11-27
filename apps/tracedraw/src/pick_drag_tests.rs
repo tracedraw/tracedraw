@@ -7731,6 +7731,30 @@ fn ctrl_click_on_a_clip_frame_edits_its_contents() {
     assert_eq!(app.selection, vec![a]);
 }
 
+/// Alt+click on a clip frame selects the object of its contents under the
+/// pointer, without editing the frame; it moves there, still inside;
+/// another Alt+click digs on (#4470).
+#[test]
+fn alt_click_on_a_clip_frame_selects_its_content() {
+    let (ctx, mut app, first) = setup();
+    app.select(vec![first]);
+    app.delete_selection();
+    let (rect, text) = text_and_frame(&mut app, true, false);
+    app.place_inside(vec![text], rect);
+    let clip = app.doc().top_level_of(text).expect("clip frame");
+    let inside = app.view.to_screen(text_middle(&app, text));
+    click_at(&ctx, &mut app, inside, Modifiers::ALT);
+    assert_eq!(app.selection, vec![text]);
+    assert!(app.clip_frame_edit.is_none(), "not edited");
+    assert_eq!(app.doc().top_level_of(text), Some(clip), "still inside");
+    let before = text_middle(&app, text);
+    app.transform_selection(tracedraw_core::geometry::Affine::translate((2.0, 0.0)));
+    assert!((text_middle(&app, text).x - before.x - 2.0).abs() < 1e-6, "moved in place");
+    assert_eq!(app.doc().top_level_of(text), Some(clip));
+    click_at(&ctx, &mut app, inside, Modifiers::ALT);
+    assert_ne!(app.selection, vec![text], "digs on");
+}
+
 /// A double click on a clip frame brings it into focus with the content
 /// under the pointer selected; there a click picks a content and a
 /// double click on a text edits it in place, inside the frame (#2157).

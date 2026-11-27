@@ -244,11 +244,13 @@ fn effect_stack(app: &mut App, ui: &mut Ui) {
         ui.label(egui::RichText::new(tr("effects.select_hint")).color(Tokens::text_dim()));
         return;
     };
-    if shape.effect_stack().is_empty() {
+    let shadowed = shape.shadow.is_some() || parked_shadow(&shape).is_some();
+    if shape.effect_stack().is_empty() && !shadowed {
         ui.label(egui::RichText::new(tr("effects.none")).color(Tokens::text_dim()));
         return;
     }
     stack_rows(app, ui, &shape);
+    shadow_row(app, ui, &shape);
     ui.add_space(4.0);
     ui.label(egui::RichText::new(tr("effects.order_hint")).color(Tokens::text_dim()));
 }
@@ -279,6 +281,135 @@ pub fn edit_docker(e: &Effect) -> crate::app::DockerTab {
         Effect::Bevel { .. } => D::Bevel,
         Effect::Lens(_) => D::Lens,
         _ => D::Effects,
+    }
+}
+
+/// Where a hidden drop shadow is kept (#4454): in the object's own data,
+/// so it comes back as it was, and saved with the drawing.
+pub const PARKED_SHADOW_KEY: &str = "tracedraw.parked_shadow";
+
+/// The drop shadow switched off on `shape` with its eye, if any.
+pub fn parked_shadow(shape: &Shape) -> Option<tracedraw_core::document::Shadow> {
+    shape
+        .data
+        .iter()
+        .find(|(k, _)| k == PARKED_SHADOW_KEY)
+        .and_then(|(_, v)| serde_json::from_str(v).ok())
+}
+
+impl App {
+    /// Switch `shape`'s drop shadow off (kept in its data, not drawn) or
+    /// back on, one undo step (#4454).
+    pub fn set_shadow_shown(&mut self, shape: &Shape, on: bool) {
+        let mut data: Vec<(String, String)> = shape
+            .data
+            .iter()
+            .filter(|(k, _)| k != PARKED_SHADOW_KEY)
+            .cloned()
+            .collect();
+        let cmds = if on {
+            let Some(sh) = parked_shadow(shape) else {
+                return;
+            };
+            vec![
+                Command::SetShadow {
+                    shapes: vec![shape.id],
+                    shadow: Some(sh),
+                },
+                Command::SetObjectData { shape: shape.id, data },
+            ]
+        } else {
+            let Some(sh) = shape.shadow else {
+                return;
+            };
+            let Ok(json) = serde_json::to_string(&sh) else {
+                return;
+            };
+            data.push((PARKED_SHADOW_KEY.to_string(), json));
+            vec![
+                Command::SetShadow {
+                    shapes: vec![shape.id],
+                    shadow: None,
+                },
+                Command::SetObjectData { shape: shape.id, data },
+            ]
+        };
+        if let Err(e) = self.engine.run_batch("Show or Hide Shadow", &cmds) {
+            self.status = e.to_string();
+        }
+    }
+
+    /// Take `shape`'s drop shadow away, a hidden one too, one undo step.
+    pub fn remove_shadow_of(&mut self, shape: &Shape) {
+        let data: Vec<(String, String)> = shape
+            .data
+            .iter()
+            .filter(|(k, _)| k != PARKED_SHADOW_KEY)
+            .cloned()
+            .collect();
+        let mut cmds = vec![Command::SetShadow {
+            shapes: vec![shape.id],
+            shadow: None,
+        }];
+        if data.len() != shape.data.len() {
+            cmds.push(Command::SetObjectData { shape: shape.id, data });
+        }
+        if let Err(e) = self.engine.run_batch("Remove Shadow", &cmds) {
+            self.status = e.to_string();
+        }
+    }
+}
+
+/// The drop shadow's row, under the effect rows and like them (#4454):
+/// its eye, its name, Edit (the Drop Shadow tool on it) and remove. It is
+/// always drawn under the object, below every effect, so it has no place
+/// to move up or down to.
+pub fn shadow_row(app: &mut App, ui: &mut Ui, shape: &Shape) {
+    let parked = parked_shadow(shape);
+    let on = shape.shadow.is_some();
+    if !on && parked.is_none() {
+        return;
+    }
+    let mut toggle = false;
+    let mut edit = false;
+    let mut remove = false;
+    ui.horizontal(|ui| {
+        if eye_button(ui, on)
+            .rich_tip(crate::ui::tips::pair("docker.show_hide_effect", "effects.toggle"))
+            .clicked()
+        {
+            toggle = true;
+        }
+        let name = egui::RichText::new(tr("toolbar.drop_shadow"));
+        ui.label(if on { name } else { name.color(Tokens::text_dim()) });
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if ui
+                .small_button("\u{00D7}")
+                .rich_tip(tr("effects.remove"))
+                .clicked()
+            {
+                remove = true;
+            }
+            ui.add_enabled(false, egui::Button::new("\u{23F7}").small())
+                .on_disabled_hover_text(tr("effects.shadow_stays_below"));
+            ui.add_enabled(false, egui::Button::new("\u{23F6}").small())
+                .on_disabled_hover_text(tr("effects.shadow_stays_below"));
+            if ui
+                .add_enabled(on, egui::Button::new("\u{270F}").small())
+                .rich_tip(crate::ui::tips::pair("docker.edit_effect", "effects.edit_desc"))
+                .clicked()
+            {
+                edit = true;
+            }
+        });
+    });
+    if toggle {
+        app.set_shadow_shown(shape, !on);
+    } else if remove {
+        app.remove_shadow_of(shape);
+    } else if edit {
+        app.select(vec![shape.id]);
+        app.edit_shadow();
     }
 }
 
@@ -437,6 +568,45 @@ impl App {
 
 #[cfg(test)]
 mod tests {
+
+    /// The drop shadow's row (#4454): its eye switches it off, kept in the
+    /// object, and on again as it was; remove takes it, a hidden one too.
+    #[test]
+    fn the_drop_shadow_hides_and_comes_back() {
+        use tracedraw_core::document::Shadow;
+        let mut app = App::headless();
+        let id = app
+            .new_shape(tracedraw_core::ShapeKind::Rect {
+                rect: tracedraw_core::Rect::new(0.0, 0.0, 10.0, 10.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        let sh = Shadow {
+            offset: tracedraw_core::geometry::Vec2::new(2.0, -2.0),
+            opacity: 0.5,
+            blur: 1.0,
+            color: tracedraw_core::Color::BLACK,
+            merge: Default::default(),
+            feather_direction: Default::default(),
+            feather_edges: Default::default(),
+            perspective: None,
+        };
+        app.run(Command::SetShadow { shapes: vec![id], shadow: Some(sh) });
+        let shape = |app: &App| app.doc().find_shape(id).unwrap().clone();
+        app.set_shadow_shown(&shape(&app), false);
+        assert!(shape(&app).shadow.is_none());
+        assert_eq!(parked_shadow(&shape(&app)), Some(sh));
+        app.set_shadow_shown(&shape(&app), true);
+        assert_eq!(shape(&app).shadow, Some(sh));
+        assert!(parked_shadow(&shape(&app)).is_none());
+        app.set_shadow_shown(&shape(&app), false);
+        app.remove_shadow_of(&shape(&app));
+        assert!(shape(&app).shadow.is_none() && parked_shadow(&shape(&app)).is_none());
+        app.undo();
+        assert_eq!(parked_shadow(&shape(&app)), Some(sh), "undo brings it back hidden");
+    }
+
     use super::*;
     use tracedraw_core::geometry::{Point, Rect, Vec2};
     use tracedraw_core::{Color, ShapeKind};

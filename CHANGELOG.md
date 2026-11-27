@@ -6,6 +6,18 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Paste: one row or one column of spreadsheet cells copied together with their picture pastes as a table (#4422).
+- Panels: a panel's menu has Close All Panels, which closes every open panel wherever it lies and keeps the locked ones (#4436).
+- Drag with the right button onto an object: Copy Size Here, Copy Width Here and Copy Height Here stretch that object to the selection's size about its own centre (#4448).
+- Object menu: Add Guidelines places guidelines along the selected objects' sides and keeps the objects (#4459).
+- Transparency: pointing at a merge mode in the list shows it on the selection at once, without a step in the history; with the list closed, Up and Down step through the modes (#4469).
+- Alt+click on a clip frame selects the object of its contents under the pointer without editing the frame, so it can be moved or changed in place (#4470).
+- Objects panel: a double-click or F2 renames a layer or object in place, the old name selected so typing replaces it; the Rename windows also open with the name selected (#4472).
+- Options > Text: Size by capital height shows and takes font sizes as the height of the capital letters, as sign makers measure them; sizes are still kept in points (#4419).
+- Formulas are inserted with fewer nodes, and the Pick tool no longer covers them with node marks (#4453).
+- Effects and Properties panels: the drop shadow has a row of its own with an eye to hide it and bring it back as it was, Edit and remove (#4454).
+- Shape Builder: Use Page lets the page's edges cut the objects into parts, and with nothing selected the page itself is a part (#4458).
+- Object Styles: a style can be kept for all drawings; new drawings start with those styles and any drawing can add them from the panel (#4416).
 - TraceCut Shape Nesting: a stock of several sheet sizes, each with how many there are, and Smallest sheet that fits, which changes each sheet for the smallest size that still holds its objects; both nesting tools nest copies of each object, can put each sheet on a new page of its size ready to print or export as PDF, add a bleed, cut lines and crop marks round each object, and give the share of each sheet used (#4460).
 - Toolbox "+" menu (quick customize) reorganized: a section per flyout with a check box, picture and name, then a row per tool with its own check box, picture, name and shortcut, so single tools can be left out of a flyout (the last one stays); no more long comma lists that wrapped, the list scrolls and Reset / Customize... stay below it. The Outline flyout stays unticked at first, as the toolbox hides it until it is ticked.
 - Shape Builder: with Use Guidelines on, a place off the objects that two or more guidelines close in together with an object's edge is a part (#4456).

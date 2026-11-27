@@ -70,6 +70,10 @@ struct Actions {
     rename_layer: Option<(LayerId, String)>,
     rename_object: Option<(ShapeId, String)>,
     rename_page: Option<String>,
+    /// A double-click on a row: its name becomes an edit box (#4472).
+    inline_rename: Option<(RenameTarget, String)>,
+    /// The name typed in place and confirmed (Enter, or a click away).
+    inline_done: Option<(RenameTarget, String)>,
     delete_layer: Option<LayerId>,
     reorder: Option<(LayerId, usize)>,
     /// Each object row drawn and where, and each layer row
@@ -645,6 +649,9 @@ pub fn objects_docker(app: &mut App, ui: &mut Ui) {
             ui.set_width(ui.available_width());
             objects(app, ui);
         });
+    if ui.rect_contains_pointer(out.inner_rect) {
+        app.objects_hover_frame = Some(ui.ctx().cumulative_frame_nr());
+    }
     // Ctrl+wheel over the list makes the thumbnails larger or smaller, a
     // step a notch on the desktop and in the browser alike (#1406).
     if let Some(steps) =
@@ -1069,13 +1076,22 @@ fn layer_rows(
     } else {
         Tokens::text_dim()
     };
-    let name = ui.painter().text(
-        Pos2::new(x, rect.center().y),
-        egui::Align2::LEFT_CENTER,
-        &layer.name,
-        font,
-        color,
+    // Renamed in place: an edit box over the name (#4472).
+    let field = Rect::from_min_max(
+        Pos2::new(x - 2.0, rect.top() + 1.0),
+        Pos2::new((rect.right() - 64.0).max(x + 40.0), rect.bottom() - 1.0),
     );
+    let name = if inline_field(ui, field, RenameTarget::Layer(layer.id), act) {
+        field
+    } else {
+        ui.painter().text(
+            Pos2::new(x, rect.center().y),
+            egui::Align2::LEFT_CENTER,
+            &layer.name,
+            font,
+            color,
+        )
+    };
     // A master layer's pages and, when it is drawn over the page's own
     // layers, "In front" (it is listed under them all the same, #1132).
     let mut notes = Vec::new();
@@ -1103,7 +1119,7 @@ fn layer_rows(
     // A layer of another page: that page comes first.
     let elsewhere = at.page.filter(|p| *p != app.page);
     if resp.double_clicked() {
-        act.rename_layer = Some((layer.id, layer.name.clone()));
+        act.inline_rename = Some((RenameTarget::Layer(layer.id), layer.name.clone()));
     } else if resp.clicked() {
         act.goto = elsewhere;
         act.pick = Some(layer.id);
@@ -1532,6 +1548,143 @@ fn spread_borrowed(
         .map(|a| a.shape)
         .collect();
     (away, here)
+}
+
+/// A layer or an object row whose name is edited in place (#4472).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RenameTarget {
+    Layer(LayerId),
+    Object(ShapeId),
+}
+
+/// The name being edited in place: what, the text so far, and the frame
+/// the editing started (the box takes the focus with the name selected).
+#[derive(Debug, Clone)]
+struct InlineRename {
+    target: RenameTarget,
+    text: String,
+    fresh: bool,
+}
+
+fn inline_rename_id() -> egui::Id {
+    egui::Id::new("objects_inline_rename")
+}
+
+/// Start editing `target`'s name in place, `name` in the box, selected.
+pub(crate) fn start_inline_rename(ctx: &egui::Context, target: RenameTarget, name: String) {
+    ctx.data_mut(|d| {
+        d.insert_temp(
+            inline_rename_id(),
+            InlineRename {
+                target,
+                text: name,
+                fresh: true,
+            },
+        )
+    });
+}
+
+/// The row being renamed in place, if any.
+pub(crate) fn inline_rename_target(ctx: &egui::Context) -> Option<RenameTarget> {
+    ctx.data(|d| d.get_temp::<InlineRename>(inline_rename_id()))
+        .map(|r| r.target)
+}
+
+/// F2 over the list: the one selected object (or else the active layer)
+/// is renamed in place (#4472).
+pub fn rename_selected_in_place(app: &mut App, ctx: &egui::Context) {
+    let doc = app.doc();
+    let target = match app.selection.as_slice() {
+        [id] => doc.find_shape(*id).map(|s| {
+            (
+                RenameTarget::Object(s.id),
+                s.name.clone().unwrap_or_else(|| object_label(s)),
+            )
+        }),
+        [] => app.active_layer().and_then(|l| {
+            doc.all_layers()
+                .find(|layer| layer.id == l)
+                .map(|layer| (RenameTarget::Layer(l), layer.name.clone()))
+        }),
+        _ => None,
+    };
+    if let Some((target, name)) = target {
+        start_inline_rename(ctx, target, name);
+    }
+}
+
+/// Give `target` the name `name`: a layer's as typed (when not empty), an
+/// object's trimmed, an empty one clearing it back to its kind.
+pub(crate) fn rename_target(app: &mut App, target: RenameTarget, name: &str) {
+    match target {
+        RenameTarget::Layer(layer) => {
+            let same = app
+                .doc()
+                .all_layers()
+                .any(|l| l.id == layer && l.name == name);
+            if !name.trim().is_empty() && !same {
+                app.run(Command::RenameLayer {
+                    layer,
+                    name: name.to_string(),
+                });
+            }
+        }
+        RenameTarget::Object(shape) => {
+            let trimmed = name.trim();
+            let name = (!trimmed.is_empty()).then(|| trimmed.to_string());
+            let same = app.doc().find_shape(shape).is_some_and(|s| s.name == name);
+            if !same {
+                app.run(Command::SetShapeName { shape, name });
+            }
+        }
+    }
+}
+
+/// The in-place name box of `target` over `rect`, when that row is being
+/// renamed: Enter or a click elsewhere confirms (into `act`), Esc
+/// cancels. False when the row is not being renamed.
+fn inline_field(ui: &mut Ui, rect: Rect, target: RenameTarget, act: &mut Actions) -> bool {
+    let id = inline_rename_id();
+    let Some(mut st) = ui.data(|d| d.get_temp::<InlineRename>(id)) else {
+        return false;
+    };
+    if st.target != target {
+        return false;
+    }
+    let edit_id = id.with("edit");
+    let out = ui
+        .scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
+            egui::TextEdit::singleline(&mut st.text)
+                .id(edit_id)
+                .font(egui::FontId::proportional(13.0))
+                .margin(egui::vec2(2.0, 1.0))
+                .desired_width(rect.width())
+                .show(ui)
+        })
+        .inner;
+    if st.fresh {
+        // The name selected, ready to be typed over.
+        out.response.request_focus();
+        let mut state = out.state.clone();
+        let n = st.text.chars().count();
+        state.cursor.set_char_range(Some(egui::text::CCursorRange::two(
+            egui::text::CCursor::new(0),
+            egui::text::CCursor::new(n),
+        )));
+        state.store(ui.ctx(), edit_id);
+        st.fresh = false;
+        ui.data_mut(|d| d.insert_temp(id, st));
+        return true;
+    }
+    if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+        ui.data_mut(|d| d.remove::<InlineRename>(id));
+    } else if out.response.lost_focus() || !out.response.has_focus() {
+        act.inline_done = Some((target, st.text.clone()));
+        ui.data_mut(|d| d.remove::<InlineRename>(id));
+    } else {
+        ui.data_mut(|d| d.insert_temp(id, st));
+    }
+    true
 }
 
 /// Opens the context menu of the object `id` from its Objects docker
@@ -2272,13 +2425,20 @@ fn object_row(
     };
     // The name stops short of the eye and padlock.
     let name_room = Rect::from_min_max(rect.min, Pos2::new(rect.right() - 48.0, rect.max.y));
-    ui.painter().with_clip_rect(name_room).text(
-        Pos2::new(x, rect.center().y),
-        egui::Align2::LEFT_CENTER,
-        &label,
-        egui::FontId::proportional(13.0),
-        color,
+    // Renamed in place: an edit box over the name (#4472).
+    let field = Rect::from_min_max(
+        Pos2::new(x - 2.0, rect.top() + 1.0),
+        Pos2::new(name_room.right().max(x + 40.0), rect.bottom() - 1.0),
     );
+    if !inline_field(ui, field, RenameTarget::Object(s.id), act) {
+        ui.painter().with_clip_rect(name_room).text(
+            Pos2::new(x, rect.center().y),
+            egui::Align2::LEFT_CENTER,
+            &label,
+            egui::FontId::proportional(13.0),
+            color,
+        );
+    }
     // Its own eye and padlock at the right end of the row, so an object
     // is hidden or locked from the list, and a locked one unlocked (#832).
     let base = egui::Id::new(("objects_object", s.id.raw()));
@@ -2309,7 +2469,10 @@ fn object_row(
             .data_mut(|d| d.insert_temp(egui::Id::new(ROW_DRAG), s.id));
     }
     if resp.double_clicked() {
-        act.rename_object = Some((s.id, s.name.clone().unwrap_or_else(|| label.clone())));
+        act.inline_rename = Some((
+            RenameTarget::Object(s.id),
+            s.name.clone().unwrap_or_else(|| label.clone()),
+        ));
     } else if resp.clicked() {
         act.goto = act.row_page.filter(|p| *p != app.page);
         act.select = Some(s.id);
@@ -4310,6 +4473,12 @@ fn apply(app: &mut App, ui: &Ui, mut act: Actions) {
     if let Some((shape, name)) = act.rename_object {
         app.dialog = crate::ui::dialogs::Dialog::RenameObject { shape, name };
     }
+    if let Some((target, name)) = act.inline_done.take() {
+        rename_target(app, target, &name);
+    }
+    if let Some((target, name)) = act.inline_rename.take() {
+        start_inline_rename(ui.ctx(), target, name);
+    }
     if let Some(layer) = act.delete_layer {
         delete_layer(app, layer);
     }
@@ -4620,6 +4789,58 @@ pub(crate) mod tests {
             app.run(Command::DeleteLayer { layer });
         }
         app
+    }
+
+    /// A row's name edited in place (#4472): the name comes selected, so
+    /// typing replaces it; Enter confirms, Esc leaves it as it was.
+    #[test]
+    fn a_name_is_edited_in_place_with_the_old_one_selected() {
+        fn draw(ctx: &egui::Context, app: &mut App, events: Vec<egui::Event>) {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(400.0, 800.0))),
+                events,
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(input, |ui| objects_docker(app, ui));
+            out.textures_delta.clear();
+        }
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        let id = app.new_shape(rect_kind()).expect("a rectangle");
+        draw(&ctx, &mut app, Vec::new());
+        let key = |key, pressed| egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        };
+        start_inline_rename(&ctx, RenameTarget::Object(id), "Rectangle".into());
+        draw(&ctx, &mut app, Vec::new());
+        draw(&ctx, &mut app, vec![egui::Event::Text("Logo".into())]);
+        draw(&ctx, &mut app, vec![key(egui::Key::Enter, true), key(egui::Key::Enter, false)]);
+        draw(&ctx, &mut app, Vec::new());
+        assert_eq!(app.doc().find_shape(id).unwrap().name.as_deref(), Some("Logo"));
+        assert!(inline_rename_target(&ctx).is_none(), "the box is gone");
+        // Esc keeps the name.
+        start_inline_rename(&ctx, RenameTarget::Object(id), "Logo".into());
+        draw(&ctx, &mut app, Vec::new());
+        draw(&ctx, &mut app, vec![egui::Event::Text("Other".into())]);
+        draw(&ctx, &mut app, vec![key(egui::Key::Escape, true)]);
+        draw(&ctx, &mut app, Vec::new());
+        assert_eq!(app.doc().find_shape(id).unwrap().name.as_deref(), Some("Logo"));
+        // A layer the same way.
+        let layer = app.active_layer().unwrap();
+        start_inline_rename(&ctx, RenameTarget::Layer(layer), "Layer 1".into());
+        draw(&ctx, &mut app, Vec::new());
+        draw(&ctx, &mut app, vec![egui::Event::Text("Cut lines".into())]);
+        draw(&ctx, &mut app, vec![key(egui::Key::Enter, true), key(egui::Key::Enter, false)]);
+        draw(&ctx, &mut app, Vec::new());
+        assert!(app.doc().all_layers().any(|l| l.id == layer && l.name == "Cut lines"));
+        // F2 over the list starts it for the one selected object.
+        app.select(vec![id]);
+        rename_selected_in_place(&mut app, &ctx);
+        assert_eq!(inline_rename_target(&ctx), Some(RenameTarget::Object(id)));
     }
 
     fn rect_kind() -> ShapeKind {

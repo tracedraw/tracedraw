@@ -3004,7 +3004,7 @@ pub fn show(app: &mut App, ctx: &Context) {
             window(ctx, tr("dialog.rename_layer")).show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.label(tr("dialog.layer_name"));
-                    ui.text_edit_singleline(name)
+                    selected_name_field(ui, name)
                         .rich_tip(crate::ui::tips::keyed("dialog.layer_name"));
                 });
                 if ok_cancel(ui, &mut close) {
@@ -3058,7 +3058,7 @@ pub fn show(app: &mut App, ctx: &Context) {
             window(ctx, tr("dialog.rename_object")).show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.label(tr("dialog.object_name"));
-                    ui.text_edit_singleline(name);
+                    selected_name_field(ui, name);
                 });
                 if ok_cancel(ui, &mut close) {
                     let trimmed = name.trim();
@@ -9849,6 +9849,28 @@ pub(crate) fn palette_entry_color(name: &str, c: Color, spot: bool) -> Color {
         (false, s @ Color::Spot { .. }) => s.process(),
         (false, other) => other,
     }
+}
+
+/// A name box that opens with the focus and its text selected, so a
+/// new name is typed straight over the old one (#4472): fresh when it was
+/// not shown the frame before.
+fn selected_name_field(ui: &mut egui::Ui, name: &mut String) -> egui::Response {
+    let out = egui::TextEdit::singleline(name).show(ui);
+    let id = out.response.id;
+    let nr = ui.ctx().cumulative_frame_nr();
+    let seen = id.with("shown_frame");
+    let last = ui.ctx().data(|d| d.get_temp::<u64>(seen));
+    ui.ctx().data_mut(|d| d.insert_temp(seen, nr));
+    if last.is_none_or(|f| f + 1 < nr) {
+        out.response.request_focus();
+        let mut state = out.state.clone();
+        state.cursor.set_char_range(Some(egui::text::CCursorRange::two(
+            egui::text::CCursor::new(0),
+            egui::text::CCursor::new(name.chars().count()),
+        )));
+        state.store(ui.ctx(), id);
+    }
+    out.response.response
 }
 
 #[cfg(test)]

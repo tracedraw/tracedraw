@@ -614,6 +614,9 @@ fn styles_list(app: &mut App, ui: &mut Ui) {
     let mut changed = false;
     let mut remove = None;
     let mut apply = None;
+    let mut keep = None;
+    let mut add_lib: Vec<usize> = Vec::new();
+    let mut drop_lib = None;
     for (i, os) in st.iter_mut().enumerate() {
         ui.horizontal(|ui| {
             style_swatches(ui, &os.fill, &os.stroke);
@@ -696,8 +699,64 @@ fn styles_list(app: &mut App, ui: &mut Ui) {
             {
                 remove = Some(i);
             }
+            // Kept for every drawing, new ones starting with it (#4416).
+            if ui
+                .add(crate::ui::btn_icons::Ib::new("docker.style_keep_for_all").small())
+                .rich_tip(crate::ui::tips::keyed("docker.style_keep_for_all"))
+                .clicked()
+            {
+                keep = Some(i);
+            }
         });
         ui.add_space(2.0);
+    }
+    if let Some(i) = keep {
+        app.keep_style_for_all(i);
+    }
+    // The styles kept for every drawing that this one lacks (#4416).
+    let missing = app.library_styles_missing();
+    if !missing.is_empty() {
+        ui.add_space(4.0);
+        ui.horizontal(|ui| {
+            ui.strong(tr("docker.style_library"));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui
+                    .add(crate::ui::btn_icons::Ib::new("docker.style_add_all").small())
+                    .rich_tip(crate::ui::tips::keyed("docker.style_add_all"))
+                    .clicked()
+                {
+                    add_lib = missing.clone();
+                }
+            });
+        });
+        for &k in &missing {
+            let st = app.settings.object_style_library[k].clone();
+            ui.horizontal(|ui| {
+                style_swatches(ui, &st.fill, &st.stroke);
+                ui.label(&st.name);
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui
+                        .small_button("\u{00D7}")
+                        .rich_tip(tr("docker.style_library_remove"))
+                        .clicked()
+                    {
+                        drop_lib = Some(k);
+                    }
+                    if ui
+                        .add(crate::ui::btn_icons::Ib::new("docker.style_add_to_drawing").small())
+                        .rich_tip(crate::ui::tips::keyed("docker.style_add_to_drawing"))
+                        .clicked()
+                    {
+                        add_lib = vec![k];
+                    }
+                });
+            });
+        }
+    }
+    if let Some(k) = drop_lib {
+        app.settings.object_style_library.remove(k);
+    } else if !add_lib.is_empty() {
+        app.add_library_styles(&add_lib);
     }
     if let Some(i) = remove {
         st.remove(i);

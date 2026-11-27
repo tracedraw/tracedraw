@@ -429,10 +429,20 @@ pub struct Settings {
     /// points (#529).
     #[serde(default = "default_outline_units")]
     pub text_units: String,
+    /// Options > Text > Display > Size by capital height (#4419): the
+    /// font size is shown and typed as the height its capital letters
+    /// stand (an H) rather than the em; sizes are still kept in points.
+    #[serde(default)]
+    pub text_size_by_caps: bool,
     /// Grid, ruler and guideline settings new drawings start with
     /// (Document Setup > Save as Default).
     #[serde(default)]
     pub document_defaults: DocumentDefaults,
+    /// Object styles kept for every drawing (#4416): the Object Styles
+    /// panel adds a drawing's style here, offers these to any drawing,
+    /// and each new drawing starts with them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub object_style_library: Vec<tracedraw_core::ObjectStyle>,
     /// Options > Text > Autocorrect.
     #[serde(default)]
     pub autocorrect: crate::autocorrect::AutocorrectPrefs,
@@ -2756,7 +2766,9 @@ impl Default for Settings {
             page_sizes: Vec::new(),
             outline_units: default_outline_units(),
             text_units: default_outline_units(),
+            text_size_by_caps: false,
             document_defaults: DocumentDefaults::default(),
+            object_style_library: Vec::new(),
             startup: Startup::default(),
             undo_levels: default_undo_levels(),
             show_tooltips: true,

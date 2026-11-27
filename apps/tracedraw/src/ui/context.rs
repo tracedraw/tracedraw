@@ -812,6 +812,18 @@ fn object_menu_for(app: &mut App, ui: &mut Ui, close: &mut bool, source: Option<
                 app.convert_to_guides();
             }
         }
+        "menu.object.add_guidelines" => {
+            // The same guidelines, the objects kept (#4459).
+            if ci(
+                ui,
+                close,
+                "menu.object.add_guidelines",
+                "",
+                app.can_convert_to_guides(),
+            ) {
+                app.add_guides_from_selection();
+            }
+        }
         label => {
             if ci(ui, close, label, "Ctrl+K", can) {
                 app.break_apart();

@@ -44,7 +44,56 @@ pub fn text_height_mm(s: &Shape) -> Option<f64> {
     Some(h * if scale_y > 1e-9 { scale_y } else { 1.0 })
 }
 
+/// How tall a capital H stands against the em of `family` (bold, italic
+/// as given): 0.7 for many fonts. None when the font draws no H.
+pub fn cap_ratio(family: &str, bold: bool, italic: bool) -> Option<f64> {
+    thread_local! {
+        static CACHE: std::cell::RefCell<Vec<((String, bool, bool), Option<f64>)>> =
+            const { std::cell::RefCell::new(Vec::new()) };
+    }
+    let key = (family.to_string(), bold, italic);
+    if let Some(r) = CACHE.with(|c| c.borrow().iter().find(|(k, _)| *k == key).map(|(_, r)| *r)) {
+        return r;
+    }
+    let mut probe = TextSpan::new("H", family, 100.0);
+    probe.bold = bold;
+    probe.italic = italic;
+    let h = tracedraw_text::fonts().outline(&[probe]).path.bounding_box().height();
+    // The outline is in millimetres; 100 pt is 100 * 25.4 / 72 mm.
+    let r = (h.is_finite() && h > 1e-9).then(|| h / (100.0 * 25.4 / 72.0));
+    CACHE.with(|c| {
+        let mut c = c.borrow_mut();
+        if c.len() > 64 {
+            c.clear();
+        }
+        c.push((key, r));
+    });
+    r
+}
+
 impl App {
+    /// What the font size fields show for `size_pt` with Size by Capital
+    /// Height on (#4419): the height of the capitals of the font in use,
+    /// in points; the size itself otherwise.
+    pub fn shown_text_size_pt(&self, size_pt: f64) -> f64 {
+        if !self.settings.text_size_by_caps {
+            return size_pt;
+        }
+        cap_ratio(&self.text_font, self.text_bold, self.text_italic)
+            .map_or(size_pt, |r| size_pt * r)
+    }
+
+    /// The font size, in points, for what a font size field shows as
+    /// `shown_pt` (the reverse of [`Self::shown_text_size_pt`]).
+    pub fn text_size_from_shown_pt(&self, shown_pt: f64) -> f64 {
+        if !self.settings.text_size_by_caps {
+            return shown_pt;
+        }
+        cap_ratio(&self.text_font, self.text_bold, self.text_italic)
+            .filter(|r| *r > 1e-6)
+            .map_or(shown_pt, |r| shown_pt / r)
+    }
+
     /// Text > Text Height...: the window opens on the first selected
     /// text's height, in the drawing's units.
     pub fn open_text_height(&mut self) {
@@ -135,6 +184,21 @@ pub fn dialog(app: &mut App, ctx: &egui::Context, height: &mut f64, close: &mut 
 
 #[cfg(test)]
 mod tests {
+
+    /// Size by Capital Height (#4419): the size fields show and take the
+    /// height of the capitals, the size kept in points.
+    #[test]
+    fn size_fields_can_show_the_capital_height() {
+        let mut app = App::headless();
+        assert_eq!(app.shown_text_size_pt(72.0), 72.0, "off: the em");
+        app.settings.text_size_by_caps = true;
+        let r = cap_ratio(&app.text_font, app.text_bold, app.text_italic).expect("an H");
+        assert!((0.5..0.9).contains(&r), "{r}");
+        let shown = app.shown_text_size_pt(72.0);
+        assert!((shown - 72.0 * r).abs() < 1e-9);
+        assert!((app.text_size_from_shown_pt(shown) - 72.0).abs() < 1e-9);
+    }
+
     use super::*;
 
     fn text(app: &mut App, s: &str, pt: f64) -> tracedraw_core::ShapeId {
