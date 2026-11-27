@@ -622,6 +622,34 @@ pub fn is_dimension(shape: &Shape) -> bool {
     matches!(shape.kind, ShapeKind::Group { .. }) && shape.data.iter().any(|(k, _)| k == DATA_KEY)
 }
 
+/// The IDs of dimension groups and their generated children. Imported files
+/// can preserve dimension metadata while changing shape IDs; old anchors can
+/// then resolve to dimension artwork by coincidence.
+fn dimension_artwork_ids(doc: &tracedraw_core::Document) -> std::collections::HashSet<ShapeId> {
+    fn collect(s: &Shape, in_dimension: bool, ids: &mut std::collections::HashSet<ShapeId>) {
+        let in_dimension = in_dimension || is_dimension(s);
+        if in_dimension {
+            ids.insert(s.id);
+        }
+        match &s.kind {
+            ShapeKind::Group { children } => {
+                children.iter().for_each(|c| collect(c, in_dimension, ids));
+            }
+            ShapeKind::ClipFrame { frame, contents } => {
+                collect(frame, in_dimension, ids);
+                contents.iter().for_each(|c| collect(c, in_dimension, ids));
+            }
+            _ => {}
+        }
+    }
+
+    let mut ids = std::collections::HashSet::new();
+    for shape in doc.all_layers().flat_map(|layer| &layer.shapes) {
+        collect(shape, false, &mut ids);
+    }
+    ids
+}
+
 fn finite(p: Point) -> bool {
     p.x.is_finite() && p.y.is_finite()
 }
@@ -1447,7 +1475,12 @@ impl App {
     /// its anchored points go back on the object and only the rest (the
     /// dimension line or arc, and a point held to nothing) keeps the
     /// group's transform. Only Break Apart frees it.
-    fn follow_anchors(&self, g: &Shape, d: &Dimension) -> Option<Dimension> {
+    fn follow_anchors(
+        &self,
+        g: &Shape,
+        d: &Dimension,
+        dimension_artwork: &std::collections::HashSet<ShapeId>,
+    ) -> Option<Dimension> {
         if d.anchors.is_empty() {
             return None;
         }
@@ -1463,6 +1496,11 @@ impl App {
         next.anchors.clear();
         let mut moved: Vec<Vec2> = Vec::new();
         for a in &d.anchors {
+            // Dimension metadata can outlive its ShapeIds in interchange
+            // files. Do not follow an ID that now names dimension artwork.
+            if dimension_artwork.contains(&a.shape) {
+                continue;
+            }
             let target = doc
                 .find_shape(a.shape)
                 .and_then(|s| a.place_on(s))
@@ -2026,9 +2064,10 @@ impl App {
         // One amend for all of them: a keystroke in a label costs one copy
         // of the drawing.
         let mut cmds = Vec::new();
+        let dimension_artwork = dimension_artwork_ids(self.doc());
         for (g, d, redraw) in changed {
             // Points held to an object follow it (#838).
-            let followed = self.follow_anchors(&g, &d);
+            let followed = self.follow_anchors(&g, &d, &dimension_artwork);
             if followed.is_none() && !redraw {
                 continue;
             }
@@ -2385,6 +2424,42 @@ mod tests {
         assert_eq!(app.add_dimensions_gap(), ADD_DIMENSIONS_GAP);
         app.settings.add_dimensions_gap = -4.0;
         assert_eq!(app.add_dimensions_gap(), 0.0);
+    }
+
+    /// A stale imported anchor must not follow the generated paths inside a
+    /// dimension group as if they were ordinary drawing objects.
+    #[test]
+    fn dimension_releases_anchors_into_dimension_artwork() {
+        let mut app = App::headless();
+        let rect = app
+            .new_shape(ShapeKind::Rect {
+                rect: Rect::new(10.0, 10.0, 60.0, 40.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        app.select(vec![rect]);
+        app.add_dimensions(false);
+        let id = app.selection[0];
+        let group = app.doc().find_shape(id).expect("dimension");
+        let ShapeKind::Group { children } = &group.kind else {
+            panic!("dimension group");
+        };
+        let generated_child = children[0].id;
+        let artwork = dimension_artwork_ids(app.doc());
+        assert!(artwork.contains(&id));
+        assert!(artwork.contains(&generated_child));
+        assert!(!artwork.contains(&rect));
+
+        let mut stale = Dimension::of(group).expect("dimension data");
+        stale.anchors = vec![Anchor {
+            point: 0,
+            shape: generated_child,
+            node: 0,
+            segment: None,
+        }];
+        let followed = app.follow_anchors(group, &stale, &artwork).expect("released");
+        assert!(followed.anchors.is_empty());
     }
 
     /// Add Dimensions: the width along the bottom and the height along
