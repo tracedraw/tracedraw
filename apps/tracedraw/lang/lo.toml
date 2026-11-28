@@ -967,6 +967,7 @@ docker.colour_a = "ສີ A"
 docker.colour_b = "ສີ B"
 docker.column_offset_tip = "ເລື່ອນທຸກຖັນຂອງແຜ່ນຮູບທຽບກັບຖັນທາງຊ້າຍຂອງມັນ" # mt
 docker.contour = "ຂອບຫຼັ່ນ (Contour)"
+docker.contour_alignment = "ຈັດແນວເສັ້ນຂອບ" # mt
 docker.coordinates = "ພິກັດ"
 docker.copies = "ຈຳນວນຊຸດ:"
 docker.corners = "ມຸມ"

@@ -965,6 +965,7 @@ docker.colour_a = "Цвет A"
 docker.colour_b = "Цвет B"
 docker.column_offset_tip = "Сдвигать каждый столбец плиток относительно столбца слева" # mt
 docker.contour = "Контур"
+docker.contour_alignment = "Выравнивание контура" # mt
 docker.coordinates = "Координаты"
 docker.copies = "Число копий:"
 docker.corners = "Углы"

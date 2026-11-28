@@ -1066,6 +1066,7 @@ docker.colour_a = "Koloro A" # mt
 docker.colour_b = "Koloro B" # mt
 docker.column_offset_tip = "Deloki ĉiun kahelkolumnon relative al tiu maldekstre" # mt
 docker.contour = "Konturo" # mt
+docker.contour_alignment = "Kontura vicigo" # mt
 docker.coordinates = "Koordinatoj" # mt
 docker.copies = "Nombro de kopioj:" # mt
 docker.corners = "Anguloj" # mt

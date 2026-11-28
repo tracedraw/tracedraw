@@ -2308,6 +2308,7 @@ fn blend(app: &mut App, ui: &mut Ui) {
 
 fn contour(app: &mut App, ui: &mut Ui) {
     crate::ui::contour_bar::contour_controls_in(app, ui, true);
+    crate::ui::docker_form::section(ui, None);
     crate::ui::contour_bar::contour_actions_in(app, ui, true);
 }
 

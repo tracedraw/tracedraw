@@ -965,6 +965,7 @@ docker.colour_a = "Colore A"
 docker.colour_b = "Colore B"
 docker.column_offset_tip = "Sposta ogni colonna di tessere rispetto a quella a sinistra" # mt
 docker.contour = "Profilo"
+docker.contour_alignment = "Allineamento del contorno" # mt
 docker.coordinates = "Coordinate"
 docker.copies = "Numero di copie:"
 docker.corners = "Angoli"

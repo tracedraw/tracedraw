@@ -965,6 +965,7 @@ docker.colour_a = "Farbe A"
 docker.colour_b = "Farbe B"
 docker.column_offset_tip = "Jede Kachelspalte gegen die links davon verschieben" # mt
 docker.contour = "Kontur"
+docker.contour_alignment = "Konturausrichtung" # mt
 docker.coordinates = "Koordinaten"
 docker.copies = "Anzahl der Kopien:"
 docker.corners = "Ecken"

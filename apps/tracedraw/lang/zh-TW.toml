@@ -965,6 +965,7 @@ docker.colour_a = "色彩 A"
 docker.colour_b = "色彩 B"
 docker.column_offset_tip = "每欄拼貼相對左一欄錯開" # mt
 docker.contour = "輪廓圖"
+docker.contour_alignment = "輪廓對齊" # mt
 docker.coordinates = "座標"
 docker.copies = "複本數量："
 docker.corners = "轉角"

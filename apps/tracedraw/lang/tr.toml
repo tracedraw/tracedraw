@@ -965,6 +965,7 @@ docker.colour_a = "Renk A"
 docker.colour_b = "Renk B"
 docker.column_offset_tip = "Her karo sütununu solundakine göre kaydır" # mt
 docker.contour = "Kontur"
+docker.contour_alignment = "Kontur hizalaması" # mt
 docker.coordinates = "Koordinatlar"
 docker.copies = "Kopya sayısı:"
 docker.corners = "Köşeler"

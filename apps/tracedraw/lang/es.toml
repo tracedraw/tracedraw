@@ -965,6 +965,7 @@ docker.colour_a = "Color A"
 docker.colour_b = "Color B"
 docker.column_offset_tip = "Desplazar cada columna de mosaicos respecto a la de su izquierda" # mt
 docker.contour = "Silueta"
+docker.contour_alignment = "Alineación del contorno" # mt
 docker.coordinates = "Coordenadas"
 docker.copies = "Número de copias:"
 docker.corners = "Esquinas"

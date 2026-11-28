@@ -965,6 +965,7 @@ docker.colour_a = "Kleur A"
 docker.colour_b = "Kleur B"
 docker.column_offset_tip = "Elke kolom tegels verschuiven ten opzichte van de kolom links ervan" # mt
 docker.contour = "Contour"
+docker.contour_alignment = "Contouruitlijning" # mt
 docker.coordinates = "Coördinaten"
 docker.copies = "Aantal kopieën:"
 docker.corners = "Hoeken"

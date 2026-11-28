@@ -903,6 +903,7 @@ docker.colour_a = "Колір A" # mt
 docker.colour_b = "Колір B" # mt
 docker.column_offset_tip = "Shift every column of tiles against the one left of it" # review
 docker.contour = "Концентричні контури" # mt
+docker.contour_alignment = "Вирівнювання контуру" # mt
 docker.coordinates = "Координати" # mt
 docker.copies = "Кількість копій:" # mt
 docker.corners = "Кути" # mt

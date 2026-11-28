@@ -965,6 +965,7 @@ docker.colour_a = "রং A"
 docker.colour_b = "রং B"
 docker.column_offset_tip = "টাইলের প্রতিটি কলাম বামের কলামের তুলনায় সরান" # mt
 docker.contour = "কনটুর"
+docker.contour_alignment = "কনট্যুর সারিবদ্ধকরণ" # mt
 docker.coordinates = "স্থানাঙ্ক"
 docker.copies = "কপির সংখ্যা:"
 docker.corners = "কোণ"
