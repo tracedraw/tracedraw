@@ -1,7 +1,7 @@
 //! Files dropped on the window from the desktop or a file manager (or
 //! from the computer onto the page, in a browser). Let go over the
 //! drawing window of an open drawing, what File > Import reads goes into
-//! it, in the middle of the view; let go over the title, menus, toolbars
+//! it, centred at the pointer. Let go over the title, menus, toolbars
 //! or document tabs, the file opens in a tab of its own like File >
 //! Open (#1142). Without a drawing each file opens like File > Open,
 //! and a picture gets a new drawing. The place is known on every
@@ -12,7 +12,10 @@
 //! about. See `docs/behavior/drop-files.md`.
 
 use crate::app::{App, IMPORT_EXTENSIONS, OPEN_EXTENSIONS};
+use crate::import_place::Placement;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
+use tracedraw_core::geometry::Point;
 
 /// What a dropped file does.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -31,10 +34,10 @@ pub enum Dropped {
 }
 
 /// Where files are let go.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum DropOn {
-    /// The drawing window of the drawing shown.
-    Drawing,
+    /// The drawing window of the drawing shown, with the point in page space.
+    Drawing(Point),
     /// Elsewhere on the window while a drawing is shown: its title,
     /// menus, toolbars, document tabs, dockers.
     Frame,
@@ -64,11 +67,14 @@ impl App {
                 .map(|f| f.path().to_path_buf())
                 .collect()
         });
+        let held = !hovered.is_empty() && dropped.is_empty() && drag_held();
         let lost = self
             .file_drag
-            .step(&hovered, !dropped.is_empty(), drag_held(), now);
-        if self.file_drag.waiting() {
-            ctx.request_repaint_after(std::time::Duration::from_secs_f64(LOST_DROP_WAIT + 0.05));
+            .step(&hovered, !dropped.is_empty(), held, now);
+        if cfg!(windows) {
+            if let Some(delay) = self.file_drag.recovery_repaint_delay() {
+                ctx.request_repaint_after(delay);
+            }
         }
         if !lost.is_empty() {
             self.drop_lost(ctx, &lost);
@@ -106,7 +112,7 @@ impl App {
             return DropOn::NoDrawing;
         }
         match pointer {
-            Some(p) if self.canvas_rect.contains(p) => DropOn::Drawing,
+            Some(p) if self.canvas_rect.contains(p) => DropOn::Drawing(self.view.to_page(p)),
             Some(_) => DropOn::Frame,
             None => DropOn::Unknown,
         }
@@ -123,7 +129,7 @@ impl App {
             IMPORT_EXTENSIONS.contains(&ext.as_str()) || self.import_filter_for(&ext).is_some();
         let openable = OPEN_EXTENSIONS.contains(&ext.as_str());
         match on {
-            DropOn::Drawing if importable => Dropped::Import,
+            DropOn::Drawing(_) if importable => Dropped::Import,
             // Where the pointer is not known, a drawing, which goes either
             // way (.cdr, .svg, .tdraw...), is asked about; a picture goes
             // into the drawing (#1142).
@@ -148,8 +154,13 @@ impl App {
         }
         match self.dropped_kind(path, on) {
             Dropped::Import => {
-                let at = self.view_center();
-                self.import_path_placed(path, Some(at));
+                let at = match on {
+                    DropOn::Drawing(at) => at,
+                    _ => self.view_center(),
+                };
+                let mark = self.engine.begin_group();
+                self.import_at_placement(path, Placement::Center(at));
+                self.engine.end_group(mark, "Import");
             }
             Dropped::Open => self.open_path(PathBuf::from(path)),
             Dropped::NewWithImport => {
@@ -174,7 +185,7 @@ impl App {
     pub fn answer_drop_question(&mut self, import: Option<bool>) {
         let paths = std::mem::take(&mut self.drop_question);
         let on = match import {
-            Some(true) => DropOn::Drawing,
+            Some(true) => DropOn::Drawing(self.view_center()),
             Some(false) => DropOn::Frame,
             None => return,
         };
@@ -206,10 +217,16 @@ impl App {
                 }
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
-                    if ui.add(crate::ui::btn_icons::Ib::new("hint.drop_ask_import")).clicked() {
+                    if ui
+                        .add(crate::ui::btn_icons::Ib::new("hint.drop_ask_import"))
+                        .clicked()
+                    {
                         (answer, answered) = (Some(true), true);
                     }
-                    if ui.add(crate::ui::btn_icons::Ib::new("hint.drop_ask_open")).clicked() {
+                    if ui
+                        .add(crate::ui::btn_icons::Ib::new("hint.drop_ask_open"))
+                        .clicked()
+                    {
                         (answer, answered) = (Some(false), true);
                     }
                     if ui.button(crate::i18n::tr("dialog.cancel")).clicked() {
@@ -224,102 +241,17 @@ impl App {
             self.answer_drop_question(answer);
         }
     }
-
-    /// Would files held at `on` (their paths, where known) be imported
-    /// into the drawing? Without paths (the browser) the place alone
-    /// decides; with them, a file no import reads says "open" (#1142).
-    pub fn drop_imports(&self, hovered: &[Option<PathBuf>], on: DropOn) -> bool {
-        match on {
-            DropOn::Drawing => hovered.iter().all(|p| {
-                p.as_deref()
-                    .is_none_or(|p| self.dropped_kind(p, on) == Dropped::Import)
-            }),
-            DropOn::Unknown => hovered.iter().all(|p| {
-                p.as_deref()
-                    .is_some_and(|p| self.dropped_kind(p, on) == Dropped::Import)
-            }),
-            DropOn::Frame | DropOn::NoDrawing => false,
-        }
-    }
-
-    /// While files are dragged over the window: a frame round where they
-    /// would go (the drawing window, or the whole window) and what a drop
-    /// there would do.
-    pub fn draw_drop_hint(&self, ctx: &egui::Context) {
-        let listed: Vec<PathBuf> = ctx.input(|i| {
-            i.raw
-                .hovered_files
-                .iter()
-                .filter_map(|f| f.path.clone())
-                .collect()
-        });
-        // Without the files of a lost drop still listed (#2940).
-        let stale = listed.len() - self.file_drag.fresh(&listed).len();
-        let hovered: Vec<Option<PathBuf>> = ctx.input(|i| {
-            i.raw
-                .hovered_files
-                .iter()
-                .skip(stale)
-                .map(|f| f.path.clone())
-                .collect()
-        });
-        if hovered.is_empty() || !drag_held() || !self.file_drag.showing() {
-            return;
-        }
-        let on = self.drop_on(drop_pointer(ctx));
-        let imports = self.drop_imports(&hovered, on);
-        let hint = crate::i18n::tr(if imports {
-            "hint.drop_import"
-        } else {
-            "hint.drop_open"
-        });
-        let painter = ctx.layer_painter(egui::LayerId::new(
-            egui::Order::Tooltip,
-            egui::Id::new("drop_files_hint"),
-        ));
-        let area = if on == DropOn::Drawing && imports {
-            self.canvas_rect
-        } else {
-            ctx.content_rect()
-        };
-        let accent = crate::theme::Tokens::ACCENT;
-        painter.rect(
-            area.shrink(2.0),
-            4.0,
-            accent.gamma_multiply(0.12),
-            egui::Stroke::new(3.0, accent),
-            egui::StrokeKind::Inside,
-        );
-        let font = egui::FontId::proportional(18.0);
-        let galley = painter.layout_no_wrap(hint, font, egui::Color32::WHITE);
-        let label = egui::Rect::from_center_size(area.center(), galley.size())
-            .expand2(egui::vec2(16.0, 10.0));
-        painter.rect_filled(label, 6.0, accent);
-        painter.galley(
-            label.shrink2(egui::vec2(16.0, 10.0)).min,
-            galley,
-            egui::Color32::WHITE,
-        );
-        ctx.request_repaint();
-    }
 }
 
 /// How long, seconds, the buttons are up over files still listed as
 /// hovered before their drop counts as lost (#2686).
 pub const LOST_DROP_WAIT: f64 = 0.5;
 
-/// A file drag over the window (#2686). On Windows the drop, or the drag
-/// leaving, can fail to reach the program: the files then stayed listed
-/// as hovered, nothing was imported, and the drop frame came back over
-/// the window at every later click or drag, as if TraceDraw were still
-/// waiting for the drop. A file drag is made with a mouse button held, so
-/// once every button has been up for [`LOST_DROP_WAIT`] with the same
-/// files still hovered, the drag is over: the files count as let go
-/// where the cursor is (inside the window; outside it nothing happens),
-/// and the frame stays away until another drag. A drop that comes in
-/// after all is not taken twice. Elsewhere the buttons count as held
-/// while files hover (the windowing layer's leave and drop are trusted),
-/// so nothing changes there.
+/// A file drag over the window (#2686). On Windows the drop or leave
+/// event can be lost, leaving the files listed as hovered. After every
+/// mouse button has been up for [`LOST_DROP_WAIT`], the files count as
+/// let go at the cursor once. Other platforms rely on the reported
+/// drop and leave events.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct FileDrag {
     /// The files of the drag going on.
@@ -388,18 +320,23 @@ impl FileDrag {
     /// those of an earlier lost drop still listed ahead of them. Before,
     /// they counted again, and a file dropped, then deleted, came back
     /// with every later drop until TraceDraw was restarted (#2940).
-    pub fn fresh<'a>(&self, hovered: &'a [PathBuf]) -> &'a [PathBuf] {
-        hovered.strip_prefix(self.stale.as_slice()).unwrap_or(hovered)
+    fn fresh<'a>(&self, hovered: &'a [PathBuf]) -> &'a [PathBuf] {
+        hovered
+            .strip_prefix(self.stale.as_slice())
+            .unwrap_or(hovered)
     }
 
-    /// The drop frame shows: a drag goes on with a button held.
-    pub fn showing(&self) -> bool {
-        !self.over && self.released.is_none()
-    }
-
-    /// The buttons are up and the drop is awaited a moment longer.
-    pub fn waiting(&self) -> bool {
-        !self.over && self.released.is_some()
+    /// Poll for a release while dragging, then allow the drop event
+    /// time to arrive before recovering it.
+    fn recovery_repaint_delay(&self) -> Option<Duration> {
+        if self.files.is_empty() || self.over {
+            return None;
+        }
+        Some(if self.released.is_some() {
+            Duration::from_secs_f64(LOST_DROP_WAIT + 0.05)
+        } else {
+            Duration::from_millis(50)
+        })
     }
 
     /// `dropped` are the files of a lost drop, coming in late: not taken
@@ -543,12 +480,8 @@ fn drop_pointer(ctx: &egui::Context) -> Option<egui::Pos2> {
     ctx.input(|i| i.pointer.hover_pos())
 }
 
-/// Whether the drag that brought the hovered files is still going on.
-/// On Windows the files a drag left without a drop could stay listed as
-/// hovered, and the drop frame then covered the window until TraceDraw
-/// was closed (#2350). A file drag is made with a mouse button held, so
-/// with none held it is over and the frame goes. Elsewhere the windowing
-/// layer's leave is trusted.
+/// Whether a mouse button is held during the file drag. Windows checks
+/// the system button state to recover from a missing drop event.
 fn drag_held() -> bool {
     #[cfg(windows)]
     {
@@ -671,12 +604,13 @@ mod tests {
         use DropOn::*;
         let app = App::headless();
         let kind = |p: &str, on| app.dropped_kind(Path::new(p), on);
-        assert_eq!(kind("a.svg", Drawing), Dropped::Import);
-        assert_eq!(kind("a.cdr", Drawing), Dropped::Import);
-        assert_eq!(kind("a.PSD", Drawing), Dropped::Import);
-        assert_eq!(kind("a.png", Drawing), Dropped::Import);
+        let drawing = Drawing(Point::ZERO);
+        assert_eq!(kind("a.svg", drawing), Dropped::Import);
+        assert_eq!(kind("a.cdr", drawing), Dropped::Import);
+        assert_eq!(kind("a.PSD", drawing), Dropped::Import);
+        assert_eq!(kind("a.png", drawing), Dropped::Import);
         // TraceDraw's own drawings are imported like any other (#1142).
-        assert_eq!(kind("a.tdraw", Drawing), Dropped::Import);
+        assert_eq!(kind("a.tdraw", drawing), Dropped::Import);
         // On the title, menus or tabs a drawing opens in its own tab and
         // a picture gets a drawing of its own (#1142).
         assert_eq!(kind("a.cdr", Frame), Dropped::Open);
@@ -693,7 +627,7 @@ mod tests {
         assert_eq!(kind("a.cdr", NoDrawing), Dropped::Open);
         assert_eq!(kind("a.psd", NoDrawing), Dropped::Open);
         assert_eq!(kind("a.jpg", NoDrawing), Dropped::NewWithImport);
-        assert_eq!(kind("a.zip", Drawing), Dropped::Unsupported);
+        assert_eq!(kind("a.zip", drawing), Dropped::Unsupported);
         assert_eq!(kind("a.zip", Frame), Dropped::Unsupported);
         assert_eq!(kind("noextension", NoDrawing), Dropped::Unsupported);
     }
@@ -702,7 +636,10 @@ mod tests {
     fn the_pointer_decides_between_the_drawing_window_and_the_rest() {
         let (_ctx, mut app) = setup();
         let inside = app.canvas_rect.center();
-        assert_eq!(app.drop_on(Some(inside)), DropOn::Drawing);
+        assert_eq!(
+            app.drop_on(Some(inside)),
+            DropOn::Drawing(app.view.to_page(inside))
+        );
         assert_eq!(app.drop_on(Some(egui::pos2(5.0, 5.0))), DropOn::Frame);
         assert_eq!(app.drop_on(None), DropOn::Unknown);
         app.show_welcome = true;
@@ -753,6 +690,8 @@ mod tests {
         app.answer_drop_question(Some(true));
         assert_eq!(app.docs.len(), docs, "imported");
         assert_eq!(shape_count(&app), 2);
+        let bounds = app.selection_bounds().expect("import bounds");
+        assert!(close(bounds.center(), app.view_center()));
         frame(&ctx, &mut app, vec![svg(&dir)], false);
         app.answer_drop_question(Some(false));
         assert_eq!(app.docs.len(), docs + 1, "opened in a tab of its own");
@@ -765,8 +704,8 @@ mod tests {
     /// A drag over the window reports its place as pointer moves on
     /// every platform (on Linux and macOS from the vendored windowing
     /// layer, in the browser from the vendored eframe): a .cdr or .svg
-    /// let go over the drawing is imported, over the menus it opens, and
-    /// the hint follows the place (#1142).
+    /// let go over the drawing is imported, and over the menus it opens
+    /// in its own tab (#1142).
     #[test]
     fn the_place_of_a_drag_decides_on_every_platform() {
         let (ctx, mut app) = setup();
@@ -775,7 +714,10 @@ mod tests {
         let inside = app.canvas_rect.center();
         // Dragged over the drawing, then let go there.
         frame_at(&ctx, &mut app, Vec::new(), true, Some(inside));
-        assert_eq!(app.drop_on(drop_pointer(&ctx)), DropOn::Drawing);
+        assert_eq!(
+            app.drop_on(drop_pointer(&ctx)),
+            DropOn::Drawing(app.view.to_page(inside))
+        );
         frame_at(&ctx, &mut app, vec![svg(&dir)], false, Some(inside));
         assert_eq!(app.docs.len(), docs, "imported");
         assert_eq!(shape_count(&app), 1);
@@ -792,23 +734,26 @@ mod tests {
         assert_eq!(app.docs.len(), docs + 1, "opened");
     }
 
-    /// The hint over the drawing says "import" unless a file held there
-    /// would not be imported (one no import reads); without paths, as in
-    /// the browser, the place alone decides (#1142).
     #[test]
-    fn the_hint_says_what_a_drop_there_does() {
-        let (_ctx, app) = setup();
-        let p = |n: &str| Some(PathBuf::from(n));
-        assert!(app.drop_imports(&[p("a.svg")], DropOn::Drawing));
-        assert!(app.drop_imports(&[p("a.cdr"), p("b.png")], DropOn::Drawing));
-        assert!(app.drop_imports(&[p("a.tdraw")], DropOn::Drawing));
-        assert!(!app.drop_imports(&[p("a.zip")], DropOn::Drawing));
-        assert!(!app.drop_imports(&[p("a.svg")], DropOn::Frame));
-        // The browser hands over no paths.
-        assert!(app.drop_imports(&[None], DropOn::Drawing));
-        assert!(!app.drop_imports(&[None], DropOn::Frame));
-        assert!(!app.drop_imports(&[None], DropOn::Unknown));
-        assert!(app.drop_imports(&[p("a.png")], DropOn::Unknown));
+    fn hovering_files_does_not_paint_a_drop_overlay() {
+        let (ctx, mut app) = setup();
+        let input = egui::RawInput {
+            events: vec![egui::Event::PointerMoved(app.canvas_rect.center())],
+            screen_rect: Some(ctx.content_rect()),
+            hovered_files: vec![egui::HoveredFile {
+                path: Some(PathBuf::from("drawing.svg")),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let overlay = egui::LayerId::new(egui::Order::Tooltip, egui::Id::new("drop_files_hint"));
+        let _ = ctx.run_ui(input, |ui| {
+            crate::ui::root(&mut app, ui);
+            assert!(
+                ctx.graphics(|graphics| graphics.get(overlay).is_none_or(|layer| layer.is_empty()))
+            );
+        });
+        assert_eq!(shape_count(&app), 0, "hovering does not import the file");
     }
 
     #[test]
@@ -824,6 +769,66 @@ mod tests {
         let b = app.selection_bounds().expect("bounds");
         assert!(close(b.center(), app.view_center()), "{b:?}");
         // One undo step takes it all back.
+        app.undo();
+        assert_eq!(shape_count(&app), 0);
+    }
+
+    #[test]
+    fn a_file_drop_uses_the_release_point_with_a_zoomed_and_panned_view() {
+        let (ctx, mut app) = setup();
+        let center = app.canvas_rect.center();
+        app.view.zoom_at(center, 1.75);
+        app.view.pan(egui::vec2(91.0, -37.0));
+        app.settings.formats.import_place = crate::prefs::ImportPlace::AsInFile;
+        frame_at(&ctx, &mut app, Vec::new(), true, Some(center));
+
+        let release = center + egui::vec2(122.0, 87.0);
+        let fixtures = dir("release-point");
+        for path in [svg(&fixtures), png(&fixtures)] {
+            frame_at(&ctx, &mut app, vec![path], false, Some(release));
+            assert_eq!(shape_count(&app), 1);
+            assert_eq!(app.selection.len(), 1);
+            let bounds = app.selection_bounds().expect("import bounds");
+            assert!(app.view.to_screen(bounds.center()).distance(release) < 0.1);
+            app.undo();
+            assert_eq!(shape_count(&app), 0);
+        }
+    }
+
+    #[test]
+    fn a_pdf_drop_keeps_the_release_point_while_the_import_dialog_is_open() {
+        let (ctx, mut app) = setup();
+        let fixtures = dir("pdf-release-point");
+        let mut source = App::headless();
+        source.import_path(&svg(&fixtures));
+        let path = fixtures.join("square.pdf");
+        std::fs::write(&path, tracedraw_io::pdf::document_to_pdf(source.doc())).expect("pdf");
+        app.settings.formats.pdf_ask_text = true;
+        let release = app.canvas_rect.center() + egui::vec2(-116.0, 69.0);
+        let at = app.view.to_page(release);
+        frame_at(&ctx, &mut app, vec![path], false, Some(release));
+        assert!(matches!(app.dialog, crate::ui::dialogs::Dialog::PdfText(_)));
+        assert_eq!(shape_count(&app), 0);
+
+        app.view.pan(egui::vec2(75.0, 34.0));
+        let mut out = ctx.run_ui(
+            egui::RawInput {
+                events: vec![egui::Event::Key {
+                    key: egui::Key::Enter,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                }],
+                ..Default::default()
+            },
+            |ui| crate::ui::dialogs::show(&mut app, ui.ctx()),
+        );
+        out.textures_delta.clear();
+        frame(&ctx, &mut app, Vec::new(), false);
+        assert_eq!(shape_count(&app), 1, "{}", app.status);
+        let bounds = app.selection_bounds().expect("import bounds");
+        assert!(close(bounds.center(), at));
         app.undo();
         assert_eq!(shape_count(&app), 0);
     }
@@ -895,15 +900,13 @@ mod tests {
     }
 
     #[test]
-    fn an_unknown_file_only_says_so_and_dragging_files_over_draws_the_hint() {
+    fn an_unknown_file_only_reports_its_name_in_the_status_bar() {
         let (ctx, mut app) = setup();
         let path = dir("unknown").join("notes.zip");
         std::fs::write(&path, b"PK").expect("zip");
-        frame(&ctx, &mut app, vec![path], true);
+        frame(&ctx, &mut app, vec![path], false);
         assert_eq!(shape_count(&app), 0);
         assert!(app.status.contains("notes.zip"), "{}", app.status);
-        // Files held over the window keep it painting the hint.
-        assert!(ctx.has_requested_repaint());
     }
 
     /// #3853: a drawing sent zipped (`sample.svg.zip`) and dropped opens
@@ -940,17 +943,21 @@ mod tests {
     #[test]
     fn a_cdr_sent_as_a_zip_opens_as_the_cdr() {
         let dir = dir("cdr-zip");
-        let mut doc =
-            tracedraw_core::Document::new("icons", tracedraw_core::geometry::Size::new(100.0, 100.0));
+        let mut doc = tracedraw_core::Document::new(
+            "icons",
+            tracedraw_core::geometry::Size::new(100.0, 100.0),
+        );
         let id = doc.ids_mut().shape();
-        doc.pages[0].layers[0].shapes.push(tracedraw_core::Shape::new(
-            id,
-            tracedraw_core::ShapeKind::Rect {
-                rect: tracedraw_core::Rect::new(10.0, 10.0, 40.0, 30.0),
-                radius: 0.0,
-                corners: None,
-            },
-        ));
+        doc.pages[0].layers[0]
+            .shapes
+            .push(tracedraw_core::Shape::new(
+                id,
+                tracedraw_core::ShapeKind::Rect {
+                    rect: tracedraw_core::Rect::new(10.0, 10.0, 40.0, 30.0),
+                    radius: 0.0,
+                    corners: None,
+                },
+            ));
         let bytes = tracedraw_cdr::write::document_to_cdr(&doc);
         for (name, inside) in [("icons.cdr.zip", "icons.cdr"), ("icons.zip", "icons.cdr")] {
             let path = dir.join(name);
@@ -1006,31 +1013,29 @@ mod tests {
         assert_eq!(app.docs.len(), docs + 3, "{}", app.status);
     }
 
-    /// #2686: on Windows a drop (or the drag leaving) could fail to reach
-    /// the program; the files stayed listed as hovered and the drop frame
-    /// came back at every later click. Once the buttons have been up a
-    /// moment with the same files hovered, the drag is over: its files
-    /// count as let go, once, and the frame stays away; a drop coming in
-    /// late is not taken again.
+    /// #2686: when Windows loses a drop, the app polls while the button
+    /// is held and waits briefly on release. Recovery runs once, then
+    /// polling stops even if the files remain listed as hovered.
     #[test]
     fn a_file_drag_whose_drop_is_lost_ends_once_the_buttons_are_up() {
         let a = vec![PathBuf::from("a.svg")];
         let mut d = FileDrag::default();
-        // Dragged over with the button held: the frame shows.
+        let poll = Some(Duration::from_millis(50));
+        let wait = Some(Duration::from_secs_f64(LOST_DROP_WAIT + 0.05));
+        assert_eq!(d.recovery_repaint_delay(), None);
         assert!(d.step(&a, false, true, 0.0).is_empty());
-        assert!(d.showing() && !d.waiting());
-        // Let go: the frame goes at once, the drop is awaited a moment.
+        assert_eq!(d.recovery_repaint_delay(), poll);
         assert!(d.step(&a, false, false, 1.0).is_empty());
-        assert!(!d.showing() && d.waiting());
+        assert_eq!(d.recovery_repaint_delay(), wait);
         assert!(d
             .step(&a, false, false, 1.0 + LOST_DROP_WAIT / 2.0)
             .is_empty());
         // No drop came: the files count as let go, once.
         assert_eq!(d.step(&a, false, false, 1.0 + LOST_DROP_WAIT), a);
         assert!(d.step(&a, false, false, 3.0).is_empty());
-        // A later click or drag with the stale files listed shows no frame.
+        // A later click with the stale files listed does not resume polling.
         assert!(d.step(&a, false, true, 4.0).is_empty());
-        assert!(!d.showing() && !d.waiting());
+        assert_eq!(d.recovery_repaint_delay(), None);
         // The real drop coming in late is not taken twice.
         assert!(d.late_drop(&a, 4.5));
         assert!(!d.late_drop(&a, 4.6));
@@ -1039,17 +1044,18 @@ mod tests {
         d.step(&a, false, true, 0.0);
         d.step(&a, false, false, 0.1);
         assert!(d.step(&a, true, false, 0.2).is_empty());
+        assert_eq!(d.recovery_repaint_delay(), None);
         assert!(d.step(&[], false, false, 5.0).is_empty());
         // A button pressed again before the wait is out keeps it a drag.
         let mut d = FileDrag::default();
         d.step(&a, false, false, 0.0);
         d.step(&a, false, true, 0.3);
         assert!(d.step(&a, false, false, 0.6).is_empty());
-        assert!(d.waiting());
-        // Other files: a new drag.
+        assert_eq!(d.recovery_repaint_delay(), wait);
+        // Other files start a new drag.
         let b = vec![PathBuf::from("b.png")];
         assert!(d.step(&b, false, true, 0.7).is_empty());
-        assert!(d.showing());
+        assert_eq!(d.recovery_repaint_delay(), poll);
     }
 
     /// #2940: after a lost drop its files stay listed as hovered, ahead of
@@ -1064,20 +1070,20 @@ mod tests {
         d.step(&[a.clone()], false, true, 0.0);
         d.step(&[a.clone()], false, false, 0.1);
         assert_eq!(d.step(&[a.clone()], false, false, 1.0), [a.clone()]);
-        // Still listed alone: no frame, nothing let go.
+        // Still listed alone: no polling and nothing let go.
         assert!(d.step(&[a.clone()], false, true, 2.0).is_empty());
-        assert!(!d.showing());
+        assert_eq!(d.recovery_repaint_delay(), None);
         // The next drag lists its file after the old one.
         let both = vec![a.clone(), b.clone()];
         assert!(d.step(&both, false, true, 3.0).is_empty());
-        assert!(d.showing());
+        assert!(d.recovery_repaint_delay().is_some());
         assert_eq!(d.fresh(&both), [b.clone()]);
         d.step(&both, false, false, 3.1);
         assert_eq!(d.step(&both, false, false, 4.0), [b.clone()]);
         // A third drag, of the first file again, lets that go.
         let again = vec![a.clone(), b.clone(), a.clone()];
         d.step(&again, false, true, 5.0);
-        assert!(d.showing());
+        assert!(d.recovery_repaint_delay().is_some());
         d.step(&again, false, false, 5.1);
         assert_eq!(d.step(&again, false, false, 6.0), [a.clone()]);
         // A drop that reaches the program ends it all.
@@ -1092,11 +1098,13 @@ mod tests {
         let (ctx, mut app) = setup();
         let dir = dir("lost");
         let file = svg(&dir);
-        let inside = app.canvas_rect.center();
+        let inside = app.canvas_rect.center() + egui::vec2(93.0, -54.0);
         frame_at(&ctx, &mut app, Vec::new(), false, Some(inside));
         let before = shape_count(&app);
         app.drop_lost(&ctx, std::slice::from_ref(&file));
         assert_eq!(shape_count(&app), before + 1, "imported into the drawing");
+        let bounds = app.selection_bounds().expect("import bounds");
+        assert!(app.view.to_screen(bounds.center()).distance(inside) < 0.1);
         frame_at(
             &ctx,
             &mut app,

@@ -289,7 +289,7 @@ PNG/PDF/SVG and cached CDR output keep its appearance. See
 | Import DXF (lines, polylines, arcs, ellipses, splines, hatches, text, blocks) | works (see `behavior/dxf.md`) |
 | Import EPS, PostScript and PRN print files (interpreter: paths, images, text, clips, shadings, patterns, prologs; one page per `showpage` at its `/PageSize`), and `.ai` files written as PostScript (the format's versions before the PDF-based ones; the format's operators are defined for files that bring no procedure set, as TraceDraw's classic AI export, #1728) | works (see `behavior/eps-import.md`) |
 | Import PSD/PSB (layers as bitmaps with opacity, visibility and masks) | works (see `behavior/psd-import.md`) |
-| Files dropped on the window: imported into the shown drawing, otherwise opened (a picture gets a new drawing); a hint while files are dragged over; desktop and browser | works (see `behavior/drop-files.md`) |
+| Files dropped on the window: imported into the shown drawing at the release point, otherwise opened (a picture gets a new drawing); desktop and browser | works (see `behavior/drop-files.md`) |
 | Import EMF and WMF (GDI paths, pens, brushes, text, DIB bitmaps, clips); export EMF and WMF | works (see `behavior/emf-wmf.md`) |
 | Import CMX: pages, layers, groups, curves, rectangles, ellipses, uniform and fountain fills, outlines with dashes and arrowheads, embedded 24-bit images, clips, text (from the drawn characters); not yet lenses and other fill types | partial (see `behavior/cmx-import.md`) |
 | Import desktop publishing `.pmd`, `.pm6`, `.p65`: the text in one frame and the pictures stored inside; not the layout, type, shapes or linked pictures | partial (see `behavior/pmd-import.md`) |

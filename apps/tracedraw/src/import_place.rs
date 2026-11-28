@@ -31,6 +31,8 @@ pub struct ImportPlacing {
 pub enum Placement {
     /// Its top left corner here, at its own size.
     Corner(Point),
+    /// Its centre here, at its own size.
+    Center(Point),
     /// Fitted in this box, its proportions kept, from the box's top left.
     Fit(Rect),
     /// In the middle of the page, at its own size.
@@ -88,6 +90,7 @@ pub fn placement_transform(b: Rect, placement: Placement, page: Rect) -> Option<
     let top_left = Point::new(b.x0, b.y1);
     let t = match placement {
         Placement::Corner(p) => Affine::translate(p - top_left),
+        Placement::Center(p) => Affine::translate(p - b.center()),
         Placement::PageCenter => Affine::translate(page.center() - b.center()),
         Placement::Fit(r) => {
             let (w, h) = (b.width(), b.height());
@@ -261,10 +264,19 @@ impl App {
             return;
         };
         self.status.clear();
+        self.import_at_placement(&placing.path, placement);
+    }
+
+    /// Import at a known place, retaining it if the reader opens a dialog.
+    pub(crate) fn import_at_placement(&mut self, path: &std::path::Path, placement: Placement) {
         let before = self.selection.clone();
-        self.import_path_as_in_file(&placing.path);
+        self.import_path_as_in_file(path);
         if self.selection != before && !self.selection.is_empty() {
             self.apply_import_placement(placement);
+            // Another file in the same drop may have opened a dialog first.
+            if let Some(waiting) = &mut self.import_place_waiting {
+                waiting.before.clone_from(&self.selection);
+            }
         } else if self.import_question_open() {
             // The import comes once the question is answered.
             self.import_place_waiting = Some(WaitingPlacement { placement, before });
