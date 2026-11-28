@@ -455,6 +455,68 @@ pub fn render_page_progressive(
     first: u32,
     band: &(dyn Fn(u32, &Pixmap) + Sync),
 ) -> Option<Pixmap> {
+    render_page_progressive_prepared(doc, page, opts, cancel, first, band, None)
+}
+
+/// Geometry shared by successive views of one immutable document page.
+#[cfg(not(target_arch = "wasm32"))]
+pub struct ProgressivePage {
+    document: std::sync::Arc<Document>,
+    page: PageId,
+    reach: std::sync::OnceLock<(bool, f64)>,
+    bounds: std::sync::OnceLock<PageBounds>,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl ProgressivePage {
+    pub fn new(document: std::sync::Arc<Document>, page: PageId) -> Self {
+        Self { document, page, reach: Default::default(), bounds: Default::default() }
+    }
+
+    pub fn matches(&self, document: &Document, page: PageId) -> bool {
+        self.page == page && std::ptr::eq(self.document.as_ref(), document)
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+#[test]
+fn prepared_zoom_matches_uncached_zoom_and_rejects_other_snapshots() {
+    let mut document = Document::new("page", tracedraw_core::geometry::Size::new(100.0, 100.0));
+    let layer = document.pages[0].layers[0].id;
+    let mut shape = Shape::new(ShapeId(100), ShapeKind::Rect {
+        rect: Rect::new(15.0, 20.0, 95.0, 90.0), radius: 5.0, corners: None,
+    });
+    shape.fill = Fill::Solid(Color::BLACK);
+    document.layer_mut(layer).expect("layer").shapes.push(shape);
+    let doc = std::sync::Arc::new(document);
+    let page = doc.pages[0].id;
+    let prepared = ProgressivePage::new(doc.clone(), page);
+    assert!(prepared.matches(&doc, page));
+    assert!(!prepared.matches(&doc, PageId(0)));
+    assert!(!prepared.matches(&doc.as_ref().clone(), page));
+    let cancel = std::sync::atomic::AtomicBool::new(false);
+    for zoom in [4.0, 8.0] {
+        let opts = RenderOptions {
+            width: 900, height: 512, view: ViewTransform {
+                zoom, origin_x: 100.0, origin_y: 500.0, stretch_y: 1.0,
+            }, ..Default::default()
+        };
+        let cached = render_page_progressive_prepared(&doc, page, &opts, &cancel, 100, &|_, _| {}, Some(&prepared)).expect("cached");
+        let fresh = render_page_progressive(&doc, page, &opts, &cancel, 100, &|_, _| {}).expect("fresh");
+        assert_eq!(cached.data(), fresh.data());
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn render_page_progressive_prepared(
+    doc: &Document,
+    page: PageId,
+    opts: &RenderOptions,
+    cancel: &std::sync::atomic::AtomicBool,
+    first: u32,
+    band: &(dyn Fn(u32, &Pixmap) + Sync),
+    prepared: Option<&ProgressivePage>,
+) -> Option<Pixmap> {
     use std::sync::atomic::{AtomicUsize, Ordering};
     let (w, h) = (opts.width.max(1), opts.height.max(1));
     if (w as u64) * (h as u64) > MAX_PIXELS {
@@ -468,7 +530,11 @@ pub fn render_page_progressive(
         .map(|n| n.get())
         .unwrap_or(1)
         .min(16) as u32;
-    let (lens, blur_mm) = page_reach(doc, page);
+    let prepared = prepared.filter(|p| p.matches(doc, page) && opts.preview.is_none() && opts.focus.is_none());
+    let (lens, blur_mm) = prepared.map_or_else(
+        || page_reach(doc, page),
+        |p| *p.reach.get_or_init(|| page_reach(doc, page)),
+    );
     let bands = if cores < 2 || lens || (w as u64) * (h as u64) < 250_000 {
         None
     } else {
@@ -483,7 +549,13 @@ pub fn render_page_progressive(
     bands.sort_by_key(|b| middle(b).abs_diff(first));
     // Every band's culling asks every object's box: work the boxes out
     // once here instead of once per band (#3559).
-    let boxes = page_bounds_cache(doc, page);
+    let local;
+    let boxes = if let Some(prepared) = prepared {
+        prepared.bounds.get_or_init(|| page_bounds_cache(doc, page))
+    } else {
+        local = page_bounds_cache(doc, page);
+        &local
+    };
     let next = AtomicUsize::new(0);
     // Assemble each band as it finishes instead of keeping a whole
     // picture of bands beside a second whole picture at the end. Only
@@ -503,7 +575,7 @@ pub fn render_page_progressive(
                 let mut o = opts.clone();
                 o.height = ry1 - ry0;
                 o.view.origin_y = opts.view.origin_y - ry0 as f64;
-                let Some(part) = render_page_whole_in(doc, page, &o, Some(cancel), Some(&boxes))
+                let Some(part) = render_page_whole_in(doc, page, &o, Some(cancel), Some(boxes))
                 else {
                     return;
                 };

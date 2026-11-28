@@ -1027,7 +1027,7 @@ fn draw_page(app: &App, painter: &Painter, rect: ERect, preview: Option<Affine>)
         // see-through object showed twice as dark there until the whole
         // picture came (#3639).
         #[cfg(not(target_arch = "wasm32"))]
-        let incoming = app.raster.borrow().incoming(view);
+        let incoming = app.raster.borrow().incoming(view, painter.ctx().pixels_per_point());
         #[cfg(not(target_arch = "wasm32"))]
         let covered: &[ERect] = incoming.as_ref().map_or(&[], |i| &i.2);
         #[cfg(target_arch = "wasm32")]

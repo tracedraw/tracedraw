@@ -22,7 +22,7 @@ use tracedraw_core::{geometry::Affine, Document, PageId, ShapeId};
 use tracedraw_render::{render_page, Preview, RenderOptions, ViewTransform};
 #[cfg(not(target_arch = "wasm32"))]
 use tracedraw_render::{
-    render_page_cancellable, render_page_on_one_thread_cancellable, render_page_progressive,
+    render_page_cancellable, render_page_on_one_thread_cancellable, render_page_progressive_prepared,
 };
 
 /// How long the view must rest, seconds, before a moved view is
@@ -365,6 +365,10 @@ pub struct Raster {
     /// take instead of a copy of its own (no threads in the browser).
     #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     pub snapshot: Option<std::sync::Arc<Document>>,
+    #[cfg(not(target_arch = "wasm32"))]
+    progressive_page: Option<std::sync::Arc<tracedraw_render::ProgressivePage>>,
+    #[cfg(not(target_arch = "wasm32"))]
+    requested_picture: Option<Key>,
     /// What the page's objects cover (page mm), with the revision it was
     /// measured at: a page beside the current one shows its objects off
     /// the page too, and measuring them every frame would cost time
@@ -658,6 +662,8 @@ impl Raster {
         #[cfg(not(target_arch = "wasm32"))]
         {
             self.job = None;
+            self.progressive_page = None;
+            self.requested_picture = None;
             self.rested = None;
             self.backdrop = None;
             self.backdrop_job = None;
@@ -812,6 +818,8 @@ impl Raster {
                 .zip(pixel_dpi)
                 .map(|(win, dpi)| ((dpi * 1000.0).round() as u64, win.ix0, win.iy1)),
         };
+        #[cfg(not(target_arch = "wasm32"))]
+        { self.requested_picture = Some(key.clone()); }
         let vt = match (window, pixel_dpi) {
             // One render pixel per document pixel, the window's top-left
             // one at the corner.
@@ -1122,6 +1130,16 @@ impl Raster {
                 let (t, r) = std::sync::mpsc::channel();
                 (Some(t), Some(r))
             };
+            if self.progressive_page.as_ref().is_some_and(|p| !p.matches(&doc, page)) {
+                self.progressive_page = None;
+            }
+            let prepared = (bands_tx.is_some() && opts.preview.is_none() && opts.focus.is_none())
+                .then(|| self.progressive_page.get_or_insert_with(|| {
+                    std::sync::Arc::new(tracedraw_render::ProgressivePage::new(doc.clone(), page))
+                }).clone());
+            let first = ctx.input(|i| i.pointer.hover_pos())
+                .filter(|p| !self.follows_zoom && rect.contains(*p))
+                .map_or(h / 2, |p| ((p.y - rect.top()) * ppp).clamp(0.0, h as f32) as u32);
             std::thread::spawn(move || {
                 #[cfg(test)]
                 let _held = hold.as_ref().map(|m| m.lock());
@@ -1135,7 +1153,7 @@ impl Raster {
                                 band_wake.request_repaint();
                             }
                         };
-                        render_page_progressive(&doc, page, &opts, &gives_up, h / 2, &band)
+                        render_page_progressive_prepared(&doc, page, &opts, &gives_up, first, &band, prepared.as_deref())
                     }
                     None => render_page_cancellable(&doc, page, &opts, &gives_up),
                 }
@@ -1422,13 +1440,25 @@ impl Raster {
     /// see-through object there is drawn twice, darker, until the whole
     /// picture comes (#3639).
     #[cfg(not(target_arch = "wasm32"))]
-    pub fn incoming(&self, view: &View) -> Option<(TextureId, Rect, Vec<Rect>)> {
+    pub fn incoming(&self, view: &View, ppp: f32) -> Option<(TextureId, Rect, Vec<Rect>)> {
         let job = self.job.as_ref()?;
-        if job.cancel.load(std::sync::atomic::Ordering::Relaxed) {
+        let requested = self.requested_picture.as_ref()?;
+        if job.cancel.load(std::sync::atomic::Ordering::Relaxed)
+            || job.key.zoom != view.zoom || !job.key.same_but_view(requested, true)
+        {
             return None;
         }
         let tex = job.incoming.as_ref()?.id();
-        let at = view.rect_to_screen(job.page_rect?);
+        let page = job.page_rect?;
+        let zoom = f64::from(view.zoom * ppp);
+        if (page.width() * zoom - f64::from(job.size.0)).abs() >= 0.01
+            || (page.height() * zoom - f64::from(job.size.1)).abs() >= 0.01
+        {
+            return None;
+        }
+        let at = view.rect_to_screen(page);
+        let min = (at.min.to_vec2() * ppp).round() / ppp;
+        let at = Rect::from_min_size(min.to_pos2(), egui::vec2(job.size.0 as f32 / ppp, job.size.1 as f32 / ppp));
         let covered = band_rects(at, job.size.1, &job.arrived);
         Some((tex, at, covered))
     }
